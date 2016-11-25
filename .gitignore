@@ -1,0 +1,108 @@
+.DS_Store
+._.DS_Store
+.stack-work/
+dist/
+result
+.project
+/ci-out/
+**/codex.tags
+/hscope.out
+\#*\#
+.\#*\#
+*.tix
+
+# For a project mostly in C, the following would be a good set of
+# exclude patterns (uncomment them if you want to use them):
+*.[oa]
+*~
+
+# general
+*~
+*.ini
+
+# C#
+*/packages/*
+*/*/packages/*
+*/*/*/packages/*
+*/*/*/*/packages/*
+*/[Oo]bj/*
+*/*/[Oo]bj/*
+*/*/*/[Oo]bj/*
+*/*/*/*/[Oo]bj/*
+*/[Bb]in/*
+*/*/[Bb]in/*
+*/*/*/[Bb]in/*
+*/*/*/*/[Bb]in/*
+
+
+# latex
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.synctex.gz
+*.synctex
+*.WSsave
+*.wsp
+*.spl
+*.upa
+*.upb
+*.toc
+*converted-to.pdf
+
+# octave
+*octave-core
+*octave-hist
+
+# R
+.Rhistory
+.RData
+
+# haskell
+*.o
+*.hi
+*.summary
+dist/
+.ghc-sandbox/
+.ghcjs-sandbox/
+*.tmp
+
+# eclipse
+.metadata/
+.dist-buildwrapper/
+.project
+.settings/
+
+# leksah
+#*.lkshw
+*.lkshf
+*.lkshs
+
+# from ghcjs
+dist
+testdata
+cabal-dev
+SourceGraph
+web/modeler-icons
+*~
+*.o
+*.hi
+*.chi
+*.chs.h
+.virtualenv
+.hsenv
+.HTF/
+.cabal-sandbox/
+cabal.sandbox.config
+cabal.config
+
+
+# qua-server specific
+*.sqlite
+*-shm
+*-wal
+*.aes
+
+# JetBrains
+.idea
