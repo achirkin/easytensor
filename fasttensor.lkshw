@@ -1,0 +1,14 @@
+Version of workspace file format:
+               2
+Time of storage:
+               "Fri Nov 25 14:21:22 CET 2016"
+Name of the workspace:
+               "fasttensor"
+File paths of contained packages:
+               ["fasttensor.cabal"]
+Maybe file path of an active package:
+               Just "fasttensor.cabal"
+Maybe name of an active executable:
+               Nothing
+Version Control System configurations for packages:
+               fromList []
