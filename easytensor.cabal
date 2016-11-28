@@ -1,4 +1,4 @@
-name: fasttensor
+name: easytensor
 version: 0.1.0.0
 cabal-version: >=1.10
 build-type: Simple
@@ -6,7 +6,7 @@ license: MIT
 license-file: LICENSE
 copyright: (c) Artem Chirkin
 maintainer: chirkin@arch.ethz.ch
-homepage: https://github.com/achirkin/fasttensor#readme
+homepage: https://github.com/achirkin/easytensor#readme
 synopsis: Initial project template from stack
 description:
     Please see README.md
@@ -15,33 +15,39 @@ author: Artem Chirkin
 
 source-repository head
     type: git
-    location: https://github.com/achirkin/fasttensor
+    location: https://github.com/achirkin/easytensor
 
 library
     exposed-modules:
-        Data.Tensor
+        Numeric.Tensor
+        Numeric.Vector
     build-depends:
         base >=4.9 && <5,
         ghc-prim >=0.5
     default-language: Haskell2010
     hs-source-dirs: src
+    other-modules:
+        Numeric.Vector.Class
+        Numeric.Vector.Family
+        Numeric.Vector.FloatX2
     ghc-options: -Wall -fwarn-tabs
 
-executable fasttensor-exe
+executable easytensor-exe
     main-is: Main.hs
     build-depends:
         base -any,
-        fasttensor -any
+        easytensor -any,
+        ghc-prim >=0.5
     default-language: Haskell2010
     hs-source-dirs: app
     ghc-options: -Wall -fwarn-tabs -threaded -rtsopts -with-rtsopts=-N
 
-test-suite fasttensor-test
+test-suite easytensor-test
     type: exitcode-stdio-1.0
     main-is: Spec.hs
     build-depends:
         base -any,
-        fasttensor -any
+        easytensor -any
     default-language: Haskell2010
     hs-source-dirs: test
     ghc-options: -Wall -fwarn-tabs -threaded -rtsopts -with-rtsopts=-N

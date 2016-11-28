@@ -3,11 +3,11 @@ Version of workspace file format:
 Time of storage:
                "Fri Nov 25 14:21:22 CET 2016"
 Name of the workspace:
-               "fasttensor"
+               "easytensor"
 File paths of contained packages:
-               ["fasttensor.cabal"]
+               ["easytensor.cabal"]
 Maybe file path of an active package:
-               Just "fasttensor.cabal"
+               Just "easytensor.cabal"
 Maybe name of an active executable:
                Nothing
 Version Control System configurations for packages:
