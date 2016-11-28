@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeOperators, FlexibleInstances, ScopedTypeVariables #-}
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Data.Tensor
+-- Module      :  Numeric.Tensor
 -- Copyright   :  (c) Artem Chirkin
 -- License     :  MIT
 --
@@ -19,7 +19,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Data.Tensor where
+module Numeric.Tensor where
 
 import GHC.TypeLits
 import GHC.Prim
@@ -74,20 +74,20 @@ vec2 x y = T10 $ Vector2 x y
 class TensorCalculus t (ns :: [Nat]) (ms :: [Nat]) where
   data Tensor t ns ms
   type TensorStore t ns ms
-  -- | Add a contravariant rank
-  infixr 5 .<.
-  (.<.) :: Tensor t ns ms -> Tensor t ns ms -> Tensor t (2 ': ns) ms
-  -- | Add a covariant rank
-  infixr 5 .>.
-  (.>.) :: Tensor t ns ms -> Tensor t ns ms -> Tensor t ns (2 ': ms)
-  -- | Append dimension of the first contravariant rank
-  infixr 5 .<
-  (.<)  :: AppendDim (TensorStore t ns ms) (TensorStore t (nb ': ns) ms) (TensorStore t ((nb + 1) ': ns) ms)
-        => Tensor t ns ms -> Tensor t (nb ': ns) ms -> Tensor t ((nb + 1) ': ns) ms
-  -- | Append dimension of the first covariant rank
-  infixr 5 .>
-  (.>)  :: AppendDim (TensorStore t ns ms) (TensorStore t ns (mb ': ms)) (TensorStore t ns ((mb + 1) ': ms))
-        => Tensor t ns ms -> Tensor t ns (mb ': ms) -> Tensor t ns ((mb + 1) ': ms)
+--  -- | Add a contravariant rank
+--  infixr 5 .<.
+--  (.<.) :: Tensor t ns ms -> Tensor t ns ms -> Tensor t (2 ': ns) ms
+--  -- | Add a covariant rank
+--  infixr 5 .>.
+--  (.>.) :: Tensor t ns ms -> Tensor t ns ms -> Tensor t ns (2 ': ms)
+--  -- | Append dimension of the first contravariant rank
+--  infixr 5 .<
+--  (.<)  :: AppendDim (TensorStore t ns ms) (TensorStore t (nb ': ns) ms) (TensorStore t ((nb + 1) ': ns) ms)
+--        => Tensor t ns ms -> Tensor t (nb ': ns) ms -> Tensor t ((nb + 1) ': ns) ms
+--  -- | Append dimension of the first covariant rank
+--  infixr 5 .>
+--  (.>)  :: AppendDim (TensorStore t ns ms) (TensorStore t ns (mb ': ms)) (TensorStore t ns ((mb + 1) ': ms))
+--        => Tensor t ns ms -> Tensor t ns (mb ': ms) -> Tensor t ns ((mb + 1) ': ms)
 
 -- AppendDim (Tensor t ns ms) (Tensor t ns (mb ': ms)) (Tensor t ns ((mb + 1) ': ms))
 
@@ -95,10 +95,10 @@ class TensorCalculus t (ns :: [Nat]) (ms :: [Nat]) where
 instance TensorCalculus t '[] '[] where
   newtype Tensor t '[] '[] = T00 t deriving (Bounded, Enum, Eq, Integral, Num, Fractional, Floating, Ord, Read, Real, RealFrac, RealFloat, Show)
   type TensorStore t '[] '[] = t
-  T00 a .<. T00 b = T10 $ Vector2 a b
-  T00 a .>. T00 b = T01 $ Vector2 a b
-  T00 a .<  T10 b = T10 $ appendDim a b
-  T00 a .>  T01 b = T01 $ appendDim a b
+--  T00 a .<. T00 b = T10 $ Vector2 a b
+--  T00 a .>. T00 b = T01 $ Vector2 a b
+--  T00 a .<  T10 b = T10 $ appendDim a b
+--  T00 a .>  T01 b = T01 $ appendDim a b
 instance TensorCalculus t '[n] '[] where
   newtype Tensor t '[n] '[] = T10 (SomeVector t n)
   type TensorStore t '[n] '[] = SomeVector t n
@@ -143,6 +143,7 @@ deriving instance Show (SomeVector t n) => Show (Tensor t '[n] '[])
 deriving instance Plus (SomeVector t n) => Plus (Tensor t '[n] '[])
 deriving instance Show (SomeVector t m) => Show (Tensor t '[] '[m])
 deriving instance Plus (SomeVector t m) => Plus (Tensor t '[] '[m])
+deriving instance Num (SomeVector t n) => Num (Tensor t '[n] '[])
 deriving instance Show (SomeMatrix t n0 n1) => Show (Tensor t '[n0, n1] '[])
 deriving instance Show (SomeMatrix t n0 m0) => Show (Tensor t '[n0] '[m0])
 deriving instance Show (SomeMatrix t m0 m1) => Show (Tensor t '[] '[m0,m1])
