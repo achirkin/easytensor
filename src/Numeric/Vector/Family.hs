@@ -1,4 +1,4 @@
-{-# LANGUAGE KindSignatures, DataKinds, TypeFamilyDependencies #-}
+{-# LANGUAGE KindSignatures, DataKinds, TypeFamilyDependencies, MagicHash #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Vector.Family
@@ -12,13 +12,23 @@
 
 module Numeric.Vector.Family
   ( Vector
+  , VFloatX2 (..), VFloatXN (..)
   ) where
 
 import GHC.TypeLits
-import {-# SOURCE #-} Numeric.Vector.FloatX2
+import GHC.Prim
 
-data VectorN t (n::Nat)
 
+-- | Family of all vector types, specialized on low-dimensional vectors
 type family Vector t (n :: Nat) = v | v -> t n where
   Vector Float 2 = VFloatX2
-  Vector t n = VectorN t n
+  Vector Float n = VFloatXN n
+
+
+
+-- | 2D Float vector
+data VFloatX2 = VFloatX2 Float# Float#
+
+-- | ND vector
+data VFloatXN (n::Nat) = VFloatXN ByteArray#
+

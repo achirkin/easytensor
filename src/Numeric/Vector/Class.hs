@@ -1,4 +1,5 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses, DataKinds, KindSignatures #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Vector.Class
@@ -12,30 +13,54 @@
 
 module Numeric.Vector.Class
   ( VectorCalculus (..)
+  , Vector2D (..)
+  , Vector3D (..)
+  , Vector4D (..)
   ) where
 
 
+import GHC.TypeLits
+
 import Numeric.Vector.Family (Vector)
 
-class VectorCalculus t n where
+class VectorCalculus v t (n :: Nat) | v -> t, v -> n, t n -> v where
     -- | Fill Vec with the same value
-    broadcastVec :: t -> Vector t n
+    broadcastVec :: t -> v
     -- | Scalar product -- sum of Vecs' components products, propagated into whole Vec
     infixl 7 .*.
-    (.*.) :: Vector t n -> Vector t n -> Vector t n
+    (.*.) :: v -> v -> v
     -- | Scalar product -- sum of Vecs' components products -- a scalar
-    dot :: Vector t n -> Vector t n -> t
+    dot :: v -> v -> t
     -- | Get element by its index
-    indexVec :: Int -> Vector t n -> t
+    indexVec :: Int -> v -> t
     -- | Sum of absolute values
-    normL1 :: Vector t n -> t
+    normL1 :: v -> t
     -- | hypot function (square root of squares)
-    normL2 :: Vector t n -> t
+    normL2 :: v -> t
     -- | Maximum of absolute values
-    normLPInf :: Vector t n -> t
+    normLPInf :: v -> t
     -- | Minimum of absolute values
-    normLNInf :: Vector t n -> t
+    normLNInf :: v -> t
     -- | Norm in Lp space
-    normLP :: Int -> Vector t n -> t
+    normLP :: Int -> v -> t
     -- | Dimensionality of a vector
-    dim :: Vector t n -> Int
+    dim :: v -> Int
+
+
+class Vector2D t where
+  -- | Compose a 2D vector
+  vec2 :: t -> t -> Vector t 2
+  -- | Take a determinant of a matrix composed from two 2D vectors.
+  --   Like a cross product in 2D.
+  det2 :: Vector t 2 -> Vector t 2 -> t
+
+
+class Vector3D t where
+  -- | Compose a 3D vector
+  vec3 :: t -> t -> t -> Vector t 3
+  -- | Cross product
+  cross :: Vector t 3 -> Vector t 3 -> Vector t 3
+
+class Vector4D t where
+  -- | Compose a 4D vector
+  vec4 :: t -> t -> t -> t -> Vector t 4
