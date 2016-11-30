@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeOperators, TypeFamilies #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -59,7 +61,7 @@ instance KnownNat n => Ord (VFloatXN n) where
 
 
 
-instance KnownNat n => Num (VFloatXN n) where
+instance (KnownNat n, 3 <= n) => Num (VFloatXN n) where
   (+) = zipV plusFloat#
   {-# INLINE (+) #-}
   (-) = zipV minusFloat#
@@ -72,14 +74,65 @@ instance KnownNat n => Num (VFloatXN n) where
   {-# INLINE abs #-}
   signum = mapV (\x -> if isTrue# (x `gtFloat#` 0.0#) then 1.0# else if isTrue# (x `ltFloat#` 0.0#) then -1.0# else 0.0#)
   {-# INLINE signum #-}
-  fromInteger n = broadcastVec (fromInteger n)
+  fromInteger = broadcastVec . fromInteger
   {-# INLINE fromInteger #-}
 
 
 
+instance (KnownNat n, 3 <= n) => Fractional (VFloatXN n) where
+  (/) = zipV divideFloat#
+  {-# INLINE (/) #-}
+  recip = mapV (divideFloat# 1.0#)
+  {-# INLINE recip #-}
+  fromRational = broadcastVec . fromRational
+  {-# INLINE fromRational #-}
 
 
-instance KnownNat n => VectorCalculus (VFloatXN n) Float n where
+
+instance (KnownNat n, 3 <= n) => Floating (VFloatXN n) where
+  pi = broadcastVec pi
+  {-# INLINE pi #-}
+  exp = mapV expFloat#
+  {-# INLINE exp #-}
+  log = mapV logFloat#
+  {-# INLINE log #-}
+  sqrt = mapV sqrtFloat#
+  {-# INLINE sqrt #-}
+  sin = mapV sinFloat#
+  {-# INLINE sin #-}
+  cos = mapV cosFloat#
+  {-# INLINE cos #-}
+  tan = mapV tanFloat#
+  {-# INLINE tan #-}
+  asin = mapV asinFloat#
+  {-# INLINE asin #-}
+  acos = mapV acosFloat#
+  {-# INLINE acos #-}
+  atan = mapV atanFloat#
+  {-# INLINE atan #-}
+  sinh = mapV sinFloat#
+  {-# INLINE sinh #-}
+  cosh = mapV coshFloat#
+  {-# INLINE cosh #-}
+  tanh = mapV tanhFloat#
+  {-# INLINE tanh #-}
+  (**) = zipV powerFloat#
+  {-# INLINE (**) #-}
+
+  logBase = zipV (\x y -> logFloat# y `divideFloat#` logFloat# x)
+  {-# INLINE logBase #-}
+  asinh = mapV (\x -> logFloat# (x `plusFloat#` sqrtFloat# (1.0# `plusFloat#` timesFloat# x x)))
+  {-# INLINE asinh #-}
+  acosh = mapV (\x ->  case plusFloat# x 1.0# of
+                 y -> logFloat# ( x `plusFloat#` timesFloat# y (sqrtFloat# (minusFloat# x 1.0# `divideFloat#` y)))
+               )
+  {-# INLINE acosh #-}
+  atanh = mapV (\x -> 0.5# `timesFloat#` logFloat# (plusFloat# 1.0# x `divideFloat#` minusFloat# 1.0# x))
+  {-# INLINE atanh #-}
+
+
+
+instance (KnownNat n, 3 <= n) => VectorCalculus (VFloatXN n) Float n where
   broadcastVec (F# x) = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop# n
@@ -91,36 +144,33 @@ instance KnownNat n => VectorCalculus (VFloatXN n) Float n where
       n = dim# (undefined :: VFloatXN n)
       bs = n *# 4#
   {-# INLINE broadcastVec #-}
---  VFloatX2 a1 a2 .*. VFloatX2 b1 b2 = case timesFloat# a1 b1
---                              `plusFloat#` timesFloat# a2 b2 of
---    x -> VFloatX2 x x
---  {-# INLINE (.*.) #-}
---  VFloatX2 a1 a2 `dot` VFloatX2 b1 b2 = F# ( timesFloat# a1 b1
---                                `plusFloat#` timesFloat# a2 b2
---                                )
---  {-# INLINE dot #-}
---  indexVec 1 (VFloatX2 a1 _) = F# a1
---  indexVec 2 (VFloatX2 _ a2) = F# a2
---  indexVec i _ = error $ "Bad index " ++ show i ++ " for 2D vector"
---  {-# INLINE indexVec #-}
---  normL1 v = case abs v of
---      VFloatX2 a1 a2 -> F# (a1 `plusFloat#` a2)
---  {-# INLINE normL1 #-}
---  normL2 v = sqrt $ dot v v
---  {-# INLINE normL2 #-}
---  normLPInf (VFloatX2 a1 a2) = F# (if isTrue# (a1 `gtFloat#` a2) then a1 else a2)
---  {-# INLINE normLPInf #-}
---  normLNInf (VFloatX2 a1 a2) = F# (if isTrue# (a1 `gtFloat#` a2) then a2 else a1)
---  {-# INLINE normLNInf #-}
---  normLP n (VFloatX2 a1 a2) = case realToFrac n of
---    F# x -> F# ( powerFloat# (divideFloat# 1.0# x)
---                 (            powerFloat# a1 x
---                 `plusFloat#` powerFloat# a2 x
---                 )
---               )
---  {-# INLINE normLP #-}
+  a .*. b = broadcastVec $ dot a b
+  {-# INLINE (.*.) #-}
+  dot a b = F# (accumV2Float (\x y r -> r `plusFloat#` timesFloat# x y) a b 0.0#)
+  {-# INLINE dot #-}
+  indexVec (I# i) _x@(VFloatXN arr)
+#ifndef UNSAFE_INDICES
+      | isTrue# ( (i ># dim# _x)
+           `orI#` (i <=# 0#)
+          )       = error $ "Bad index " ++ show (I# i) ++ " for " ++ show (dim _x)  ++ "D vector"
+      | otherwise
+#endif
+                  = F# (indexFloatArray# arr (i -# 1#))
+  {-# INLINE indexVec #-}
+  normL1 v = F# (accumVFloat (\x a -> a `plusFloat#` (if isTrue# (x `geFloat#` 0.0#) then x else negateFloat# x)) v 0.0#)
+  {-# INLINE normL1 #-}
+  normL2 v = sqrt $ F# (accumVFloat (\x a -> a `plusFloat#` timesFloat# x x) v 0.0#)
+  {-# INLINE normL2 #-}
+  normLPInf v@(VFloatXN arr) = F# (accumVFloat (\x a -> if isTrue# (x `geFloat#` a) then x else a) v (indexFloatArray# arr 0#))
+  {-# INLINE normLPInf #-}
+  normLNInf v@(VFloatXN arr) = F# (accumVFloat (\x a -> if isTrue# (x `leFloat#` a) then x else a) v (indexFloatArray# arr 0#))
+  {-# INLINE normLNInf #-}
+  normLP n v = case realToFrac n of
+    F# p -> F# (powerFloat# (divideFloat# 1.0# p) (accumVFloat (\x a -> a `plusFloat#` powerFloat# x p) v 0.0#))
+  {-# INLINE normLP #-}
   dim x = I# (dim# x)
   {-# INLINE dim #-}
+
 
 
 
@@ -141,7 +191,7 @@ dim# :: KnownNat n => VFloatXN n -> Int#
 dim# x = case fromInteger (natVal x) of I# n -> n
 {-# INLINE dim# #-}
 
--- | Do something in a loop for int i from 0 to n
+-- | Do something in a loop for int i from 0 to n-1
 loop# :: Int# -> (Int# -> State# s -> State# s) -> State# s -> State# s
 loop# n f = loop' 0#
   where
@@ -176,8 +226,9 @@ mapV f x@(VFloatXN a) = case runRW#
     n = dim# x
     bs = n *# 4#
 
-accumV :: KnownNat n => (Float# -> a -> a) -> VFloatXN n -> a -> a
-accumV f x@(VFloatXN a) = loop' 0#
+
+accumVFloat :: KnownNat n => (Float# -> Float# -> Float#) -> VFloatXN n -> Float# -> Float#
+accumVFloat f x@(VFloatXN a) = loop' 0#
   where
     loop' i acc | isTrue# (i ==# n) = acc
                 | otherwise = loop' (i +# 1#) (f (indexFloatArray# a i) acc)
@@ -185,6 +236,14 @@ accumV f x@(VFloatXN a) = loop' 0#
 
 accumV2 :: KnownNat n => (Float# -> Float# -> a -> a) -> VFloatXN n -> VFloatXN n -> a -> a
 accumV2 f x@(VFloatXN a) (VFloatXN b) = loop' 0#
+  where
+    loop' i acc | isTrue# (i ==# n) = acc
+                | otherwise = loop' (i +# 1#) (f (indexFloatArray# a i) (indexFloatArray# b i) acc)
+    n = dim# x
+
+
+accumV2Float :: KnownNat n => (Float# -> Float# -> Float# -> Float#) -> VFloatXN n -> VFloatXN n -> Float# -> Float#
+accumV2Float f x@(VFloatXN a) (VFloatXN b) = loop' 0#
   where
     loop' i acc | isTrue# (i ==# n) = acc
                 | otherwise = loop' (i +# 1#) (f (indexFloatArray# a i) (indexFloatArray# b i) acc)
