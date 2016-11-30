@@ -25,10 +25,8 @@ type family Vector t (n :: Nat) = v | v -> t n where
   Vector Float n = VFloatXN n
 
 
-
 -- | 2D Float vector
 data VFloatX2 = VFloatX2 Float# Float#
 
 -- | ND vector
 data VFloatXN (n::Nat) = VFloatXN ByteArray#
-

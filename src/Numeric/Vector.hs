@@ -56,3 +56,4 @@ a <:> b = case (# toBytes a, toBytes b, byteSize a, byteSize b #) of
            s2 -> case copyByteArray# arr2 0# marr n m s2 of
              s3 -> unsafeFreezeByteArray# marr s3
      ) of (# _, r #) -> fromBytes r
+infixl 5 <:>
