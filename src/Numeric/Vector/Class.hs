@@ -46,6 +46,10 @@ class VectorCalculus v t (n :: Nat) | v -> t, v -> n, t n -> v where
     -- | Dimensionality of a vector
     dim :: v -> Int
 
+{-# RULES
+"normLP/L1" normLP 1 = normL1
+"normLP/L2" normLP 2 = normL2
+  #-}
 
 class Vector2D t where
   -- | Compose a 2D vector
