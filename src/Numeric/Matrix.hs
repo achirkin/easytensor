@@ -1,4 +1,4 @@
-{-# LANGUAGE MagicHash, UnboxedTuples, DataKinds #-}
+{-# LANGUAGE MagicHash, DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
 -----------------------------------------------------------------------------
@@ -24,6 +24,7 @@ module Numeric.Matrix
   -- * Common functions on vectors
 --  , (<:>)
   , MatrixProduct (..)
+  , MatrixInverse (..)
   ) where
 
 --import GHC.Base (runRW#)
@@ -31,7 +32,12 @@ module Numeric.Matrix
 --import GHC.TypeLits
 --
 --import Numeric.Commons
-import Numeric.Matrix.Class (MatrixCalculus(..), SquareMatrixCalculus(..), Matrix2x2(..), MatrixProduct (..))
+import Numeric.Matrix.Class ( MatrixCalculus(..)
+                            , SquareMatrixCalculus(..)
+                            , Matrix2x2(..)
+                            , MatrixProduct (..)
+                            , MatrixInverse (..)
+                            )
 import Numeric.Matrix.Family (Matrix)
 
 

@@ -16,6 +16,7 @@ module Numeric.Matrix.Class
   , SquareMatrixCalculus (..)
   , Matrix2x2 (..)
   , MatrixProduct (..)
+  , MatrixInverse (..)
   ) where
 
 
@@ -66,6 +67,10 @@ class Matrix2x2 t where
 
 
 
-class MatrixProduct a b c | b c -> a where
+class MatrixProduct a b c where
   -- | matrix-matrix or matrix-vector product
   prod :: a -> b -> c
+
+
+class MatrixInverse a where
+  inverse :: a -> a

@@ -325,7 +325,7 @@ instance (KnownNat n, PrimBytes VFloatX2)
 
 instance (PrimBytes VFloatX2)
       => MatrixProduct (MFloatXNM 2 2) VFloatX2 VFloatX2 where
-  prod x@(MFloatXNM arrx) y = case runRW#
+  prod (MFloatXNM arrx) y = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) ->
            let loop' i l r | isTrue# (l ==# 2#) = r
@@ -340,6 +340,9 @@ instance (PrimBytes VFloatX2)
       arry = toBytes y
       bs = 2# *# 4#
 
+
+instance MatrixInverse (MFloatXNM n m) where
+  inverse = undefined
 
 
 -----------------------------------------------------------------------------
