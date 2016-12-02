@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MagicHash, UnboxedTuples, DataKinds #-}
@@ -14,6 +15,9 @@
 -----------------------------------------------------------------------------
 
 module Numeric.Vector.Base.FloatX2 () where
+
+#include "MachDeps.h"
+#include "HsBaseConfig.h"
 
 import GHC.Base (runRW#)
 import GHC.Prim
@@ -229,15 +233,21 @@ instance PrimBytes VFloatX2 where
            s2 -> case writeFloatArray# marr 1# a2 s2 of
              s3 -> unsafeFreezeByteArray# marr s3
      ) of (# _, a #) -> a
+  {-# INLINE toBytes #-}
   fromBytes arr = VFloatX2
     (indexFloatArray# arr 0#)
     (indexFloatArray# arr 1#)
-  byteSize _ = 8#
+  {-# INLINE fromBytes #-}
+  byteSize _ = case SIZEOF_HSFLOAT of I# s -> s
   {-# INLINE byteSize #-}
-  byteAlign _ = 8#
+  byteAlign _ = case ALIGNMENT_HSFLOAT of I# s -> s
   {-# INLINE byteAlign #-}
 
-
+instance FloatBytes VFloatX2 where
+  ixF 0# (VFloatX2 a1 _) = a1
+  ixF 1# (VFloatX2 _ a2) = a2
+  ixF _ _ = undefined
+  {-# INLINE ixF #-}
 
 
 

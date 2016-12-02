@@ -18,6 +18,9 @@
 
 module Numeric.Matrix.Base.FloatXNM () where
 
+#include "MachDeps.h"
+#include "HsBaseConfig.h"
+
 import GHC.Base (runRW#)
 import GHC.Prim
 import GHC.Types
@@ -233,12 +236,17 @@ instance (KnownNat n, KnownNat m) => MatrixCalculus Float n m (MFloatXNM n m) wh
 
 instance (KnownNat n, KnownNat m) => PrimBytes (MFloatXNM n m) where
   toBytes (MFloatXNM a) = a
+  {-# INLINE toBytes #-}
   fromBytes = MFloatXNM
-  byteSize x = 4# *# dimN# x *# dimM# x
+  {-# INLINE fromBytes #-}
+  byteSize x = SIZEOF_HSFLOAT# *# dimN# x *# dimM# x
   {-# INLINE byteSize #-}
-  byteAlign _ = 8#
+  byteAlign _ = ALIGNMENT_HSFLOAT#
   {-# INLINE byteAlign #-}
 
+instance FloatBytes (MFloatXNM n m) where
+  ixF i (MFloatXNM a) = indexFloatArray# a i
+  {-# INLINE ixF #-}
 
 
 instance (KnownNat n, KnownNat m, KnownNat k)
