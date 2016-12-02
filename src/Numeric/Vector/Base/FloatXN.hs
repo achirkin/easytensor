@@ -18,6 +18,9 @@
 
 module Numeric.Vector.Base.FloatXN () where
 
+#include "MachDeps.h"
+#include "HsBaseConfig.h"
+
 import GHC.Base (runRW#)
 import GHC.Prim
 import GHC.Types
@@ -176,11 +179,18 @@ instance (KnownNat n, 3 <= n) => VectorCalculus Float n (VFloatXN n) where
 
 instance KnownNat n =>  PrimBytes (VFloatXN n) where
   toBytes (VFloatXN a) = a
+  {-# INLINE toBytes #-}
   fromBytes = VFloatXN
-  byteSize x = 4# *# dim# x
+  {-# INLINE fromBytes #-}
+  byteSize x = SIZEOF_HSFLOAT# *# dim# x
   {-# INLINE byteSize #-}
-  byteAlign _ = 8#
+  byteAlign _ = ALIGNMENT_HSFLOAT#
   {-# INLINE byteAlign #-}
+
+
+instance FloatBytes (VFloatXN n) where
+  ixF i (VFloatXN a) = indexFloatArray# a i
+  {-# INLINE ixF #-}
 
 -----------------------------------------------------------------------------
 -- Helpers

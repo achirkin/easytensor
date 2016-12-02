@@ -50,12 +50,9 @@ import GHC.Base (runRW#)
 import GHC.TypeLits
 import GHC.Prim
 import Unsafe.Coerce (unsafeCoerce)
--- import Data.Proxy
 
 import qualified Numeric.Vector as V
--- import Numeric.Vector.Family
 import qualified Numeric.Matrix as M
--- import Numeric.Matrix.Family
 import Numeric.Commons
 
 
@@ -67,17 +64,22 @@ deriving instance Ord (TT t n m) => Ord (Tensor t n m)
 deriving instance Num (TT t n m) => Num (Tensor t n m)
 deriving instance Fractional (TT t n m) => Fractional (Tensor t n m)
 deriving instance Floating (TT t n m) => Floating (Tensor t n m)
-deriving instance PrimBytes (TT t n m) => PrimBytes (Tensor t n m)
 deriving instance V.VectorCalculus t n (TT t n 1) => V.VectorCalculus t n (Tensor t n 1)
 deriving instance V.VectorCalculus t m (TT t 1 m) => V.VectorCalculus t m (Tensor t 1 m)
 deriving instance M.MatrixCalculus t n m (TT t n m) => M.MatrixCalculus t n m (Tensor t n m)
 deriving instance M.MatrixInverse (TT t n n) => M.MatrixInverse (Tensor t n n)
+deriving instance PrimBytes (TT t n m) => PrimBytes (Tensor t n m)
+deriving instance FloatBytes (TT t n m) => FloatBytes (Tensor t n m)
+deriving instance DoubleBytes (TT t n m) => DoubleBytes (Tensor t n m)
+deriving instance IntBytes (TT t n m) => IntBytes (Tensor t n m)
+deriving instance WordBytes (TT t n m) => WordBytes (Tensor t n m)
 
 
 
 
 newtype Scalar t = Scalar { _unScalar :: t }
-  deriving ( Bounded, Enum, Eq, Integral, Num, Fractional, Floating, Ord, Read, Real, RealFrac, RealFloat, PrimBytes)
+  deriving ( Bounded, Enum, Eq, Integral, Num, Fractional, Floating, Ord, Read, Real, RealFrac, RealFloat
+           , PrimBytes, FloatBytes, DoubleBytes, IntBytes, WordBytes)
 instance Show t => Show (Scalar t) where
   show (Scalar t) = "{ " ++ show t ++ " }"
 
@@ -91,6 +93,10 @@ deriving instance Fractional (V.Vector t n) => Fractional (CoVector t n)
 deriving instance Floating (V.Vector t n) => Floating (CoVector t n)
 deriving instance PrimBytes (V.Vector t n) => PrimBytes (CoVector t n)
 deriving instance V.VectorCalculus t n (V.Vector t n) => V.VectorCalculus t n (CoVector t n)
+deriving instance FloatBytes (V.Vector t n) => FloatBytes (CoVector t n)
+deriving instance DoubleBytes (V.Vector t n) => DoubleBytes (CoVector t n)
+deriving instance IntBytes (V.Vector t n) => IntBytes (CoVector t n)
+deriving instance WordBytes (V.Vector t n) => WordBytes (CoVector t n)
 
 newtype ContraVector t n = ContraVector {_unContraVec :: V.Vector t n}
 instance Show (V.Vector t n) => Show (ContraVector t n) where
@@ -102,6 +108,10 @@ deriving instance Fractional (V.Vector t n) => Fractional (ContraVector t n)
 deriving instance Floating (V.Vector t n) => Floating (ContraVector t n)
 deriving instance PrimBytes (V.Vector t n) => PrimBytes (ContraVector t n)
 deriving instance V.VectorCalculus t n (V.Vector t n) => V.VectorCalculus t n (ContraVector t n)
+deriving instance FloatBytes (V.Vector t n) => FloatBytes (ContraVector t n)
+deriving instance DoubleBytes (V.Vector t n) => DoubleBytes (ContraVector t n)
+deriving instance IntBytes (V.Vector t n) => IntBytes (ContraVector t n)
+deriving instance WordBytes (V.Vector t n) => WordBytes (ContraVector t n)
 
 newtype Matrix t n m = Matrix (M.Matrix t n m)
 instance Show (M.Matrix t n m) => Show (Matrix t n m) where
@@ -114,6 +124,11 @@ deriving instance Floating (M.Matrix t n m) => Floating (Matrix t n m)
 deriving instance PrimBytes (M.Matrix t n m) => PrimBytes (Matrix t n m)
 deriving instance M.MatrixCalculus t n m (M.Matrix t n m) => M.MatrixCalculus t n m (Matrix t n m)
 deriving instance M.MatrixInverse (M.Matrix t n n) => M.MatrixInverse (Matrix t n n)
+deriving instance FloatBytes (M.Matrix t n m) => FloatBytes (Matrix t n m)
+deriving instance DoubleBytes (M.Matrix t n m) => DoubleBytes (Matrix t n m)
+deriving instance IntBytes (M.Matrix t n m) => IntBytes (Matrix t n m)
+deriving instance WordBytes (M.Matrix t n m) => WordBytes (Matrix t n m)
+
 
 
 
