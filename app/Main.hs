@@ -42,14 +42,15 @@ main = do
 
 
   putStrLn "Matrices..."
+  print $ index 1 2 m1
   print m1
-  -- putStrLn (show (M.indexMat 1 1 m1) ++ " " ++ show (M.indexMat 1 2 m1) ++ " " ++ show (M.indexMat 1 3 m1))
-  -- putStrLn (show (M.indexMat 2 1 m1) ++ " " ++ show (M.indexMat 2 2 m1) ++ " " ++ show (M.indexMat 2 3 m1))
-  -- print (M.indexCol 1 m1 :: Vec2f)
-  -- print (M.indexCol 2 m1 :: Vec2f)
-  -- print (M.indexCol 3 m1 :: Vec2f)
-  -- print (M.indexRow 1 m1)
-  -- print (M.indexRow 2 m1)
+  putStrLn (show (index 1 1 m1) ++ " " ++ show (index 1 2 m1) )
+  putStrLn (show (index 2 1 m1) ++ " " ++ show (index 2 2 m1) )
+  print (indexCol 1 m1)
+  print (indexCol 2 m1)
+  print (indexRow 1 m1)
+  print (indexRow 2 m1)
+  print (indexRow 3 m1)
 --  print (M.indexMat 2 4 m1)
 --  print (M.indexCol 4 m1 :: V.Vec2f)
 
@@ -62,13 +63,21 @@ main = do
   print c
   print d
   print (a `prod` c)
+  print m33
+  print x3
+  print v3
+  print (v3 // 4)
+  print (10 \\ 4 :: Tensor Double 1 1)
   where
     two = vec2 2 2.001 :: Vec2f
     x = two / vec2 3.2 (-2)
-    m1 = fromBytes (toBytes (two <:> x <:> 7 / x)) :: Mat Float 2 3
-    m23 = m1
-    x3 = 7 :: Vec3f
-    y2 = m23 `prod` x3
+    m1 = fromBytes (toBytes (two <:> x <:> 7 / x)) :: Mat Float 3 2
+    m32 = m1
+    x2 = 7 :: Vec2f
+    x3 = 9 :: Vec3f
+    y2 = m32 `prod` x2
+    m33 = m32 <:> 17
+    v3 = m33 `prod` x3
 
     a = 1 :: Tensor Float 2 2
     b = 3 :: Tensor Float 1 1

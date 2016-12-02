@@ -28,21 +28,21 @@ import Numeric.Vector.Family (Vector)
 import Numeric.Matrix.Family (Matrix)
 
 
-class MatrixCalculus v t (n :: Nat) (m :: Nat) | v -> t, v -> n, v -> m, t n m -> v where
+class MatrixCalculus t (n :: Nat) (m :: Nat) v | v -> t, v -> n, v -> m where
     -- | Fill Mat with the same value
     broadcastMat :: t -> v
     -- | Get element by its index
     indexMat :: Int -> Int -> v -> t
     -- | Transpose Mat
-    transpose :: (MatrixCalculus w t m n, PrimBytes w) => v -> w
+    transpose :: (MatrixCalculus t m n w, PrimBytes w) => v -> w
     -- | First dimension size of a matrix
     dimN :: v -> Int
     -- | Second dimension size of a matrix
     dimM :: v -> Int
     -- | Get vector column by its index
-    indexCol :: (VectorCalculus w t n, PrimBytes w) => Int -> v -> w
+    indexCol :: (VectorCalculus t n w, PrimBytes w) => Int -> v -> w
     -- | Get vector row by its index
-    indexRow :: (VectorCalculus w t m, PrimBytes w) => Int -> v -> w
+    indexRow :: (VectorCalculus t m w, PrimBytes w) => Int -> v -> w
 
 class SquareMatrixCalculus v t (n :: Nat) | v -> t, v -> n, t n -> v where
     -- | Mat with 1 on diagonal and 0 elsewhere
@@ -54,9 +54,9 @@ class SquareMatrixCalculus v t (n :: Nat) | v -> t, v -> n, t n -> v where
     -- | Sum of diagonal elements
     trace :: v -> t
     -- | Get the diagonal elements from Mat into Vec
-    fromDiag :: VectorCalculus w t n => v -> w
+    fromDiag :: VectorCalculus t n w => v -> w
     -- | Set Vec values into the diagonal elements of Mat
-    toDiag :: VectorCalculus w t n => w -> v
+    toDiag :: VectorCalculus t n w => w -> v
 
 
 class Matrix2x2 t where

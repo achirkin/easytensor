@@ -23,7 +23,7 @@ import GHC.TypeLits
 
 import Numeric.Vector.Family (Vector)
 
-class VectorCalculus v t (n :: Nat) | v -> t, v -> n, t n -> v where
+class VectorCalculus t (n :: Nat) v | v -> t, v -> n where
     -- | Fill Vec with the same value
     broadcastVec :: t -> v
     -- | Scalar product -- sum of Vecs' components products, propagated into whole Vec
