@@ -132,7 +132,7 @@ instance (KnownNat n, 3 <= n) => Floating (VFloatXN n) where
 
 
 
-instance (KnownNat n, 3 <= n) => VectorCalculus (VFloatXN n) Float n where
+instance (KnownNat n, 3 <= n) => VectorCalculus Float n (VFloatXN n) where
   broadcastVec (F# x) = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop# n

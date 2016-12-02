@@ -16,13 +16,22 @@
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
+-- This module generalizes matrices and vectors.
+-- Yet it is limited to rank 2, allowing for a simple and nicely type-checked interface.
+--
+--
 --
 -----------------------------------------------------------------------------
 
 module Numeric.EasyTensor
   ( Tensor (..)
+  -- * Common operations
+  , fill
   , Numeric.EasyTensor.prod
-  , (<:>)
+  , M.inverse, transpose
+  , (<:>), (//), (\\)
+  , index, indexCol, indexRow, dimN, dimM
+  , (V..*.), V.dot, V.normL1,  V.normL2, V.normLPInf, V.normLNInf, V.normLP
   -- * Type abbreviations
   , Mat, Vec, Vec'
   , Vec2f, Vec3f, Vec4f
@@ -32,6 +41,7 @@ module Numeric.EasyTensor
   , Mat42f, Mat43f, Mat44f
   -- * Simplified type constructors
   , scalar, vec2, vec3, vec4, vec2', vec3', vec4'
+  , mat22
   -- * Some low-dimensional operations
   , det2, det2', cross
   ) where
@@ -39,6 +49,7 @@ module Numeric.EasyTensor
 import GHC.Base (runRW#)
 import GHC.TypeLits
 import GHC.Prim
+import Unsafe.Coerce (unsafeCoerce)
 -- import Data.Proxy
 
 import qualified Numeric.Vector as V
@@ -57,16 +68,20 @@ deriving instance Num (TT t n m) => Num (Tensor t n m)
 deriving instance Fractional (TT t n m) => Fractional (Tensor t n m)
 deriving instance Floating (TT t n m) => Floating (Tensor t n m)
 deriving instance PrimBytes (TT t n m) => PrimBytes (Tensor t n m)
+deriving instance V.VectorCalculus t n (TT t n 1) => V.VectorCalculus t n (Tensor t n 1)
+deriving instance V.VectorCalculus t m (TT t 1 m) => V.VectorCalculus t m (Tensor t 1 m)
+deriving instance M.MatrixCalculus t n m (TT t n m) => M.MatrixCalculus t n m (Tensor t n m)
+deriving instance M.MatrixInverse (TT t n n) => M.MatrixInverse (Tensor t n n)
 
 
 
 
-newtype Scalar t = Scalar t
-  deriving (Bounded, Enum, Eq, Integral, Num, Fractional, Floating, Ord, Read, Real, RealFrac, RealFloat)
+newtype Scalar t = Scalar { _unScalar :: t }
+  deriving ( Bounded, Enum, Eq, Integral, Num, Fractional, Floating, Ord, Read, Real, RealFrac, RealFloat, PrimBytes)
 instance Show t => Show (Scalar t) where
   show (Scalar t) = "{ " ++ show t ++ " }"
 
-newtype CoVector t n = CoVector (V.Vector t n)
+newtype CoVector t n = CoVector {_unCoVec :: V.Vector t n}
 instance Show (V.Vector t n) => Show (CoVector t n) where
   show (CoVector t) = show t
 deriving instance Eq (V.Vector t n) => Eq (CoVector t n)
@@ -75,8 +90,9 @@ deriving instance Num (V.Vector t n) => Num (CoVector t n)
 deriving instance Fractional (V.Vector t n) => Fractional (CoVector t n)
 deriving instance Floating (V.Vector t n) => Floating (CoVector t n)
 deriving instance PrimBytes (V.Vector t n) => PrimBytes (CoVector t n)
+deriving instance V.VectorCalculus t n (V.Vector t n) => V.VectorCalculus t n (CoVector t n)
 
-newtype ContraVector t n = ContraVector (V.Vector t n)
+newtype ContraVector t n = ContraVector {_unContraVec :: V.Vector t n}
 instance Show (V.Vector t n) => Show (ContraVector t n) where
   show (ContraVector t) = show t ++ "'"
 deriving instance Eq (V.Vector t n) => Eq (ContraVector t n)
@@ -85,6 +101,7 @@ deriving instance Num (V.Vector t n) => Num (ContraVector t n)
 deriving instance Fractional (V.Vector t n) => Fractional (ContraVector t n)
 deriving instance Floating (V.Vector t n) => Floating (ContraVector t n)
 deriving instance PrimBytes (V.Vector t n) => PrimBytes (ContraVector t n)
+deriving instance V.VectorCalculus t n (V.Vector t n) => V.VectorCalculus t n (ContraVector t n)
 
 newtype Matrix t n m = Matrix (M.Matrix t n m)
 instance Show (M.Matrix t n m) => Show (Matrix t n m) where
@@ -95,6 +112,8 @@ deriving instance Num (M.Matrix t n m) => Num (Matrix t n m)
 deriving instance Fractional (M.Matrix t n m) => Fractional (Matrix t n m)
 deriving instance Floating (M.Matrix t n m) => Floating (Matrix t n m)
 deriving instance PrimBytes (M.Matrix t n m) => PrimBytes (Matrix t n m)
+deriving instance M.MatrixCalculus t n m (M.Matrix t n m) => M.MatrixCalculus t n m (Matrix t n m)
+deriving instance M.MatrixInverse (M.Matrix t n n) => M.MatrixInverse (Matrix t n n)
 
 
 
@@ -104,39 +123,110 @@ type family TT t (n :: Nat) (m :: Nat) = v | v -> t n m where
   TT t 1 m = CoVector t m
   TT t n m = Matrix t n m
 
+-- | Fill whole tensor with a single value
+fill :: M.MatrixCalculus t n m (Tensor t n m) => t -> Tensor t n m
+fill = M.broadcastMat
+{-# INLINE fill #-}
+
+-- | Get an element of a tensor
+index :: M.MatrixCalculus t n m (Tensor t n m) => Int -> Int -> Tensor t n m -> t
+index = M.indexMat
+{-# INLINE index #-}
+
+-- | Get a column vector of a matrix
+indexCol :: ( M.MatrixCalculus t n m (Tensor t n m)
+            , V.VectorCalculus t n (Tensor t n 1)
+            , PrimBytes (Tensor t n 1)
+            )
+         => Int -> Tensor t n m -> Tensor t n 1
+indexCol = M.indexCol
+{-# INLINE indexCol #-}
+
+-- | Get a row vector of a matrix
+indexRow :: ( M.MatrixCalculus t n m (Tensor t n m)
+            , V.VectorCalculus t m (Tensor t 1 m)
+            , PrimBytes (Tensor t 1 m)
+            )
+         => Int -> Tensor t n m -> Tensor t 1 m
+indexRow = M.indexRow
+{-# INLINE indexRow #-}
+
+transpose :: ( M.MatrixCalculus t n m (Tensor t n m)
+             , M.MatrixCalculus t m n (Tensor t m n)
+             , PrimBytes (Tensor t m n)
+             ) => Tensor t n m -> Tensor t m n
+transpose = M.transpose
+{-# INLINE transpose #-}
 
 
+dimN :: ( M.MatrixCalculus t n m (Tensor t n m)) => Tensor t n m -> Int
+dimN = M.dimN
+{-# INLINE dimN #-}
+
+dimM :: ( M.MatrixCalculus t n m (Tensor t n m)) => Tensor t n m -> Int
+dimM = M.dimM
+{-# INLINE dimM #-}
+
+
+-- | Matrix product for tensors rank 2, as well matrix-vector or vector-matrix products
 prod :: (M.MatrixProduct (TT t n m) (TT t m k) (TT t n k))
      => Tensor t n m -> Tensor t m k -> Tensor t n k
 prod (Tensor a) (Tensor b) = Tensor $ M.prod a b
+{-# INLINE prod #-}
+
+-- | Divide on the right: R = A * B^(-1)
+(//) :: ( M.MatrixProduct (TT t n m) (TT t m m) (TT t n m)
+        , M.MatrixInverse (TT t m m))
+     => Tensor t n m -> Tensor t m m -> Tensor t n m
+(//) a b = prod a (M.inverse b)
+{-# INLINE (//) #-}
+
+-- | Divide on the left: R = A^(-1) * b
+(\\) :: ( M.MatrixProduct (TT t n n) (TT t n m) (TT t n m)
+        , M.MatrixInverse (TT t n n))
+     => Tensor t n n -> Tensor t n m -> Tensor t n m
+(\\) a b = prod (M.inverse a) b
+{-# INLINE (\\) #-}
+
+
+instance Num t => M.MatrixProduct (Scalar t) (Scalar t) (Scalar t) where
+  prod (Scalar a) (Scalar b) = Scalar (a * b)
+  {-# INLINE prod #-}
 
 instance (M.MatrixProduct (V.Vector t n) t (V.Vector t n))
       => M.MatrixProduct (ContraVector t n) (Scalar t) (ContraVector t n) where
   prod (ContraVector a) (Scalar b) = ContraVector (M.prod a b)
+  {-# INLINE prod #-}
 
 instance (M.MatrixProduct (V.Vector t n) t (V.Vector t n))
       => M.MatrixProduct (Scalar t) (CoVector t n) (CoVector t n) where
   prod (Scalar b) (CoVector a) = CoVector (M.prod a b)
+  {-# INLINE prod #-}
 
-instance (V.VectorCalculus (V.Vector t n) t n)
+instance (V.VectorCalculus t n (V.Vector t n))
       => M.MatrixProduct (CoVector t n) (ContraVector t n) (Scalar t) where
   prod (CoVector a) (ContraVector b) = Scalar $ V.dot a b
+  {-# INLINE prod #-}
 
 instance (M.MatrixProduct (V.Vector t n) (V.Vector t n) (M.Matrix t n n))
       => M.MatrixProduct (ContraVector t n) (CoVector t n) (Matrix t n n) where
   prod (ContraVector a) (CoVector b) = Matrix $ M.prod a b
+  {-# INLINE prod #-}
 
 instance (M.MatrixProduct (M.Matrix t n m) (V.Vector t m) (V.Vector t n))
       => M.MatrixProduct (Matrix t n m) (ContraVector t m) (ContraVector t n) where
   prod (Matrix a) (ContraVector b) = ContraVector $ M.prod a b
+  {-# INLINE prod #-}
 
 instance (M.MatrixProduct (V.Vector t m) (M.Matrix t m k) (V.Vector t k))
       => M.MatrixProduct (CoVector t m) (Matrix t m k) (CoVector t k) where
   prod (CoVector a) (Matrix b) = CoVector $ M.prod a b
+  {-# INLINE prod #-}
 
 instance (M.MatrixProduct (M.Matrix t n m) (M.Matrix t m k) (M.Matrix t n k))
       => M.MatrixProduct (Matrix t n m) (Matrix t m k) (Matrix t n k) where
   prod (Matrix a) (Matrix b) = Matrix $ M.prod a b
+  {-# INLINE prod #-}
 
 
 -- | Append one vector to another, adding up their dimensionality
@@ -207,6 +297,13 @@ vec4' a b c d = Tensor . CoVector $ V.vec4 a b c d
 
 
 
+-- | Compose a 2x2D matrix
+mat22 :: M.Matrix2x2 t => Tensor t 2 1 -> Tensor t 2 1 -> Tensor t 2 2
+mat22 (Tensor (ContraVector a)) (Tensor (ContraVector b)) = Tensor . Matrix $ M.mat22 a b
+
+
+
+-- useful low-dimensional functions
 
 det2 :: V.Vector2D t => Tensor t 2 1 -> Tensor t 2 1 -> t
 det2 (Tensor (ContraVector a)) (Tensor (ContraVector b)) = V.det2 a b
@@ -216,3 +313,92 @@ det2' (Tensor (CoVector a)) (Tensor (CoVector b)) = V.det2 a b
 
 cross :: V.Vector3D t => Tensor t 3 1 -> Tensor t 3 1 -> Tensor t 3 1
 cross (Tensor (ContraVector a)) (Tensor (ContraVector b)) = Tensor . ContraVector $ V.cross a b
+
+
+
+-- missing instances
+
+
+instance Num t => V.VectorCalculus t 1 (Scalar t) where
+  broadcastVec = Scalar
+  {-# INLINE broadcastVec #-}
+  (.*.) = (*)
+  {-# INLINE (.*.) #-}
+  dot a = _unScalar . (a *)
+  {-# INLINE dot #-}
+  indexVec 1 = _unScalar
+  indexVec i = const . error $ "Bad index " ++ show i ++ " for a scalar"
+  {-# INLINE indexVec #-}
+  normL1 = _unScalar . abs
+  {-# INLINE normL1 #-}
+  normL2 = _unScalar . abs
+  {-# INLINE normL2 #-}
+  normLPInf = _unScalar
+  {-# INLINE normLPInf #-}
+  normLNInf = _unScalar
+  {-# INLINE normLNInf #-}
+  normLP _ = _unScalar . abs
+  {-# INLINE normLP #-}
+  dim _ = 1
+  {-# INLINE dim #-}
+
+instance Num t => M.MatrixCalculus t 1 1 (Scalar t) where
+  broadcastMat = Scalar
+  {-# INLINE broadcastMat #-}
+  indexMat 1 1 = _unScalar
+  indexMat i j = const . error $ "Bad index (" ++ show i ++ ", " ++ show j ++ ") for a scalar"
+  {-# INLINE indexMat #-}
+  transpose = unsafeCoerce
+  {-# INLINE transpose #-}
+  dimN _ = 1
+  {-# INLINE dimN #-}
+  dimM _ = 1
+  {-# INLINE dimM #-}
+  indexCol 1 = unsafeCoerce
+  indexCol j = const . error $ "Bad column index " ++ show j ++ " for a scalar"
+  {-# INLINE indexCol #-}
+  indexRow 1 = unsafeCoerce
+  indexRow i = const . error $ "Bad row index " ++ show i ++ " for a scalar"
+  {-# INLINE indexRow #-}
+
+
+instance (KnownNat n, V.VectorCalculus t n (V.Vector t n)) => M.MatrixCalculus t n 1 (ContraVector t n) where
+  broadcastMat = ContraVector . V.broadcastVec
+  {-# INLINE broadcastMat #-}
+  indexMat i 1 (ContraVector v) = V.indexVec i v
+  indexMat i j (ContraVector v) = error $ "Bad index (" ++ show i ++ ", " ++ show j ++ ") for a " ++ show (V.dim v) ++ "x1D matrix"
+  {-# INLINE indexMat #-}
+  transpose (ContraVector v) = unsafeCoerce $ CoVector v
+  {-# INLINE transpose #-}
+  dimN = V.dim . _unContraVec
+  {-# INLINE dimN #-}
+  dimM _ = 1
+  {-# INLINE dimM #-}
+  indexCol 1 (ContraVector v) = unsafeCoerce $ ContraVector v
+  indexCol j (ContraVector v) = error $ "Bad column index " ++ show j ++ " for a " ++ show (V.dim v) ++ "x1D matrix"
+  {-# INLINE indexCol #-}
+  indexRow i = unsafeCoerce . Scalar . V.indexVec i . _unContraVec
+  {-# INLINE indexRow #-}
+
+
+instance (KnownNat m, V.VectorCalculus t m (V.Vector t m)) => M.MatrixCalculus t 1 m (CoVector t m) where
+  broadcastMat = CoVector . V.broadcastVec
+  {-# INLINE broadcastMat #-}
+  indexMat 1 i (CoVector v) = V.indexVec i v
+  indexMat j i (CoVector v) = error $ "Bad index (" ++ show j ++ ", " ++ show i ++ ") for a 1x" ++ show (V.dim v) ++ "D matrix"
+  {-# INLINE indexMat #-}
+  transpose (CoVector v) = unsafeCoerce $ ContraVector v
+  {-# INLINE transpose #-}
+  dimN _ = 1
+  {-# INLINE dimN #-}
+  dimM = V.dim . _unCoVec
+  {-# INLINE dimM #-}
+  indexCol i = unsafeCoerce . Scalar . V.indexVec i . _unCoVec
+  {-# INLINE indexCol #-}
+  indexRow 1 x = unsafeCoerce x
+  indexRow j (CoVector v) = error $ "Bad column index " ++ show j ++ " for a 1x" ++ show (V.dim v) ++ "D matrix"
+  {-# INLINE indexRow #-}
+
+instance Fractional t => M.MatrixInverse (Scalar t) where
+  inverse = Scalar . recip . _unScalar
+

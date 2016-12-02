@@ -152,7 +152,7 @@ instance (KnownNat n, KnownNat m) => Floating (MFloatXNM n m) where
 
 
 
-instance (KnownNat n, KnownNat m) => MatrixCalculus (MFloatXNM n m) Float n m where
+instance (KnownNat n, KnownNat m) => MatrixCalculus Float n m (MFloatXNM n m) where
   broadcastMat (F# x) = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop# n
@@ -240,6 +240,7 @@ instance (KnownNat n, KnownNat m) => PrimBytes (MFloatXNM n m) where
   {-# INLINE byteAlign #-}
 
 
+
 instance (KnownNat n, KnownNat m, KnownNat k)
       => MatrixProduct (MFloatXNM n m) (MFloatXNM m k) (MFloatXNM n k) where
   prod x@(MFloatXNM arrx) y@(MFloatXNM arry) = case runRW#
@@ -260,12 +261,27 @@ instance (KnownNat n, KnownNat m, KnownNat k)
       bs = n *# k *# 4#
 
 
+-- RE-DO PRODUCT TO MAKE IT MORE GENERIC!!!
+
+-- 2x1 * 1x1  and 1x1 * 1x2  => 2
+
 instance MatrixProduct VFloatX2 Float VFloatX2 where
   prod (VFloatX2 a b) (F# x) = VFloatX2 (x `timesFloat#` a) (x `timesFloat#` b)
+instance MatrixProduct Float VFloatX2 VFloatX2 where
+  prod (F# x) (VFloatX2 a b)  = VFloatX2 (x `timesFloat#` a) (x `timesFloat#` b)
 
-instance (VectorCalculus (VFloatXN n) Float n, Num (VFloatXN n))
+-- nx1 * 1x1 = nx1
+-- 1x1 * 1xn = 1xn
+
+instance (VectorCalculus Float n (VFloatXN n), Num (VFloatXN n))
       => MatrixProduct (VFloatXN n)  Float (VFloatXN n) where
   prod v x = broadcastVec x * v
+instance (VectorCalculus Float n (VFloatXN n), Num (VFloatXN n))
+      => MatrixProduct Float (VFloatXN n) (VFloatXN n) where
+  prod x v = broadcastVec x * v
+
+-- nx1 * 1xm = nxm
+-- 1xn * nx1 = 1x1 (dot)
 
 instance (KnownNat n, KnownNat m)
       => MatrixProduct (MFloatXNM n m) (VFloatXN m) (VFloatXN n) where
@@ -284,6 +300,7 @@ instance (KnownNat n, KnownNat m)
       n = dimN# x
       m = dimM# x
       bs = n *# 4#
+
 
 
 instance (KnownNat m, PrimBytes VFloatX2)

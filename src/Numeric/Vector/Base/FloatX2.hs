@@ -178,7 +178,7 @@ instance Floating VFloatX2 where
 
 
 
-instance VectorCalculus VFloatX2 Float 2 where
+instance VectorCalculus Float 2 VFloatX2 where
   broadcastVec (F# x) = VFloatX2 x x
   {-# INLINE broadcastVec #-}
   VFloatX2 a1 a2 .*. VFloatX2 b1 b2 = case timesFloat# a1 b1
@@ -211,6 +211,8 @@ instance VectorCalculus VFloatX2 Float 2 where
   {-# INLINE normLP #-}
   dim _ = 2
   {-# INLINE dim #-}
+
+
 
 
 instance Vector2D Float where
