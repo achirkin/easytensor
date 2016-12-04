@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -28,8 +29,6 @@ import GHC.TypeLits
 
 
 import Numeric.Commons
-import Numeric.Vector.Class
-import Numeric.Vector.Family
 import Numeric.Matrix.Class
 import Numeric.Matrix.Family
 
@@ -248,122 +247,6 @@ instance FloatBytes (MFloatXNM n m) where
   ixF i (MFloatXNM a) = indexFloatArray# a i
   {-# INLINE ixF #-}
 
-
-instance (KnownNat n, KnownNat m, KnownNat k)
-      => MatrixProduct (MFloatXNM n m) (MFloatXNM m k) (MFloatXNM n k) where
-  prod x@(MFloatXNM arrx) y@(MFloatXNM arry) = case runRW#
-     ( \s0 -> case newByteArray# bs s0 of
-         (# s1, marr #) ->
-           let loop' i j l r | isTrue# (l ==# m) = r
-                             | otherwise = loop' i j (l +# 1#) (r `plusFloat#` timesFloat# (indexFloatArray# arrx (i +# n *# l))
-                                                                                           (indexFloatArray# arry (l +# m *# j)))
-           in case loop2# n k
-               (\i j s' -> writeFloatArray# marr (i +# n *# j) (loop' i j 0# 0.0#) s'
-               ) s1 of
-             s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, r #) -> MFloatXNM r
-    where
-      n = dimN# x
-      m = dimM# x
-      k = dimM# y
-      bs = n *# k *# 4#
-
-
--- RE-DO PRODUCT TO MAKE IT MORE GENERIC!!!
-
--- 2x1 * 1x1  and 1x1 * 1x2  => 2
-
-instance MatrixProduct VFloatX2 Float VFloatX2 where
-  prod (VFloatX2 a b) (F# x) = VFloatX2 (x `timesFloat#` a) (x `timesFloat#` b)
-instance MatrixProduct Float VFloatX2 VFloatX2 where
-  prod (F# x) (VFloatX2 a b)  = VFloatX2 (x `timesFloat#` a) (x `timesFloat#` b)
-
--- nx1 * 1x1 = nx1
--- 1x1 * 1xn = 1xn
-
-instance (VectorCalculus Float n (VFloatXN n), Num (VFloatXN n))
-      => MatrixProduct (VFloatXN n)  Float (VFloatXN n) where
-  prod v x = broadcastVec x * v
-instance (VectorCalculus Float n (VFloatXN n), Num (VFloatXN n))
-      => MatrixProduct Float (VFloatXN n) (VFloatXN n) where
-  prod x v = broadcastVec x * v
-
--- nx1 * 1xm = nxm
--- 1xn * nx1 = 1x1 (dot)
-
-instance (KnownNat n, KnownNat m)
-      => MatrixProduct (MFloatXNM n m) (VFloatXN m) (VFloatXN n) where
-  prod x@(MFloatXNM arrx) (VFloatXN arry) = case runRW#
-     ( \s0 -> case newByteArray# bs s0 of
-         (# s1, marr #) ->
-           let loop' i l r | isTrue# (l ==# m) = r
-                           | otherwise = loop' i (l +# 1#) (r `plusFloat#` timesFloat# (indexFloatArray# arrx (i +# n *# l))
-                                                                                       (indexFloatArray# arry l))
-           in case loop# n
-               (\i s' -> writeFloatArray# marr i (loop' i 0# 0.0#) s'
-               ) s1 of
-             s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, r #) -> VFloatXN r
-    where
-      n = dimN# x
-      m = dimM# x
-      bs = n *# 4#
-
-
-
-instance (KnownNat m, PrimBytes VFloatX2)
-      => MatrixProduct (MFloatXNM 2 m) (VFloatXN m) VFloatX2 where
-  prod x@(MFloatXNM arrx) (VFloatXN arry) = case runRW#
-     ( \s0 -> case newByteArray# bs s0 of
-         (# s1, marr #) ->
-           let loop' i l r | isTrue# (l ==# m) = r
-                           | otherwise = loop' i (l +# 1#) (r `plusFloat#` timesFloat# (indexFloatArray# arrx (i +# 2# *# l))
-                                                                                       (indexFloatArray# arry l))
-           in case loop# 2#
-               (\i s' -> writeFloatArray# marr i (loop' i 0# 0.0#) s'
-               ) s1 of
-             s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, r #) -> fromBytes r
-    where
-      m = dimM# x
-      bs = 2# *# 4#
-
-instance (KnownNat n, PrimBytes VFloatX2)
-      => MatrixProduct (MFloatXNM n 2) VFloatX2 (VFloatXN n) where
-  prod x@(MFloatXNM arrx) y = case runRW#
-     ( \s0 -> case newByteArray# bs s0 of
-         (# s1, marr #) ->
-           let loop' i l r | isTrue# (l ==# 2#) = r
-                           | otherwise = loop' i (l +# 1#) (r `plusFloat#` timesFloat# (indexFloatArray# arrx (i +# n *# l))
-                                                                                       (indexFloatArray# arry l))
-           in case loop# n
-               (\i s' -> writeFloatArray# marr i (loop' i 0# 0.0#) s'
-               ) s1 of
-             s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, r #) -> VFloatXN r
-    where
-      arry = toBytes y
-      n = dimN# x
-      bs = n *# 4#
-
-
-
-instance (PrimBytes VFloatX2)
-      => MatrixProduct (MFloatXNM 2 2) VFloatX2 VFloatX2 where
-  prod (MFloatXNM arrx) y = case runRW#
-     ( \s0 -> case newByteArray# bs s0 of
-         (# s1, marr #) ->
-           let loop' i l r | isTrue# (l ==# 2#) = r
-                           | otherwise = loop' i (l +# 1#) (r `plusFloat#` timesFloat# (indexFloatArray# arrx (i +# 2# *# l))
-                                                                                       (indexFloatArray# arry l))
-           in case loop# 2#
-               (\i s' -> writeFloatArray# marr i (loop' i 0# 0.0#) s'
-               ) s1 of
-             s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, r #) -> fromBytes r
-    where
-      arry = toBytes y
-      bs = 2# *# 4#
 
 
 instance MatrixInverse (MFloatXNM n m) where
