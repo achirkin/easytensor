@@ -47,12 +47,14 @@ module Numeric.EasyTensor
   ) where
 
 import GHC.Base (runRW#)
-import GHC.TypeLits
 import GHC.Prim
+import GHC.Types
+import GHC.TypeLits
 import Unsafe.Coerce (unsafeCoerce)
 
 import qualified Numeric.Vector as V
 import qualified Numeric.Matrix as M
+import qualified Numeric.Matrix.Class as M
 import Numeric.Commons
 
 
@@ -184,64 +186,48 @@ dimM = M.dimM
 
 
 -- | Matrix product for tensors rank 2, as well matrix-vector or vector-matrix products
-prod :: (M.MatrixProduct (TT t n m) (TT t m k) (TT t n k))
+prod :: (M.MatrixProduct (Tensor t n m) (Tensor t m k) (Tensor t n k))
      => Tensor t n m -> Tensor t m k -> Tensor t n k
-prod (Tensor a) (Tensor b) = Tensor $ M.prod a b
+prod = M.prod
 {-# INLINE prod #-}
 
 -- | Divide on the right: R = A * B^(-1)
-(//) :: ( M.MatrixProduct (TT t n m) (TT t m m) (TT t n m)
+(//) :: ( M.MatrixProduct (Tensor t n m) (Tensor t m m) (Tensor t n m)
         , M.MatrixInverse (TT t m m))
      => Tensor t n m -> Tensor t m m -> Tensor t n m
 (//) a b = prod a (M.inverse b)
 {-# INLINE (//) #-}
 
 -- | Divide on the left: R = A^(-1) * b
-(\\) :: ( M.MatrixProduct (TT t n n) (TT t n m) (TT t n m)
+(\\) :: ( M.MatrixProduct (Tensor t n n) (Tensor t n m) (Tensor t n m)
         , M.MatrixInverse (TT t n n))
      => Tensor t n n -> Tensor t n m -> Tensor t n m
 (\\) a b = prod (M.inverse a) b
 {-# INLINE (\\) #-}
 
 
-instance Num t => M.MatrixProduct (Scalar t) (Scalar t) (Scalar t) where
-  prod (Scalar a) (Scalar b) = Scalar (a * b)
+instance ( FloatBytes (Tensor Float n m)
+         , FloatBytes (Tensor Float m k)
+         , PrimBytes (Tensor Float n k)
+         , M.MatrixCalculus Float n m (Tensor Float n m)
+         , M.MatrixCalculus Float m k (Tensor Float m k)
+         )
+      => M.MatrixProduct (Tensor Float n m) (Tensor Float m k) (Tensor Float n k) where
+  prod x y = case (dimN x, dimM x, dimM y) of
+    ( I# n, I# m, I# k) -> M.prodF n m k x y
   {-# INLINE prod #-}
 
-instance (M.MatrixProduct (V.Vector t n) t (V.Vector t n))
-      => M.MatrixProduct (ContraVector t n) (Scalar t) (ContraVector t n) where
-  prod (ContraVector a) (Scalar b) = ContraVector (M.prod a b)
+instance ( DoubleBytes (Tensor Double n m)
+         , DoubleBytes (Tensor Double m k)
+         , PrimBytes (Tensor Double n k)
+         , M.MatrixCalculus Double n m (Tensor Double n m)
+         , M.MatrixCalculus Double m k (Tensor Double m k)
+         )
+      => M.MatrixProduct (Tensor Double n m) (Tensor Double m k) (Tensor Double n k) where
+  prod x y = case (dimN x, dimM x, dimM y) of
+    ( I# n, I# m, I# k) -> M.prodD n m k x y
   {-# INLINE prod #-}
 
-instance (M.MatrixProduct (V.Vector t n) t (V.Vector t n))
-      => M.MatrixProduct (Scalar t) (CoVector t n) (CoVector t n) where
-  prod (Scalar b) (CoVector a) = CoVector (M.prod a b)
-  {-# INLINE prod #-}
-
-instance (V.VectorCalculus t n (V.Vector t n))
-      => M.MatrixProduct (CoVector t n) (ContraVector t n) (Scalar t) where
-  prod (CoVector a) (ContraVector b) = Scalar $ V.dot a b
-  {-# INLINE prod #-}
-
-instance (M.MatrixProduct (V.Vector t n) (V.Vector t n) (M.Matrix t n n))
-      => M.MatrixProduct (ContraVector t n) (CoVector t n) (Matrix t n n) where
-  prod (ContraVector a) (CoVector b) = Matrix $ M.prod a b
-  {-# INLINE prod #-}
-
-instance (M.MatrixProduct (M.Matrix t n m) (V.Vector t m) (V.Vector t n))
-      => M.MatrixProduct (Matrix t n m) (ContraVector t m) (ContraVector t n) where
-  prod (Matrix a) (ContraVector b) = ContraVector $ M.prod a b
-  {-# INLINE prod #-}
-
-instance (M.MatrixProduct (V.Vector t m) (M.Matrix t m k) (V.Vector t k))
-      => M.MatrixProduct (CoVector t m) (Matrix t m k) (CoVector t k) where
-  prod (CoVector a) (Matrix b) = CoVector $ M.prod a b
-  {-# INLINE prod #-}
-
-instance (M.MatrixProduct (M.Matrix t n m) (M.Matrix t m k) (M.Matrix t n k))
-      => M.MatrixProduct (Matrix t n m) (Matrix t m k) (Matrix t n k) where
-  prod (Matrix a) (Matrix b) = Matrix $ M.prod a b
-  {-# INLINE prod #-}
 
 
 -- | Append one vector to another, adding up their dimensionality

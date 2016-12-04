@@ -68,6 +68,8 @@ main = do
   print v3
   print (v3 // 4)
   print (10 \\ 4 :: Tensor Double 1 1)
+  print $ a `prod` c
+  print $ transpose x3 `prod` m32
   where
     two = vec2 2 2.001 :: Vec2f
     x = two / vec2 3.2 (-2)
