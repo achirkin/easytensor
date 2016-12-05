@@ -53,7 +53,7 @@ class MatrixCalculus t (n :: Nat) (m :: Nat) v | v -> t, v -> n, v -> m where
     -- | Get vector row by its index
     indexRow :: (VectorCalculus t m w, PrimBytes w) => Int -> v -> w
 
-class SquareMatrixCalculus t (n :: Nat) v | v -> t, v -> n, t n -> v where
+class SquareMatrixCalculus t (n :: Nat) v | v -> t, v -> n where
     -- | Mat with 1 on diagonal and 0 elsewhere
     eye :: v
     -- | Put the same value on the Mat diagonal, 0 otherwise
@@ -63,9 +63,9 @@ class SquareMatrixCalculus t (n :: Nat) v | v -> t, v -> n, t n -> v where
     -- | Sum of diagonal elements
     trace :: v -> t
     -- | Get the diagonal elements from Mat into Vec
-    fromDiag :: VectorCalculus t n w => v -> w
+    fromDiag :: (VectorCalculus t n w, PrimBytes w) => v -> w
     -- | Set Vec values into the diagonal elements of Mat
-    toDiag :: VectorCalculus t n w => w -> v
+    toDiag :: (VectorCalculus t n w, PrimBytes w) => w -> v
 
 
 class Matrix2x2 t where

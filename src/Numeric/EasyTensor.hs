@@ -27,11 +27,13 @@ module Numeric.EasyTensor
   ( Tensor (..)
   -- * Common operations
   , fill
-  , Numeric.EasyTensor.prod
-  , M.inverse, transpose
+  , prod, (%*)
+  , inverse, transpose
   , (<:>), (//), (\\)
   , index, indexCol, indexRow, dimN, dimM
-  , (V..*.), V.dot, V.normL1,  V.normL2, V.normLPInf, V.normLNInf, V.normLP
+  , (V..*.), dot, (·), normL1,  normL2, normLPInf, normLNInf, normLP
+  , eye, diag, det, trace
+  , toDiag, toDiag', fromDiag, fromDiag'
   -- * Type abbreviations
   , Mat, Vec, Vec'
   , Vec2f, Vec3f, Vec4f
@@ -41,9 +43,9 @@ module Numeric.EasyTensor
   , Mat42f, Mat43f, Mat44f
   -- * Simplified type constructors
   , scalar, vec2, vec3, vec4, vec2', vec3', vec4'
-  , mat22
+  , mat22, mat33, mat44
   -- * Some low-dimensional operations
-  , det2, det2', cross
+  , det2, det2', cross, (×)
   ) where
 
 import GHC.Base (runRW#)
@@ -58,7 +60,7 @@ import qualified Numeric.Matrix.Class as M
 import Numeric.Commons
 
 
-newtype Tensor t n m = Tensor (TT t n m)
+newtype Tensor t n m = Tensor { _unT :: TT t n m }
 instance Show (TT t n m) => Show (Tensor t n m) where
   show (Tensor t) = show t
 deriving instance Eq (TT t n m) => Eq (Tensor t n m)
@@ -69,6 +71,7 @@ deriving instance Floating (TT t n m) => Floating (Tensor t n m)
 deriving instance V.VectorCalculus t n (TT t n 1) => V.VectorCalculus t n (Tensor t n 1)
 deriving instance V.VectorCalculus t m (TT t 1 m) => V.VectorCalculus t m (Tensor t 1 m)
 deriving instance M.MatrixCalculus t n m (TT t n m) => M.MatrixCalculus t n m (Tensor t n m)
+deriving instance M.SquareMatrixCalculus t n (TT t n n) => M.SquareMatrixCalculus t n (Tensor t n n)
 deriving instance M.MatrixInverse (TT t n n) => M.MatrixInverse (Tensor t n n)
 deriving instance PrimBytes (TT t n m) => PrimBytes (Tensor t n m)
 deriving instance FloatBytes (TT t n m) => FloatBytes (Tensor t n m)
@@ -125,6 +128,7 @@ deriving instance Fractional (M.Matrix t n m) => Fractional (Matrix t n m)
 deriving instance Floating (M.Matrix t n m) => Floating (Matrix t n m)
 deriving instance PrimBytes (M.Matrix t n m) => PrimBytes (Matrix t n m)
 deriving instance M.MatrixCalculus t n m (M.Matrix t n m) => M.MatrixCalculus t n m (Matrix t n m)
+deriving instance M.SquareMatrixCalculus t n (M.Matrix t n n) => M.SquareMatrixCalculus t n (Matrix t n n)
 deriving instance M.MatrixInverse (M.Matrix t n n) => M.MatrixInverse (Matrix t n n)
 deriving instance FloatBytes (M.Matrix t n m) => FloatBytes (Matrix t n m)
 deriving instance DoubleBytes (M.Matrix t n m) => DoubleBytes (Matrix t n m)
@@ -141,13 +145,13 @@ type family TT t (n :: Nat) (m :: Nat) = v | v -> t n m where
   TT t n m = Matrix t n m
 
 -- | Fill whole tensor with a single value
-fill :: M.MatrixCalculus t n m (Tensor t n m) => t -> Tensor t n m
-fill = M.broadcastMat
+fill :: M.MatrixCalculus t n m (Tensor t n m) => Tensor t 1 1 -> Tensor t n m
+fill = M.broadcastMat . _unScalar . _unT
 {-# INLINE fill #-}
 
 -- | Get an element of a tensor
-index :: M.MatrixCalculus t n m (Tensor t n m) => Int -> Int -> Tensor t n m -> t
-index = M.indexMat
+index :: M.MatrixCalculus t n m (Tensor t n m) => Int -> Int -> Tensor t n m -> Tensor t 1 1
+index i j = Tensor . Scalar . M.indexMat i j
 {-# INLINE index #-}
 
 -- | Get a column vector of a matrix
@@ -184,6 +188,12 @@ dimM :: ( M.MatrixCalculus t n m (Tensor t n m)) => Tensor t n m -> Int
 dimM = M.dimM
 {-# INLINE dimM #-}
 
+-- | Matrix product for tensors rank 2, as well matrix-vector or vector-matrix products
+infixl 7 %*
+(%*) :: (M.MatrixProduct (Tensor t n m) (Tensor t m k) (Tensor t n k))
+     => Tensor t n m -> Tensor t m k -> Tensor t n k
+(%*) = prod
+{-# INLINE (%*) #-}
 
 -- | Matrix product for tensors rank 2, as well matrix-vector or vector-matrix products
 prod :: (M.MatrixProduct (Tensor t n m) (Tensor t m k) (Tensor t n k))
@@ -195,15 +205,21 @@ prod = M.prod
 (//) :: ( M.MatrixProduct (Tensor t n m) (Tensor t m m) (Tensor t n m)
         , M.MatrixInverse (TT t m m))
      => Tensor t n m -> Tensor t m m -> Tensor t n m
-(//) a b = prod a (M.inverse b)
+(//) a b = prod a (inverse b)
 {-# INLINE (//) #-}
 
 -- | Divide on the left: R = A^(-1) * b
 (\\) :: ( M.MatrixProduct (Tensor t n n) (Tensor t n m) (Tensor t n m)
         , M.MatrixInverse (TT t n n))
      => Tensor t n n -> Tensor t n m -> Tensor t n m
-(\\) a b = prod (M.inverse a) b
+(\\) a b = prod (inverse a) b
 {-# INLINE (\\) #-}
+
+
+-- | Matrix inverse
+inverse :: M.MatrixInverse (Tensor t n n) => Tensor t n n -> Tensor t n n
+inverse = M.inverse
+{-# INLINE inverse #-}
 
 
 instance ( FloatBytes (Tensor Float n m)
@@ -302,19 +318,137 @@ vec4' a b c d = Tensor . CoVector $ V.vec4 a b c d
 mat22 :: M.Matrix2x2 t => Tensor t 2 1 -> Tensor t 2 1 -> Tensor t 2 2
 mat22 (Tensor (ContraVector a)) (Tensor (ContraVector b)) = Tensor . Matrix $ M.mat22 a b
 
+-- | Compose a 3x3D matrix
+mat33 :: ( PrimBytes (Tensor t 3 3)
+         , PrimBytes (Tensor t 3 2)
+         , PrimBytes (Tensor t 3 1)
+         )
+      => Tensor t 3 1 -> Tensor t 3 1 -> Tensor t 3 1 -> Tensor t 3 3
+mat33 a b c = a <:> b <:> c
 
+-- | Compose a 4x4D matrix
+mat44 :: ( PrimBytes (Tensor t 4 4)
+         , PrimBytes (Tensor t 4 3)
+         , PrimBytes (Tensor t 4 2)
+         , PrimBytes (Tensor t 4 1)
+         )
+      => Tensor t 4 1 -> Tensor t 4 1 -> Tensor t 4 1 -> Tensor t 4 1 -> Tensor t 4 4
+mat44 a b c d = a <:> b <:> c <:> d
 
 -- useful low-dimensional functions
 
-det2 :: V.Vector2D t => Tensor t 2 1 -> Tensor t 2 1 -> t
-det2 (Tensor (ContraVector a)) (Tensor (ContraVector b)) = V.det2 a b
+det2 :: V.Vector2D t => Tensor t 2 1 -> Tensor t 2 1 -> Tensor t 1 1
+det2 (Tensor (ContraVector a)) (Tensor (ContraVector b)) = Tensor . Scalar $ V.det2 a b
 
-det2' :: V.Vector2D t => Tensor t 1 2 -> Tensor t 1 2 -> t
-det2' (Tensor (CoVector a)) (Tensor (CoVector b)) = V.det2 a b
+det2' :: V.Vector2D t => Tensor t 1 2 -> Tensor t 1 2 -> Tensor t 1 1
+det2' (Tensor (CoVector a)) (Tensor (CoVector b)) = Tensor . Scalar $ V.det2 a b
 
+-- | Cross product for two vectors in 3D
+infixl 7 ×
+(×) :: V.Vector3D t => Tensor t 3 1 -> Tensor t 3 1 -> Tensor t 3 1
+(×) = cross
+{-# INLINE (×) #-}
+
+-- | Cross product for two vectors in 3D
 cross :: V.Vector3D t => Tensor t 3 1 -> Tensor t 3 1 -> Tensor t 3 1
 cross (Tensor (ContraVector a)) (Tensor (ContraVector b)) = Tensor . ContraVector $ V.cross a b
+{-# INLINE cross #-}
 
+
+-- re-use functions provided by Vector and Matrix Calculus
+
+-- | Dot product of two vectors
+infixl 7 ·
+(·) :: V.VectorCalculus t n v => v -> v -> Tensor t 1 1
+(·) = dot
+{-# INLINE (·) #-}
+
+
+-- | Dot product of two vectors
+dot :: V.VectorCalculus t n v => v -> v -> Tensor t 1 1
+dot a b = Tensor . Scalar $ V.dot a b
+{-# INLINE dot #-}
+
+-- | Sum of absolute values
+normL1 :: V.VectorCalculus t n v => v -> Tensor t 1 1
+normL1 = Tensor . Scalar . V.normL1
+{-# INLINE normL1 #-}
+
+-- | hypot function (square root of squares)
+normL2 :: V.VectorCalculus t n v => v -> Tensor t 1 1
+normL2 = Tensor . Scalar . V.normL2
+{-# INLINE normL2 #-}
+
+-- | Maximum of absolute values
+normLPInf :: V.VectorCalculus t n v => v -> Tensor t 1 1
+normLPInf = Tensor . Scalar . V.normLPInf
+{-# INLINE normLPInf #-}
+
+-- | Minimum of absolute values
+normLNInf :: V.VectorCalculus t n v => v -> Tensor t 1 1
+normLNInf = Tensor . Scalar . V.normLNInf
+{-# INLINE normLNInf #-}
+
+-- | Norm in Lp space
+normLP :: V.VectorCalculus t n v => Int -> v -> Tensor t 1 1
+normLP p = Tensor . Scalar . V.normLP p
+{-# INLINE normLP #-}
+
+-- | Identity matrix. Mat with 1 on diagonal and 0 elsewhere
+eye :: M.SquareMatrixCalculus t n (Tensor t n n) => Tensor t n n
+eye = M.eye
+{-# INLINE eye #-}
+
+-- | Put the same value on the Mat diagonal, 0 otherwise
+diag :: M.SquareMatrixCalculus t n (Tensor t n n) => Tensor t 1 1 -> Tensor t n n
+diag = M.diag . _unScalar . _unT
+{-# INLINE diag #-}
+
+-- | Determinant of  Mat
+det :: M.SquareMatrixCalculus t n (Tensor t n n) => Tensor t n n -> Tensor t 1 1
+det = Tensor . Scalar . M.det
+{-# INLINE det #-}
+
+-- | Sum of diagonal elements
+trace :: M.SquareMatrixCalculus t n (Tensor t n n) => Tensor t n n -> Tensor t 1 1
+trace = Tensor . Scalar . M.trace
+{-# INLINE trace #-}
+
+-- | Get the diagonal elements from Mat into Vec
+fromDiag :: ( M.SquareMatrixCalculus t n (Tensor t n n)
+            , V.VectorCalculus t n (Tensor t n 1)
+            , PrimBytes (Tensor t n 1)
+            )
+         => Tensor t n n -> Tensor t n 1
+fromDiag = M.fromDiag
+{-# INLINE fromDiag #-}
+
+-- | Get the diagonal elements from Mat into Vec
+fromDiag' :: ( M.SquareMatrixCalculus t n (Tensor t n n)
+            , V.VectorCalculus t n (Tensor t 1 n)
+            , PrimBytes (Tensor t 1 n)
+            )
+         => Tensor t n n -> Tensor t 1 n
+fromDiag' = M.fromDiag
+{-# INLINE fromDiag' #-}
+
+-- | Set Vec values into the diagonal elements of Mat
+toDiag :: ( M.SquareMatrixCalculus t n (Tensor t n n)
+          , V.VectorCalculus t n (Tensor t n 1)
+          , PrimBytes (Tensor t n 1)
+          )
+       => Tensor t n 1 -> Tensor t n n
+toDiag = M.toDiag
+{-# INLINE toDiag #-}
+
+-- | Set Vec values into the diagonal elements of Mat
+toDiag' :: ( M.SquareMatrixCalculus t n (Tensor t n n)
+           , V.VectorCalculus t n (Tensor t 1 n)
+           , PrimBytes (Tensor t 1 n)
+           )
+        => Tensor t 1 n -> Tensor t n n
+toDiag' = M.toDiag
+{-# INLINE toDiag' #-}
 
 
 -- missing instances
@@ -363,6 +497,25 @@ instance Num t => M.MatrixCalculus t 1 1 (Scalar t) where
   {-# INLINE indexRow #-}
 
 
+
+instance Num t => M.SquareMatrixCalculus t 1 (Scalar t) where
+  eye = Scalar 1
+  {-# INLINE eye #-}
+  diag = Scalar
+  {-# INLINE diag #-}
+  det = _unScalar
+  {-# INLINE det #-}
+  trace = _unScalar
+  {-# INLINE trace #-}
+  fromDiag = unsafeCoerce
+  {-# INLINE fromDiag #-}
+  toDiag = unsafeCoerce
+  {-# INLINE toDiag #-}
+
+instance Fractional t => M.MatrixInverse (Scalar t) where
+  inverse = Scalar . recip . _unScalar
+
+
 instance (KnownNat n, V.VectorCalculus t n (V.Vector t n)) => M.MatrixCalculus t n 1 (ContraVector t n) where
   broadcastMat = ContraVector . V.broadcastVec
   {-# INLINE broadcastMat #-}
@@ -400,6 +553,4 @@ instance (KnownNat m, V.VectorCalculus t m (V.Vector t m)) => M.MatrixCalculus t
   indexRow j (CoVector v) = error $ "Bad column index " ++ show j ++ " for a 1x" ++ show (V.dim v) ++ "D matrix"
   {-# INLINE indexRow #-}
 
-instance Fractional t => M.MatrixInverse (Scalar t) where
-  inverse = Scalar . recip . _unScalar
 
