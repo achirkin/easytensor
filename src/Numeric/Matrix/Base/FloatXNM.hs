@@ -248,8 +248,69 @@ instance FloatBytes (MFloatXNM n m) where
   {-# INLINE ixF #-}
 
 
+instance KnownNat n => SquareMatrixCalculus Float n (MFloatXNM n n) where
+  eye = case runRW#
+     ( \s0 -> case newByteArray# bs s0 of
+         (# s1, marr #) -> case loop# n
+               (\j s' -> writeFloatArray# marr (j *# n1) 1.0# s'
+               ) (setByteArray# marr 0# bs 0# s1) of
+             s2 -> unsafeFreezeByteArray# marr s2
+     ) of (# _, r #) -> fromBytes r
+    where
+      n1 = n +# 1#
+      n = dimN# (undefined :: MFloatXNM n n)
+      bs = n *# n *# 4#
+  {-# INLINE eye #-}
+  diag (F# v) = case runRW#
+     ( \s0 -> case newByteArray# bs s0 of
+         (# s1, marr #) -> case loop# n
+               (\j s' -> writeFloatArray# marr (j *# n1) v s'
+               ) (setByteArray# marr 0# bs 0# s1) of
+             s2 -> unsafeFreezeByteArray# marr s2
+     ) of (# _, r #) -> fromBytes r
+    where
+      n1 = n +# 1#
+      n = dimN# (undefined :: MFloatXNM n n)
+      bs = n *# n *# 4#
+  {-# INLINE diag #-}
+  det _ = undefined
+  {-# INLINE det #-}
+  trace x@(MFloatXNM a) = F# (loop' 0# 0.0#)
+    where
+      n1 = n +# 1#
+      n = dimN# x
+      nn = n *# n
+      loop' i acc | isTrue# (i ># nn) = acc
+                  | otherwise = loop' (i +# n1) (indexFloatArray# a i `plusFloat#` acc)
+  {-# INLINE trace #-}
+  fromDiag x@(MFloatXNM a) = case runRW#
+     ( \s0 -> case newByteArray# bs s0 of
+         (# s1, marr #) -> case loop# n
+               (\j s' -> writeFloatArray# marr j (indexFloatArray# a (j *# n1)) s'
+               ) s1 of
+             s2 -> unsafeFreezeByteArray# marr s2
+     ) of (# _, r #) -> fromBytes r
+    where
+      n1 = n +# 1#
+      n = dimN# x
+      bs = n *# 4#
+  {-# INLINE fromDiag #-}
+  toDiag x = case runRW#
+     ( \s0 -> case newByteArray# bs s0 of
+         (# s1, marr #) -> case loop# n
+               (\j s' -> writeFloatArray# marr (j *# n1) (indexFloatArray# a j) s'
+               ) (setByteArray# marr 0# bs 0# s1) of
+             s2 -> unsafeFreezeByteArray# marr s2
+     ) of (# _, r #) -> fromBytes r
+    where
+      a = toBytes x
+      n1 = n +# 1#
+      n = dimN# (undefined :: MFloatXNM n n)
+      bs = n *# n *# 4#
+  {-# INLINE toDiag #-}
 
-instance MatrixInverse (MFloatXNM n m) where
+
+instance MatrixInverse (MFloatXNM n n) where
   inverse = undefined
 
 

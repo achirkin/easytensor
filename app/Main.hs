@@ -62,14 +62,14 @@ main = do
   print b
   print c
   print d
-  print (a `prod` c)
+  print (a %* c)
   print m33
   print x3
   print v3
   print (v3 // 4)
   print (10 \\ 4 :: Tensor Double 1 1)
-  print $ a `prod` c
-  print $ transpose x3 `prod` m32
+  print $ a %* c
+  print $ transpose x3 %* m32
   where
     two = vec2 2 2.001 :: Vec2f
     x = two / vec2 3.2 (-2)
@@ -77,9 +77,9 @@ main = do
     m32 = m1
     x2 = 7 :: Vec2f
     x3 = 9 :: Vec3f
-    y2 = m32 `prod` x2
+    y2 = m32 %* x2
     m33 = m32 <:> 17
-    v3 = m33 `prod` x3
+    v3 = m33 %* x3
 
     a = 1 :: Tensor Float 2 2
     b = 3 :: Tensor Float 1 1
