@@ -20,6 +20,8 @@ for example, `Vector t n` implemented as `ByteArray#` is overloaded by a special
   - [ ] Overloaded fast SIMD implementation based on fastvec (avx2, foreign import prim and llvm)
   - [ ] `Tensor t [Nat] [Nat]` rank (n,m) flexible tensor wrapper
   - [ ] Lens-like interfaces
+  - [ ] Release last dimension from requiring KnownNat in order to flexibly read data at runtime.
+  - [ ] Smart MATLAB- or R-like indexing of rows and columns.
 
 
 #### NB on using Atom
