@@ -24,7 +24,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.EasyTensor
-  ( Tensor (..)
+  ( Tensor ()
   -- * Common operations
   , fill
   , prod, (%*)
