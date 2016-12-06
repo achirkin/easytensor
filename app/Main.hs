@@ -14,6 +14,7 @@ import Foreign.Storable
 import Foreign.Ptr
 import Foreign.Marshal
 
+
 main :: IO ()
 main = do
   putStrLn "Hello world!"
@@ -58,18 +59,42 @@ main = do
   print y2
 
   putStrLn "EasyTensor"
-  print a
-  print b
-  print c
-  print d
-  print (a %* c)
+--  print a
+--  print b
+--  print c
+--  print d
+--  print (a %* c)
+  print (two <:> x <:> 7 / x)
+  print m32
   print m33
-  print x3
-  print v3
-  print (v3 // 4)
-  print (10 \\ 4 :: Tensor Double 1 1)
-  print $ a %* c
-  print $ transpose x3 %* m32
+--  print x3
+--  print v3
+--  print (v3 // 4)
+--  print (10 \\ 4 :: Tensor Double 1 1)
+--  print $ a %* c
+--  print $ transpose x3 %* m32
+  putStrLn "m33"
+  print m33
+  putStrLn "determinants"
+  print (2 * eye :: Tensor Float 5 5)
+  print $ det (2 * eye :: Tensor Float 5 5)
+  print m33
+  print $ det m33
+  print $ two <:> x
+  print $ det (two <:> x)
+  print (x3 <:> (m33 %* x3) <:> (m33 %* x3))
+  print $ det (x3 <:> (m33 %* x3) <:> (m33 %* x3))
+  putStrLn "Inverse"
+  print m33
+  print (inverse m33)
+  print $ inverse m33 %* m33
+  print $ m33 %* inverse m33
+  print (2 * eye :: Tensor Float 5 5)
+  print $ inverse (2 * eye :: Tensor Float 5 5)
+  print $ (2 * eye :: Tensor Float 5 5) * inverse (2 * eye :: Tensor Float 5 5)
+  print (x3 <:> v3 <:> v3)
+  print $ inverse (x3 <:> v3 <:> v3)
+  print $ (x3 <:> v3 <:> v3) %* inverse (x3 <:> v3 <:> v3)
   where
     two = vec2 2 2.001 :: Vec2f
     x = two / vec2 3.2 (-2)
@@ -81,7 +106,7 @@ main = do
     m33 = m32 <:> 17
     v3 = m33 %* x3
 
-    a = 1 :: Tensor Float 2 2
-    b = 3 :: Tensor Float 1 1
-    c = 4 :: Tensor Float 2 1
-    d = 5 :: Tensor Float 1 2
+--    a = 1 :: Tensor Float 2 2
+--    b = 3 :: Tensor Float 1 1
+--    c = 4 :: Tensor Float 2 1
+--    d = 5 :: Tensor Float 1 2

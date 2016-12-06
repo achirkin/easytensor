@@ -60,6 +60,7 @@ import qualified Numeric.Matrix.Class as M
 import Numeric.Commons
 
 
+
 newtype Tensor t n m = Tensor { _unT :: TT t n m }
 instance Show (TT t n m) => Show (Tensor t n m) where
   show (Tensor t) = show t

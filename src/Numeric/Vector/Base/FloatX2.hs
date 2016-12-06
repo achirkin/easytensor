@@ -228,7 +228,7 @@ instance Vector2D Float where
 
 instance PrimBytes VFloatX2 where
   toBytes (VFloatX2 a1 a2) = case runRW#
-     ( \s0 -> case newByteArray# 8# s0 of
+     ( \s0 -> case newByteArray# (SIZEOF_HSFLOAT# *# 2#) s0 of
          (# s1, marr #) -> case writeFloatArray# marr 0# a1 s1 of
            s2 -> case writeFloatArray# marr 1# a2 s2 of
              s3 -> unsafeFreezeByteArray# marr s3
@@ -238,9 +238,9 @@ instance PrimBytes VFloatX2 where
     (indexFloatArray# arr 0#)
     (indexFloatArray# arr 1#)
   {-# INLINE fromBytes #-}
-  byteSize _ = case SIZEOF_HSFLOAT of I# s -> s
+  byteSize _ = SIZEOF_HSFLOAT# *# 2#
   {-# INLINE byteSize #-}
-  byteAlign _ = case ALIGNMENT_HSFLOAT of I# s -> s
+  byteAlign _ = ALIGNMENT_HSFLOAT#
   {-# INLINE byteAlign #-}
 
 instance FloatBytes VFloatX2 where
