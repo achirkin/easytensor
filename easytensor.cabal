@@ -1,6 +1,6 @@
 name: easytensor
 version: 0.1.0.0
-cabal-version: >=1.10
+cabal-version: >=1.20
 build-type: Simple
 license: MIT
 license-file: LICENSE
@@ -9,6 +9,10 @@ maintainer: chirkin@arch.ethz.ch
 homepage: https://github.com/achirkin/easytensor#readme
 synopsis: Initial project template from stack
 description:
+    Pure haskell vector/matrix/tensor library.
+    Features dimensionality type-checking for all operations.
+    Generic n-dimensional versions are implemented using low-level prim ops.
+    Allows ad-hoc replacement with fixed low-dimensionality vectors and matrices without changing user interface.
     Please see README.md
 category: Math, Geometry
 author: Artem Chirkin
@@ -23,14 +27,12 @@ flag unsafeindices
     default: False
 
 library
-    
+
     if flag(unsafeindices)
         cpp-options: -DUNSAFE_INDICES
     exposed-modules:
         Numeric.EasyTensor
         Numeric.Tensor
-        Numeric.Vector
-        Numeric.Matrix
         Numeric.Commons
     build-depends:
         base >=4.9 && <5,
@@ -38,9 +40,11 @@ library
     default-language: Haskell2010
     hs-source-dirs: src
     other-modules:
+        Numeric.Matrix
         Numeric.Matrix.Base.FloatXNM
         Numeric.Matrix.Class
         Numeric.Matrix.Family
+        Numeric.Vector
         Numeric.Vector.Base.FloatX2
         Numeric.Vector.Base.FloatXN
         Numeric.Vector.Class
