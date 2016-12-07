@@ -74,6 +74,13 @@ instance (KnownNat n, KnownNat m) => Ord (MFloatXNM n m) where
                                else EQ
                         ) a b EQ
   {-# INLINE compare #-}
+  -- | Element-wise minimum
+  min = zipV  (\x y -> if isTrue# (x `gtFloat#` y) then y else x)
+  {-# INLINE min #-}
+  -- | Element-wise maximum
+  max = zipV  (\x y -> if isTrue# (x `gtFloat#` y) then x else y)
+  {-# INLINE max #-}
+
 
 
 

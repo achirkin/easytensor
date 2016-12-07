@@ -35,7 +35,7 @@ module Numeric.EasyTensor
   , eye, diag, det, trace
   , toDiag, toDiag', fromDiag, fromDiag'
   -- * Type abbreviations
-  , Mat, Vec, Vec'
+  , Mat, Vec, Vec', Scf
   , Vec2f, Vec3f, Vec4f
   , Vec2f', Vec3f', Vec4f'
   , Mat22f, Mat23f, Mat24f
@@ -271,9 +271,10 @@ type Vec' t m = Tensor t 1 m
 
 -- Even Sympler types
 
-type Vec2f = Tensor Float 2 1
-type Vec3f = Tensor Float 3 1
-type Vec4f = Tensor Float 4 1
+type Scf    = Tensor Float 1 1
+type Vec2f  = Tensor Float 2 1
+type Vec3f  = Tensor Float 3 1
+type Vec4f  = Tensor Float 4 1
 type Vec2f' = Tensor Float 1 2
 type Vec3f' = Tensor Float 1 3
 type Vec4f' = Tensor Float 1 4
