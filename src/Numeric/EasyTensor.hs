@@ -25,6 +25,7 @@
 
 module Numeric.EasyTensor
   ( Tensor ()
+  , V.VectorCalculus (), M.MatrixCalculus ()
   -- * Common operations
   , fill
   , prod, (%*)
