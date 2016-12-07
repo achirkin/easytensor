@@ -1,11 +1,25 @@
 ### easytensor
 
+This library aims at providing fast, simple, and useful geometry types for use in computer graphics and low-dimensional physics modelling.
+
+All geometry types implement standard `Prelude` numerical classes, such as `Num`, `Fractional`, `Floating`,
+favouring element-wise operations:
+functions like `+`, `*`, `/` are all element-wise. 
+Common matrix and vector operations are provided separately.
+
+A special care should be taken when using `Ord` instances:
+
+ * `<`, `>`, `<=`, `>=` provide Pareto dominance inequalities (partial ordering);
+ * `compare` provides  lexicographical ordering;
+ * `min`, `max` give element-wise minimum and maximum respectively.
+
+
 This library is a rewrite of [fastvec](https://github.com/achirkin/fastvec).
 The idea is to use the most of GHC 8 type level features to typecheck dimensionality and ranks of tensors.
 Data type `Tensor` is presented in two versions:
 
- * `Numeric.Tensor` provides a flexible tensor type with fully type-checked list of co- and contravariant dimensions.
- * `Numeric.EasyTensor` provides a simplified tensor type, limited to rank (1,1) tensors.
+ * `Numeric.Tensor` provides a flexible tensor type parametrized by a fully type-checked list of co- and contravariant dimensions.
+ * `Numeric.EasyTensor` provides a simplified tensor type, limited to rank (1,1) and lower tensors.
 
 Behind the scenes all data types are implemented as primitive values or primitive byte arrays, aiming at maximum performance.
 Tricky layers of newtypes and closed type families (*which are not exposed to a user*) allow some kind of ad-hoc polymorphism:
