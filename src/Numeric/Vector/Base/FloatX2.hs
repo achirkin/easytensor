@@ -75,6 +75,14 @@ instance Ord VFloatX2 where
     | isTrue# (a2 `ltFloat#` b2) = LT
     | otherwise = EQ
   {-# INLINE compare #-}
+  -- | Element-wise minimum
+  min (VFloatX2 a1 a2) (VFloatX2 b1 b2) = VFloatX2 (if isTrue# (a1 `gtFloat#` b1) then b1 else a1)
+                                                   (if isTrue# (a2 `gtFloat#` b2) then b2 else a2)
+  {-# INLINE min #-}
+  -- | Element-wise maximum
+  max (VFloatX2 a1 a2) (VFloatX2 b1 b2) = VFloatX2 (if isTrue# (a1 `gtFloat#` b1) then a1 else b1)
+                                                   (if isTrue# (a2 `gtFloat#` b2) then a2 else b2)
+  {-# INLINE max #-}
 
 
 
