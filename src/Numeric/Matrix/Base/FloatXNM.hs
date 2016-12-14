@@ -342,7 +342,7 @@ instance KnownNat n => SquareMatrixCalculus Float n (MFloatXNM n n) where
 instance KnownNat n => MatrixInverse (MFloatXNM n n) where
   inverse v@(MFloatXNM arr) = case runRW#
      ( \s0 -> case newByteArray# (bs *# 2#) s0 of
-         (# s1, mat #) -> case newByteArray# (n *# SIZEOF_HSFLOAT#)
+         (# s1, mat #) -> case newByteArray# vs
                 -- copy original matrix to the top of an augmented matrix
                 (loop# n (\i s -> writeFloatArray# mat (i *# nn +# i +# n) 1.0# (copyByteArray# arr (i *# vs) mat (2# *# i *# vs) vs s))
                          (setByteArray# mat 0# (bs *# 2#) 0# s1)

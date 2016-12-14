@@ -95,11 +95,17 @@ main = do
   print (x3 <:> v3 <:> v3)
   print $ inverse (x3 <:> v3 <:> v3)
   print $ (x3 <:> v3 <:> v3) %* inverse (x3 <:> v3 <:> v3)
-  print (ewgen (\(i,j) -> realToFrac $ i*j) :: Tensor Float 5 10)
-  print (ewgen (\(i,j) -> realToFrac $ i*j) :: Tensor Float 4 2)
+  print (ewgen (\(i,j) -> realToFrac $ i) :: Tensor Float 5 10)
+  print (ewgen (\(i,j) -> realToFrac $ j) :: Tensor Float 4 2)
   print (ewgen (\(i,j) -> realToFrac $ i*j) :: Tensor Float 1 12)
   print (ewgen (\(i,j) -> realToFrac $ i*j) :: Tensor Float 2 1)
   print $ ewmap (\(i,j) x -> x + 100 * realToFrac i + 1000 * realToFrac j) m33
+  print $ ((abs $ (ewgen (\(i,j) -> realToFrac $ i*j) :: Tensor Float 12 2)
+           %*
+           (ewgen (\(i,j) -> realToFrac j / realToFrac i - realToFrac i / realToFrac j) :: Tensor Float 2 20))
+          / fill 15) %* (ewgen (\(i,j) -> realToFrac $ i*j) :: Tensor Float 20 2) %* two
+  print $ head . drop 10000000 $ iterate inverse (two <:> x)
+  print $ foldr f (0:: Tensor Float 12 1) $ map (fill . (/100000)) [1..1000000]
   where
     two = vec2 2 2.001 :: Vec2f
     x = two / vec2 3.2 (-2)
@@ -111,6 +117,11 @@ main = do
     m33 = m32 <:> 17
     v3 = m33 %* x3
 
+    f x y = ((x + x %* (ewgen (\(i,j) -> realToFrac j / realToFrac i) :: Tensor Float 1 10)
+                  %* (ewgen (\(i,j) -> 1 / realToFrac j - 1 / realToFrac i) :: Tensor Float 10 2)
+                  %* (ewgen (\(i,j) -> 1 / realToFrac (i*j)) :: Tensor Float 2 1)
+              + x * (ewgen (\(i,j) -> realToFrac i / realToFrac j) :: Tensor Float 12 1)
+            ) / y + y * fill 0.5 - max x y ) / fill (min (normLPInf x) (normLPInf y))
 --    a = 1 :: Tensor Float 2 2
 --    b = 3 :: Tensor Float 1 1
 --    c = 4 :: Tensor Float 2 1
