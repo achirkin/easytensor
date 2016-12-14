@@ -342,7 +342,7 @@ instance KnownNat n => SquareMatrixCalculus Float n (MFloatXNM n n) where
 instance KnownNat n => MatrixInverse (MFloatXNM n n) where
   inverse v@(MFloatXNM arr) = case runRW#
      ( \s0 -> case newByteArray# (bs *# 2#) s0 of
-         (# s1, mat #) -> case newByteArray# vs
+         (# s1, mat #) -> case newByteArray# (vs *# 2#)
                 -- copy original matrix to the top of an augmented matrix
                 (loop# n (\i s -> writeFloatArray# mat (i *# nn +# i +# n) 1.0# (copyByteArray# arr (i *# vs) mat (2# *# i *# vs) vs s))
                          (setByteArray# mat 0# (bs *# 2#) 0# s1)
@@ -516,9 +516,9 @@ clearRowEnd# n m i mat s0 = (# loop' (i +# 1#) s1, y' #)
        )
 
 -- | Substract a multiple of i-th column from 0 .. i-1 and i+1 .. m columns,
---   such that there are only zeroes in i-th row and i+1..m columns elements.
---   Assuming that elements 0..i-1 in i-th row are zeroes, so they do not affect other columns.
---   After all columns updated, divide i-th row by its diagonal element
+--   such that there are only zeroes in i-th row everywhere except i-th column
+--   Assuming that elements in 0..i-1 columnts and in i-th row are zeroes, so they do not affect other columns.
+--   After all columns updated, divide i-th row by its diagonal element, so (i,i) element has 1.
 clearRowAll# :: Int# -- n
              -> Int# -- m
              -> Int# -- ith column to remove from all others
@@ -550,8 +550,8 @@ clearRowAll# n m i mat s0 = (# divLoop (i +# 1#) (writeFloatArray# mat ((n +# 1#
 -- | Remove a multiple of one row from another one.
 --   do: xi = xi - yi*a
 multNRem# :: Int# -- n - nr of elements to go through
-          -> Int# -- start idx of y
-          -> Int# -- start idx of x
+          -> Int# -- start idx of x (update)
+          -> Int# -- start idx of y (read)
           -> Float# -- multiplier a
           -> MutableByteArray# s -- byte array of matrix
           -> State# s -- previous state
