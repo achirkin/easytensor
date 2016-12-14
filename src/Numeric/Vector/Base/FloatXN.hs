@@ -203,7 +203,7 @@ instance KnownNat n => ElementWise Int Float (VFloatXN n) where
   ewmap f x@(VFloatXN a) = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop# n
-               (\i s' -> case f (I# i) (F# (indexFloatArray# a i)) of
+               (\i s' -> case f (I# (i +# 1#)) (F# (indexFloatArray# a i)) of
                  F# r -> writeFloatArray# marr i r s'
                ) s1 of
              s2 -> unsafeFreezeByteArray# marr s2
@@ -215,7 +215,7 @@ instance KnownNat n => ElementWise Int Float (VFloatXN n) where
   ewgen f = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop# n
-               (\i s' -> case f (I# i) of
+               (\i s' -> case f (I# (i +# 1#)) of
                  F# r -> writeFloatArray# marr i r s'
                ) s1 of
              s2 -> unsafeFreezeByteArray# marr s2

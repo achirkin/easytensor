@@ -95,6 +95,11 @@ main = do
   print (x3 <:> v3 <:> v3)
   print $ inverse (x3 <:> v3 <:> v3)
   print $ (x3 <:> v3 <:> v3) %* inverse (x3 <:> v3 <:> v3)
+  print (ewgen (\(i,j) -> realToFrac $ i*j) :: Tensor Float 5 10)
+  print (ewgen (\(i,j) -> realToFrac $ i*j) :: Tensor Float 4 2)
+  print (ewgen (\(i,j) -> realToFrac $ i*j) :: Tensor Float 1 12)
+  print (ewgen (\(i,j) -> realToFrac $ i*j) :: Tensor Float 2 1)
+  print $ ewmap (\(i,j) x -> x + 100 * realToFrac i + 1000 * realToFrac j) m33
   where
     two = vec2 2 2.001 :: Vec2f
     x = two / vec2 3.2 (-2)
