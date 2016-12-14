@@ -1,3 +1,5 @@
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -16,7 +18,8 @@
 -----------------------------------------------------------------------------
 
 module Numeric.Commons
-  ( PrimBytes (..)
+  ( ElementWise (..)
+  , PrimBytes (..)
   , FloatBytes (..)
   , DoubleBytes (..)
   , IntBytes (..)
@@ -33,6 +36,17 @@ import GHC.Types
 import GHC.Int
 import GHC.Word
 import Foreign.Storable
+
+
+-- | Access elements.
+--   i is an index type
+--   x is an element
+--   t is a container type
+class ElementWise i x t | t -> x i where
+  -- | map all elements with index
+  ewmap :: (i -> x -> x) -> t -> t
+  -- | generate data from elements
+  ewgen :: (i -> x) -> t
 
 
 class PrimBytes a where
@@ -105,6 +119,12 @@ instance FloatBytes Float where
   ixF _ (F# x) = x
   {-# INLINE ixF #-}
 
+instance ElementWise Int Float Float where
+  ewmap f x = f 1 x
+  {-# INLINE ewmap #-}
+  ewgen f   = f 1
+  {-# INLINE ewgen #-}
+
 instance PrimBytes Double where
   toBytes v@(D# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
@@ -123,6 +143,12 @@ instance DoubleBytes Double where
   ixD _ (D# x) = x
   {-# INLINE ixD #-}
 
+instance ElementWise Int Double Double where
+  ewmap f x = f 1 x
+  {-# INLINE ewmap #-}
+  ewgen f   = f 1
+  {-# INLINE ewgen #-}
+
 instance PrimBytes Int where
   toBytes v@(I# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
@@ -136,6 +162,12 @@ instance PrimBytes Int where
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_HSINT#
   {-# INLINE byteAlign #-}
+
+instance ElementWise Int Int Int where
+  ewmap f x = f 1 x
+  {-# INLINE ewmap #-}
+  ewgen f   = f 1
+  {-# INLINE ewgen #-}
 
 instance IntBytes Int where
   ixI _ (I# x) = x
@@ -159,6 +191,12 @@ instance IntBytes Int8 where
   ixI _ (I8# x) = x
   {-# INLINE ixI #-}
 
+instance ElementWise Int Int8 Int8 where
+  ewmap f x = f 1 x
+  {-# INLINE ewmap #-}
+  ewgen f   = f 1
+  {-# INLINE ewgen #-}
+
 instance PrimBytes Int16 where
   toBytes v@(I16# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
@@ -176,6 +214,12 @@ instance PrimBytes Int16 where
 instance IntBytes Int16 where
   ixI _ (I16# x) = x
   {-# INLINE ixI #-}
+
+instance ElementWise Int Int16 Int16 where
+  ewmap f x = f 1 x
+  {-# INLINE ewmap #-}
+  ewgen f   = f 1
+  {-# INLINE ewgen #-}
 
 instance PrimBytes Int32 where
   toBytes v@(I32# x) = case runRW#
@@ -195,6 +239,12 @@ instance IntBytes Int32 where
   ixI _ (I32# x) = x
   {-# INLINE ixI #-}
 
+instance ElementWise Int Int32 Int32 where
+  ewmap f x = f 1 x
+  {-# INLINE ewmap #-}
+  ewgen f   = f 1
+  {-# INLINE ewgen #-}
+
 instance PrimBytes Int64 where
   toBytes v@(I64# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
@@ -212,6 +262,12 @@ instance PrimBytes Int64 where
 instance IntBytes Int64 where
   ixI _ (I64# x) = x
   {-# INLINE ixI #-}
+
+instance ElementWise Int Int64 Int64 where
+  ewmap f x = f 1 x
+  {-# INLINE ewmap #-}
+  ewgen f   = f 1
+  {-# INLINE ewgen #-}
 
 instance PrimBytes Word where
   toBytes v@(W# x) = case runRW#
@@ -231,6 +287,12 @@ instance WordBytes Word where
   ixW _ (W# x) = x
   {-# INLINE ixW #-}
 
+instance ElementWise Int Word Word where
+  ewmap f x = f 1 x
+  {-# INLINE ewmap #-}
+  ewgen f   = f 1
+  {-# INLINE ewgen #-}
+
 instance PrimBytes Word8 where
   toBytes v@(W8# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
@@ -248,6 +310,12 @@ instance PrimBytes Word8 where
 instance WordBytes Word8 where
   ixW _ (W8# x) = x
   {-# INLINE ixW #-}
+
+instance ElementWise Int Word8 Word8 where
+  ewmap f x = f 1 x
+  {-# INLINE ewmap #-}
+  ewgen f   = f 1
+  {-# INLINE ewgen #-}
 
 instance PrimBytes Word16 where
   toBytes v@(W16# x) = case runRW#
@@ -267,6 +335,12 @@ instance WordBytes Word16 where
   ixW _ (W16# x) = x
   {-# INLINE ixW #-}
 
+instance ElementWise Int Word16 Word16 where
+  ewmap f x = f 1 x
+  {-# INLINE ewmap #-}
+  ewgen f   = f 1
+  {-# INLINE ewgen #-}
+
 instance PrimBytes Word32 where
   toBytes v@(W32# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
@@ -285,6 +359,12 @@ instance WordBytes Word32 where
   ixW _ (W32# x) = x
   {-# INLINE ixW #-}
 
+instance ElementWise Int Word32 Word32 where
+  ewmap f x = f 1 x
+  {-# INLINE ewmap #-}
+  ewgen f   = f 1
+  {-# INLINE ewgen #-}
+
 instance PrimBytes Word64 where
   toBytes v@(W64# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
@@ -302,6 +382,12 @@ instance PrimBytes Word64 where
 instance WordBytes Word64 where
   ixW _ (W64# x) = x
   {-# INLINE ixW #-}
+
+instance ElementWise Int Word64 Word64 where
+  ewmap f x = f 1 x
+  {-# INLINE ewmap #-}
+  ewgen f   = f 1
+  {-# INLINE ewgen #-}
 
 
 
