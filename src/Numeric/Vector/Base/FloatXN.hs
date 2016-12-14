@@ -151,7 +151,7 @@ instance (KnownNat n, 3 <= n) => VectorCalculus Float n (VFloatXN n) where
      ) of (# _, r #) -> VFloatXN r
     where
       n = dim# (undefined :: VFloatXN n)
-      bs = n *# 4#
+      bs = n *# SIZEOF_HSFLOAT#
   {-# INLINE broadcastVec #-}
   a .*. b = broadcastVec $ dot a b
   {-# INLINE (.*.) #-}
@@ -198,6 +198,33 @@ instance FloatBytes (VFloatXN n) where
   ixF i (VFloatXN a) = indexFloatArray# a i
   {-# INLINE ixF #-}
 
+
+instance KnownNat n => ElementWise Int Float (VFloatXN n) where
+  ewmap f x@(VFloatXN a) = case runRW#
+     ( \s0 -> case newByteArray# bs s0 of
+         (# s1, marr #) -> case loop# n
+               (\i s' -> case f (I# i) (F# (indexFloatArray# a i)) of
+                 F# r -> writeFloatArray# marr i r s'
+               ) s1 of
+             s2 -> unsafeFreezeByteArray# marr s2
+     ) of (# _, r #) -> VFloatXN r
+    where
+      n = dim# x
+      bs = n *# SIZEOF_HSFLOAT#
+  {-# INLINE ewmap #-}
+  ewgen f = case runRW#
+     ( \s0 -> case newByteArray# bs s0 of
+         (# s1, marr #) -> case loop# n
+               (\i s' -> case f (I# i) of
+                 F# r -> writeFloatArray# marr i r s'
+               ) s1 of
+             s2 -> unsafeFreezeByteArray# marr s2
+     ) of (# _, r #) -> VFloatXN r
+    where
+      n = dim# (undefined :: VFloatXN n)
+      bs = n *# SIZEOF_HSFLOAT#
+  {-# INLINE ewgen #-}
+
 -----------------------------------------------------------------------------
 -- Helpers
 -----------------------------------------------------------------------------
@@ -227,7 +254,7 @@ zipV f x@(VFloatXN a) (VFloatXN b) = case runRW#
      ) of (# _, r #) -> VFloatXN r
   where
     n = dim# x
-    bs = n *# 4#
+    bs = n *# SIZEOF_HSFLOAT#
 
 mapV :: KnownNat n => (Float# -> Float#) -> VFloatXN n -> VFloatXN n
 mapV f x@(VFloatXN a) = case runRW#
@@ -240,7 +267,7 @@ mapV f x@(VFloatXN a) = case runRW#
      ) of (# _, r #) -> VFloatXN r
   where
     n = dim# x
-    bs = n *# 4#
+    bs = n *# SIZEOF_HSFLOAT#
 
 
 accumVFloat :: KnownNat n => (Float# -> Float# -> Float#) -> VFloatXN n -> Float# -> Float#
@@ -272,3 +299,5 @@ accumVReverse f x@(VFloatXN a) = loop' (n -# 1#)
     loop' i acc | isTrue# (i ==# -1#) = acc
                 | otherwise = loop' (i -# 1#) (f (indexFloatArray# a i) acc)
     n = dim# x
+
+

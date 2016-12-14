@@ -37,6 +37,7 @@ import Numeric.Vector.Family (Vector)
 import Numeric.Matrix.Family (Matrix)
 
 
+
 class MatrixCalculus t (n :: Nat) (m :: Nat) v | v -> t, v -> n, v -> m where
     -- | Fill Mat with the same value
     broadcastMat :: t -> v

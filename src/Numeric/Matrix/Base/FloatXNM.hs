@@ -370,6 +370,36 @@ instance KnownNat n => MatrixInverse (MFloatXNM n n) where
       bs = n *# n *# SIZEOF_HSFLOAT#
 
 
+
+instance (KnownNat n, KnownNat m) => ElementWise (Int,Int) Float (MFloatXNM n m) where
+  ewmap f x@(MFloatXNM arr) = case runRW#
+     ( \s0 -> case newByteArray# bs s0 of
+         (# s1, marr #) -> case loop2# n m
+               (\i j s' -> case f (I# i, I# j) (F# (indexFloatArray# arr (i *# m +# j))) of
+                            F# r -> writeFloatArray# marr (i +# n *# j) r s'
+               ) s1 of
+             s2 -> unsafeFreezeByteArray# marr s2
+     ) of (# _, r #) -> fromBytes r
+    where
+      n = dimN# x
+      m = dimM# x
+      bs = n *# m *# SIZEOF_HSFLOAT#
+  {-# INLINE ewmap #-}
+  ewgen f = case runRW#
+     ( \s0 -> case newByteArray# bs s0 of
+         (# s1, marr #) -> case loop2# n m
+               (\i j s' -> case f (I# i, I# j) of
+                            F# r -> writeFloatArray# marr (i +# n *# j) r s'
+               ) s1 of
+             s2 -> unsafeFreezeByteArray# marr s2
+     ) of (# _, r #) -> fromBytes r
+    where
+      n = dimN# (undefined :: MFloatXNM n m)
+      m = dimM# (undefined :: MFloatXNM n m)
+      bs = n *# m *# SIZEOF_HSFLOAT#
+  {-# INLINE ewgen #-}
+
+
 -----------------------------------------------------------------------------
 -- Helpers
 -----------------------------------------------------------------------------

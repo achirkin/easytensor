@@ -258,7 +258,13 @@ instance FloatBytes VFloatX2 where
   {-# INLINE ixF #-}
 
 
-
+instance ElementWise Int Float VFloatX2 where
+  ewmap f (VFloatX2 x y) = case (f 1 (F# x), f 2 (F# y)) of
+                            (F# r1, F# r2) -> VFloatX2 r1 r2
+  {-# INLINE ewmap #-}
+  ewgen f   = case (f 1, f 2) of
+                            (F# r1, F# r2) -> VFloatX2 r1 r2
+  {-# INLINE ewgen #-}
 
 
 

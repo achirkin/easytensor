@@ -24,7 +24,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.EasyTensor
-  ( Tensor ()
+  ( Tensor (), ElementWise (..)
   , V.VectorCalculus (), M.MatrixCalculus ()
   -- * Common operations
   , fill
@@ -86,7 +86,7 @@ deriving instance FloatBytes (TT t n m) => FloatBytes (Tensor t n m)
 deriving instance DoubleBytes (TT t n m) => DoubleBytes (Tensor t n m)
 deriving instance IntBytes (TT t n m) => IntBytes (Tensor t n m)
 deriving instance WordBytes (TT t n m) => WordBytes (Tensor t n m)
-
+deriving instance ElementWise (Int,Int) t (TT t n m)  => ElementWise (Int,Int) t (Tensor t n m)
 
 
 
@@ -142,6 +142,7 @@ deriving instance FloatBytes (M.Matrix t n m) => FloatBytes (Matrix t n m)
 deriving instance DoubleBytes (M.Matrix t n m) => DoubleBytes (Matrix t n m)
 deriving instance IntBytes (M.Matrix t n m) => IntBytes (Matrix t n m)
 deriving instance WordBytes (M.Matrix t n m) => WordBytes (Matrix t n m)
+deriving instance ElementWise (Int,Int) t (M.Matrix t n m)  => ElementWise (Int,Int) t (Matrix t n m)
 
 
 
@@ -563,3 +564,21 @@ instance (KnownNat m, V.VectorCalculus t m (V.Vector t m)) => M.MatrixCalculus t
   {-# INLINE indexRow #-}
 
 
+instance ElementWise (Int,Int) t (Scalar t) where
+  ewmap f (Scalar x) = Scalar $ f (1,1) x
+  {-# INLINE ewmap #-}
+  ewgen f = Scalar $ f (1,1)
+  {-# INLINE ewgen #-}
+
+
+instance ElementWise Int t (V.Vector t n) => ElementWise (Int,Int) t (ContraVector t n) where
+  ewmap f (ContraVector v) = ContraVector $ ewmap (f . flip (,) 1) v
+  {-# INLINE ewmap #-}
+  ewgen f = ContraVector $ ewgen (f . flip (,) 1)
+  {-# INLINE ewgen #-}
+
+instance ElementWise Int t (V.Vector t m) => ElementWise (Int,Int) t (CoVector t m) where
+  ewmap f (CoVector v) = CoVector $ ewmap (f . (,) 1) v
+  {-# INLINE ewmap #-}
+  ewgen f = CoVector $ ewgen (f . (,) 1)
+  {-# INLINE ewgen #-}
