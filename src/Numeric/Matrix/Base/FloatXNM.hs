@@ -375,7 +375,7 @@ instance (KnownNat n, KnownNat m) => ElementWise (Int,Int) Float (MFloatXNM n m)
   ewmap f x@(MFloatXNM arr) = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop2# n m
-               (\i j s' -> case f (I# i, I# j) (F# (indexFloatArray# arr (i *# m +# j))) of
+               (\i j s' -> case f (I# (i +# 1#), I# (j +# 1#)) (F# (indexFloatArray# arr (i *# m +# j))) of
                             F# r -> writeFloatArray# marr (i +# n *# j) r s'
                ) s1 of
              s2 -> unsafeFreezeByteArray# marr s2
@@ -388,7 +388,7 @@ instance (KnownNat n, KnownNat m) => ElementWise (Int,Int) Float (MFloatXNM n m)
   ewgen f = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop2# n m
-               (\i j s' -> case f (I# i, I# j) of
+               (\i j s' -> case f (I# (i +# 1#), I# (j +# 1#)) of
                             F# r -> writeFloatArray# marr (i +# n *# j) r s'
                ) s1 of
              s2 -> unsafeFreezeByteArray# marr s2
