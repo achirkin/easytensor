@@ -5,6 +5,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MagicHash, UnboxedTuples #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -----------------------------------------------------------------------------
 -- |
@@ -24,6 +25,7 @@ module Numeric.Commons
   , DoubleBytes (..)
   , IntBytes (..)
   , WordBytes (..)
+  , Store (..)
   ) where
 
 #include "MachDeps.h"
@@ -48,6 +50,8 @@ class ElementWise i x t | t -> x i where
   -- | generate data from elements
   ewgen :: (i -> x) -> t
 
+newtype Store a = Store { unStore :: a}
+  deriving (Eq, Show, Num, Fractional, Floating, Real, RealFrac, RealFloat, Ord, PrimBytes)
 
 class PrimBytes a where
   -- | Store content of a data type in a primitive byte array
@@ -79,7 +83,7 @@ class WordBytes a where
   -- | Primitive get Word# (element offset)
   ixW :: Int# -> a -> Word#
 
-instance PrimBytes a => Storable a where
+instance PrimBytes a => Storable (Store a) where
   sizeOf x = I# (byteSize x)
   alignment x = I# (byteAlign x)
   peekElemOff ptr (I# offset) = peekByteOff ptr (I# (offset *# byteSize (undefined :: a)))
