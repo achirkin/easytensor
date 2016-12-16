@@ -29,16 +29,16 @@ main = do
   print ((x <:> two * 3 <:> two) / 4.2 <:> x)
   putStrLn "Done pure!"
   ptr <- mallocArray 3
-  poke ptr x
+  poke ptr $ Store x
   pokeElemOff ptr 1 5
-  pokeByteOff ptr 16 two
+  pokeByteOff ptr 16 $ Store two
   peek ptr >>= print
-  peekByteOff ptr 8 >>= (print :: Vec2f -> IO ())
-  peek (plusPtr ptr 8 :: Ptr Vec2f) >>= print
+  peekByteOff ptr 8 >>= (print :: Store Vec2f -> IO ())
+  peek (plusPtr ptr 8 :: Ptr (Store Vec2f)) >>= print
   peekElemOff ptr 2 >>= print
-  peek (plusPtr ptr 16 :: Ptr Vec2f) >>= print
-  peekByteOff ptr 0 >>= (print :: Vec Float 6 -> IO ())
-  peekByteOff ptr 4 >>= (print :: Vec Float 3 -> IO ())
+  peek (plusPtr ptr 16 :: Ptr (Store Vec2f)) >>= print
+  peekByteOff ptr 0 >>= (print :: Store (Vec Float 6) -> IO ())
+  peekByteOff ptr 4 >>= (print :: Store (Vec Float 3) -> IO ())
   putStrLn "Done IO!"
 
 
