@@ -24,7 +24,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.EasyTensor
-  ( Tensor (), ElementWise (..)
+  ( Tensor (), ElementWise (..), ewFoldMap
   , V.VectorCalculus (), M.MatrixCalculus ()
   -- * Common operations
   , fill
@@ -569,6 +569,8 @@ instance ElementWise (Int,Int) t (Scalar t) where
   {-# INLINE ewmap #-}
   ewgen f = Scalar $ f (1,1)
   {-# INLINE ewgen #-}
+  ewfold f x0 (Scalar x) = f (1,1) x x0
+  {-# INLINE ewfold #-}
 
 
 instance ElementWise Int t (V.Vector t n) => ElementWise (Int,Int) t (ContraVector t n) where
@@ -576,9 +578,15 @@ instance ElementWise Int t (V.Vector t n) => ElementWise (Int,Int) t (ContraVect
   {-# INLINE ewmap #-}
   ewgen f = ContraVector $ ewgen (f . flip (,) 1)
   {-# INLINE ewgen #-}
+  ewfold f x0 (ContraVector v) = ewfold (f . flip (,) 1) x0 v
+  {-# INLINE ewfold #-}
 
 instance ElementWise Int t (V.Vector t m) => ElementWise (Int,Int) t (CoVector t m) where
   ewmap f (CoVector v) = CoVector $ ewmap (f . (,) 1) v
   {-# INLINE ewmap #-}
   ewgen f = CoVector $ ewgen (f . (,) 1)
   {-# INLINE ewgen #-}
+  ewfold f x0 (CoVector v) = ewfold (f . (,) 1) x0 v
+  {-# INLINE ewfold #-}
+
+

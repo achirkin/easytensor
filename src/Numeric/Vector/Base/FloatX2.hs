@@ -265,6 +265,8 @@ instance ElementWise Int Float VFloatX2 where
   ewgen f   = case (f 1, f 2) of
                             (F# r1, F# r2) -> VFloatX2 r1 r2
   {-# INLINE ewgen #-}
+  ewfold f x0 (VFloatX2 x y) = f 2 (F# y) (f 1 (F# x) x0)
+  {-# INLINE ewfold #-}
 
 
 
