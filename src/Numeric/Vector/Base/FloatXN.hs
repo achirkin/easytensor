@@ -224,6 +224,12 @@ instance KnownNat n => ElementWise Int Float (VFloatXN n) where
       n = dim# (undefined :: VFloatXN n)
       bs = n *# SIZEOF_HSFLOAT#
   {-# INLINE ewgen #-}
+  ewfold f v0 x@(VFloatXN a) = fo 0# v0
+    where
+      n = dim# x
+      fo i v | isTrue# (i ==# n) = case f (I# (i +# 1#)) (F# (indexFloatArray# a i)) v of v1 -> fo (i +# 1#) v1
+             | otherwise = v
+  {-# INLINE ewfold #-}
 
 -----------------------------------------------------------------------------
 -- Helpers

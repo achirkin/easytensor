@@ -398,6 +398,14 @@ instance (KnownNat n, KnownNat m) => ElementWise (Int,Int) Float (MFloatXNM n m)
       m = dimM# (undefined :: MFloatXNM n m)
       bs = n *# m *# SIZEOF_HSFLOAT#
   {-# INLINE ewgen #-}
+  ewfold f v0 x@(MFloatXNM arr) = fo 0# 0# v0
+    where
+      n = dimN# x
+      m = dimM# x
+      fo i j v | isTrue# (j ==# m) = v
+               | isTrue# (i ==# n) = fo 0# (j +# 1#) v
+               | otherwise         = case f (I# (i +# 1#), I# (j +# 1#)) (F# (indexFloatArray# arr (i *# m +# j))) v of v1 -> fo (i +# 1#) j v1
+  {-# INLINE ewfold #-}
 
 
 -----------------------------------------------------------------------------
