@@ -86,7 +86,7 @@ deriving instance FloatBytes (TT t n m) => FloatBytes (Tensor t n m)
 deriving instance DoubleBytes (TT t n m) => DoubleBytes (Tensor t n m)
 deriving instance IntBytes (TT t n m) => IntBytes (Tensor t n m)
 deriving instance WordBytes (TT t n m) => WordBytes (Tensor t n m)
-deriving instance ElementWise (Int,Int) t (TT t n m)  => ElementWise (Int,Int) t (Tensor t n m)
+----deriving instance ElementWise (Int,Int) t (TT t n m)  => ElementWise (Int,Int) t (Tensor t n m)
 
 
 
@@ -142,7 +142,7 @@ deriving instance FloatBytes (M.Matrix t n m) => FloatBytes (Matrix t n m)
 deriving instance DoubleBytes (M.Matrix t n m) => DoubleBytes (Matrix t n m)
 deriving instance IntBytes (M.Matrix t n m) => IntBytes (Matrix t n m)
 deriving instance WordBytes (M.Matrix t n m) => WordBytes (Matrix t n m)
-deriving instance ElementWise (Int,Int) t (M.Matrix t n m)  => ElementWise (Int,Int) t (Matrix t n m)
+--deriving instance ElementWise (Int,Int) t (M.Matrix t n m)  => ElementWise (Int,Int) t (Matrix t n m)
 
 
 

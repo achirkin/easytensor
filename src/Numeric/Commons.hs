@@ -52,6 +52,10 @@ class ElementWise i x t | t -> x i where
   ewgen :: (i -> x) -> t
   -- | fold all element with index
   ewfold :: (i -> x -> a -> a) -> a -> t -> a
+  -- | Apply an applicative functor on each element (Lens-like traversal)
+  elementWise :: forall f . Applicative f => (x -> f x) -> t -> f t
+  -- | Apply an applicative functor on each element with its index (Lens-like indexed traversal)
+  indexWise :: forall f . Applicative f => (i -> x -> f x) -> t -> f t
 
 ewFoldMap :: (ElementWise i x t, Monoid m) => (i -> x -> m) -> t -> m
 ewFoldMap f = ewfold (\i x m -> m `mappend` f i x) mempty
