@@ -33,6 +33,12 @@ data Dim (ds :: [Nat]) where
    -- | List-like concatenation of dimensionality
    (:-) :: !Int -> !(Dim ds) -> Dim (n':ds)
 
+instance Show (Dim ds) where
+  show Z = "}"
+  show (i :- xs) = show i ++ ", " ++ show xs
+
+
+
 -- | Type-level checked dimensionality (unboxed)
 data Dim# (ds :: [Nat]) where
    -- | Zero-rank dimensionality - scalar
@@ -49,9 +55,11 @@ class Dimensions (ds :: [Nat]) where
   -- | Total number of elements - product of all dimension sizes (unboxed)
   totalDim# :: t ds -> Int#
   -- | Run a primitive loop over all dimensions
-  loop#      :: Dim# ds -> (Dim# ds -> State# s -> State# s) -> State# s -> State# s
+  loopS#      :: Dim# ds -> (Dim# ds -> State# s -> State# s) -> State# s -> State# s
   -- | Run a primitive loop over all dimensions
-  loop       :: Dim  ds -> (Dim  ds -> State# s -> State# s) -> State# s -> State# s
+  loopS       :: Dim  ds -> (Dim  ds -> State# s -> State# s) -> State# s -> State# s
+  -- | Run a loop over all dimensions keeping a boxed accumulator
+  loopA       :: Dim  ds -> (Dim  ds -> a -> a) -> a -> a
   -- | Get index offset: i1 + i2*n1 + i3*n1*n2 + ...
   ioffset   :: Dim ds -> Int
   -- | Get index offset: i1 + i2*n1 + i3*n1*n2 + ... (unboxed)
@@ -82,10 +90,12 @@ instance Dimensions '[] where
   {-# INLINE dim# #-}
   totalDim# _ = 1#
   {-# INLINE totalDim# #-}
-  loop# _ _ s = s
-  {-# INLINE loop# #-}
-  loop _ _ s = s
-  {-# INLINE loop #-}
+  loopS# _ _ s = s
+  {-# INLINE loopS# #-}
+  loopS _ _ s = s
+  {-# INLINE loopS #-}
+  loopA _ _ = id
+  {-# INLINE loopA #-}
   ioffset# _ = 0#
   {-# INLINE ioffset# #-}
   ioffset _ = 0
@@ -100,12 +110,15 @@ instance (KnownNat d, Dimensions ds) => Dimensions (d ': ds) where
   totalDim# x = case fromIntegral (natVal' (headDim# x)) of
              I# n -> n *# totalDim# (tailDim# x)
   {-# INLINE totalDim# #-}
-  loop# (n:#Z#) f = loop1# n (\i -> f (i:#Z#))
-  loop# (n:#ns) f = loop# ns (\js -> loop1# n (\i -> f (i:#js)))
-  {-# INLINE loop# #-}
-  loop (n:-Z) f = loop1 n (\i -> f (i:-Z))
-  loop (n:-ns) f = loop ns (\js -> loop1 n (\i -> f (i:-js)))
-  {-# INLINE loop #-}
+  loopS# (n:#Z#) f = loop1# n (\i -> f (i:#Z#))
+  loopS# (n:#ns) f = loopS# ns (\js -> loop1# n (\i -> f (i:#js)))
+  {-# INLINE loopS# #-}
+  loopS (n:-Z) f = loop1 n (\i -> f (i:-Z))
+  loopS (n:-ns) f = loopS ns (\js -> loop1 n (\i -> f (i:-js)))
+  {-# INLINE loopS #-}
+  loopA (n:-Z) f = loopA1 n (f . (:-Z))
+  loopA (n:-ns) f = loopA ns (\js -> loopA1 n (f . (:-js)))
+  {-# INLINE loopA #-}
   ioffset# (i:#Z#) = i
   ioffset# iis@(i:#is) = case fromIntegral (natVal' (headDim# iis)) of
              I# n -> i +# n *# ioffset# is
@@ -134,9 +147,17 @@ loop1# n f = loop' 0#
 
 -- | Do something in a loop for int i from 1 to n
 loop1 :: Int -> (Int -> State# s -> State# s) -> State# s -> State# s
-loop1 n f = loop' 0
+loop1 n f = loop' 1
   where
     loop' i s | i > n = s
               | otherwise = case f i s of s1 -> loop' (i + 1) s1
 {-# INLINE loop1 #-}
+
+-- | Do something in a loop for int i from 1 to n
+loopA1 :: Int -> (Int -> a -> a) -> a -> a
+loopA1 n f = loop' 1
+  where
+    loop' i s | i > n = s
+              | otherwise = case f i s of s1 -> loop' (i + 1) s1
+{-# INLINE loopA1 #-}
 
