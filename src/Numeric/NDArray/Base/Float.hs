@@ -30,32 +30,40 @@ import GHC.Prim
 import GHC.Types
 --import GHC.TypeLits
 
+
+
+import Numeric.Dimensions
 import Numeric.Commons
-import Numeric.NDArray.Class
+--import Numeric.NDArray.Class
 import Numeric.NDArray.Family
 
 
 
 instance Dimensions ds => Show (NDArrayF ds) where
-  show x = ewfold (f ds) "" x
-        -- ewfold :: (i -> x -> a -> a) -> a -> t -> a
---  "{" ++ drop 2 (loop' (n -# 1#) (m -# 1#) " }")
-    where
-      ds = dim x
-      f :: Dim ds -> Dim ds -> Float -> String -> String
-      f (n :- Z) (i :- Z) x s | i == 1 && n == 1 = s ++ "{ " ++ show x ++ " }"
-                              | i == 1           = s ++ "{ " ++ show x
-                              | i == n           = s ++ ", " ++ show x ++ " }"
-                              | otherwise        = s ++ ", " ++ show x
---      f (n :- m :- Z) (i :- Z) x s | i == 1 && n == 1 = s ++ "{ " ++ show x ++ " }"
---                                   | i == 1           = s ++ "{ " ++ show x
---                                   | i == n           = s ++ ", " ++ show x ++ " }"
---                                   | otherwise        = s ++ ", " ++ show x
-      f ds is x s = s ++ "\n" ++ show is ++ "/"  ++ show ds ++ ": " ++ show x
---      loop' i j acc | isTrue# (i ==# -1#) = acc
---                    | isTrue# (j ==# -1#) = loop' (i -# 1#) (m -# 1#) ('\n':acc)
---                    | otherwise           = loop' i (j -# 1#) (", " ++ show (F# (indexFloatArray# arr (i +# n *# j))) ++ acc)
---      n = dimN# x
+  show x = undefined
+--  show x = ewfold (f ds) "" x
+--        -- ewfold :: (i -> x -> a -> a) -> a -> t -> a
+----  "{" ++ drop 2 (loop' (n -# 1#) (m -# 1#) " }")
+--    where
+--      ds = dim x
+--      loopInner :: Dim (Take 2 ds) -> Dim (Take 2 ds) -> Float -> String -> String
+--      loopInner n i x s = undefined
+--      loopOuter :: Dim (Drop 2 ds) -> Dim (Drop 2 ds) -> Dim (Take 2 ds) -> Float -> String -> String
+--      loopOuter Z subds x s = loopInner subds
+--      f :: Dim ds -> Dim ds -> Float -> String -> String
+--      f (n :- Z) (i :- Z) x s | i == 1 && n == 1 = s ++ "{ " ++ show x ++ " }"
+--                              | i == 1           = s ++ "{ " ++ show x
+--                              | i == n           = s ++ ", " ++ show x ++ " }"
+--                              | otherwise        = s ++ ", " ++ show x
+----      f (n :- m :- Z) (i :- Z) x s | i == 1 && n == 1 = s ++ "{ " ++ show x ++ " }"
+----                                   | i == 1           = s ++ "{ " ++ show x
+----                                   | i == n           = s ++ ", " ++ show x ++ " }"
+----                                   | otherwise        = s ++ ", " ++ show x
+--      f ds is x s = s ++ "\n" ++ show is ++ "/"  ++ show ds ++ ": " ++ show x
+----      loop' i j acc | isTrue# (i ==# -1#) = acc
+----                    | isTrue# (j ==# -1#) = loop' (i -# 1#) (m -# 1#) ('\n':acc)
+----                    | otherwise           = loop' i (j -# 1#) (", " ++ show (F# (indexFloatArray# arr (i +# n *# j))) ++ acc)
+----      n = dimN# x
 
 
 

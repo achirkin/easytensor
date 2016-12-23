@@ -20,7 +20,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.Tensor
-  ( module Numeric.NDArray.Class
+  ( module Numeric.Dimensions
   , module Numeric.NDArray.Family
   , module Numeric.Commons
   ) where
@@ -32,7 +32,7 @@ module Numeric.Tensor
 
 
 import Numeric.NDArray.Base.Float ()
-import Numeric.NDArray.Class
+import Numeric.Dimensions
 import Numeric.NDArray.Family
 import Numeric.Commons
 

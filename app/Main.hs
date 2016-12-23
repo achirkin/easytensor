@@ -2,7 +2,8 @@
 {-# LANGUAGE DataKinds #-}
 module Main where
 
-
+import Data.Proxy
+import Numeric.Tensor (Dim(..))
 import qualified Numeric.Tensor as T
 import Numeric.Commons
 -- import Numeric.Vector ((<:>))
@@ -104,8 +105,9 @@ main = do
 --           %*
 --           (ewgen (\(i,j) -> realToFrac j / realToFrac i - realToFrac i / realToFrac j) :: Tensor Float 2 20))
 --          / fill 15) %* (ewgen (\(i,j) -> realToFrac $ i*j) :: Tensor Float 20 2) %* two
-  print $ head . drop 10000 $ iterate inverse (two <:> x)
-  print $ elementWise (\x -> Just x) (3 :: T.NDArray Float '[2,3,1])
+--  print $ head . drop 10000 $ iterate inverse (two <:> x)
+--  print $ elementWise (\x -> Just x) (3 :: T.NDArray Float '[2,3,1])
+  print $ T.takeDims (Proxy :: Proxy 3) $ 2 :- 3 :- 4 :- 7 :- 8 :- Z
   where
     two = vec2 2 2.001 :: Vec2f
     x = two / vec2 3.2 (-2)
