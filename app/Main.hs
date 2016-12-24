@@ -107,7 +107,22 @@ main = do
 --          / fill 15) %* (ewgen (\(i,j) -> realToFrac $ i*j) :: Tensor Float 20 2) %* two
 --  print $ head . drop 10000 $ iterate inverse (two <:> x)
 --  print $ elementWise (\x -> Just x) (3 :: T.NDArray Float '[2,3,1])
-  print $ T.takeDims (Proxy :: Proxy 3) $ 2 :- 3 :- 4 :- 7 :- 8 :- Z
+  print $ T.dropDims (Proxy :: Proxy 0) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.dropDims (Proxy :: Proxy 1) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.dropDims (Proxy :: Proxy 2) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.dropDims (Proxy :: Proxy 3) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.dropDims (Proxy :: Proxy 4) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.dropDims (Proxy :: Proxy 5) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.dropDims (Proxy :: Proxy 6) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.dropDims (Proxy :: Proxy 7) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.takeDims (Proxy :: Proxy 0) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.takeDims (Proxy :: Proxy 1) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.takeDims (Proxy :: Proxy 2) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.takeDims (Proxy :: Proxy 3) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.takeDims (Proxy :: Proxy 4) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.takeDims (Proxy :: Proxy 5) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.takeDims (Proxy :: Proxy 6) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+  print $ T.takeDims (Proxy :: Proxy 7) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
   where
     two = vec2 2 2.001 :: Vec2f
     x = two / vec2 3.2 (-2)
