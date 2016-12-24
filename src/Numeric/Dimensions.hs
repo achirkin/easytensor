@@ -16,9 +16,9 @@
 -----------------------------------------------------------------------------
 
 module Numeric.Dimensions
-  ( Dim (..), totalDim, order
+  ( Dim (..), totalDim, order, tailDim, headDim
   , Dim# (..), order#
-  , Dimensions (..), SubDimensions (..)
+  , Dimensions (..)
   , (++), Reverse, Take, Drop, Length, IsPrefixOf, IsSuffixOf
   ) where
 
@@ -27,6 +27,7 @@ module Numeric.Dimensions
 import GHC.TypeLits
 import GHC.Prim
 import GHC.Types
+import GHC.Exts
 import Data.Proxy
 import Data.Type.Equality
 import Data.Type.Bool
@@ -45,6 +46,8 @@ instance Show (Dim ds) where
   show Z = "}"
   show (i :- xs) = show i ++ ", " ++ show xs
 
+--show' :: Dimensions ds => Dim ds -> String
+--show' dds@(d:-ds) = show d ++ "/" ++ show (natVal' (headDim# dds))
 
 
 -- | Type-level checked dimensionality (unboxed)
@@ -75,54 +78,30 @@ class Dimensions (ds :: [Nat]) where
   ioffset   :: Dim ds -> Int
   -- | Get index offset: i1 + i2*n1 + i3*n1*n2 + ... (unboxed)
   ioffset#  :: Dim# ds -> Int#
+  -- | Drop a number of dimensions
+  dropDims  :: KnownNat n => Proxy n -> Dim ds -> Dim (Drop n ds)
+  -- | Take a number of dimensions
+  takeDims  :: KnownNat n => Proxy n -> Dim ds -> Dim (Take n ds)
 
+instance IsList (Dim ds) => IsList (Dim (d:ds)) where
+  type Item (Dim (d:ds)) = Int
+  fromList (x:xs) = x :- fromList (unsafeCoerce xs)
+  fromList [] = undefined
+  toList (x :- xs) = x : unsafeCoerce (toList xs)
 
+instance IsList (Dim '[]) where
+  type Item (Dim '[]) = Int
+  fromList _ = Z
+  toList _   = []
 
-class SubDimensions (n :: Nat) (ds :: [Nat]) where
-  dropDims  :: Proxy n -> Dim ds -> Dim (Drop n ds)
-  takeDims  :: Proxy n -> Dim ds -> Dim (Take n ds)
+-- | Get all but first dimensions
+tailDim :: Dim ds -> Dim (Drop 1 ds)
+tailDim Z = Z
+tailDim (_:-xs) = xs
 
-instance SubDimensions n '[] where
-  dropDims _ Z = Z
-  {-# INLINE dropDims #-}
-  takeDims _ _ = Z
-  {-# INLINE takeDims #-}
-
-instance SubDimensions 0 (d ': ds) where
-  dropDims _ ds = ds
-  {-# INLINE dropDims #-}
-  takeDims _ _ = Z
-  {-# INLINE takeDims #-}
-
-
-instance (SubDimensions (n-1) ds, 1 <= n) => SubDimensions n (d ': ds) where
-  dropDims _ (_ :- ds) = unsafeCoerce (dropDims (Proxy :: Proxy (n-1)) ds) :: Dim (Drop n (d ': ds))
-  {-# INLINE dropDims #-}
-  takeDims _ (d :- ds) = unsafeCoerce (d :- dropDims (Proxy :: Proxy (n-1)) ds) :: Dim (Take n (d ': ds))
-  {-# INLINE takeDims #-}
-
---  takeDims _ _ = Z
---  {-# INLINE takeDims #-}
-
---dropDims :: Proxy n -> Dim ds -> Dim (Drop n ds)
---dropDims _ Z = Z
---dropDims p (d :- ds) = case natVal p of
---     0 -> d :- ds
---     _ -> dropDims p' ds :: Dim (Drop (n-1) ds)
---  where
---    f :: Proxy n -> Proxy (n-1)
---    f _ = Proxy
---    p' = f p
-
---takeDims :: Dimensions ds => Proxy n -> Dim ds -> Dim (Take n ds)
---takeDims _ Z = Z
---takeDims p (d:-ds) = case natVal p of
---     0 -> Z
---     _ -> d :- unsafeCoerce (takeDims p' ds)
---  where
---    f :: Proxy n -> Proxy (n-1)
---    f _ = Proxy
---    p' = f p
+-- | Get the first dimension
+headDim :: Dim (d:ds) -> Dim '[d]
+headDim (d:-_) = d :- Z
 
 -- | Total number of elements - product of all dimension sizes
 totalDim :: Dimensions ds => t ds -> Int
@@ -161,7 +140,10 @@ instance Dimensions '[] where
   {-# INLINE ioffset# #-}
   ioffset _ = 0
   {-# INLINE ioffset #-}
-
+  dropDims _ Z = Z
+  {-# INLINE dropDims #-}
+  takeDims _ Z = Z
+  {-# INLINE takeDims #-}
 
 instance (KnownNat d, Dimensions ds) => Dimensions (d ': ds) where
   dim x = fromIntegral (natVal' (headDim# x)) :- dim (tailDim# x)
@@ -191,15 +173,25 @@ instance (KnownNat d, Dimensions ds) => Dimensions (d ': ds) where
   ioffset (i:-Z) = i
   ioffset iis@(i:-is) = i + fromIntegral (natVal' (headDim# iis)) * ioffset is
   {-# INLINE ioffset #-}
+  dropDims p ds = case (fromInteger (natVal p), order ds) of
+          (0, _) -> unsafeCoerce ds
+          (n, k) -> if n >= k then unsafeCoerce Z
+                              else f n ds
+    where
+      f 0 ds' = unsafeCoerce ds'
+      f i (_:-ds') = unsafeCoerce (f (i-1) $ unsafeCoerce ds')
+      f _ Z = unsafeCoerce Z
+  {-# INLINE dropDims #-}
+  takeDims p ds = case (fromInteger (natVal p), order ds) of
+          (0, _) -> unsafeCoerce Z
+          (n, k) -> if n >= k then unsafeCoerce ds
+                              else f n ds
+    where
+      f 0 _ = unsafeCoerce Z
+      f i (d:-ds') = unsafeCoerce $ d :- unsafeCoerce (f (i-1) $ unsafeCoerce ds')
+      f _ Z = unsafeCoerce Z
+  {-# INLINE takeDims #-}
 
---  takeDims p (d:-ds) = d :- (takeDims p' ds)
---    where
---      f :: Proxy n -> Proxy (n-1)
---      f _ = Proxy
---      p' = f p
-----      g :: Proxy k -> Dim ds -> Dim (Take k ds)
-----      g = takeDims
---  {-# INLINE takeDims #-}
 
 
 headDim# :: t (d ': ds :: [Nat]) -> Proxy# d
@@ -246,13 +238,13 @@ loopReverse1 n f = loop' n
 
 
 
-type family (as :: [k]) ++ (bs :: [k]) :: [k] where
+type family (as :: [k]) ++ (bs :: [k]) = (rs :: [k]) where
   '[]        ++ bs = bs
   (a ': as)  ++ bs = a ': (as ++ bs)
 infixr 5 ++
 
 
-type family Reverse (as :: [k]) :: [k] where
+type family Reverse (as :: [k]) ::[k] where -- = (rs :: [k]) | rs -> as
   Reverse  '[]        = '[]
   Reverse (a ': as) = Reverse as ++ '[a]
 
