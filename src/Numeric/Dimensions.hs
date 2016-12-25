@@ -12,6 +12,9 @@
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
+-- Provides a data type Dim that enumerates through multiple dimensions (type-checked).
+-- Lower indices go first, i.e. assumed enumeration is i = i1 + i2*n1 + i3*n1*n2 + ... + ik*n1*n2*...*n(k-1).
+-- This is also to encourage column-first matrix enumeration and array layout.
 --
 -----------------------------------------------------------------------------
 
@@ -42,13 +45,53 @@ data Dim (ds :: [Nat]) where
    (:-) :: !Int -> !(Dim ds) -> Dim (n':ds)
 infixr 5 :-
 
-instance Show (Dim ds) where
-  show Z = "}"
-  show (i :- xs) = show i ++ ", " ++ show xs
+instance (IsList (Dim ds), Item (Dim ds) ~ Int) => Show (Dim ds) where
+  show Z = "Dim Ø"
+  show xs = "Dim" ++ foldr (\i s -> " " ++ show i ++ s) "" (toList xs)
 
---show' :: Dimensions ds => Dim ds -> String
---show' dds@(d:-ds) = show d ++ "/" ++ show (natVal' (headDim# dds))
+instance Eq (Dim ds) where
+  Z == Z = True
+  (a:-as) == (b:-bs) = a == b && as == bs
+  Z /= Z = False
+  (a:-as) /= (b:-bs) = a /= b || as /= bs
 
+instance Ord (Dim ds) where
+  compare Z Z = EQ
+  compare (a:-as) (b:-bs) = compare as bs `mappend` compare a b
+
+instance Dimensions ds => Bounded (Dim ds) where
+  maxBound = dimMax
+  {-# INLINE maxBound #-}
+  minBound = dimMin
+  {-# INLINE minBound #-}
+
+instance Dimensions ds => Enum (Dim ds) where
+  succ = succDim
+  {-# INLINE succ #-}
+  pred = predDim
+  {-# INLINE pred #-}
+  toEnum = toDim
+  {-# INLINE toEnum #-}
+  fromEnum = fromDim
+  {-# INLINE fromEnum #-}
+  enumFrom x = take (diffDim maxBound x + 1) $ iterate succ x
+  {-# INLINE enumFrom #-}
+  enumFromTo x y | x >= y    = take (diffDim x y + 1) $ iterate pred x
+                 | otherwise = take (diffDim y x + 1) $ iterate succ x
+  {-# INLINE enumFromTo #-}
+  enumFromThen x x' = take n $ iterate (stepDim dn) x
+    where
+      dn = diffDim x' x
+      n  = 1 + if dn == 0 then 0
+                          else if dn > 0 then diffDim maxBound x `div` dn
+                                         else diffDim x minBound `div` negate dn
+  {-# INLINE enumFromThen #-}
+  enumFromThenTo x x' y = take n $ iterate (stepDim dn) x
+    where
+      dn = diffDim x' x
+      n  = 1 + if dn == 0 then 0
+                          else diffDim y x `div` dn
+  {-# INLINE enumFromThenTo #-}
 
 -- | Type-level checked dimensionality (unboxed)
 data Dim# (ds :: [Nat]) where
@@ -82,6 +125,25 @@ class Dimensions (ds :: [Nat]) where
   dropDims  :: KnownNat n => Proxy n -> Dim ds -> Dim (Drop n ds)
   -- | Take a number of dimensions
   takeDims  :: KnownNat n => Proxy n -> Dim ds -> Dim (Take n ds)
+  -- | Maximum values of all dimensions
+  dimMax    :: Dim ds
+  -- | Minimum values -- ones
+  dimMin    :: Dim ds
+  -- | Minimum prim values -- zeroes
+  dimZero#  :: Dim# ds
+  -- | For Enum
+  succDim   :: Dim ds -> Dim ds
+  -- | For Enum
+  predDim   :: Dim ds -> Dim ds
+  -- | For Enum
+  fromDim   :: Dim ds -> Int
+  -- | For Enum
+  toDim     :: Int -> Dim ds
+  -- | For Enum -- step dimension index by an Integer offset
+  stepDim   :: Int -> Dim ds -> Dim ds
+  -- | For Enum -- difference in offsets between two Dim values (a `diffDim` b) = a - b
+  diffDim   :: Dim ds -> Dim ds -> Int
+
 
 instance IsList (Dim ds) => IsList (Dim (d:ds)) where
   type Item (Dim (d:ds)) = Int
@@ -100,8 +162,8 @@ tailDim Z = Z
 tailDim (_:-xs) = xs
 
 -- | Get the first dimension
-headDim :: Dim (d:ds) -> Dim '[d]
-headDim (d:-_) = d :- Z
+headDim :: t (d ': ds :: [Nat]) -> Proxy d
+headDim _ = Proxy
 
 -- | Total number of elements - product of all dimension sizes
 totalDim :: Dimensions ds => t ds -> Int
@@ -144,6 +206,25 @@ instance Dimensions '[] where
   {-# INLINE dropDims #-}
   takeDims _ Z = Z
   {-# INLINE takeDims #-}
+  dimMax = Z
+  {-# INLINE dimMax #-}
+  dimMin = Z
+  {-# INLINE dimMin #-}
+  dimZero# = Z#
+  {-# INLINE dimZero# #-}
+  succDim = id
+  {-# INLINE succDim #-}
+  predDim = id
+  {-# INLINE predDim #-}
+  fromDim _ = 0
+  {-# INLINE fromDim #-}
+  toDim _ = Z
+  {-# INLINE toDim #-}
+  stepDim _ = id
+  {-# INLINE stepDim #-}
+  diffDim _ _ = 0
+  {-# INLINE diffDim #-}
+
 
 instance (KnownNat d, Dimensions ds) => Dimensions (d ': ds) where
   dim x = fromIntegral (natVal' (headDim# x)) :- dim (tailDim# x)
@@ -191,6 +272,34 @@ instance (KnownNat d, Dimensions ds) => Dimensions (d ': ds) where
       f i (d:-ds') = unsafeCoerce $ d :- unsafeCoerce (f (i-1) $ unsafeCoerce ds')
       f _ Z = unsafeCoerce Z
   {-# INLINE takeDims #-}
+  dimMax = ds
+    where
+      ds = fromInteger (natVal $ headDim ds) :- dimMax
+  {-# INLINE dimMax #-}
+  dimMin = 1 :- dimMin
+  {-# INLINE dimMin #-}
+  dimZero# = 0# :# dimZero#
+  {-# INLINE dimZero# #-}
+  succDim ds@(i:-is) = case fromInteger (natVal' (headDim# ds)) of
+                         n -> if i == n then 1 :- succDim is
+                                        else succ i :- is
+  {-# INLINE succDim #-}
+  predDim ds@(i:-is) = if i == 1 then fromInteger (natVal' (headDim# ds)) :- predDim is
+                                 else pred i :- is
+  {-# INLINE predDim #-}
+  fromDim ds@(i:-is) = pred i + fromInteger (natVal' (headDim# ds)) * fromDim is
+  {-# INLINE fromDim #-}
+  toDim j = r
+    where
+      r = case divMod j $ fromInteger (natVal' (headDim# r)) of
+            (j', i) -> succ i :- toDim j'
+  {-# INLINE toDim #-}
+  stepDim di ds@(i:-is) = case divMod (di + i - 1) $ fromInteger (natVal' (headDim# ds)) of
+                           (0  , i') -> succ i' :- is
+                           (di', i') -> succ i' :- stepDim di' is
+  {-# INLINE stepDim #-}
+  diffDim ds@(i1:-is1) (i2:-is2) = i1 - i2 + fromInteger (natVal' (headDim# ds)) * diffDim is1 is2
+  {-# INLINE diffDim #-}
 
 
 
