@@ -1,8 +1,9 @@
 
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds, GADTs #-}
 module Main where
 
 import Data.Proxy
+import GHC.Exts
 import Numeric.Tensor (Dim(..))
 import qualified Numeric.Tensor as T
 import Numeric.Commons
@@ -106,87 +107,88 @@ main = do
 --           (ewgen (\(i,j) -> realToFrac j / realToFrac i - realToFrac i / realToFrac j) :: Tensor Float 2 20))
 --          / fill 15) %* (ewgen (\(i,j) -> realToFrac $ i*j) :: Tensor Float 20 2) %* two
 --  print $ head . drop 10000 $ iterate inverse (two <:> x)
+  print arr3D
 --  print $ elementWise (\x -> Just x) (3 :: T.NDArray Float '[2,3,1])
-  print $ T.dropDims (Proxy :: Proxy 0) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.dropDims (Proxy :: Proxy 1) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.dropDims (Proxy :: Proxy 2) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.dropDims (Proxy :: Proxy 3) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.dropDims (Proxy :: Proxy 4) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.dropDims (Proxy :: Proxy 5) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.dropDims (Proxy :: Proxy 6) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.dropDims (Proxy :: Proxy 7) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.takeDims (Proxy :: Proxy 0) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.takeDims (Proxy :: Proxy 1) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.takeDims (Proxy :: Proxy 2) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.takeDims (Proxy :: Proxy 3) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.takeDims (Proxy :: Proxy 4) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.takeDims (Proxy :: Proxy 5) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.takeDims (Proxy :: Proxy 6) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  print $ T.takeDims (Proxy :: Proxy 7) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
-  mapM_ print $ [minBound .. dim1]
-  putStrLn "Manupulations with ids"
-  print dim1
-  print $ T.stepDim 0 dim1
-  print $ T.stepDim 4 dim1
-  print $ T.stepDim (-4) dim1
-  print $ T.stepDim 16 dim1
-  print $ T.stepDim (-16) dim1
-  print $ T.stepDim 64 dim1
-  print $ T.stepDim (-64) dim1
-  print $ T.stepDim 640 dim1
-  print $ T.stepDim (-640) dim1
-  print $ T.stepDim 6400 dim1
-  print $ T.stepDim (-6400) dim1
-  putStrLn "Manupulations with ids -- succ"
-  print $ T.succDim dim1
-  print $ T.stepDim 1 dim1
-  print . T.succDim . T.succDim $ dim1
-  print $ T.stepDim 2 dim1
-  print . T.succDim . T.succDim . T.succDim $ dim1
-  print $ T.stepDim 3 dim1
-  print . T.succDim . T.succDim . T.succDim . T.succDim $ dim1
-  print $ T.stepDim 4 dim1
-  print . T.succDim . T.succDim . T.succDim . T.succDim . T.succDim $ dim1
-  print $ T.stepDim 5 dim1
-  print . T.succDim . T.succDim . T.succDim . T.succDim . T.succDim . T.succDim $ dim1
-  print $ T.stepDim 6 dim1
-  print $ T.predDim dim1
-  print $ T.stepDim (-1) dim1
-  print . T.predDim . T.predDim $ dim1
-  print $ T.stepDim (-2) dim1
-  print . T.predDim . T.predDim . T.predDim $ dim1
-  print $ T.stepDim (-3) dim1
-  print . T.predDim . T.predDim . T.predDim . T.predDim $ dim1
-  print $ T.stepDim (-4) dim1
-  print . T.predDim . T.predDim . T.predDim . T.predDim . T.predDim $ dim1
-  print $ T.stepDim (-5) dim1
-  print . T.predDim . T.predDim . T.predDim . T.predDim . T.predDim . T.predDim $ dim1
-  print $ T.stepDim (-6) dim1
-  putStrLn "Enum from.."
-  print $ [dim2..]
-  print $ [pred dim2..dim2u]
-  print $ [dim2u..dim2]
-  print $ [dim2u..dim2u]
-  print $ [dim2..dim2]
-  putStrLn "Dim diffs"
-  print $ T.diffDim dim2u dim2
-  print $ T.diffDim dim2 dim2u
-  print $ T.diffDim dim2 dim2
-  print $ T.diffDim dim2u dim2u
-  print $ T.diffDim dim2 maxBound
-  putStrLn "Enum from then to.."
-  print $ [dim2,dim2u..]
-  print $ [dim2u,dim2..]
-  print $ [dim2u,dim2u..]
-  print $ [dim2,dim2..]
-  print $ [dim2,dim2u..pred maxBound]
-  print $ [dim2,succ dim2u..pred maxBound]
-  print $ [dim2,succ dim2u..maxBound]
-  print $ [dim2u,dim2..minBound]
-  print $ [succ dim2u,dim2..succ minBound]
-  print $ [succ dim2u,dim2..minBound]
-  print $ [dim2u,dim2u..minBound]
-  print $ [dim2u,dim2u..maxBound]
+--  print $ T.dropDims (Proxy :: Proxy 0) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.dropDims (Proxy :: Proxy 1) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.dropDims (Proxy :: Proxy 2) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.dropDims (Proxy :: Proxy 3) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.dropDims (Proxy :: Proxy 4) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.dropDims (Proxy :: Proxy 5) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.dropDims (Proxy :: Proxy 6) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.dropDims (Proxy :: Proxy 7) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.takeDims (Proxy :: Proxy 0) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.takeDims (Proxy :: Proxy 1) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.takeDims (Proxy :: Proxy 2) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.takeDims (Proxy :: Proxy 3) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.takeDims (Proxy :: Proxy 4) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.takeDims (Proxy :: Proxy 5) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.takeDims (Proxy :: Proxy 6) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  print $ T.takeDims (Proxy :: Proxy 7) $ (2 :- 3 :- 4 :- 7 :- 8 :- Z :: Dim '[4,4,4,10,10])
+--  mapM_ print $ [minBound .. dim1]
+--  putStrLn "Manupulations with ids"
+--  print dim1
+--  print $ T.stepDim 0 dim1
+--  print $ T.stepDim 4 dim1
+--  print $ T.stepDim (-4) dim1
+--  print $ T.stepDim 16 dim1
+--  print $ T.stepDim (-16) dim1
+--  print $ T.stepDim 64 dim1
+--  print $ T.stepDim (-64) dim1
+--  print $ T.stepDim 640 dim1
+--  print $ T.stepDim (-640) dim1
+--  print $ T.stepDim 6400 dim1
+--  print $ T.stepDim (-6400) dim1
+--  putStrLn "Manupulations with ids -- succ"
+--  print $ T.succDim dim1
+--  print $ T.stepDim 1 dim1
+--  print . T.succDim . T.succDim $ dim1
+--  print $ T.stepDim 2 dim1
+--  print . T.succDim . T.succDim . T.succDim $ dim1
+--  print $ T.stepDim 3 dim1
+--  print . T.succDim . T.succDim . T.succDim . T.succDim $ dim1
+--  print $ T.stepDim 4 dim1
+--  print . T.succDim . T.succDim . T.succDim . T.succDim . T.succDim $ dim1
+--  print $ T.stepDim 5 dim1
+--  print . T.succDim . T.succDim . T.succDim . T.succDim . T.succDim . T.succDim $ dim1
+--  print $ T.stepDim 6 dim1
+--  print $ T.predDim dim1
+--  print $ T.stepDim (-1) dim1
+--  print . T.predDim . T.predDim $ dim1
+--  print $ T.stepDim (-2) dim1
+--  print . T.predDim . T.predDim . T.predDim $ dim1
+--  print $ T.stepDim (-3) dim1
+--  print . T.predDim . T.predDim . T.predDim . T.predDim $ dim1
+--  print $ T.stepDim (-4) dim1
+--  print . T.predDim . T.predDim . T.predDim . T.predDim . T.predDim $ dim1
+--  print $ T.stepDim (-5) dim1
+--  print . T.predDim . T.predDim . T.predDim . T.predDim . T.predDim . T.predDim $ dim1
+--  print $ T.stepDim (-6) dim1
+--  putStrLn "Enum from.."
+--  print $ [dim2..]
+--  print $ [pred dim2..dim2u]
+--  print $ [dim2u..dim2]
+--  print $ [dim2u..dim2u]
+--  print $ [dim2..dim2]
+--  putStrLn "Dim diffs"
+--  print $ T.diffDim dim2u dim2
+--  print $ T.diffDim dim2 dim2u
+--  print $ T.diffDim dim2 dim2
+--  print $ T.diffDim dim2u dim2u
+--  print $ T.diffDim dim2 maxBound
+--  putStrLn "Enum from then to.."
+--  print $ [dim2,dim2u..]
+--  print $ [dim2u,dim2..]
+--  print $ [dim2u,dim2u..]
+--  print $ [dim2,dim2..]
+--  print $ [dim2,dim2u..pred maxBound]
+--  print $ [dim2,succ dim2u..pred maxBound]
+--  print $ [dim2,succ dim2u..maxBound]
+--  print $ [dim2u,dim2..minBound]
+--  print $ [succ dim2u,dim2..succ minBound]
+--  print $ [succ dim2u,dim2..minBound]
+--  print $ [dim2u,dim2u..minBound]
+--  print $ [dim2u,dim2u..maxBound]
   where
     two = vec2 2 2.001 :: Vec2f
     x = two / vec2 3.2 (-2)
@@ -200,4 +202,6 @@ main = do
     dim1 = 2 :- 3 :- 4 :- 7 :- 2 :- Z :: Dim '[4,4,4,10,3]
     dim2u = 1 :- 3 :- 1 :- Z :: Dim '[2,3,2]
     dim2 = 2 :- 2 :- 1 :- Z :: Dim '[2,3,2]
+    arr3D = ewmap (\i f -> f + realToFrac (fromEnum i) )
+            3 :: T.NDArray Float '[4,3,3]
 
