@@ -22,7 +22,7 @@ module Numeric.Dimensions
   ( Dim (..), totalDim, order, tailDim, headDim
   , Dim# (..), order#
   , Dimensions (..)
-  , (++), Reverse, Take, Drop, Length, IsPrefixOf, IsSuffixOf
+  , type (++), Reverse, Take, Drop, Length, IsPrefixOf, IsSuffixOf
   ) where
 
 
@@ -45,9 +45,17 @@ data Dim (ds :: [Nat]) where
    (:-) :: !Int -> !(Dim ds) -> Dim (n':ds)
 infixr 5 :-
 
-instance (IsList (Dim ds), Item (Dim ds) ~ Int) => Show (Dim ds) where
+instance Show (Dim ds) where
   show Z = "Dim Ø"
-  show xs = "Dim" ++ foldr (\i s -> " " ++ show i ++ s) "" (toList xs)
+  show xs = "Dim" ++ foldr (\i s -> " " ++ show i ++ s) "" (dimToList xs)
+
+dimToList :: Dim ds -> [Int]
+dimToList Z = []
+dimToList (x :- xs) = x : dimToList xs
+
+dimFromList :: [Int] -> Dim ds
+dimFromList [] = unsafeCoerce Z
+dimFromList (x:xs) = unsafeCoerce $ x :- unsafeCoerce (dimFromList xs)
 
 instance Eq (Dim ds) where
   Z == Z = True
@@ -145,16 +153,10 @@ class Dimensions (ds :: [Nat]) where
   diffDim   :: Dim ds -> Dim ds -> Int
 
 
-instance IsList (Dim ds) => IsList (Dim (d:ds)) where
-  type Item (Dim (d:ds)) = Int
-  fromList (x:xs) = x :- fromList (unsafeCoerce xs)
-  fromList [] = undefined
-  toList (x :- xs) = x : unsafeCoerce (toList xs)
-
-instance IsList (Dim '[]) where
-  type Item (Dim '[]) = Int
-  fromList _ = Z
-  toList _   = []
+instance IsList (Dim ds) where
+  type Item (Dim ds) = Int
+  fromList = dimFromList
+  toList = dimToList
 
 -- | Get all but first dimensions
 tailDim :: Dim ds -> Dim (Drop 1 ds)
@@ -282,21 +284,21 @@ instance (KnownNat d, Dimensions ds) => Dimensions (d ': ds) where
   {-# INLINE dimZero# #-}
   succDim ds@(i:-is) = case fromInteger (natVal' (headDim# ds)) of
                          n -> if i == n then 1 :- succDim is
-                                        else succ i :- is
+                                        else i+1 :- is
   {-# INLINE succDim #-}
   predDim ds@(i:-is) = if i == 1 then fromInteger (natVal' (headDim# ds)) :- predDim is
-                                 else pred i :- is
+                                 else i-1 :- is
   {-# INLINE predDim #-}
-  fromDim ds@(i:-is) = pred i + fromInteger (natVal' (headDim# ds)) * fromDim is
+  fromDim ds@(i:-is) = i-1 + fromInteger (natVal' (headDim# ds)) * fromDim is
   {-# INLINE fromDim #-}
   toDim j = r
     where
       r = case divMod j $ fromInteger (natVal' (headDim# r)) of
-            (j', i) -> succ i :- toDim j'
+            (j', i) -> i+1 :- toDim j'
   {-# INLINE toDim #-}
   stepDim di ds@(i:-is) = case divMod (di + i - 1) $ fromInteger (natVal' (headDim# ds)) of
-                           (0  , i') -> succ i' :- is
-                           (di', i') -> succ i' :- stepDim di' is
+                           (0  , i') -> i'+1 :- is
+                           (di', i') -> i'+1 :- stepDim di' is
   {-# INLINE stepDim #-}
   diffDim ds@(i1:-is1) (i2:-is2) = i1 - i2 + fromInteger (natVal' (headDim# ds)) * diffDim is1 is2
   {-# INLINE diffDim #-}

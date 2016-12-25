@@ -39,32 +39,27 @@ import Numeric.NDArray.Family
 
 
 
-instance Dimensions ds => Show (NDArrayF ds) where
-  show x = undefined
---  show x = ewfold (f ds) "" x
---        -- ewfold :: (i -> x -> a -> a) -> a -> t -> a
-----  "{" ++ drop 2 (loop' (n -# 1#) (m -# 1#) " }")
---    where
---      ds = dim x
---      loopInner :: Dim (Take 2 ds) -> Dim (Take 2 ds) -> Float -> String -> String
---      loopInner n i x s = undefined
---      loopOuter :: Dim (Drop 2 ds) -> Dim (Drop 2 ds) -> Dim (Take 2 ds) -> Float -> String -> String
---      loopOuter Z subds x s = loopInner subds
---      f :: Dim ds -> Dim ds -> Float -> String -> String
---      f (n :- Z) (i :- Z) x s | i == 1 && n == 1 = s ++ "{ " ++ show x ++ " }"
---                              | i == 1           = s ++ "{ " ++ show x
---                              | i == n           = s ++ ", " ++ show x ++ " }"
---                              | otherwise        = s ++ ", " ++ show x
-----      f (n :- m :- Z) (i :- Z) x s | i == 1 && n == 1 = s ++ "{ " ++ show x ++ " }"
-----                                   | i == 1           = s ++ "{ " ++ show x
-----                                   | i == n           = s ++ ", " ++ show x ++ " }"
-----                                   | otherwise        = s ++ ", " ++ show x
---      f ds is x s = s ++ "\n" ++ show is ++ "/"  ++ show ds ++ ": " ++ show x
-----      loop' i j acc | isTrue# (i ==# -1#) = acc
-----                    | isTrue# (j ==# -1#) = loop' (i -# 1#) (m -# 1#) ('\n':acc)
-----                    | otherwise           = loop' i (j -# 1#) (", " ++ show (F# (indexFloatArray# arr (i +# n *# j))) ++ acc)
-----      n = dimN# x
-
+instance ( (Take 2 ds ++ Drop 2 ds) ~ ds
+         , Dimensions ds
+         , Dimensions (Take 2 ds)
+         , Dimensions (Drop 2 ds)
+         ) => Show (NDArrayF ds) where
+  show x = drop 1 $ foldr loopOuter "" [minBound..maxBound]
+    where
+      loopInner :: Dim (Drop 2 ds) -> Dim (Take 2 ds) -> String
+      loopInner _ Z = "{}"
+      loopInner ods (n:-Z) =  ('{' :) . drop 1 $
+                                  foldr (\i s -> ", " ++ show (x ! i) ++ s) " }"
+                                         [1 :- ods .. n :- ods]
+      loopInner ods (n:-m:-_) = ('{' :) . drop 2 $
+                            foldr (\i ss -> '\n':
+                                    foldr (\j s ->
+                                             ", " ++ show (x ! (i :- j :- ods)) ++ s
+                                          ) ss [1..m]
+                                  ) " }" [1..n]
+      loopOuter :: Dim (Drop 2 ds) -> String -> String
+      loopOuter Z s = "\n" ++ loopInner Z maxBound ++ s
+      loopOuter ds s ="\n" ++ show ds ++ ":\n" ++ loopInner ds maxBound ++ s
 
 
 instance Dimensions ds => Eq (NDArrayF ds) where
@@ -211,6 +206,8 @@ instance FloatBytes (NDArrayF ds) where
 
 
 instance Dimensions ds => ElementWise (Dim ds) Float (NDArrayF ds) where
+  (!) (NDArrayF# arr) i = case fromEnum i of I# j -> F# (indexFloatArray# arr j)
+  {-# INLINE (!) #-}
   ewmap f x@(NDArrayF# arr) = case runRW#
      (\s0 -> case newByteArray# bs s0 of
        (# s1, marr #) -> case newMutVar# 0 s1 of

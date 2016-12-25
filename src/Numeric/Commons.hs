@@ -46,6 +46,8 @@ import Foreign.Storable
 --   x is an element
 --   t is a container type
 class ElementWise i x t | t -> x i where
+  -- | Index a container
+  (!)   :: t -> i -> x
   -- | map all elements with index
   ewmap :: (i -> x -> x) -> t -> t
   -- | generate data from elements
@@ -135,12 +137,18 @@ instance FloatBytes Float where
   {-# INLINE ixF #-}
 
 instance ElementWise Int Float Float where
+  (!) x _ = x
+  {-# INLINE (!) #-}
   ewmap f x = f 1 x
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
   ewfold f x0 x = f 1 x x0
   {-# INLINE ewfold #-}
+  elementWise = id
+  {-# INLINE elementWise #-}
+  indexWise f = f 1
+  {-# INLINE indexWise #-}
 
 instance PrimBytes Double where
   toBytes v@(D# x) = case runRW#
@@ -161,12 +169,18 @@ instance DoubleBytes Double where
   {-# INLINE ixD #-}
 
 instance ElementWise Int Double Double where
+  (!) x _ = x
+  {-# INLINE (!) #-}
   ewmap f x = f 1 x
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
   ewfold f x0 x = f 1 x x0
   {-# INLINE ewfold #-}
+  elementWise = id
+  {-# INLINE elementWise #-}
+  indexWise f = f 1
+  {-# INLINE indexWise #-}
 
 instance PrimBytes Int where
   toBytes v@(I# x) = case runRW#
@@ -183,12 +197,18 @@ instance PrimBytes Int where
   {-# INLINE byteAlign #-}
 
 instance ElementWise Int Int Int where
+  (!) x _ = x
+  {-# INLINE (!) #-}
   ewmap f x = f 1 x
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
   ewfold f x0 x = f 1 x x0
   {-# INLINE ewfold #-}
+  elementWise = id
+  {-# INLINE elementWise #-}
+  indexWise f = f 1
+  {-# INLINE indexWise #-}
 
 instance IntBytes Int where
   ixI _ (I# x) = x
@@ -213,12 +233,18 @@ instance IntBytes Int8 where
   {-# INLINE ixI #-}
 
 instance ElementWise Int Int8 Int8 where
+  (!) x _ = x
+  {-# INLINE (!) #-}
   ewmap f x = f 1 x
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
   ewfold f x0 x = f 1 x x0
   {-# INLINE ewfold #-}
+  elementWise = id
+  {-# INLINE elementWise #-}
+  indexWise f = f 1
+  {-# INLINE indexWise #-}
 
 instance PrimBytes Int16 where
   toBytes v@(I16# x) = case runRW#
@@ -239,12 +265,18 @@ instance IntBytes Int16 where
   {-# INLINE ixI #-}
 
 instance ElementWise Int Int16 Int16 where
+  (!) x _ = x
+  {-# INLINE (!) #-}
   ewmap f x = f 1 x
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
   ewfold f x0 x = f 1 x x0
   {-# INLINE ewfold #-}
+  elementWise = id
+  {-# INLINE elementWise #-}
+  indexWise f = f 1
+  {-# INLINE indexWise #-}
 
 instance PrimBytes Int32 where
   toBytes v@(I32# x) = case runRW#
@@ -265,12 +297,18 @@ instance IntBytes Int32 where
   {-# INLINE ixI #-}
 
 instance ElementWise Int Int32 Int32 where
+  (!) x _ = x
+  {-# INLINE (!) #-}
   ewmap f x = f 1 x
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
   ewfold f x0 x = f 1 x x0
   {-# INLINE ewfold #-}
+  elementWise = id
+  {-# INLINE elementWise #-}
+  indexWise f = f 1
+  {-# INLINE indexWise #-}
 
 instance PrimBytes Int64 where
   toBytes v@(I64# x) = case runRW#
@@ -291,12 +329,18 @@ instance IntBytes Int64 where
   {-# INLINE ixI #-}
 
 instance ElementWise Int Int64 Int64 where
+  (!) x _ = x
+  {-# INLINE (!) #-}
   ewmap f x = f 1 x
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
   ewfold f x0 x = f 1 x x0
   {-# INLINE ewfold #-}
+  elementWise = id
+  {-# INLINE elementWise #-}
+  indexWise f = f 1
+  {-# INLINE indexWise #-}
 
 instance PrimBytes Word where
   toBytes v@(W# x) = case runRW#
@@ -317,12 +361,18 @@ instance WordBytes Word where
   {-# INLINE ixW #-}
 
 instance ElementWise Int Word Word where
+  (!) x _ = x
+  {-# INLINE (!) #-}
   ewmap f x = f 1 x
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
   ewfold f x0 x = f 1 x x0
   {-# INLINE ewfold #-}
+  elementWise = id
+  {-# INLINE elementWise #-}
+  indexWise f = f 1
+  {-# INLINE indexWise #-}
 
 instance PrimBytes Word8 where
   toBytes v@(W8# x) = case runRW#
@@ -343,12 +393,18 @@ instance WordBytes Word8 where
   {-# INLINE ixW #-}
 
 instance ElementWise Int Word8 Word8 where
+  (!) x _ = x
+  {-# INLINE (!) #-}
   ewmap f x = f 1 x
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
   ewfold f x0 x = f 1 x x0
   {-# INLINE ewfold #-}
+  elementWise = id
+  {-# INLINE elementWise #-}
+  indexWise f = f 1
+  {-# INLINE indexWise #-}
 
 instance PrimBytes Word16 where
   toBytes v@(W16# x) = case runRW#
@@ -369,12 +425,18 @@ instance WordBytes Word16 where
   {-# INLINE ixW #-}
 
 instance ElementWise Int Word16 Word16 where
+  (!) x _ = x
+  {-# INLINE (!) #-}
   ewmap f x = f 1 x
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
   ewfold f x0 x = f 1 x x0
   {-# INLINE ewfold #-}
+  elementWise = id
+  {-# INLINE elementWise #-}
+  indexWise f = f 1
+  {-# INLINE indexWise #-}
 
 instance PrimBytes Word32 where
   toBytes v@(W32# x) = case runRW#
@@ -395,12 +457,18 @@ instance WordBytes Word32 where
   {-# INLINE ixW #-}
 
 instance ElementWise Int Word32 Word32 where
+  (!) x _ = x
+  {-# INLINE (!) #-}
   ewmap f x = f 1 x
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
   ewfold f x0 x = f 1 x x0
   {-# INLINE ewfold #-}
+  elementWise = id
+  {-# INLINE elementWise #-}
+  indexWise f = f 1
+  {-# INLINE indexWise #-}
 
 instance PrimBytes Word64 where
   toBytes v@(W64# x) = case runRW#
@@ -421,12 +489,18 @@ instance WordBytes Word64 where
   {-# INLINE ixW #-}
 
 instance ElementWise Int Word64 Word64 where
+  (!) x _ = x
+  {-# INLINE (!) #-}
   ewmap f x = f 1 x
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
   ewfold f x0 x = f 1 x x0
   {-# INLINE ewfold #-}
+  elementWise = id
+  {-# INLINE elementWise #-}
+  indexWise f = f 1
+  {-# INLINE indexWise #-}
 
 
 
