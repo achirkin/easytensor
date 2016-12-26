@@ -2,9 +2,9 @@
 {-# LANGUAGE DataKinds, GADTs #-}
 module Main where
 
-import Data.Proxy
+--import Data.Proxy
 import GHC.Exts
-import Numeric.Tensor (Dim(..))
+--import Numeric.Tensor (Dim(..))
 import qualified Numeric.Tensor as T
 import Numeric.Commons
 -- import Numeric.Vector ((<:>))
@@ -199,9 +199,9 @@ main = do
     y2 = m32 %* x2
     m33 = m32 <:> 17
     v3 = m33 %* x3
-    dim1 = 2 :- 3 :- 4 :- 7 :- 2 :- Z :: Dim '[4,4,4,10,3]
-    dim2u = 1 :- 3 :- 1 :- Z :: Dim '[2,3,2]
-    dim2 = 2 :- 2 :- 1 :- Z :: Dim '[2,3,2]
+--    dim1 = 2 :- 3 :- 4 :- 7 :- 2 :- Z :: Dim '[4,4,4,10,3]
+--    dim2u = 1 :- 3 :- 1 :- Z :: Dim '[2,3,2]
+--    dim2 = 2 :- 2 :- 1 :- Z :: Dim '[2,3,2]
     arr3D = ewmap (\i f -> f + realToFrac (fromEnum i) )
             3 :: T.NDArray Float '[4,3,3]
 

@@ -204,6 +204,8 @@ instance FloatBytes (NDArrayF ds) where
   {-# INLINE ixF #-}
 
 
+--instance Dimensions ds => ElementWise (Dim ds) (NDArrayF '[d]) (NDArrayF ds) where
+
 
 instance Dimensions ds => ElementWise (Dim ds) Float (NDArrayF ds) where
   (!) (NDArrayF# arr) i = case fromEnum i of I# j -> F# (indexFloatArray# arr j)
