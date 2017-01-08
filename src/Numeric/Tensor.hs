@@ -78,5 +78,3 @@ deriving instance Integral (TT t (ns ++ Reverse ms)) => Integral (Tensor t ns ms
 deriving instance Real (TT t (ns ++ Reverse ms)) => Real (Tensor t ns ms)
 deriving instance RealFrac (TT t (ns ++ Reverse ms)) => RealFrac (Tensor t ns ms)
 deriving instance RealFloat (TT t (ns ++ Reverse ms)) => RealFloat (Tensor t ns ms)
-
-

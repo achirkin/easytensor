@@ -1,12 +1,15 @@
-{-# LANGUAGE KindSignatures, GADTs #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE CPP                   #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE KindSignatures        #-}
+{-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MagicHash, UnboxedTuples, DataKinds #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UnboxedTuples         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -----------------------------------------------------------------------------
 -- |
@@ -25,17 +28,16 @@ module Numeric.NDArray.Base.Float  where
 #include "MachDeps.h"
 #include "HsBaseConfig.h"
 
-import GHC.Base (runRW#)
-import GHC.Prim
-import GHC.Types
---import GHC.TypeLits
+import           GHC.Base               (runRW#)
+import           GHC.Prim
+-- import           GHC.TypeLits
+import           GHC.Types
 
 
 
-import Numeric.Dimensions
-import Numeric.Commons
---import Numeric.NDArray.Class
-import Numeric.NDArray.Family
+import           Numeric.Commons
+import           Numeric.Dimensions
+import           Numeric.NDArray.Family
 
 
 
@@ -52,13 +54,13 @@ instance ( (Take 2 ds ++ Drop 2 ds) ~ ds
                                   foldr (\i s -> ", " ++ show (x ! i) ++ s) " }"
                                          [1 :- ods .. n :- ods]
       loopInner ods (n:-m:-_) = ('{' :) . drop 2 $
-                            foldr (\i ss -> '\n':
-                                    foldr (\j s ->
-                                             ", " ++ show (x ! (i :- j :- ods)) ++ s
-                                          ) ss [1..m]
-                                  ) " }" [1..n]
+                      foldr (\i ss -> '\n':
+                              foldr (\j s ->
+                                       ", " ++ show (x ! (i :- j :- ods)) ++ s
+                                    ) ss [1..m]
+                            ) " }" [1..n]
       loopOuter :: Dim (Drop 2 ds) -> String -> String
-      loopOuter Z s = "\n" ++ loopInner Z maxBound ++ s
+      loopOuter Z s  = "\n" ++ loopInner Z maxBound ++ s
       loopOuter ds s ="\n" ++ show ds ++ ":\n" ++ loopInner ds maxBound ++ s
 
 
@@ -71,7 +73,8 @@ instance Dimensions ds => Eq (NDArrayF ds) where
 
 
 
--- | Implement partial ordering for `>`, `<`, `>=`, `<=` and lexicographical ordering for `compare`
+-- | Implement partial ordering for `>`, `<`, `>=`, `<=`
+--     and lexicographical ordering for `compare`
 instance Dimensions ds => Ord (NDArrayF ds) where
   a > b = accumV2 (\x y r -> r && isTrue# (x `gtFloat#` y)) a b True
   {-# INLINE (>) #-}
@@ -112,7 +115,12 @@ instance Dimensions ds => Num (NDArrayF ds) where
   {-# INLINE negate #-}
   abs = mapV (\x -> if isTrue# (x `geFloat#` 0.0#) then x else negateFloat# x)
   {-# INLINE abs #-}
-  signum = mapV (\x -> if isTrue# (x `gtFloat#` 0.0#) then 1.0# else if isTrue# (x `ltFloat#` 0.0#) then -1.0# else 0.0#)
+  signum = mapV (\x -> if isTrue# (x `gtFloat#` 0.0#)
+                      then 1.0#
+                      else if isTrue# (x `ltFloat#` 0.0#)
+                           then -1.0#
+                           else 0.0#
+                )
   {-# INLINE signum #-}
   fromInteger = broadcastArrayF undefined . fromInteger
   {-# INLINE fromInteger #-}
@@ -161,13 +169,17 @@ instance Dimensions ds => Floating (NDArrayF ds) where
 
   logBase = zipV (\x y -> logFloat# y `divideFloat#` logFloat# x)
   {-# INLINE logBase #-}
-  asinh = mapV (\x -> logFloat# (x `plusFloat#` sqrtFloat# (1.0# `plusFloat#` timesFloat# x x)))
+  asinh = mapV (\x -> logFloat# (x `plusFloat#`
+                                sqrtFloat# (1.0# `plusFloat#` timesFloat# x x)))
   {-# INLINE asinh #-}
   acosh = mapV (\x ->  case plusFloat# x 1.0# of
-                 y -> logFloat# ( x `plusFloat#` timesFloat# y (sqrtFloat# (minusFloat# x 1.0# `divideFloat#` y)))
+                 y -> logFloat# ( x `plusFloat#` timesFloat# y
+                           (sqrtFloat# (minusFloat# x 1.0# `divideFloat#` y))
+                        )
                )
   {-# INLINE acosh #-}
-  atanh = mapV (\x -> 0.5# `timesFloat#` logFloat# (plusFloat# 1.0# x `divideFloat#` minusFloat# 1.0# x))
+  atanh = mapV (\x -> 0.5# `timesFloat#`
+                logFloat# (plusFloat# 1.0# x `divideFloat#` minusFloat# 1.0# x))
   {-# INLINE atanh #-}
 
 
@@ -204,7 +216,88 @@ instance FloatBytes (NDArrayF ds) where
   {-# INLINE ixF #-}
 
 
---instance Dimensions ds => ElementWise (Dim ds) (NDArrayF '[d]) (NDArrayF ds) where
+--instance Dimensions ds
+--       => ElementWise (Dim ds) (NDArrayF '[d]) (NDArrayF ds) where
+
+
+
+
+-- xselect = Get 1 :& 2 :& 4
+
+-- indexWise :: forall f . Applicative f => (i -> x -> f x) -> t -> f t
+-- ixs :: forall f (d::Nat) (ds::[Nat]) . Applicative f
+--     => Slice d
+--     -> (Int -> NDArrayF ds -> f (NDArrayF ds))
+--     -> NDArrayF (AddDim d ds) -> NDArrayF (AddDim d ds)
+-- ixs S _ a      = a
+-- ixs (k:&S) f a = undefined
+
+-- (Int -> NDArrayF ds -> f (NDArrayF ds))
+-- -> NDArrayF (AddDim d ds) -> NDArrayF (AddDim d ds)
+
+-- (Int -> NDArrayF (AddDim d1 ds) -> f (NDArrayF (AddDim d1 ds)))
+-- -> NDArrayF (AddDim d (AddDim d1 ds)) -> NDArrayF (AddDim d (AddDim d1 ds))
+
+-- slice :: (Dim '[] -> NDArrayF as -> f (NDArrayF bs))
+--       -> NDArrayF as -> f (NDArrayF bs)
+-- slice f = f Z
+
+-- (.!) :: forall f (n::Nat) (m::Nat) (as :: [Nat]) (ns :: [Nat]) (ms :: [Nat])
+--       . Applicative f
+--      => Slice n m
+--         -- ^ new index to the left
+--      -> ( (Dim ms -> NDArrayF (as ++ '[n]) -> f (NDArrayF (as ++ '[n])))
+--           -> NDArrayF (as ++ n ': ns) -> f (NDArrayF (as ++ m :< ms))
+--         )
+--         -- ^ original traversal
+--      -> ( Dim (m :< ms) -> NDArrayF as -> f (NDArrayF as) )
+--      -> NDArrayF (as ++ n ': ns) -> f (NDArrayF (as ++ m :< ms))
+--         -- ^ new traversal
+-- (.!) _ _ = undefined
+
+
+
+-- (.!) :: forall (f :: * -> *) (oldD::Nat) (newD::Nat)
+--                              (newNs :: [Nat])
+--                              (ms :: [Nat]) (ds :: [Nat]) (k :: Nat)
+--       . ( Applicative f
+--         , oldD ~ Head (Drop k ds))
+--      => Slice oldD newD
+--         -- ^ new index to the left
+--      -> ( ( Dim ms -> NDArrayF (Take (k+1) ds) -> f (NDArrayF newNs)
+--           )
+--           -> NDArrayF ds -> f (NDArrayF (newNs ++ newD :< ms))
+--         )
+--        -- ^ original traversal
+--     -> ( Dim (newD ': ms) -> NDArrayF (Take k ds) -> f (NDArrayF newNs)
+--        )
+--     -> NDArrayF ds -> f (NDArrayF (newNs ++ newD :< ms))
+--        -- ^ new traversal
+-- (.!) _ _ _ _ = undefined
+
+
+-- ff :: forall f (n::Nat) (ds::[Nat])
+--     . (Applicative f, 2 <= n)
+--    => (Dim '[n] -> NDArrayF ds -> f (NDArrayF ds))
+--          -> NDArrayF (ds ++ '[n]) -> f (NDArrayF (ds ++ '[n]))
+-- ff = (2 :& 3 :& S) .! slice
+
+--
+-- f1
+-- (Int -> NDArrayF ds -> NDArrayF ds)
+-- -> NDArrayF (DimAdd ds d1) -> NDArrayF (DimAdd ds d1)
+--
+-- f12
+-- (Int -> NDArrayF (DimAdd ds d1) -> NDArrayF (DimAdd ds d1))
+-- -> NDArrayF (DimAdd (DimAdd ds d1) d2) -> NDArrayF (DimAdd (DimAdd ds d1) d2)
+
+-- .& Slice a -> (((Dim bs -> NDArrayF (as:a) -> f (NDArrayF (as:a)))
+--            -> NDArrayF (as:a++bs) -> f (NDArrayF (as:a++bs))))
+--    -> ((Dim bs -> NDArrayF as -> f (NDArrayF as))
+--            -> NDArrayF (as:a++bs) -> f (NDArrayF (as:a++bs)))
+--
+-- overIxs :: (Dim '[] -> NDArrayF ds -> f (NDArrayF ds))
+--            -> NDArrayF ds -> f (NDArrayF ds)
 
 
 instance Dimensions ds => ElementWise (Dim ds) Float (NDArrayF ds) where
@@ -214,11 +307,12 @@ instance Dimensions ds => ElementWise (Dim ds) Float (NDArrayF ds) where
      (\s0 -> case newByteArray# bs s0 of
        (# s1, marr #) -> case newMutVar# 0 s1 of
          (# s2, mi #) -> case loopS (dim x)
-               (\ix s' -> case readMutVar# mi s' of
-                           (# s'', I# i #) -> case f ix (F# (indexFloatArray# arr i)) of
-                              F# r -> writeMutVar# mi (I# (i +# 1#)) (writeFloatArray# marr i r s'')
-               ) s2 of
-             s3 -> unsafeFreezeByteArray# marr s3
+             (\ix s' -> case readMutVar# mi s' of
+               (# s'', I# i #) -> case f ix (F# (indexFloatArray# arr i)) of
+                  F# r -> writeMutVar# mi (I# (i +# 1#))
+                                          (writeFloatArray# marr i r s'')
+             ) s2 of
+           s3 -> unsafeFreezeByteArray# marr s3
      ) of (# _, r #) -> NDArrayF# r
     where
       n = totalDim# x
@@ -228,11 +322,12 @@ instance Dimensions ds => ElementWise (Dim ds) Float (NDArrayF ds) where
      (\s0 -> case newByteArray# bs s0 of
        (# s1, marr #) -> case newMutVar# 0 s1 of
          (# s2, mi #) -> case loopS (dim x)
-               (\ix s' -> case readMutVar# mi s' of
-                           (# s'', I# i #) -> case f ix of
-                              F# r -> writeMutVar# mi (I# (i +# 1#)) (writeFloatArray# marr i r s'')
-               ) s2 of
-             s3 -> unsafeFreezeByteArray# marr s3
+             (\ix s' -> case readMutVar# mi s' of
+               (# s'', I# i #) -> case f ix of
+                  F# r -> writeMutVar# mi (I# (i +# 1#))
+                                          (writeFloatArray# marr i r s'')
+             ) s2 of
+           s3 -> unsafeFreezeByteArray# marr s3
      ) of (# _, r #) -> NDArrayF# r
     where
       x = undefined :: NDArrayF ds
@@ -243,15 +338,21 @@ instance Dimensions ds => ElementWise (Dim ds) Float (NDArrayF ds) where
      (\s0 -> case newMutVar# (0,v0) s0 of
          (# s1, miv #) -> case loopS (dim x)
                (\ix s' -> case readMutVar# miv s' of
-                           (# s'', (I# i, v) #) -> writeMutVar# miv (I# (i +# 1#), f ix (F# (indexFloatArray# arr i)) v) s''
+                 (# s'', (I# i, v) #) -> writeMutVar# miv
+                        ( I# (i +# 1#)
+                        , f ix (F# (indexFloatArray# arr i)) v
+                        ) s''
                ) s1 of
             s2 -> readMutVar# miv s2
      ) of (# _, (_, r) #) -> r
   {-# INLINE ewfold #-}
-  indexWise f x@(NDArrayF# arr) = case loopA (dim x) g (AU# 0# (pure (\_ s -> s))) of
+  indexWise f x@(NDArrayF# arr)
+      = case loopA (dim x) g (AU# 0# (pure (\_ s -> s))) of
         AU# _ f' -> wr <$> f'
     where
-      g ds (AU# i f') = AU# ( i +# 1# ) $ (\(F# z) u a s -> writeFloatArray# a i z (u a s)) <$> f ds (F# (indexFloatArray# arr i)) <*> f'
+      g ds (AU# i f') = AU# ( i +# 1# )
+                          $ (\(F# z) u a s -> writeFloatArray# a i z (u a s))
+                           <$> f ds (F# (indexFloatArray# arr i)) <*> f'
       n = totalDim# x
       bs = n *# SIZEOF_HSFLOAT#
       wr f' = case runRW#
@@ -261,7 +362,8 @@ instance Dimensions ds => ElementWise (Dim ds) Float (NDArrayF ds) where
                    ) of (# _, r #) -> NDArrayF# r
   elementWise f x@(NDArrayF# arr) = wr <$> loop1a# n g (pure (\_ s -> s))
     where
-      g i f' = (\(F# z) u a s -> writeFloatArray# a i z (u a s)) <$> f (F# (indexFloatArray# arr i)) <*> f'
+      g i f' = (\(F# z) u a s -> writeFloatArray# a i z (u a s))
+                      <$> f (F# (indexFloatArray# arr i)) <*> f'
       n = totalDim# x
       bs = n *# SIZEOF_HSFLOAT#
       wr f' = case runRW#
@@ -270,7 +372,8 @@ instance Dimensions ds => ElementWise (Dim ds) Float (NDArrayF ds) where
                                s2 -> unsafeFreezeByteArray# marr s2
                    ) of (# _, r #) -> NDArrayF# r
 
-data ArrayUpdate# (f :: * -> *) s  = AU# Int# !(f (MutableByteArray# s -> State# s -> State# s))
+data ArrayUpdate# (f :: * -> *) s
+  = AU# Int# !(f (MutableByteArray# s -> State# s -> State# s))
 
 
 
@@ -280,7 +383,9 @@ data ArrayUpdate# (f :: * -> *) s  = AU# Int# !(f (MutableByteArray# s -> State#
 
 
 
-zipV :: Dimensions ds => (Float# -> Float# -> Float#) -> NDArrayF ds -> NDArrayF ds -> NDArrayF ds
+zipV :: Dimensions ds
+     => (Float# -> Float# -> Float#)
+     -> NDArrayF ds -> NDArrayF ds -> NDArrayF ds
 zipV f x@(NDArrayF# a) (NDArrayF# b) = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop1# n
@@ -307,11 +412,14 @@ mapV f x@(NDArrayF# a) = case runRW#
     bs = n *# SIZEOF_HSFLOAT#
 
 
-accumV2 :: Dimensions ds => (Float# -> Float# -> a -> a) -> NDArrayF ds -> NDArrayF ds -> a -> a
+accumV2 :: Dimensions ds
+        => (Float# -> Float# -> a -> a)
+        -> NDArrayF ds -> NDArrayF ds -> a -> a
 accumV2 f x@(NDArrayF# a) (NDArrayF# b) = loop' 0#
   where
     loop' i acc | isTrue# (i ==# n) = acc
-                | otherwise = loop' (i +# 1#) (f (indexFloatArray# a i) (indexFloatArray# b i) acc)
+                | otherwise = loop' (i +# 1#) (f (indexFloatArray# a i)
+                                                 (indexFloatArray# b i) acc)
     n = totalDim# x
 
 
