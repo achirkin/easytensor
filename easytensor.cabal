@@ -27,7 +27,7 @@ flag unsafeindices
     default: False
 
 library
-    
+
     if flag(unsafeindices)
         cpp-options: -DUNSAFE_INDICES
     exposed-modules:
@@ -48,6 +48,8 @@ library
         Numeric.NDArray.Base.Float
         Numeric.NDArray.Class
         Numeric.NDArray.Family
+        Numeric.Array.Base.ArrayF
+        Numeric.Array.Family
         Numeric.Vector
         Numeric.Vector.Base.FloatX2
         Numeric.Vector.Base.FloatXN

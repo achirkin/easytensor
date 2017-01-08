@@ -1,6 +1,7 @@
-{-# LANGUAGE MagicHash, DataKinds #-}
+{-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE MagicHash        #-}
+{-# LANGUAGE TypeOperators    #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Matrix
@@ -32,17 +33,16 @@ module Numeric.Matrix
 --import GHC.TypeLits
 --
 --import Numeric.Commons
-import Numeric.Matrix.Class ( MatrixCalculus(..)
-                            , SquareMatrixCalculus(..)
-                            , Matrix2x2(..)
-                            , MatrixProduct (..)
-                            , MatrixInverse (..)
-                            )
-import Numeric.Matrix.Family (Matrix)
+import           Numeric.Matrix.Class         (Matrix2x2 (..),
+                                               MatrixCalculus (..),
+                                               MatrixInverse (..),
+                                               MatrixProduct (..),
+                                               SquareMatrixCalculus (..))
+import           Numeric.Matrix.Family        (Matrix)
 
 
 -- Import instances
-import Numeric.Matrix.Base.FloatXNM ()
+import           Numeric.Matrix.Base.FloatXNM ()
 
 
 -- Type abbreviations

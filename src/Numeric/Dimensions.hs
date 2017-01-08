@@ -12,8 +12,9 @@
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
--- Provides a data type Dim that enumerates through multiple dimensions (type-checked).
--- Lower indices go first, i.e. assumed enumeration is i = i1 + i2*n1 + i3*n1*n2 + ... + ik*n1*n2*...*n(k-1).
+-- Provides a data type Dim that enumerates through multiple dimensions.
+-- Lower indices go first, i.e. assumed enumeration
+--          is i = i1 + i2*n1 + i3*n1*n2 + ... + ik*n1*n2*...*n(k-1).
 -- This is also to encourage column-first matrix enumeration and array layout.
 --
 -----------------------------------------------------------------------------
@@ -23,6 +24,8 @@ module Numeric.Dimensions
   , Dim# (..), order#
   , Dimensions (..)
   , type (++), Reverse, Take, Drop, Length, IsPrefixOf, IsSuffixOf
+  , type (:<), type (>:), Head, Tail
+  , Slice (..), XNat, XN, N
   ) where
 
 
@@ -38,12 +41,37 @@ import Data.Type.Bool
 import Unsafe.Coerce
 
 -- | Type-level checked dimensionality
-data Dim (ds :: [Nat]) where
+data Dim (ds :: [k]) where
    -- | Zero-rank dimensionality - scalar
    Z :: Dim '[]
    -- | List-like concatenation of dimensionality
-   (:-) :: !Int -> !(Dim ds) -> Dim (n':ds)
+   (:-) :: !Int -> !(Dim ds) -> Dim (d ': ds)
 infixr 5 :-
+
+-- | Type-level checked dimensionality (unboxed)
+data Dim# (ds :: [k]) where
+   -- | Zero-rank dimensionality - scalar
+   Z# :: Dim# '[]
+   -- | List-like concatenation of dimensionality
+   (:#) :: Int# -> Dim# ds -> Dim# (n':ds)
+infixr 5 :#
+
+-- data SomeDim (ds :: [XNat])
+--   = SomeDim
+--   { dimVals ::
+--   }
+
+
+data Slice (n::Nat) (m::Nat) where
+   Get   :: !Int -> Slice n 1
+   (:&)  :: !(Slice n m) -> !Int -> Slice n (m + 1)
+   Every :: Slice n n
+infixl 9 :&
+
+data XNat = XN | N Nat
+type XN = 'XN
+type N (n::Nat) = 'N n
+
 
 instance Show (Dim ds) where
   show Z = "Dim Ø"
@@ -101,16 +129,9 @@ instance Dimensions ds => Enum (Dim ds) where
                           else diffDim y x `div` dn
   {-# INLINE enumFromThenTo #-}
 
--- | Type-level checked dimensionality (unboxed)
-data Dim# (ds :: [Nat]) where
-   -- | Zero-rank dimensionality - scalar
-   Z# :: Dim# '[]
-   -- | List-like concatenation of dimensionality
-   (:#) :: Int# -> Dim# ds -> Dim# (n':ds)
-infixr 5 :#
 
 -- | Support for Dim GADT
-class Dimensions (ds :: [Nat]) where
+class Dimensions (ds :: [k]) where
   -- | Dimensionality of a second rank type
   dim :: t ds -> Dim ds
   -- | Dimensionality of a second rank type (unboxed)
@@ -118,11 +139,11 @@ class Dimensions (ds :: [Nat]) where
   -- | Total number of elements - product of all dimension sizes (unboxed)
   totalDim# :: t ds -> Int#
   -- | Run a primitive loop over all dimensions (0..n-1)
-  loopS#      :: Dim# ds -> (Dim# ds -> State# s -> State# s) -> State# s -> State# s
+  loopS# :: Dim# ds -> (Dim# ds -> State# s -> State# s) -> State# s -> State# s
   -- | Run a primitive loop over all dimensions (1..n)
-  loopS       :: Dim  ds -> (Dim  ds -> State# s -> State# s) -> State# s -> State# s
+  loopS  :: Dim  ds -> (Dim  ds -> State# s -> State# s) -> State# s -> State# s
   -- | Run a loop over all dimensions keeping a boxed accumulator (1..n)
-  loopA       :: Dim  ds -> (Dim  ds -> a -> a) -> a -> a
+  loopA  :: Dim  ds -> (Dim  ds -> a -> a) -> a -> a
   -- | Run a loop in a reverse order n..1
   loopReverse :: Dim ds -> (Dim  ds -> a -> a) -> a -> a
   -- | Get index offset: i1 + i2*n1 + i3*n1*n2 + ...
@@ -149,7 +170,7 @@ class Dimensions (ds :: [Nat]) where
   toDim     :: Int -> Dim ds
   -- | For Enum -- step dimension index by an Integer offset
   stepDim   :: Int -> Dim ds -> Dim ds
-  -- | For Enum -- difference in offsets between two Dim values (a `diffDim` b) = a - b
+  -- | For Enum -- difference in offsets between two Dims (a `diffDim` b) = a - b
   diffDim   :: Dim ds -> Dim ds -> Int
 
 
@@ -286,8 +307,9 @@ instance (KnownNat d, Dimensions ds) => Dimensions (d ': ds) where
                          n -> if i == n then 1 :- succDim is
                                         else i+1 :- is
   {-# INLINE succDim #-}
-  predDim ds@(i:-is) = if i == 1 then fromInteger (natVal' (headDim# ds)) :- predDim is
-                                 else i-1 :- is
+  predDim ds@(i:-is) = if i == 1
+                       then fromInteger (natVal' (headDim# ds)) :- predDim is
+                       else i-1 :- is
   {-# INLINE predDim #-}
   fromDim ds@(i:-is) = i-1 + fromInteger (natVal' (headDim# ds)) * fromDim is
   {-# INLINE fromDim #-}
@@ -296,20 +318,22 @@ instance (KnownNat d, Dimensions ds) => Dimensions (d ': ds) where
       r = case divMod j $ fromInteger (natVal' (headDim# r)) of
             (j', i) -> i+1 :- toDim j'
   {-# INLINE toDim #-}
-  stepDim di ds@(i:-is) = case divMod (di + i - 1) $ fromInteger (natVal' (headDim# ds)) of
-                           (0  , i') -> i'+1 :- is
-                           (di', i') -> i'+1 :- stepDim di' is
+  stepDim di ds@(i:-is)
+        = case divMod (di + i - 1) $ fromInteger (natVal' (headDim# ds)) of
+           (0  , i') -> i'+1 :- is
+           (di', i') -> i'+1 :- stepDim di' is
   {-# INLINE stepDim #-}
-  diffDim ds@(i1:-is1) (i2:-is2) = i1 - i2 + fromInteger (natVal' (headDim# ds)) * diffDim is1 is2
+  diffDim ds@(i1:-is1) (i2:-is2) = i1 - i2
+        + fromInteger (natVal' (headDim# ds)) * diffDim is1 is2
   {-# INLINE diffDim #-}
 
 
 
-headDim# :: t (d ': ds :: [Nat]) -> Proxy# d
+headDim# :: t (d ': ds :: [k]) -> Proxy# d
 headDim# _ = proxy#
 {-# INLINE headDim# #-}
 
-tailDim# :: t (d ': ds :: [Nat]) -> Proxy ds
+tailDim# :: t (d ': ds :: [k]) -> Proxy ds
 tailDim# _ = Proxy
 {-# INLINE tailDim# #-}
 
@@ -349,13 +373,32 @@ loopReverse1 n f = loop' n
 
 
 
-type family (as :: [k]) ++ (bs :: [k]) = (rs :: [k]) where
+type family (as :: [k]) ++ (bs :: [k]):: [k] where
   '[]        ++ bs = bs
   (a ': as)  ++ bs = a ': (as ++ bs)
 infixr 5 ++
 
 
-type family Reverse (as :: [k]) ::[k] where -- = (rs :: [k]) | rs -> as
+type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
+  0 :< ns = ns
+  1 :< ns = ns
+  n :< ns = n ': ns
+infixr 6 :<
+
+type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
+  ns        >: 0 = ns
+  ns        >: 1 = ns
+  '[]       >: n = '[n]
+  (a ': as) >: n = a ': as >: n
+infixl 6 >:
+
+type family Head (xs :: [k]) :: k where
+  Head (x ': xs) = x
+
+type family Tail (xs :: [k]) :: [k] where
+  Tail (x ': xs) = xs
+
+type family Reverse (as :: [k]) :: [k] where -- = (rs :: [k]) | rs -> as
   Reverse  '[]        = '[]
   Reverse (a ': as) = Reverse as ++ '[a]
 
@@ -383,4 +426,3 @@ type family IsSuffixOf (as :: [k]) (bs :: [k]) :: Bool where
   IsSuffixOf as bs = If (CmpNat (Length as) (Length bs) == 'GT)
                          'False
                          (as == Drop (Length bs - Length as) bs)
-

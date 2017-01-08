@@ -204,4 +204,3 @@ main = do
 --    dim2 = 2 :- 2 :- 1 :- Z :: Dim '[2,3,2]
     arr3D = ewmap (\i f -> f + realToFrac (fromEnum i) )
             3 :: T.NDArray Float '[4,3,3]
-
