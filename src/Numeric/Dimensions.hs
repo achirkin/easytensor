@@ -1,5 +1,5 @@
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE GADTs, PolyKinds #-}
+{-# LANGUAGE GADTs, TypeInType #-}
 {-# LANGUAGE TypeFamilies, TypeFamilyDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses, MagicHash #-}
 {-# LANGUAGE KindSignatures, DataKinds #-}
@@ -20,17 +20,17 @@
 -----------------------------------------------------------------------------
 
 module Numeric.Dimensions
-  ( Dim (..), totalDim, order, tailDim, headDim
-  , Dim# (..), order#
+  ( Dim (..), totalDim#, order, tailDim, headDim
   , Dimensions (..)
   , type (++), Reverse, Take, Drop, Length, IsPrefixOf, IsSuffixOf
   , type (:<), type (>:), Head, Tail
-  , Slice (..), XNat, XN, N
+  , Slice (..), XNat, XN, N, xx
   ) where
 
 
 
-import GHC.TypeLits
+import GHC.TypeLits ( Nat, KnownNat, type(+), type(-), type (*), CmpNat
+                    , natVal, natVal', TypeError, ErrorMessage (..))
 import GHC.Prim
 import GHC.Types
 import GHC.Exts
@@ -46,21 +46,43 @@ data Dim (ds :: [k]) where
    Z :: Dim '[]
    -- | List-like concatenation of dimensionality
    (:-) :: !Int -> !(Dim ds) -> Dim (d ': ds)
+   -- | Unknown statically, but recorded dimensionality
+   FixedDim :: ByteArray# -> Dim (as :: [()]) -> Dim (bs :: [XNat])
 infixr 5 :-
 
--- | Type-level checked dimensionality (unboxed)
-data Dim# (ds :: [k]) where
-   -- | Zero-rank dimensionality - scalar
-   Z# :: Dim# '[]
-   -- | List-like concatenation of dimensionality
-   (:#) :: Int# -> Dim# ds -> Dim# (n':ds)
-infixr 5 :#
+-- -- | Type-level checked dimensionality (unboxed)
+-- data Dim# (ds :: [k]) where
+--    -- | Zero-rank dimensionality - scalar
+--    Z# :: Dim# '[]
+--    -- | List-like concatenation of dimensionality
+--    (:#) :: Int# -> Dim# ds -> Dim# (n':ds)
+-- infixr 5 :#
 
 -- data SomeDim (ds :: [XNat])
 --   = SomeDim
 --   { dimVals ::
 --   }
 
+-- data Dimensional a
+--   = forall ds . Dimensions ds => Dimensional
+--   { _dimVals :: Dim ds
+--   , _dimContent :: a
+--   }
+--
+-- someDimVal :: ByteArray# -> a
+--            -> Dimensional a
+-- someDimVal = undefined
+
+--   =
+-- data SomeNat    = forall n. KnownNat n    => SomeNat    (Proxy n)
+
+-- withDimensions :: forall (a :: forall k . [k] -> *) b (xds :: [XNat]) (ds :: [Nat])
+--                . a xds -> (a ds -> b) -> b
+-- withDimensions = undefined
+
+-- fixDimensions :: forall (a :: forall k . [k] -> *) b (xds :: [XNat]) (ds :: [Nat])
+--               . a xds -> Dimensional xds (a ds)
+-- fixDimensions = undefined
 
 data Slice (n::Nat) (m::Nat) where
    Get   :: !Int -> Slice n 1
@@ -80,6 +102,7 @@ instance Show (Dim ds) where
 dimToList :: Dim ds -> [Int]
 dimToList Z = []
 dimToList (x :- xs) = x : dimToList xs
+dimToList (FixedDim _ xs) = dimToList xs
 
 dimFromList :: [Int] -> Dim ds
 dimFromList [] = unsafeCoerce Z
@@ -132,14 +155,13 @@ instance Dimensions ds => Enum (Dim ds) where
 
 -- | Support for Dim GADT
 class Dimensions (ds :: [k]) where
+  type TotalDim ds :: l
+  -- | Dimensionality in type naturals
+  toNats :: Dim ds -> Dim (AllNats ds)
   -- | Dimensionality of a second rank type
   dim :: t ds -> Dim ds
-  -- | Dimensionality of a second rank type (unboxed)
-  dim# :: t ds -> Dim# ds
   -- | Total number of elements - product of all dimension sizes (unboxed)
-  totalDim# :: t ds -> Int#
-  -- | Run a primitive loop over all dimensions (0..n-1)
-  loopS# :: Dim# ds -> (Dim# ds -> State# s -> State# s) -> State# s -> State# s
+  totalDim :: t ds -> Int
   -- | Run a primitive loop over all dimensions (1..n)
   loopS  :: Dim  ds -> (Dim  ds -> State# s -> State# s) -> State# s -> State# s
   -- | Run a loop over all dimensions keeping a boxed accumulator (1..n)
@@ -148,8 +170,6 @@ class Dimensions (ds :: [k]) where
   loopReverse :: Dim ds -> (Dim  ds -> a -> a) -> a -> a
   -- | Get index offset: i1 + i2*n1 + i3*n1*n2 + ...
   ioffset   :: Dim ds -> Int
-  -- | Get index offset: i1 + i2*n1 + i3*n1*n2 + ... (unboxed)
-  ioffset#  :: Dim# ds -> Int#
   -- | Drop a number of dimensions
   dropDims  :: KnownNat n => Proxy n -> Dim ds -> Dim (Drop n ds)
   -- | Take a number of dimensions
@@ -158,8 +178,6 @@ class Dimensions (ds :: [k]) where
   dimMax    :: Dim ds
   -- | Minimum values -- ones
   dimMin    :: Dim ds
-  -- | Minimum prim values -- zeroes
-  dimZero#  :: Dim# ds
   -- | For Enum
   succDim   :: Dim ds -> Dim ds
   -- | For Enum
@@ -189,9 +207,9 @@ headDim :: t (d ': ds :: [Nat]) -> Proxy d
 headDim _ = Proxy
 
 -- | Total number of elements - product of all dimension sizes
-totalDim :: Dimensions ds => t ds -> Int
-totalDim x = I# (totalDim# x)
-{-# INLINE totalDim #-}
+totalDim# :: Dimensions ds => t ds -> Int#
+totalDim# x = case totalDim x of I# n -> n
+{-# INLINE totalDim# #-}
 
 -- | Number of dimensions
 order :: Dim ds -> Int
@@ -200,29 +218,28 @@ order (_:-xs) = 1 + order xs
 {-# INLINE order #-}
 
 -- | Number of dimensions (unboxed)
-order# :: Dim# ds -> Int#
-order# Z# = 0#
-order# (_:#xs) = 1# +# order# xs
-{-# INLINE order# #-}
+-- order# :: Dim# ds -> Int#
+-- order# Z# = 0#
+-- order# (_:#xs) = 1# +# order# xs
+-- {-# INLINE order# #-}
 
 
-instance Dimensions '[] where
+instance Dimensions ('[] :: [Nat]) where
+  type TotalDim ('[] :: [Nat]) = 1
+  toNats = id
+  {-# INLINE toNats #-}
   dim _ = Z
   {-# INLINE dim #-}
-  dim# _ = Z#
-  {-# INLINE dim# #-}
-  totalDim# _ = 1#
-  {-# INLINE totalDim# #-}
-  loopS# _ f = f Z#
-  {-# INLINE loopS# #-}
+  totalDim _ = 1
+  {-# INLINE totalDim #-}
   loopS _ f = f Z
   {-# INLINE loopS #-}
   loopA _ f = f Z
   {-# INLINE loopA #-}
   loopReverse _ f = f Z
   {-# INLINE loopReverse #-}
-  ioffset# _ = 0#
-  {-# INLINE ioffset# #-}
+  -- ioffset# _ = 0#
+  -- {-# INLINE ioffset# #-}
   ioffset _ = 0
   {-# INLINE ioffset #-}
   dropDims _ Z = Z
@@ -233,8 +250,8 @@ instance Dimensions '[] where
   {-# INLINE dimMax #-}
   dimMin = Z
   {-# INLINE dimMin #-}
-  dimZero# = Z#
-  {-# INLINE dimZero# #-}
+  -- dimZero# = Z#
+  -- {-# INLINE dimZero# #-}
   succDim = id
   {-# INLINE succDim #-}
   predDim = id
@@ -248,19 +265,15 @@ instance Dimensions '[] where
   diffDim _ _ = 0
   {-# INLINE diffDim #-}
 
-
-instance (KnownNat d, Dimensions ds) => Dimensions (d ': ds) where
+instance (KnownNat d, KnownNat (TotalDim (d ': ds)), Dimensions ds)
+          => Dimensions (d ': ds) where
+  type TotalDim (d ': ds) = d GHC.TypeLits.* TotalDim ds
+  toNats = id
+  {-# INLINE toNats #-}
   dim x = fromIntegral (natVal' (headDim# x)) :- dim (tailDim# x)
   {-# INLINE dim #-}
-  dim# x = case fromIntegral (natVal' (headDim# x)) of
-             I# n -> n :# dim# (tailDim# x)
-  {-# INLINE dim# #-}
-  totalDim# x = case fromIntegral (natVal' (headDim# x)) of
-             I# n -> n *# totalDim# (tailDim# x)
-  {-# INLINE totalDim# #-}
-  loopS# (n:#Z#) f = loop1# n (\i -> f (i:#Z#))
-  loopS# (n:#ns) f = loopS# ns (\js -> loop1# n (\i -> f (i:#js)))
-  {-# INLINE loopS# #-}
+  totalDim _ = fromIntegral $ natVal ( Proxy :: Proxy (TotalDim (d ': ds)) )
+  {-# INLINE totalDim #-}
   loopS (n:-Z) f = loop1 n (\i -> f (i:-Z))
   loopS (n:-ns) f = loopS ns (\js -> loop1 n (\i -> f (i:-js)))
   {-# INLINE loopS #-}
@@ -270,10 +283,10 @@ instance (KnownNat d, Dimensions ds) => Dimensions (d ': ds) where
   loopReverse (n:-Z) f = loopReverse1 n (f . (:-Z))
   loopReverse (n:-ns) f = loopReverse ns (\js -> loopReverse1 n (f . (:-js)))
   {-# INLINE loopReverse #-}
-  ioffset# (i:#Z#) = i
-  ioffset# iis@(i:#is) = case fromIntegral (natVal' (headDim# iis)) of
-             I# n -> i +# n *# ioffset# is
-  {-# INLINE ioffset# #-}
+  -- ioffset# (i:#Z#) = i
+  -- ioffset# iis@(i:#is) = case fromIntegral (natVal' (headDim# iis)) of
+  --            I# n -> i +# n *# ioffset# is
+  -- {-# INLINE ioffset# #-}
   ioffset (i:-Z) = i
   ioffset iis@(i:-is) = i + fromIntegral (natVal' (headDim# iis)) * ioffset is
   {-# INLINE ioffset #-}
@@ -301,8 +314,8 @@ instance (KnownNat d, Dimensions ds) => Dimensions (d ': ds) where
   {-# INLINE dimMax #-}
   dimMin = 1 :- dimMin
   {-# INLINE dimMin #-}
-  dimZero# = 0# :# dimZero#
-  {-# INLINE dimZero# #-}
+  -- dimZero# = 0# :# dimZero#
+  -- {-# INLINE dimZero# #-}
   succDim ds@(i:-is) = case fromInteger (natVal' (headDim# ds)) of
                          n -> if i == n then 1 :- succDim is
                                         else i+1 :- is
@@ -327,6 +340,51 @@ instance (KnownNat d, Dimensions ds) => Dimensions (d ': ds) where
         + fromInteger (natVal' (headDim# ds)) * diffDim is1 is2
   {-# INLINE diffDim #-}
 
+instance ( Dimensions (AllNats ds)
+           ) => Dimensions (ds :: [XNat]) where
+  type TotalDim ds = TotalDim (AllNats ds)
+  toNats Z = Z
+  toNats xs@(_ :- _) = unsafeCoerce xs
+  toNats (FixedDim _ xs) = unsafeCoerce xs
+  -- TODO: try safe coercion
+  {-# INLINE toNats #-}
+  -- dim = _
+  -- {-# INLINE dim #-}
+  totalDim _ = totalDim ( Proxy :: Proxy (AllNats ds) )
+  {-# INLINE totalDim #-}
+  -- loopS _ f = f Z
+  -- {-# INLINE loopS #-}
+  -- loopA _ f = f Z
+  -- {-# INLINE loopA #-}
+  -- loopReverse _ f = f Z
+  -- {-# INLINE loopReverse #-}
+  -- -- ioffset# _ = 0#
+  -- -- {-# INLINE ioffset# #-}
+  -- ioffset _ = 0
+  -- {-# INLINE ioffset #-}
+  -- dropDims _ Z = Z
+  -- {-# INLINE dropDims #-}
+  -- takeDims _ Z = Z
+  -- {-# INLINE takeDims #-}
+  -- dimMax = Z
+  -- {-# INLINE dimMax #-}
+  -- dimMin = Z
+  -- {-# INLINE dimMin #-}
+  -- -- dimZero# = Z#
+  -- -- {-# INLINE dimZero# #-}
+  -- succDim = id
+  -- {-# INLINE succDim #-}
+  -- predDim = id
+  -- {-# INLINE predDim #-}
+  -- fromDim _ = 0
+  -- {-# INLINE fromDim #-}
+  -- toDim _ = Z
+  -- {-# INLINE toDim #-}
+  -- stepDim _ = id
+  -- {-# INLINE stepDim #-}
+  -- diffDim _ _ = 0
+  -- {-# INLINE diffDim #-}
+
 
 
 headDim# :: t (d ': ds :: [k]) -> Proxy# d
@@ -337,13 +395,14 @@ tailDim# :: t (d ': ds :: [k]) -> Proxy ds
 tailDim# _ = Proxy
 {-# INLINE tailDim# #-}
 
--- | Do something in a loop for int i from 0 to n-1
-loop1# :: Int# -> (Int# -> State# s -> State# s) -> State# s -> State# s
-loop1# n f = loop' 0#
-  where
-    loop' i s | isTrue# (i ==# n) = s
-              | otherwise = case f i s of s1 -> loop' (i +# 1#) s1
-{-# INLINE loop1# #-}
+-- -- | Do something in a loop for int i from 0 to n-1
+-- loop1# :: Int# -> (Int# -> State# s -> State# s) -> State# s -> State# s
+-- loop1# n f = loop' 0#
+--   where
+--     loop' i s | isTrue# (i ==# n) = s
+--               | otherwise = case f i s of s1 -> loop' (i +# 1#) s1
+-- {-# INLINE loop1# #-}
+
 
 
 -- | Do something in a loop for int i from 1 to n
@@ -371,7 +430,21 @@ loopReverse1 n f = loop' n
 {-# INLINE loopReverse1 #-}
 
 
+xx :: Dim (AllNats (FixDim '[N 2, XN, XN, N 5, N 4] 3))
+xx = undefined
 
+type family FixDim (xs :: [XNat]) n :: [XNat] where
+  FixDim (XN ': xs) n = N n ': xs
+  FixDim (N m ': xs) n = N m ': FixDim xs n
+  FixDim '[] n = TypeError
+         (      'Text "Can't fix dimension "
+          ':<>: 'ShowType n
+          ':<>: 'Text " because all dimensions are known already."
+         )
+
+type family (a :: k) <$ (ds :: [l]) :: [k] where
+  _ <$ '[] = '[]
+  x <$ (_ ': bs) = x ': (x <$ bs)
 
 type family (as :: [k]) ++ (bs :: [k]):: [k] where
   '[]        ++ bs = bs
@@ -392,11 +465,25 @@ type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
   (a ': as) >: n = a ': as >: n
 infixl 6 >:
 
+type family AllNats (xs :: [k]) :: [Nat] where
+  AllNats '[]           = '[]
+  AllNats (xs :: [Nat]) = xs
+  AllNats (N n ': xs)   = n ': AllNats xs
+  AllNats (XN ': _)     = TypeError ( 'Text
+    "Can't map XNat to Nat, because some dimensions aren't known at compile time."
+   )
+
 type family Head (xs :: [k]) :: k where
   Head (x ': xs) = x
+  Head '[]       = TypeError ( 'Text
+    "Head -- empty type-level list."
+   )
 
 type family Tail (xs :: [k]) :: [k] where
   Tail (x ': xs) = xs
+  Tail '[]       = TypeError ( 'Text
+    "Tail -- empty type-level list."
+   )
 
 type family Reverse (as :: [k]) :: [k] where -- = (rs :: [k]) | rs -> as
   Reverse  '[]        = '[]
