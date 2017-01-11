@@ -221,7 +221,8 @@ broadcastArrayF (F# x) = FromScalarF# x
 --        (# s1, marr #) -> case newMutVar# 0 s1 of
 --          (# s2, mi #) -> case loopS (dim x)
 --              (\ix s' -> case readMutVar# mi s' of
---                (# s'', I# i #) -> case f ix (F# (indexFloatArray# arr (offset +# i))) of
+--                (# s'', I# i #) ->
+--                  case f ix (F# (indexFloatArray# arr (offset +# i))) of
 --                   F# r -> writeMutVar# mi (I# (i +# 1#))
 --                                           (writeFloatArray# marr i r s'')
 --              ) s2 of
@@ -271,7 +272,8 @@ broadcastArrayF (F# x) = FromScalarF# x
 --                              (# s1, marr #) ->  case f' marr s1 of
 --                                s2 -> unsafeFreezeByteArray# marr s2
 --                    ) of (# _, r #) -> ArrayF# 0# n dims r
---   elementWise f x@(ArrayF# offset n dims arr) = wr <$> loop1a# n g (pure (\_ s -> s))
+--   elementWise f x@(ArrayF# offset n dims arr) =
+--       wr <$> loop1a# n g (pure (\_ s -> s))
 --     where
 --       g i f' = (\(F# z) u a s -> writeFloatArray# a i z (u a s))
 --                       <$> f (F# (indexFloatArray# arr i)) <*> f'
