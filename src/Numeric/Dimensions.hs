@@ -1,10 +1,11 @@
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE Rank2Types, FlexibleContexts #-}
 {-# LANGUAGE GADTs, TypeInType #-}
 {-# LANGUAGE TypeFamilies, TypeFamilyDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses, MagicHash #-}
 {-# LANGUAGE KindSignatures, DataKinds #-}
 {-# LANGUAGE TypeOperators, FlexibleInstances, ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications      #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions
@@ -22,13 +23,15 @@
 
 module Numeric.Dimensions
   ( -- * Data types
-    Idx (..), Dim (..), XNat, XN, N, Dimensional (..)
-    -- * Operations
-  , Dimensions (..)
-  , withDim, totalDim#, order, tailDim, headDim
-  , type (++), Reverse, Take, Drop, Length, IsPrefixOf, IsSuffixOf
-  , type (:<), type (>:), Head, Tail
+    Idx (..), Dim (..), XNat, XN, N
+  , SomeDim (..), someDimVal
   , Slice (..)
+  , Dimensional (..), runDimensional, withDim
+    -- * Operations
+  , Dimensions' (..), Dimensions (..), inSpaceOf
+    -- * Type-level programming
+  , type (++), Reverse, Take, Drop, Length, IsPrefixOf, IsSuffixOf
+  , type (:<), type (>:), type (:+), type (+:), Head, Tail
   ) where
 
 
@@ -43,24 +46,33 @@ import Data.Type.Bool
 
 import Unsafe.Coerce
 
--- | Type-level dimensionality with arbitrary Int values inside
-data Idx (ds :: [k]) where
+-- | Type-level dimensional indexing with arbitrary Int values inside
+data Idx (ds :: [Nat]) where
    -- | Zero-rank dimensionality - scalar
    Z :: Idx '[]
-   -- | List-like concatenation of dimensionality
+   -- | List-like concatenation of indices
    (:!) :: !Int -> !(Idx ds) -> Idx (d ': ds)
 infixr 5 :!
 
--- | Singleton-valued type-level dimensionality
+-- | Type-level dimensionality
 data Dim (ds :: [k]) where
    -- | Zero-rank dimensionality - scalar
   D   :: Dim '[]
   -- | List-like concatenation of known dimensionality
-  (:*) :: !(Proxy (KnownDim d)) -> !(Dim ds) -> Dim (d ': ds)
+  (:*) :: KnownNat (KnownDim d)
+       => !(Proxy (KnownDim d)) -> !(Dim ds) -> Dim (d ': ds)
   -- | List-like concatenation of unknown dimensionality
   (:?) :: !SomeNat -> !(Dim ds) -> Dim (XN ': ds)
 infixr 5 :*
 infixr 5 :?
+
+-- | Select a number of element from a given dimension
+data Slice (n::Nat) (m::Nat) where
+   Get   :: !Int -> Slice n 1
+   (:&)  :: !(Slice n m) -> !Int -> Slice n (m + 1)
+   Every :: Slice n n
+infixl 9 :&
+
 
 -- | Either known or unknown at compile-time natural number
 data XNat = XN | N Nat
@@ -69,157 +81,152 @@ type XN = 'XN
 -- | Known natural number
 type N (n::Nat) = 'N n
 
+-- | Similar to SomeNat, hide some dimensions under an existential constructor.
+data SomeDim (xns :: [XNat])
+  = forall ns . (Dimensions ns, FixedDim xns ns) => SomeDim (Dim ns)
+
+-- | Construct dimensionality at runtime
+someDimVal :: Dim (xns :: [XNat]) -> Maybe (SomeDim xns)
+someDimVal D = Just $ SomeDim D
+someDimVal xxs@(p :* xs) = someDimVal xs >>=
+  \(SomeDim ps) -> (\Refl -> SomeDim (p :* ps)) <$> bringToScope xxs p ps
+  where
+    -- I know for sure that the constraint (FixedDim xns ns) holds,
+    --   but I need to convince the compiler that this is the case
+    bringToScope :: Dim (ym :+ yms) -> Proxy m -> Dim ms
+                 -> Maybe ((IsFixedDim (ym :+ yms) (m :+ ms)) :~: 'True)
+    bringToScope _ _ _ = unsafeCoerce (Just Refl)
+someDimVal (SomeNat p :? xs) = someDimVal xs >>=
+  \(SomeDim ps) -> Just $ SomeDim (p :* ps)
+
+-- | Fix runtime-obtained dimensions for use in some function
+withDim :: Dim (xns :: [XNat])
+        -> (forall ns . (Dimensions ns, FixedDim xns ns)
+             => Dim ns -> a)
+        -> Either String a
+withDim xds f = case someDimVal xds of
+  Just (SomeDim ds) -> Right $ f ds
+  Nothing -> Left "Could not extract runtime naturals to construct dimensions."
+
+
+-- withSubDim :: Dim (xns :: [XNat])
+--            -> (forall ns ns' . ( Dimensions ns'
+--                                , FixedDim xns ns
+--                                , IsSubSetOf ns' ns ~ 'True)
+--                 => Dim ns' -> a)
+--            -> Either String a
+-- withSubDim xds f = case someDimVal xds of
+--   Just (SomeDim ds) -> Right $ f (getSubDim ds Proxy)
+--   Nothing -> Left "Could not extract runtime naturals to construct dimensions."
+--
+-- getSubDim :: IsSubSetOf ns' ns ~ 'True => Dim ns -> Proxy ns' -> Dim ns'
+-- getSubDim _ _ = _
+
+
 -- | Provide runtime-known dimensions and execute inside functions
 --   that require compile-time-known dimensions.
 newtype Dimensional (xns :: [XNat]) a = Dimensional
-  { runDimensional ::
-     (forall (ns :: [Nat]) . FixedDim xns ns
-                          => Proxy ns -> a)
+  { _runDimensional ::
+    ( forall ns . (Dimensions ns, FixedDim xns ns) => Dim ns -> a )
   }
 
+-- | Run Dimension-enabled computation with dimensionality known at runtime
+runDimensional :: Dim xns
+               -> Dimensional xns a
+               -> Either String a
+runDimensional xds d = withDim xds $ _runDimensional d
+
+--------------------------------------------------------------------------------
+-- * Dimension-enabled operations
+--------------------------------------------------------------------------------
+
+class PreservingDim (a :: forall k . k -> Type) where
+  fixDims :: FixedDim xns ns => a xns -> a ns
+  looseDims :: FixedDim xns ns => a ns -> a xns
+
+
+class Dimensions' (ds :: [Nat]) where
+  -- | Dimensionality of our space
+  dim :: Dim ds
+  -- | Number of elements in a dimension list
+  order :: t ds -> Int
+
+-- | Support for Idx GADT
+class Dimensions' ds => Dimensions (ds :: [Nat]) where
+  -- | Total number of elements - product of all dimension sizes (unboxed)
+  totalDim :: t ds -> Int
+  -- | Run a primitive loop over all dimensions (1..n)
+  loopS  :: Idx  ds -> (Idx  ds -> State# s -> State# s) -> State# s -> State# s
+  -- | Run a loop over all dimensions keeping a boxed accumulator (1..n)
+  loopA  :: Idx  ds -> (Idx  ds -> a -> a) -> a -> a
+  -- | Run a loop in a reverse order n..1
+  loopReverse :: Idx ds -> (Idx  ds -> a -> a) -> a -> a
+  -- | Get index offset: i1 + i2*n1 + i3*n1*n2 + ...
+  ioffset   :: Idx ds -> Int
+  -- | Drop a number of dimensions
+  dropDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (Drop n ds)
+  -- | Take a number of dimensions
+  takeDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (Take n ds)
+  -- | Maximum values of all dimensions
+  dimMax    :: Idx ds
+  -- | Minimum values -- ones
+  dimMin    :: Idx ds
+  -- | For Enum
+  succDim   :: Idx ds -> Idx ds
+  -- | For Enum
+  predDim   :: Idx ds -> Idx ds
+  -- | For Enum
+  fromDim   :: Idx ds -> Int
+  -- | For Enum
+  toDim     :: Int -> Idx ds
+  -- | For Enum -- step dimension index by an Integer offset
+  stepDim   :: Int -> Idx ds -> Idx ds
+  -- | For Enum -- difference in offsets between two Dims (a `diffDim` b) = a - b
+  diffDim   :: Idx ds -> Idx ds -> Int
+
+-- | Similar to `const` or `asProxyTypeOf`;
+--   to be used on such implicit functions as `dim`, `dimMax`, etc.
+inSpaceOf :: a ds -> b ds -> a ds
+inSpaceOf x _ = x
+
+--------------------------------------------------------------------------------
+-- Some important instances
+--------------------------------------------------------------------------------
+
+instance Show (Idx ds) where
+  show Z = "Idx Ø"
+  show xs = "Idx" ++ foldr (\i s -> " " ++ show i ++ s) "" (idxToList xs)
+
+instance Dimensions ds => Show (Dim ds) where
+  show D = "Dim Ø"
+  show xs = "Dim" ++ foldr (\i s -> " " ++ show i ++ s) ""
+    (idxToList $ dimMax `inSpaceOf` xs)
+
+instance Show (SomeDim xns) where
+  show (SomeDim p) = show p
+
 instance Functor (Dimensional xns) where
-  fmap f d = Dimensional (f . runDimensional d)
+  fmap f d = Dimensional (f . _runDimensional d)
   {-# INLINE fmap #-}
 instance Applicative (Dimensional xns) where
   pure x = Dimensional $ const x
   {-# INLINE pure #-}
-  f <*> v = Dimensional $ \d -> runDimensional f d (runDimensional v d)
+  f <*> v = Dimensional $ \d -> _runDimensional f d (_runDimensional v d)
   {-# INLINE (<*>) #-}
 instance Monad (Dimensional xns) where
   return  = pure
   {-# INLINE return #-}
-  m >>= k = Dimensional $ \d -> runDimensional (k $ runDimensional m d) d
+  m >>= k = Dimensional $ \d -> _runDimensional (k $ _runDimensional m d) d
   {-# INLINE (>>=) #-}
 
 
+idxToList :: Idx ds -> [Int]
+idxToList Z = []
+idxToList (x :! xs) = x : idxToList xs
 
--- | Fix runtime-obtained dimensions for some function
-withDim :: Dim (xns :: [XNat])
-        -> (forall (ns :: [Nat]) . FixedDim xns ns
-             => Proxy ns -> a)
-        -> a
-withDim D f = f (Proxy :: Proxy '[])
--- withDim xxs@(p :* xs) f = withDim xs (fixDims' f p)
-withDim xxs@(SomeNat p :? xs) f = withDim xs (fixDims' f p)
-
-
-
-withDim' :: FixedDim (WrapNats matched) matched
-         => Proxy (WrapNats matched)
-         -> Dim (xns :: [XNat])
-         -> (forall (ns :: [Nat]) . FixedDim (WrapNats matched ++ xns)
-                                             (matched  ++ ns)
-             => Proxy ns -> a)
-         -> a
-withDim' matched D f = f Proxy
-withDim' matched xxs@(p :* xs) f = withDim'
-  (oneMoreMatched matched p) xs (fixDims' f p)
--- withDim' xxs@(SomeNat p :? xs) f = withDim' xs (fixDims' xxs f p)
---
-oneMoreMatched :: Proxy ns -> Proxy n -> Proxy (ns +: N n)
-oneMoreMatched _ _ = Proxy
-
-oneMore :: Proxy n -> Proxy ns -> Proxy (n :+ ns)
-oneMore _ _ = Proxy
-
-fixDims' :: (Proxy (n ': ns) -> a) -> Proxy n -> Proxy ns -> a
-fixDims' f _ _ = f Proxy
-{-# INLINE fixDims' #-}
-
-type family KnownDim (x::k) :: Nat where
-  KnownDim n = n
-  KnownDim (N n) = n
-
-type family WrapNats (ns :: k Nat) = (xns :: l XNat) | xns -> ns where
-  WrapNats '[] = '[]
-  WrapNats (n ': ns) = N n ': WrapNats ns
-  WrapNats 'LEmpty = 'LEmpty
-  WrapNats ('LSingle n) = 'LSingle (N n)
-  WrapNats ('List n ns) = 'List (N n) (WrapNats ns)
-  WrapNats 'REmpty = 'REmpty
-  WrapNats ('Reversing ns) = 'Reversing (WrapNats ns)
-
--- LEmpty | LSingle k | List k [k]
-
-type family FixedDim (xns :: [XNat]) (ns :: [Nat]) :: Constraint where
-  FixedDim (XN  ': xns) (_ ': ns) = FixedDim xns ns
-  FixedDim (N n ': xns) (n ': ns) = FixedDim xns ns
-  FixedDim '[]          '[]       = ()
-  FixedDim _            _         = TypeError
-    ( 'Text
-      "Dimensionalities have different lengths."
-    )
-
--- type family IsFixedDim (xns :: [XNat]) (ns :: [Nat]) :: Bool where
---   IsFixedDim (XN  ': xns) (_ ': ns) = IsFixedDim xns ns
---   IsFixedDim (N n ': xns) (m ': ns) = (n == m) && IsFixedDim xns ns
---   IsFixedDim '[]          '[]       = 'True
---   IsFixedDim _            _         = 'False
-
-
--- data FixingDims = FixingDims [Nat] [Nat] [XNat]
--- type family UsedFixers (x::FixingDims) :: [Nat] where
---   UsedFixers ('FixingDims xs _ _) = xs
--- type family RemainingFixers (x::FixingDims) :: [Nat] where
---   RemainingFixers ('FixingDims _ xs _) = xs
--- type family UpdatedDims (x::FixingDims) :: [XNat] where
---   UpdatedDims ('FixingDims _ _ xs) = xs
---
--- type family FixDims (ns :: [Nat]) (xns :: [XNat]) :: FixingDims where
-
--- -- | Type-level checked dimensionality (unboxed)
--- data Idx# (ds :: [k]) where
---    -- | Zero-rank dimensionality - scalar
---    Z# :: Idx# '[]
---    -- | List-like concatenation of dimensionality
---    (:#) :: Int# -> Idx# ds -> Idx# (n':ds)
--- infixr 5 :#
-
--- data SomeDim (ds :: [XNat])
---   = SomeDim
---   { dimVals ::
---   }
-
--- data Dimensional a
---   = forall ds . Dimensions ds => Dimensional
---   { _dimVals :: Idx ds
---   , _dimContent :: a
---   }
---
--- someDimVal :: ByteArray# -> a
---            -> Dimensional a
--- someDimVal = undefined
-
---   =
--- data SomeNat    = forall n. KnownNat n    => SomeNat    (Proxy n)
-
--- withDimensions :: forall (a :: forall k . [k] -> *) b (xds :: [XNat]) (ds :: [Nat])
---                . a xds -> (a ds -> b) -> b
--- withDimensions = undefined
-
--- fixDimensions :: forall (a :: forall k . [k] -> *) b (xds :: [XNat]) (ds :: [Nat])
---               . a xds -> Dimensional xds (a ds)
--- fixDimensions = undefined
-
-data Slice (n::Nat) (m::Nat) where
-   Get   :: !Int -> Slice n 1
-   (:&)  :: !(Slice n m) -> !Int -> Slice n (m + 1)
-   Every :: Slice n n
-infixl 9 :&
-
-
-
-instance Show (Idx ds) where
-  show Z = "Idx Ø"
-  show xs = "Idx" ++ foldr (\i s -> " " ++ show i ++ s) "" (dimToList xs)
-
-dimToList :: Idx ds -> [Int]
-dimToList Z = []
-dimToList (x :! xs) = x : dimToList xs
-
-dimFromList :: [Int] -> Idx ds
-dimFromList [] = unsafeCoerce Z
-dimFromList (x:xs) = unsafeCoerce $ x :! unsafeCoerce (dimFromList xs)
+idxFromList :: [Int] -> Idx ds
+idxFromList [] = unsafeCoerce Z
+idxFromList (x:xs) = unsafeCoerce $ x :! unsafeCoerce (idxFromList xs)
 
 instance Eq (Idx ds) where
   Z == Z = True
@@ -227,9 +234,29 @@ instance Eq (Idx ds) where
   Z /= Z = False
   (a:!as) /= (b:!bs) = a /= b || as /= bs
 
+instance Eq (Dim ds) where
+  D == D = True
+  (_:*as) == (_:*bs) = as == bs
+  (a:?as) == (b:?bs) = a == b && as == bs
+  (a:*as) == (b:?bs) = SomeNat a == b && as == bs
+  (a:?as) == (b:*bs) = a == SomeNat b && as == bs
+
 instance Ord (Idx ds) where
   compare Z Z = EQ
   compare (a:!as) (b:!bs) = compare as bs `mappend` compare a b
+
+instance Ord (Dim ds) where
+  compare D D = EQ
+  compare (_:*as) (_:*bs) = compare as bs
+  compare (a:?as) (b:?bs) = compare as bs `mappend` compare a b
+  compare (a:?as) (b:*bs) = compare as bs `mappend` compare a (SomeNat b)
+  compare (a:*as) (b:?bs) = compare as bs `mappend` compare (SomeNat a) b
+
+instance Dimensions' ds => Bounded (Dim ds) where
+  maxBound = dim
+  {-# INLINE maxBound #-}
+  minBound = dim
+  {-# INLINE minBound #-}
 
 instance Dimensions ds => Bounded (Idx ds) where
   maxBound = dimMax
@@ -266,77 +293,22 @@ instance Dimensions ds => Enum (Idx ds) where
   {-# INLINE enumFromThenTo #-}
 
 
--- | Support for Idx GADT
-class Dimensions (ds :: [k]) where
-  type TotalDim ds :: l
-  -- | Dimensionality in type naturals
-  toNats :: Idx ds -> Idx (AllNats ds)
-  -- | Dimensionality of a second rank type
-  dim :: t ds -> Idx ds
-  -- | Total number of elements - product of all dimension sizes (unboxed)
-  totalDim :: t ds -> Int
-  -- | Run a primitive loop over all dimensions (1..n)
-  loopS  :: Idx  ds -> (Idx  ds -> State# s -> State# s) -> State# s -> State# s
-  -- | Run a loop over all dimensions keeping a boxed accumulator (1..n)
-  loopA  :: Idx  ds -> (Idx  ds -> a -> a) -> a -> a
-  -- | Run a loop in a reverse order n..1
-  loopReverse :: Idx ds -> (Idx  ds -> a -> a) -> a -> a
-  -- | Get index offset: i1 + i2*n1 + i3*n1*n2 + ...
-  ioffset   :: Idx ds -> Int
-  -- | Drop a number of dimensions
-  dropDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (Drop n ds)
-  -- | Take a number of dimensions
-  takeDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (Take n ds)
-  -- | Maximum values of all dimensions
-  dimMax    :: Idx ds
-  -- | Minimum values -- ones
-  dimMin    :: Idx ds
-  -- | For Enum
-  succDim   :: Idx ds -> Idx ds
-  -- | For Enum
-  predDim   :: Idx ds -> Idx ds
-  -- | For Enum
-  fromDim   :: Idx ds -> Int
-  -- | For Enum
-  toDim     :: Int -> Idx ds
-  -- | For Enum -- step dimension index by an Integer offset
-  stepDim   :: Int -> Idx ds -> Idx ds
-  -- | For Enum -- difference in offsets between two Dims (a `diffDim` b) = a - b
-  diffDim   :: Idx ds -> Idx ds -> Int
-
-
 instance IsList (Idx ds) where
   type Item (Idx ds) = Int
-  fromList = dimFromList
-  toList = dimToList
-
--- | Get all but first dimensions
-tailDim :: Idx ds -> Idx (Drop 1 ds)
-tailDim Z = Z
-tailDim (_:!xs) = xs
+  fromList = idxFromList
+  toList = idxToList
 
 -- | Get the first dimension
-headDim :: t (d ': ds :: [Nat]) -> Proxy d
+headDim :: t (d ': ds :: [k]) -> Proxy d
 headDim _ = Proxy
 
--- | Total number of elements - product of all dimension sizes
-totalDim# :: Dimensions ds => t ds -> Int#
-totalDim# x = case totalDim x of I# n -> n
-{-# INLINE totalDim# #-}
-
--- | Number of dimensions
-order :: Idx ds -> Int
-order Z = 0
-order (_:!xs) = 1 + order xs
-{-# INLINE order #-}
-
+instance Dimensions' ('[] :: [Nat]) where
+  dim = D
+  {-# INLINE dim #-}
+  order _ = 0
+  {-# INLINE order #-}
 
 instance Dimensions ('[] :: [Nat]) where
-  type TotalDim ('[] :: [Nat]) = 1
-  toNats = id
-  {-# INLINE toNats #-}
-  dim _ = Z
-  {-# INLINE dim #-}
   totalDim _ = 1
   {-# INLINE totalDim #-}
   loopS _ f = f Z
@@ -368,14 +340,16 @@ instance Dimensions ('[] :: [Nat]) where
   diffDim _ _ = 0
   {-# INLINE diffDim #-}
 
-instance (KnownNat d, KnownNat (TotalDim (d ': ds)), Dimensions ds)
-          => Dimensions (d ': ds) where
-  type TotalDim (d ': ds) = d GHC.TypeLits.* TotalDim ds
-  toNats = id
-  {-# INLINE toNats #-}
-  dim x = fromIntegral (natVal' (headDim# x)) :! dim (tailDim# x)
+instance (KnownNat d, Dimensions' (ds :: [Nat])) => Dimensions' (d :+ ds) where
+  dim = Proxy :* dim
   {-# INLINE dim #-}
-  totalDim _ = fromIntegral $ natVal ( Proxy :: Proxy (TotalDim (d ': ds)) )
+  order _ = 1 + order (Proxy @ds)
+  {-# INLINE order #-}
+
+instance (KnownNat d, Dimensions ds)
+          => Dimensions (d ': ds) where
+  totalDim _ = fromIntegral (natVal (Proxy @d))
+             * totalDim (Proxy @ds)
   {-# INLINE totalDim #-}
   loopS (n:!Z) f = loop1 n (\i -> f (i:!Z))
   loopS (n:!ns) f = loopS ns (\js -> loop1 n (\i -> f (i:!js)))
@@ -437,68 +411,11 @@ instance (KnownNat d, KnownNat (TotalDim (d ': ds)), Dimensions ds)
         + fromInteger (natVal' (headDim# ds)) * diffDim is1 is2
   {-# INLINE diffDim #-}
 
--- instance ( Dimensions (AllNats ds)
---            ) => Dimensions (ds :: [XNat]) where
---   type TotalDim ds = TotalDim (AllNats ds)
---   toNats Z = Z
---   toNats xs@(_ :! _) = unsafeCoerce xs
---   -- TODO: try safe coercion
---   {-# INLINE toNats #-}
---   -- dim = _
---   -- {-# INLINE dim #-}
---   totalDim _ = totalDim ( Proxy :: Proxy (AllNats ds) )
---   {-# INLINE totalDim #-}
---   -- loopS _ f = f Z
---   -- {-# INLINE loopS #-}
---   -- loopA _ f = f Z
---   -- {-# INLINE loopA #-}
---   -- loopReverse _ f = f Z
---   -- {-# INLINE loopReverse #-}
---   -- -- ioffset# _ = 0#
---   -- -- {-# INLINE ioffset# #-}
---   -- ioffset _ = 0
---   -- {-# INLINE ioffset #-}
---   -- dropDims _ Z = Z
---   -- {-# INLINE dropDims #-}
---   -- takeDims _ Z = Z
---   -- {-# INLINE takeDims #-}
---   -- dimMax = Z
---   -- {-# INLINE dimMax #-}
---   -- dimMin = Z
---   -- {-# INLINE dimMin #-}
---   -- -- dimZero# = Z#
---   -- -- {-# INLINE dimZero# #-}
---   -- succDim = id
---   -- {-# INLINE succDim #-}
---   -- predDim = id
---   -- {-# INLINE predDim #-}
---   -- fromDim _ = 0
---   -- {-# INLINE fromDim #-}
---   -- toDim _ = Z
---   -- {-# INLINE toDim #-}
---   -- stepDim _ = id
---   -- {-# INLINE stepDim #-}
---   -- diffDim _ _ = 0
---   -- {-# INLINE diffDim #-}
-
 
 
 headDim# :: t (d ': ds :: [k]) -> Proxy# d
 headDim# _ = proxy#
 {-# INLINE headDim# #-}
-
-tailDim# :: t (d ': ds :: [k]) -> Proxy ds
-tailDim# _ = Proxy
-{-# INLINE tailDim# #-}
-
--- -- | Do something in a loop for int i from 0 to n-1
--- loop1# :: Int# -> (Int# -> State# s -> State# s) -> State# s -> State# s
--- loop1# n f = loop' 0#
---   where
---     loop' i s | isTrue# (i ==# n) = s
---               | otherwise = case f i s of s1 -> loop' (i +# 1#) s1
--- {-# INLINE loop1# #-}
-
 
 
 -- | Do something in a loop for int i from 1 to n
@@ -526,47 +443,41 @@ loopReverse1 n f = loop' n
 {-# INLINE loopReverse1 #-}
 
 
--- type family FixDim (xs :: [XNat]) n :: [XNat] where
---   FixDim (XN ': xs) n = N n ': xs
---   FixDim (N m ': xs) n = N m ': FixDim xs n
---   FixDim '[] n = TypeError
---          (      'Text "Can't fix dimension "
---           ':<>: 'ShowType n
---           ':<>: 'Text " because all dimensions are known already."
---          )
---
---
--- data FixingDims = FixingDims [Nat] [Nat] [XNat]
--- type family UsedFixers (x::FixingDims) :: [Nat] where
---   UsedFixers ('FixingDims xs _ _) = xs
--- type family RemainingFixers (x::FixingDims) :: [Nat] where
---   RemainingFixers ('FixingDims _ xs _) = xs
--- type family UpdatedDims (x::FixingDims) :: [XNat] where
---   UpdatedDims ('FixingDims _ _ xs) = xs
---
--- type family FixDims (ns :: [Nat]) (xns :: [XNat]) :: FixingDims where
---   FixDims ns xns = FixDimsAcc ns xns ('FixingDims '[] '[] '[])
---
--- type family FixDimsAcc (ns :: [Nat]) (xns :: [XNat]) (x::FixingDims)
---                     :: FixingDims where
---   FixDimsAcc '[] '[] fd = fd
---   FixDimsAcc '[] xns ('FixingDims un rn ud)
---     = 'FixingDims un rn (xns ++ ud)
---   FixDimsAcc ns '[] ('FixingDims un rn ud)
---     = 'FixingDims un (ns ++ rn) ud
---   FixDimsAcc ns (N n ': xns) ('FixingDims un rn ud)
---     = FixDimsAcc ns xns ('FixingDims un rn (N n ': ud))
---   FixDimsAcc (n ': ns) (XN ': xns) ('FixingDims un rn ud)
---     = FixDimsAcc ns xns ('FixingDims (n ': un) rn (N n ': ud))
 
------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 -- * Type-level programming
------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 
--- | Substitute a type in a list elements
--- type family (a :: k) <$ (ds :: [l]) :: [k] where
---   _ <$ '[] = '[]
---   x <$ (_ ': bs) = x ': (x <$ bs)
+-- | Unify usage of XNat and Nat.
+--   This is useful in function and type definitions.
+--   Assumes a given XNat to be known at type-level (N n constructor).
+type family KnownDim (x::k) :: Nat where
+  KnownDim n = n
+  KnownDim (N n) = n
+
+-- type family WrapNats (ns :: k Nat) = (xns :: l XNat) | xns -> ns where
+--   WrapNats '[] = '[]
+--   WrapNats (n ': ns) = N n ': WrapNats ns
+--   WrapNats 'LEmpty = 'LEmpty
+--   WrapNats ('LSingle n) = 'LSingle (N n)
+--   WrapNats ('List n ns) = 'List (N n) (WrapNats ns)
+--   WrapNats 'REmpty = 'REmpty
+--   WrapNats ('Reversing ns) = 'Reversing (WrapNats ns)
+
+
+-- | FixedDim puts very tough constraints on what list of naturals can be.
+--   This allows establishing strong relations between [XNat] and [Nat].
+type family FixedDim (xns :: [XNat]) (ns :: [Nat]) :: Constraint where
+  FixedDim xns ns = IsFixedDim xns ns ~ 'True
+
+-- | FixedDim as Bool kind. I need it to provide an evidence of having FixedDim
+--   using Data.Type.Equality reflection ( IsFixedDim xns ns :~: 'True ).
+type family IsFixedDim (xns :: [XNat]) (ns :: [Nat]) :: Bool where
+  IsFixedDim (XN  ': xns) (_ ': ns) = IsFixedDim xns ns
+  IsFixedDim (N n ': xns) (m ': ns) = (n == m) && IsFixedDim xns ns
+  IsFixedDim '[]          '[]       = 'True
+  IsFixedDim _            _         = 'False
+
 
 -- | Synonym for a type-level cons
 type a :+ as = a ': as
@@ -575,6 +486,8 @@ infixl 5 :+
 type (ns :: [k]) +: (n :: k) = GetList (Snoc ns n)
 infixl 5 +:
 
+-- | A weird data type used to make `(+:)` operation injective.
+--   `List k [k]` must have at least two elements.
 data List k = LEmpty | LSingle k | List k [k]
 type family Snoc (ns :: [k]) (n :: k) = (rs :: List k) | rs -> ns n where
   Snoc '[] n        = 'LSingle n
@@ -589,11 +502,11 @@ type as ++ bs = GetConcat ('Concat as bs)
 infixr 5 ++
 
 data Concat k = Concat [k] [k]
-type instance 'Concat as '[] == 'Concat bs '[] = as == bs
+type instance 'Concat as  '[]       == 'Concat bs '[] = as == bs
 type instance 'Concat as (a ': as1) == 'Concat bs (b ': bs1)
-  = 'Concat (as +: a) as1 == 'Concat (bs +: b) bs1
-type instance 'Concat _ (_ ': _) == 'Concat _ '[] = 'False
-type instance 'Concat _ '[] == 'Concat _ (_ ': _) = 'False
+            = 'Concat (as +: a) as1 == 'Concat (bs +: b) bs1
+type instance 'Concat _ (_ ': _)    == 'Concat _ '[] = 'False
+type instance 'Concat _   '[]       == 'Concat _ (_ ': _) = 'False
 type family GetConcat (c :: Concat k) :: [k] where
   GetConcat ('Concat as '[]) = as
   GetConcat ('Concat as (b ': bs)) = GetConcat ('Concat (as +: b) bs)
@@ -612,8 +525,6 @@ type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
   ns >: 1 = ns
   ns >: n = ns +: n
 infixl 6 >:
-
-
 
 
 
@@ -648,15 +559,11 @@ type family Reversed (ts :: Reversing k) = (rs :: [k]) | rs -> ts where
   Reversed ('Reversing ('LSingle a)) = '[a]
   Reversed ('Reversing ('List y (x ':xs))) = y ': x ': xs
 
-
--- -- xx :: Proxy 'True
--- xx :: Proxy (('[2,3,4] +: 1) == '[2,3,4,1])
--- xx = _
---
--- -- yy :: Proxy 'True
--- yy :: Proxy ((Reverse (Reverse '[2,5,7,1])) == Reverse '[1,7,5,2])
--- yy = _
-
+type family IsSubSetOf (as :: [k]) (bs :: [k]) :: Bool where
+  IsSubSetOf '[]       xs = 'True
+  IsSubSetOf (_ ': _) '[] = 'False
+  IsSubSetOf (a ': as) (b ': xs) = If (a == b) (IsSubSetOf as xs)
+                                               (IsSubSetOf (a ': as) xs)
 
 type family IsPrefixOf (as :: [k]) (bs :: [k]) :: Bool where
   IsPrefixOf '[] _ = 'True
