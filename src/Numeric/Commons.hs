@@ -1,11 +1,12 @@
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MagicHash, UnboxedTuples #-}
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE FunctionalDependencies     #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MagicHash                  #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE UnboxedTuples              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -----------------------------------------------------------------------------
 -- |
@@ -32,13 +33,13 @@ module Numeric.Commons
 #include "MachDeps.h"
 #include "HsBaseConfig.h"
 
-import GHC.Base (runRW#)
-import GHC.Ptr
-import GHC.Prim
-import GHC.Types
-import GHC.Int
-import GHC.Word
-import Foreign.Storable
+import           Foreign.Storable
+import           GHC.Base         (runRW#)
+import           GHC.Int
+import           GHC.Prim
+import           GHC.Ptr
+import           GHC.Types
+import           GHC.Word
 
 
 -- | Access elements.
@@ -56,7 +57,8 @@ class ElementWise i x t | t -> x i where
   ewfold :: (i -> x -> a -> a) -> a -> t -> a
   -- | Apply an applicative functor on each element (Lens-like traversal)
   elementWise :: forall f . Applicative f => (x -> f x) -> t -> f t
-  -- | Apply an applicative functor on each element with its index (Lens-like indexed traversal)
+  -- | Apply an applicative functor on each element with its index
+  --     (Lens-like indexed traversal)
   indexWise :: forall f . Applicative f => (i -> x -> f x) -> t -> f t
 
 ewFoldMap :: (ElementWise i x t, Monoid m) => (i -> x -> m) -> t -> m
@@ -64,17 +66,26 @@ ewFoldMap f = ewfold (\i x m -> m `mappend` f i x) mempty
 {-# INLINE ewFoldMap #-}
 
 newtype Store a = Store { unStore :: a}
-  deriving (Eq, Show, Num, Fractional, Floating, Real, RealFrac, RealFloat, Ord, PrimBytes)
+  deriving ( Eq, Show, Num, Fractional, Floating
+           , Real, RealFrac, RealFloat, Ord, PrimBytes)
 
+-- | Facilities to convert to and from raw byte array.
+--   Warning! offsets and sizes are in elements, not in bytes!
+--   Therefore one must be really carefull if having a crazy idea of
+--     converting between types of different element sizes.
 class PrimBytes a where
   -- | Store content of a data type in a primitive byte array
-  toBytes :: a -> ByteArray#
+  --   (ElementOffset, NumberOfElements, ByteArrayContent )
+  toBytes :: a -> (# Int# , Int# , ByteArray# #)
   -- | Load content of a data type from a primitive byte array
-  fromBytes :: ByteArray# -> a
+  --   (ElementOffset, NumberOfElements, ByteArrayContent )
+  fromBytes :: (# Int# , Int# , ByteArray# #) -> a
   -- | Size of a data type in bytes
   byteSize :: a -> Int#
   -- | Alignment of a data type in bytes
   byteAlign :: a -> Int#
+  -- | Size of a conainer type elements in bytes
+  elementByteSize :: a -> Int#
 
 -- | Primitive indexing. No checks, no safety.
 class FloatBytes a where
@@ -99,21 +110,27 @@ class WordBytes a where
 instance PrimBytes a => Storable (Store a) where
   sizeOf x = I# (byteSize x)
   alignment x = I# (byteAlign x)
-  peekElemOff ptr (I# offset) = peekByteOff ptr (I# (offset *# byteSize (undefined :: a)))
-  pokeElemOff ptr (I# offset) = pokeByteOff ptr (I# (offset *# byteSize (undefined :: a)))
+  peekElemOff ptr (I# offset) =
+    peekByteOff ptr (I# (offset *# byteSize (undefined :: a)))
+  pokeElemOff ptr (I# offset) =
+    pokeByteOff ptr (I# (offset *# byteSize (undefined :: a)))
   peekByteOff (Ptr addr) (I# offset) = IO $ \s0 -> case newByteArray# bsize s0 of
-        (# s1, marr #) -> case copyAddrToByteArray# (addr `plusAddr#` offset) marr 0# bsize s1 of
-          s2 -> case unsafeFreezeByteArray# marr s2 of
-            (# s3, arr #) -> (# s3, fromBytes arr #)
+    (# s1, marr #) -> case copyAddrToByteArray# (addr `plusAddr#` offset)
+                                                 marr 0# bsize s1 of
+      s2 -> case unsafeFreezeByteArray# marr s2 of
+        (# s3, arr #) -> (# s3, fromBytes (# 0#, bsize `quotInt#` ebsize, arr #) #)
     where
       bsize = byteSize (undefined :: a)
-  pokeByteOff (Ptr addr) (I# offset) x = IO $ \s0 -> case copyByteArrayToAddr# (toBytes x)
-                                                                               0#
-                                                                               (addr `plusAddr#` offset)
-                                                                               bsize s0 of
+      ebsize = elementByteSize (undefined :: a)
+  pokeByteOff (Ptr addr) (I# offset) x = IO
+          $ \s0 -> case copyByteArrayToAddr# xbytes xboff
+                                             (addr `plusAddr#` offset)
+                                              bsize s0 of
        s2 -> (# s2, () #)
     where
-      bsize = byteSize (undefined :: a)
+      (# elOff, elNum, xbytes #) = toBytes x
+      bsize = elementByteSize x *# elNum
+      xboff  = elementByteSize x *# elOff
   peek ptr = peekByteOff ptr 0
   poke ptr = pokeByteOff ptr 0
 
@@ -123,14 +140,16 @@ instance PrimBytes Float where
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeFloatArray# marr 0# x s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, a #) -> a
+     ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes arr = F# (indexFloatArray# arr 0#)
+  fromBytes (# _, _, arr #) = F# (indexFloatArray# arr 0#)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_HSFLOAT#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_HSFLOAT#
   {-# INLINE byteAlign #-}
+  elementByteSize = byteSize
+  {-# INLINE elementByteSize #-}
 
 instance FloatBytes Float where
   ixF _ (F# x) = x
@@ -139,7 +158,7 @@ instance FloatBytes Float where
 instance ElementWise Int Float Float where
   (!) x _ = x
   {-# INLINE (!) #-}
-  ewmap f x = f 1 x
+  ewmap f = f 1
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
@@ -155,14 +174,16 @@ instance PrimBytes Double where
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeDoubleArray# marr 0# x s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, a #) -> a
+     ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes arr = D# (indexDoubleArray# arr 0#)
+  fromBytes (# _, _, arr #) = D# (indexDoubleArray# arr 0#)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_HSDOUBLE#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_HSDOUBLE#
   {-# INLINE byteAlign #-}
+  elementByteSize = byteSize
+  {-# INLINE elementByteSize #-}
 
 instance DoubleBytes Double where
   ixD _ (D# x) = x
@@ -171,7 +192,7 @@ instance DoubleBytes Double where
 instance ElementWise Int Double Double where
   (!) x _ = x
   {-# INLINE (!) #-}
-  ewmap f x = f 1 x
+  ewmap f = f 1
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
@@ -187,19 +208,21 @@ instance PrimBytes Int where
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeIntArray# marr 0# x s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, a #) -> a
+     ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes arr = I# (indexIntArray# arr 0#)
+  fromBytes (# _, _, arr #) = I# (indexIntArray# arr 0#)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_HSINT#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_HSINT#
   {-# INLINE byteAlign #-}
+  elementByteSize = byteSize
+  {-# INLINE elementByteSize #-}
 
 instance ElementWise Int Int Int where
   (!) x _ = x
   {-# INLINE (!) #-}
-  ewmap f x = f 1 x
+  ewmap f = f 1
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
@@ -219,14 +242,16 @@ instance PrimBytes Int8 where
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeInt8Array# marr 0# x s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, a #) -> a
+     ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes arr = I8# (indexInt8Array# arr 0#)
+  fromBytes (# _, _, arr #) = I8# (indexInt8Array# arr 0#)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_INT8#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_INT8#
   {-# INLINE byteAlign #-}
+  elementByteSize = byteSize
+  {-# INLINE elementByteSize #-}
 
 instance IntBytes Int8 where
   ixI _ (I8# x) = x
@@ -235,7 +260,7 @@ instance IntBytes Int8 where
 instance ElementWise Int Int8 Int8 where
   (!) x _ = x
   {-# INLINE (!) #-}
-  ewmap f x = f 1 x
+  ewmap f = f 1
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
@@ -251,14 +276,16 @@ instance PrimBytes Int16 where
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeInt16Array# marr 0# x s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, a #) -> a
+     ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes arr = I16# (indexInt16Array# arr 0#)
+  fromBytes (# _, _, arr #) = I16# (indexInt16Array# arr 0#)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_INT16#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_INT16#
   {-# INLINE byteAlign #-}
+  elementByteSize = byteSize
+  {-# INLINE elementByteSize #-}
 
 instance IntBytes Int16 where
   ixI _ (I16# x) = x
@@ -267,7 +294,7 @@ instance IntBytes Int16 where
 instance ElementWise Int Int16 Int16 where
   (!) x _ = x
   {-# INLINE (!) #-}
-  ewmap f x = f 1 x
+  ewmap f = f 1
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
@@ -283,14 +310,16 @@ instance PrimBytes Int32 where
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeInt32Array# marr 0# x s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, a #) -> a
+     ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes arr = I32# (indexInt32Array# arr 0#)
+  fromBytes (# _, _, arr #) = I32# (indexInt32Array# arr 0#)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_INT32#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_INT32#
   {-# INLINE byteAlign #-}
+  elementByteSize = byteSize
+  {-# INLINE elementByteSize #-}
 
 instance IntBytes Int32 where
   ixI _ (I32# x) = x
@@ -299,7 +328,7 @@ instance IntBytes Int32 where
 instance ElementWise Int Int32 Int32 where
   (!) x _ = x
   {-# INLINE (!) #-}
-  ewmap f x = f 1 x
+  ewmap f = f 1
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
@@ -315,14 +344,16 @@ instance PrimBytes Int64 where
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeInt64Array# marr 0# x s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, a #) -> a
+     ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes arr = I64# (indexInt64Array# arr 0#)
+  fromBytes (# _, _, arr #) = I64# (indexInt64Array# arr 0#)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_INT64#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_INT64#
   {-# INLINE byteAlign #-}
+  elementByteSize = byteSize
+  {-# INLINE elementByteSize #-}
 
 instance IntBytes Int64 where
   ixI _ (I64# x) = x
@@ -331,7 +362,7 @@ instance IntBytes Int64 where
 instance ElementWise Int Int64 Int64 where
   (!) x _ = x
   {-# INLINE (!) #-}
-  ewmap f x = f 1 x
+  ewmap f = f 1
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
@@ -347,14 +378,16 @@ instance PrimBytes Word where
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWordArray# marr 0# x s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, a #) -> a
+     ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes arr = W# (indexWordArray# arr 0#)
+  fromBytes (# _, _, arr #) = W# (indexWordArray# arr 0#)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_HSWORD#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_HSWORD#
   {-# INLINE byteAlign #-}
+  elementByteSize = byteSize
+  {-# INLINE elementByteSize #-}
 
 instance WordBytes Word where
   ixW _ (W# x) = x
@@ -363,7 +396,7 @@ instance WordBytes Word where
 instance ElementWise Int Word Word where
   (!) x _ = x
   {-# INLINE (!) #-}
-  ewmap f x = f 1 x
+  ewmap f = f 1
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
@@ -379,14 +412,16 @@ instance PrimBytes Word8 where
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWord8Array# marr 0# x s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, a #) -> a
+     ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes arr = W8# (indexWord8Array# arr 0#)
+  fromBytes (# _, _, arr #) = W8# (indexWord8Array# arr 0#)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_WORD8#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_WORD8#
   {-# INLINE byteAlign #-}
+  elementByteSize = byteSize
+  {-# INLINE elementByteSize #-}
 
 instance WordBytes Word8 where
   ixW _ (W8# x) = x
@@ -395,7 +430,7 @@ instance WordBytes Word8 where
 instance ElementWise Int Word8 Word8 where
   (!) x _ = x
   {-# INLINE (!) #-}
-  ewmap f x = f 1 x
+  ewmap f = f 1
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
@@ -411,14 +446,16 @@ instance PrimBytes Word16 where
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWord16Array# marr 0# x s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, a #) -> a
+     ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes arr = W16# (indexWord16Array# arr 0#)
+  fromBytes (# _, _, arr #) = W16# (indexWord16Array# arr 0#)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_WORD16#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_WORD16#
   {-# INLINE byteAlign #-}
+  elementByteSize = byteSize
+  {-# INLINE elementByteSize #-}
 
 instance WordBytes Word16 where
   ixW _ (W16# x) = x
@@ -427,7 +464,7 @@ instance WordBytes Word16 where
 instance ElementWise Int Word16 Word16 where
   (!) x _ = x
   {-# INLINE (!) #-}
-  ewmap f x = f 1 x
+  ewmap f = f 1
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
@@ -443,14 +480,16 @@ instance PrimBytes Word32 where
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWord32Array# marr 0# x s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, a #) -> a
+     ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes arr = W32# (indexWord32Array# arr 0#)
+  fromBytes (# _, _, arr #) = W32# (indexWord32Array# arr 0#)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_WORD32#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_WORD32#
   {-# INLINE byteAlign #-}
+  elementByteSize = byteSize
+  {-# INLINE elementByteSize #-}
 
 instance WordBytes Word32 where
   ixW _ (W32# x) = x
@@ -459,7 +498,7 @@ instance WordBytes Word32 where
 instance ElementWise Int Word32 Word32 where
   (!) x _ = x
   {-# INLINE (!) #-}
-  ewmap f x = f 1 x
+  ewmap f = f 1
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
@@ -475,14 +514,16 @@ instance PrimBytes Word64 where
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWord64Array# marr 0# x s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, a #) -> a
+     ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes arr = W64# (indexWord64Array# arr 0#)
+  fromBytes (# _, _, arr #) = W64# (indexWord64Array# arr 0#)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_WORD64#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_WORD64#
   {-# INLINE byteAlign #-}
+  elementByteSize = byteSize
+  {-# INLINE elementByteSize #-}
 
 instance WordBytes Word64 where
   ixW _ (W64# x) = x
@@ -491,7 +532,7 @@ instance WordBytes Word64 where
 instance ElementWise Int Word64 Word64 where
   (!) x _ = x
   {-# INLINE (!) #-}
-  ewmap f x = f 1 x
+  ewmap f = f 1
   {-# INLINE ewmap #-}
   ewgen f   = f 1
   {-# INLINE ewgen #-}
@@ -501,6 +542,3 @@ instance ElementWise Int Word64 Word64 where
   {-# INLINE elementWise #-}
   indexWise f = f 1
   {-# INLINE indexWise #-}
-
-
-

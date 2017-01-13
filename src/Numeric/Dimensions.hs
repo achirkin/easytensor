@@ -5,7 +5,7 @@
 {-# LANGUAGE MultiParamTypeClasses, MagicHash #-}
 {-# LANGUAGE KindSignatures, DataKinds #-}
 {-# LANGUAGE TypeOperators, FlexibleInstances, ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeApplications, FunctionalDependencies     #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions
@@ -28,10 +28,10 @@ module Numeric.Dimensions
   , Slice (..)
   , Dimensional (..), runDimensional, withDim
     -- * Operations
-  , Dimensions' (..), Dimensions (..), inSpaceOf
+  , Dimensions' (..), Dimensions (..), inSpaceOf, PreservingDim (..)
     -- * Type-level programming
   , type (++), Reverse, Take, Drop, Length, IsPrefixOf, IsSuffixOf
-  , type (:<), type (>:), type (:+), type (+:), Head, Tail
+  , type (:<), type (>:), type (:+), type (+:), Head, Tail, AllNats, WrapNats
   ) where
 
 
@@ -108,19 +108,34 @@ withDim xds f = case someDimVal xds of
   Just (SomeDim ds) -> Right $ f ds
   Nothing -> Left "Could not extract runtime naturals to construct dimensions."
 
-
--- withSubDim :: Dim (xns :: [XNat])
---            -> (forall ns ns' . ( Dimensions ns'
---                                , FixedDim xns ns
---                                , IsSubSetOf ns' ns ~ 'True)
---                 => Dim ns' -> a)
---            -> Either String a
--- withSubDim xds f = case someDimVal xds of
---   Just (SomeDim ds) -> Right $ f (getSubDim ds Proxy)
---   Nothing -> Left "Could not extract runtime naturals to construct dimensions."
+-- withSubDim :: forall (a :: forall k . k -> Type) b
+--                      (xns :: [XNat]) (xns' :: [XNat])
+--             . (xns' `IsSubSetOf` xns ~ 'True, PreservingDim a)
+--            => Dim (xns :: [XNat])
+--            -> a xns'
+--            -> ( forall ns ns' . ( Dimensions ns
+--                                 , Dimensions ns'
+--                                 , FixedDim xns ns
+--                                 , FixedDim xns' ns'
+--                                 , ns' `IsSubSetOf` ns ~ 'True)
+--                        => Dim ns -> a ns' -> b
+--               )
+--            -> Either String b
+-- withSubDim xds x' f = withDim xds $
+--     \ds -> undefined
 --
--- getSubDim :: IsSubSetOf ns' ns ~ 'True => Dim ns -> Proxy ns' -> Dim ns'
--- getSubDim _ _ = _
+-- someSubDimVal :: ( xns' `IsSubSetOf` xns ~ 'True
+--                  , FixedOrder xns')
+--               => Dim xns
+--               -> a xns'
+--               -> Maybe (SomeDim xns')
+-- -- someSubDimVal _ x |
+-- someSubDimVal D x = (\Refl -> SomeDim D) <$> bringToScope x
+--   where
+--     bringToScope :: p as -> Maybe ((IsFixedDim as '[]) :~: 'True)
+--     bringToScope _ = unsafeCoerce (Just Refl)
+-- someSubDimVal (SomeNat p :? ds) x = someDimVal xs >>=
+--   \(SomeDim ps) -> Just $ SomeDim (p :* ps)
 
 
 -- | Provide runtime-known dimensions and execute inside functions
@@ -140,19 +155,28 @@ runDimensional xds d = withDim xds $ _runDimensional d
 -- * Dimension-enabled operations
 --------------------------------------------------------------------------------
 
-class PreservingDim (a :: forall k . k -> Type) where
-  fixDims :: FixedDim xns ns => a xns -> a ns
-  looseDims :: FixedDim xns ns => a ns -> a xns
+-- | Data types that can be parametrized by dimenions
+--    - either compile-time or run-time
+class PreservingDim a xa | a -> xa, xa -> a where
+  -- | Get dimensionality of a data type
+  shape   :: a ns -> Dim ns
+  -- | Apply a function that requires a dixed dimension
+  withShape :: xa xns
+            -> (forall ns . (Dimensions ns, FixedDim xns ns) => a ns -> b)
+            -> b
+  -- | Put some of dimensions into existential data type
+  looseDims :: a ns -> xa (WrapNats ns)
 
+class FixedOrder (ds :: [k]) where
+  -- | Number of elements in a dimension list
+  order :: t ds -> Int
 
 class Dimensions' (ds :: [Nat]) where
   -- | Dimensionality of our space
   dim :: Dim ds
-  -- | Number of elements in a dimension list
-  order :: t ds -> Int
 
 -- | Support for Idx GADT
-class Dimensions' ds => Dimensions (ds :: [Nat]) where
+class (Dimensions' ds, FixedOrder ds) => Dimensions (ds :: [Nat]) where
   -- | Total number of elements - product of all dimension sizes (unboxed)
   totalDim :: t ds -> Int
   -- | Run a primitive loop over all dimensions (1..n)
@@ -172,22 +196,27 @@ class Dimensions' ds => Dimensions (ds :: [Nat]) where
   -- | Minimum values -- ones
   dimMin    :: Idx ds
   -- | For Enum
-  succDim   :: Idx ds -> Idx ds
+  succIdx   :: Idx ds -> Idx ds
   -- | For Enum
-  predDim   :: Idx ds -> Idx ds
+  predIdx   :: Idx ds -> Idx ds
   -- | For Enum
-  fromDim   :: Idx ds -> Int
+  fromIdx   :: Idx ds -> Int
   -- | For Enum
-  toDim     :: Int -> Idx ds
+  toIdx     :: Int -> Idx ds
   -- | For Enum -- step dimension index by an Integer offset
-  stepDim   :: Int -> Idx ds -> Idx ds
-  -- | For Enum -- difference in offsets between two Dims (a `diffDim` b) = a - b
-  diffDim   :: Idx ds -> Idx ds -> Int
+  stepIdx   :: Int -> Idx ds -> Idx ds
+  -- | For Enum -- difference in offsets between two Indices (a `diffIdx` b) = a - b
+  diffIdx   :: Idx ds -> Idx ds -> Int
 
 -- | Similar to `const` or `asProxyTypeOf`;
 --   to be used on such implicit functions as `dim`, `dimMax`, etc.
 inSpaceOf :: a ds -> b ds -> a ds
 inSpaceOf x _ = x
+
+-- -- | Get some dimensions of lower order.
+-- subDim :: ( Dimensions ds )
+--        => t ds -> ((ds' `IsSubSetOf` ds ~ 'True, Dimensions ds') => Dim ds')
+-- subDim _ = dim
 
 --------------------------------------------------------------------------------
 -- Some important instances
@@ -265,31 +294,31 @@ instance Dimensions ds => Bounded (Idx ds) where
   {-# INLINE minBound #-}
 
 instance Dimensions ds => Enum (Idx ds) where
-  succ = succDim
+  succ = succIdx
   {-# INLINE succ #-}
-  pred = predDim
+  pred = predIdx
   {-# INLINE pred #-}
-  toEnum = toDim
+  toEnum = toIdx
   {-# INLINE toEnum #-}
-  fromEnum = fromDim
+  fromEnum = fromIdx
   {-# INLINE fromEnum #-}
-  enumFrom x = take (diffDim maxBound x + 1) $ iterate succ x
+  enumFrom x = take (diffIdx maxBound x + 1) $ iterate succ x
   {-# INLINE enumFrom #-}
-  enumFromTo x y | x >= y    = take (diffDim x y + 1) $ iterate pred x
-                 | otherwise = take (diffDim y x + 1) $ iterate succ x
+  enumFromTo x y | x >= y    = take (diffIdx x y + 1) $ iterate pred x
+                 | otherwise = take (diffIdx y x + 1) $ iterate succ x
   {-# INLINE enumFromTo #-}
-  enumFromThen x x' = take n $ iterate (stepDim dn) x
+  enumFromThen x x' = take n $ iterate (stepIdx dn) x
     where
-      dn = diffDim x' x
+      dn = diffIdx x' x
       n  = 1 + if dn == 0 then 0
-                          else if dn > 0 then diffDim maxBound x `div` dn
-                                         else diffDim x minBound `div` negate dn
+                          else if dn > 0 then diffIdx maxBound x `div` dn
+                                         else diffIdx x minBound `div` negate dn
   {-# INLINE enumFromThen #-}
-  enumFromThenTo x x' y = take n $ iterate (stepDim dn) x
+  enumFromThenTo x x' y = take n $ iterate (stepIdx dn) x
     where
-      dn = diffDim x' x
+      dn = diffIdx x' x
       n  = 1 + if dn == 0 then 0
-                          else diffDim y x `div` dn
+                          else diffIdx y x `div` dn
   {-# INLINE enumFromThenTo #-}
 
 
@@ -302,11 +331,13 @@ instance IsList (Idx ds) where
 headDim :: t (d ': ds :: [k]) -> Proxy d
 headDim _ = Proxy
 
+instance FixedOrder ('[] :: [k]) where
+  order _ = 0
+  {-# INLINE order #-}
+
 instance Dimensions' ('[] :: [Nat]) where
   dim = D
   {-# INLINE dim #-}
-  order _ = 0
-  {-# INLINE order #-}
 
 instance Dimensions ('[] :: [Nat]) where
   totalDim _ = 1
@@ -327,24 +358,27 @@ instance Dimensions ('[] :: [Nat]) where
   {-# INLINE dimMax #-}
   dimMin = Z
   {-# INLINE dimMin #-}
-  succDim = id
-  {-# INLINE succDim #-}
-  predDim = id
-  {-# INLINE predDim #-}
-  fromDim _ = 0
-  {-# INLINE fromDim #-}
-  toDim _ = Z
-  {-# INLINE toDim #-}
-  stepDim _ = id
-  {-# INLINE stepDim #-}
-  diffDim _ _ = 0
-  {-# INLINE diffDim #-}
+  succIdx = id
+  {-# INLINE succIdx #-}
+  predIdx = id
+  {-# INLINE predIdx #-}
+  fromIdx _ = 0
+  {-# INLINE fromIdx #-}
+  toIdx _ = Z
+  {-# INLINE toIdx #-}
+  stepIdx _ = id
+  {-# INLINE stepIdx #-}
+  diffIdx _ _ = 0
+  {-# INLINE diffIdx #-}
+
+
+instance FixedOrder ds => FixedOrder (d :+ ds) where
+  order _ = 1 + order (Proxy @ds)
+  {-# INLINE order #-}
 
 instance (KnownNat d, Dimensions' (ds :: [Nat])) => Dimensions' (d :+ ds) where
   dim = Proxy :* dim
   {-# INLINE dim #-}
-  order _ = 1 + order (Proxy @ds)
-  {-# INLINE order #-}
 
 instance (KnownNat d, Dimensions ds)
           => Dimensions (d ': ds) where
@@ -387,29 +421,29 @@ instance (KnownNat d, Dimensions ds)
   {-# INLINE dimMax #-}
   dimMin = 1 :! dimMin
   {-# INLINE dimMin #-}
-  succDim ds@(i:!is) = case fromInteger (natVal' (headDim# ds)) of
-                         n -> if i == n then 1 :! succDim is
+  succIdx ds@(i:!is) = case fromInteger (natVal' (headDim# ds)) of
+                         n -> if i == n then 1 :! succIdx is
                                         else i+1 :! is
-  {-# INLINE succDim #-}
-  predDim ds@(i:!is) = if i == 1
-                       then fromInteger (natVal' (headDim# ds)) :! predDim is
+  {-# INLINE succIdx #-}
+  predIdx ds@(i:!is) = if i == 1
+                       then fromInteger (natVal' (headDim# ds)) :! predIdx is
                        else i-1 :! is
-  {-# INLINE predDim #-}
-  fromDim ds@(i:!is) = i-1 + fromInteger (natVal' (headDim# ds)) * fromDim is
-  {-# INLINE fromDim #-}
-  toDim j = r
+  {-# INLINE predIdx #-}
+  fromIdx ds@(i:!is) = i-1 + fromInteger (natVal' (headDim# ds)) * fromIdx is
+  {-# INLINE fromIdx #-}
+  toIdx j = r
     where
       r = case divMod j $ fromInteger (natVal' (headDim# r)) of
-            (j', i) -> i+1 :! toDim j'
-  {-# INLINE toDim #-}
-  stepDim di ds@(i:!is)
+            (j', i) -> i+1 :! toIdx j'
+  {-# INLINE toIdx #-}
+  stepIdx di ds@(i:!is)
         = case divMod (di + i - 1) $ fromInteger (natVal' (headDim# ds)) of
            (0  , i') -> i'+1 :! is
-           (di', i') -> i'+1 :! stepDim di' is
-  {-# INLINE stepDim #-}
-  diffDim ds@(i1:!is1) (i2:!is2) = i1 - i2
-        + fromInteger (natVal' (headDim# ds)) * diffDim is1 is2
-  {-# INLINE diffDim #-}
+           (di', i') -> i'+1 :! stepIdx di' is
+  {-# INLINE stepIdx #-}
+  diffIdx ds@(i1:!is1) (i2:!is2) = i1 - i2
+        + fromInteger (natVal' (headDim# ds)) * diffIdx is1 is2
+  {-# INLINE diffIdx #-}
 
 
 
@@ -535,6 +569,17 @@ type family AllNats (xs :: [k]) :: [Nat] where
   AllNats (XN ': _)     = TypeError ( 'Text
     "Can't map XNat to Nat, because some dimensions aren't known at compile time."
    )
+
+
+type family WrapNats (ns :: k Nat) = (xns :: l XNat) | xns -> ns where
+  WrapNats '[] = '[]
+  WrapNats (n ': ns) = N n ': WrapNats ns
+  WrapNats 'LEmpty = 'LEmpty
+  WrapNats ('LSingle n) = 'LSingle (N n)
+  WrapNats ('List n ns) = 'List (N n) (WrapNats ns)
+  WrapNats 'REmpty = 'REmpty
+  WrapNats ('Reversing ns) = 'Reversing (WrapNats ns)
+
 
 type family Head (xs :: [k]) :: k where
   Head (x ': xs) = x
