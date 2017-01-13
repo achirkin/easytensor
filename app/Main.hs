@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds, KindSignatures #-}
 {-# LANGUAGE GADTs     #-}
 {-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Main where
 
 import Data.Proxy
@@ -20,18 +21,32 @@ import GHC.TypeLits
 -- import           Foreign.Storable
 
 import           Numeric.Dimensions
+import Numeric.DataFrame
 
 main :: IO ()
 main = do
-  putStrLn "Hello world!"
-  print $ (Proxy @3 :* Proxy @2 :* (D :: Dim ('[] :: [Nat])))
-  print $ case (,,,) <$> someNatVal 3
-                                  <*> someNatVal 6
-                                  <*> someNatVal 8
-                                  <*> someNatVal 4
-                                  of
-    Nothing -> Nothing
-    Just (a,b,c,d) -> someDimVal $ a :? b :? c :? d :? D
+    putStrLn "Hello world!"
+    print $ (Proxy @3 :* Proxy @2 :* (D :: Dim ('[] :: [Nat])))
+    print $ case (,,,) <$> someNatVal 3
+                                    <*> someNatVal 6
+                                    <*> someNatVal 8
+                                    <*> someNatVal 4
+                                    of
+      Nothing -> Nothing
+      Just (a,b,c,d) -> someDimVal $ a :? b :? c :? d :? D
+    print s
+  where
+    Just d2 = someNatVal 2
+    Just d3 = someNatVal 5
+    dimX :: Dim '[N 3, XN, XN]
+    dimX = Proxy :* d2 :? d3 :? D
+    s = withDim dimX (\ds -> show (dfFloat pi `inSpaceOf` ds))
+      :: Either String String
+
+dfFloat :: (Fractional (DataFrame Float ds), Show (DataFrame Float ds))
+        => Float -> DataFrame Float (ds :: [Nat])
+dfFloat x = realToFrac x
+
 --   print (two + vec2 3 4)
 --   print (two + vec2 3 4 + 5)
 --   print (two <:> two == two <:> x)

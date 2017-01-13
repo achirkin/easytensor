@@ -32,9 +32,9 @@ import GHC.TypeLits
 
 
 
-import Numeric.NDArray.Base.Float ()
+-- import Numeric.NDArray.Base.Float ()
 import Numeric.Dimensions
-import Numeric.NDArray.Family
+-- import Numeric.NDArray.Family
 import Numeric.Commons
 
 

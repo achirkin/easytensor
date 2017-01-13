@@ -31,38 +31,47 @@ module Numeric.Array.Base.ArrayF () where
 import           GHC.Base             (runRW#)
 import           GHC.Prim
 -- import           GHC.TypeLits
+import           Data.Proxy
+import           Data.Type.Equality
 import           GHC.Types
-
-
+import           Unsafe.Coerce
 
 import           Numeric.Array.Family
--- import           Numeric.Commons
--- import           Numeric.Dimensions
+import           Numeric.Commons
+import           Numeric.Dimensions
 
 
 
--- instance ( (Take 2 ds ++ Drop 2 ds) ~ ds
---          , Dimensions ds
---          , Dimensions (Take 2 ds)
---          , Dimensions (Drop 2 ds)
---          ) => Show (ArrayF ds) where
---   show x = drop 1 $ foldr loopOuter "" [minBound..maxBound]
---     where
---       loopInner :: Dim (Drop 2 ds) -> Dim (Take 2 ds) -> String
---       loopInner _ Z = "{}"
---       loopInner ods (n:-Z) =  ('{' :) . drop 1 $
---                                   foldr (\i s -> ", " ++ show (x ! i) ++ s) " }"
---                                          [1 :- ods .. n :- ods]
---       loopInner ods (n:-m:-_) = ('{' :) . drop 2 $
---                       foldr (\i ss -> '\n':
---                               foldr (\j s ->
---                                        ", " ++ show (x ! (i :- j :- ods)) ++ s
---                                     ) ss [1..m]
---                             ) " }" [1..n]
---       loopOuter :: Dim (Drop 2 ds) -> String -> String
---       loopOuter Z s  = "\n" ++ loopInner Z maxBound ++ s
---       loopOuter ds s ="\n" ++ show ds ++ ":\n" ++ loopInner ds maxBound ++ s
-
+instance ( Dimensions ds
+         , Dimensions (Take 2 ds)
+         , Dimensions (Drop 2 ds)
+         ) => Show (ArrayF (ds :: [Nat])) where
+  show x = drop 1 $ foldr loopOuter "" [minBound..maxBound]
+    where
+      loopInner :: Proxy ds
+               -> Idx (Drop 2 ds) -> Idx (Take 2 ds) -> String
+      loopInner _ _ Z = "{}"
+      loopInner p ods ids@(n:!Z) = case proof1 p ids ods of
+        Refl -> ('{' :) . drop 1 $
+                      foldr (\i s -> ", " ++ show (x ! i) ++ s) " }"
+                              [1 :! ods .. n :! ods]
+      loopInner p ods ids@(n:!m:!_) = case proof2 p ids ods of
+        Refl -> ('{' :) . drop 2 $
+                      foldr (\i ss -> '\n':
+                              foldr (\j s ->
+                                       ", " ++ show (x ! (i :! j :! ods)) ++ s
+                                    ) ss [1..m]
+                            ) " }" [1..n]
+      loopOuter :: Idx (Drop 2 ds) -> String -> String
+      loopOuter Z s  = "\n" ++ loopInner (unsafeCoerce Refl) Z maxBound ++ s
+      loopOuter ds s = "\n" ++ show ds ++ ":\n"
+                            ++ loopInner (unsafeCoerce Refl) ds maxBound ++ s
+      proof1 :: Proxy ns -> Idx '[n] -> Idx (Drop 2 ns)
+             -> ns :~: (n :+ Drop 2 ns)
+      proof1 _ _ _ = unsafeCoerce Refl
+      proof2 :: Proxy ns -> Idx (n ': m ': mns) -> Idx (Drop 2 ns)
+             -> ns :~: (n :+ (m :+ Drop 2 ns))
+      proof2 _ _ _ = unsafeCoerce Refl
 
 instance Eq (ArrayF ds) where
   a == b = accumV2 (\x y r -> r && isTrue# (x `eqFloat#` y)) a b True
@@ -183,109 +192,171 @@ instance Floating (ArrayF ds) where
   {-# INLINE atanh #-}
 
 
-
 -- | Uses first argument to enforce type (can and should be undefined)
 broadcastArrayF :: Float -> ArrayF ds
 broadcastArrayF (F# x) = FromScalarF# x
 {-# INLINE broadcastArrayF #-}
 
 
+instance Dimensions ds => PrimBytes (ArrayF ds) where
+  toBytes (ArrayF# off size a) = (# off, size, a #)
+  toBytes (FromScalarF# x) = case runRW#
+     ( \s0 -> case newByteArray# bs s0 of
+         (# s1, marr #) -> case loop1# n
+               (\i s' -> writeFloatArray# marr i x s'
+               ) s1 of
+             s2 -> unsafeFreezeByteArray# marr s2
+     ) of (# _, r #) -> (# 0#, n, r #)
+    where
+      n = case totalDim (undefined :: ArrayF ds) of I# d -> d
+      bs = n *# SIZEOF_HSFLOAT#
+  {-# INLINE toBytes #-}
+  fromBytes (# off, size, a #) = ArrayF# off size a
+  {-# INLINE fromBytes #-}
+  byteSize x = case totalDim x of
+     I# d -> SIZEOF_HSFLOAT# *# d
+  {-# INLINE byteSize #-}
+  byteAlign _ = ALIGNMENT_HSFLOAT#
+  {-# INLINE byteAlign #-}
+  elementByteSize _ = SIZEOF_HSFLOAT#
+  {-# INLINE elementByteSize #-}
+
+instance FloatBytes (ArrayF ds) where
+  ixF i (ArrayF# off _ a) = indexFloatArray# a (off +# i)
+  ixF _ (FromScalarF# x)  = x
+  {-# INLINE ixF #-}
 
 
--- instance Dimensions ds => PrimBytes (ArrayF ds) where
---   toBytes (ArrayF# a) = a
---   {-# INLINE toBytes #-}
---   fromBytes = ArrayF#
---   {-# INLINE fromBytes #-}
---   byteSize x = SIZEOF_HSFLOAT# *# totalDim# x
---   {-# INLINE byteSize #-}
---   byteAlign _ = ALIGNMENT_HSFLOAT#
---   {-# INLINE byteAlign #-}
---
--- instance FloatBytes (ArrayF ds) where
---   ixF i (ArrayF# a) = indexFloatArray# a i
---   {-# INLINE ixF #-}
 
 
 
 
 
+instance Dimensions ds => ElementWise (Idx ds) Float (ArrayF (ds :: [Nat])) where
 
---
--- instance Dimensions ds => ElementWise (Dim ds) Float (ArrayF ds) where
---   (!) (ArrayF# offset _ _ arr) i
---        = case fromEnum i of I# j -> F# (indexFloatArray# arr (offset +# j))
---   {-# INLINE (!) #-}
---   ewmap f x@(ArrayF# offset n dims arr) = case runRW#
---      (\s0 -> case newByteArray# bs s0 of
---        (# s1, marr #) -> case newMutVar# 0 s1 of
---          (# s2, mi #) -> case loopS (dim x)
---              (\ix s' -> case readMutVar# mi s' of
---                (# s'', I# i #) ->
---                  case f ix (F# (indexFloatArray# arr (offset +# i))) of
---                   F# r -> writeMutVar# mi (I# (i +# 1#))
---                                           (writeFloatArray# marr i r s'')
---              ) s2 of
---            s3 -> unsafeFreezeByteArray# marr s3
---      ) of (# _, r #) -> ArrayF# 0# n dims r
---     where
---       bs = n *# SIZEOF_HSFLOAT#
---   {-# INLINE ewmap #-}
---   ewgen f  = case runRW#
---      (\s0 -> case newByteArray# bs s0 of
---        (# s1, marr #) -> case newMutVar# 0 s1 of
---          (# s2, mi #) -> case loopS (dim x)
---              (\ix s' -> case readMutVar# mi s' of
---                (# s'', I# i #) -> case f ix of
---                   F# r -> writeMutVar# mi (I# (i +# 1#))
---                                           (writeFloatArray# marr i r s'')
---              ) s2 of
---            s3 -> unsafeFreezeByteArray# marr s3
---      ) of (# _, r #) -> ArrayF# 0# n undefined r
---     where
---       x = undefined :: ArrayF ds
---       n = totalDim# x
---       bs = n *# SIZEOF_HSFLOAT#
---   {-# INLINE ewgen #-}
---   ewfold f v0 x@(ArrayF# offset _ _ arr) = case runRW#
---      (\s0 -> case newMutVar# (0,v0) s0 of
---          (# s1, miv #) -> case loopS (dim x)
---                (\ix s' -> case readMutVar# miv s' of
---                  (# s'', (I# i, v) #) -> writeMutVar# miv
---                         ( I# (i +# 1#)
---                         , f ix (F# (indexFloatArray# arr (offset +# i))) v
---                         ) s''
---                ) s1 of
---             s2 -> readMutVar# miv s2
---      ) of (# _, (_, r) #) -> r
---   {-# INLINE ewfold #-}
---   indexWise f x@(ArrayF# offset n dims arr)
---       = case loopA (dim x) g (AU# 0# (pure (\_ s -> s))) of
---         AU# _ f' -> wr <$> f'
---     where
---       g ds (AU# i f') = AU# ( i +# 1# )
---                           $ (\(F# z) u a s -> writeFloatArray# a i z (u a s))
---                            <$> f ds (F# (indexFloatArray# arr (offset +# i))) <*> f'
---       bs = n *# SIZEOF_HSFLOAT#
---       wr f' = case runRW#
---                    ( \s0 -> case newByteArray# bs s0 of
---                              (# s1, marr #) ->  case f' marr s1 of
---                                s2 -> unsafeFreezeByteArray# marr s2
---                    ) of (# _, r #) -> ArrayF# 0# n dims r
---   elementWise f x@(ArrayF# offset n dims arr) =
---       wr <$> loop1a# n g (pure (\_ s -> s))
---     where
---       g i f' = (\(F# z) u a s -> writeFloatArray# a i z (u a s))
---                       <$> f (F# (indexFloatArray# arr i)) <*> f'
---       bs = n *# SIZEOF_HSFLOAT#
---       wr f' = case runRW#
---                    ( \s0 -> case newByteArray# bs s0 of
---                              (# s1, marr #) ->  case f' marr s1 of
---                                s2 -> unsafeFreezeByteArray# marr s2
---                    ) of (# _, r #) -> ArrayF# 0# n dims r
---
--- data ArrayUpdate# (f :: * -> *) s
---   = AU# Int# !(f (MutableByteArray# s -> State# s -> State# s))
+  (!) (ArrayF# off _ a) i
+       = case fromEnum i of I# j -> F# (indexFloatArray# a (off +# j))
+  (!) (FromScalarF# x) _ = F# x
+  {-# INLINE (!) #-}
+
+  ewmap f x@(ArrayF# offset n arr) = case runRW#
+     (\s0 -> case newByteArray# bs s0 of
+       (# s1, marr #) -> case newMutVar# 0 s1 of
+         (# s2, mi #) -> case loopS (dimMax `inSpaceOf` x)
+             (\ix s' -> case readMutVar# mi s' of
+               (# s'', I# i #) ->
+                 case f ix (F# (indexFloatArray# arr (offset +# i))) of
+                  F# r -> writeMutVar# mi (I# (i +# 1#))
+                                          (writeFloatArray# marr i r s'')
+             ) s2 of
+           s3 -> unsafeFreezeByteArray# marr s3
+     ) of (# _, r #) -> ArrayF# 0# n r
+    where
+      bs = n *# SIZEOF_HSFLOAT#
+  ewmap f x@(FromScalarF# scalVal) = case runRW#
+     (\s0 -> case newByteArray# bs s0 of
+       (# s1, marr #) -> case newMutVar# 0 s1 of
+         (# s2, mi #) -> case loopS (dimMax `inSpaceOf` x)
+             (\ix s' -> case readMutVar# mi s' of
+               (# s'', I# i #) ->
+                 case f ix (F# scalVal) of
+                  F# r -> writeMutVar# mi (I# (i +# 1#))
+                                          (writeFloatArray# marr i r s'')
+             ) s2 of
+           s3 -> unsafeFreezeByteArray# marr s3
+     ) of (# _, r #) -> ArrayF# 0# n r
+    where
+      n = case totalDim x of I# d -> d
+      bs = n *# SIZEOF_HSFLOAT#
+  {-# INLINE ewmap #-}
+
+  ewgen f = case runRW#
+     (\s0 -> case newByteArray# bs s0 of
+       (# s1, marr #) -> case newMutVar# 0 s1 of
+         (# s2, mi #) -> case loopS (dimMax `inSpaceOf` x)
+             (\ix s' -> case readMutVar# mi s' of
+               (# s'', I# i #) -> case f ix of
+                  F# r -> writeMutVar# mi (I# (i +# 1#))
+                                          (writeFloatArray# marr i r s'')
+             ) s2 of
+           s3 -> unsafeFreezeByteArray# marr s3
+     ) of (# _, r #) -> ArrayF# 0# n r
+    where
+      x = undefined :: ArrayF ds
+      n = case totalDim x of I# d -> d
+      bs = n *# SIZEOF_HSFLOAT#
+  {-# INLINE ewgen #-}
+
+  ewfold f v0 x@(ArrayF# offset _ arr) = case runRW#
+    (\s0 -> case newMutVar# (0,v0) s0 of
+       (# s1, miv #) -> case loopS (dimMax `inSpaceOf` x)
+             (\ix s' -> case readMutVar# miv s' of
+               (# s'', (I# i, v) #) -> writeMutVar# miv
+                      ( I# (i +# 1#)
+                      , f ix (F# (indexFloatArray# arr (offset +# i))) v
+                      ) s''
+             ) s1 of
+          s2 -> readMutVar# miv s2
+    ) of (# _, (_, r) #) -> r
+  ewfold f v0 x@(FromScalarF# scalVal) = case runRW#
+    (\s0 -> case newMutVar# v0 s0 of
+        (# s1, miv #) -> case loopS (dimMax `inSpaceOf` x)
+              (\ix s' -> case readMutVar# miv s' of
+                (# s'', v #) -> writeMutVar# miv
+                       ( f ix (F# scalVal) v
+                       ) s''
+              ) s1 of
+           s2 -> readMutVar# miv s2
+    ) of (# _, r #) -> r
+  {-# INLINE ewfold #-}
+
+  indexWise f x@(ArrayF# offset n arr)
+      = case loopA (dimMax `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of
+        AU# _ f' -> wr x bs n <$> f'
+    where
+      g ds (AU# i f') = AU# ( i +# 1# )
+                          $ (\(F# z) u a s -> writeFloatArray# a i z (u a s))
+                           <$> f ds (F# (indexFloatArray# arr (offset +# i))) <*> f'
+      bs = n *# SIZEOF_HSFLOAT#
+
+  indexWise f x@(FromScalarF# scalVal)
+      = case loopA (dimMax `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of
+        AU# _ f' -> wr x bs n <$> f'
+    where
+      n = case totalDim x of I# d -> d
+      g ds (AU# i f') = AU# ( i +# 1# )
+                          $ (\(F# z) u a s -> writeFloatArray# a i z (u a s))
+                           <$> f ds (F# scalVal) <*> f'
+      bs = n *# SIZEOF_HSFLOAT#
+
+
+  elementWise f x@(ArrayF# offset n arr) =
+      wr x bs n <$> loop1a# n g (pure (\_ s -> s))
+    where
+      g i f' = (\(F# z) u a s -> writeFloatArray# a i z (u a s))
+                      <$> f (F# (indexFloatArray# arr (offset +# i))) <*> f'
+      bs = n *# SIZEOF_HSFLOAT#
+  elementWise f x@(FromScalarF# scalVal) =
+      wr x bs n <$> loop1a# n g (pure (\_ s -> s))
+    where
+      fa = f (F# scalVal)
+      n = case totalDim x of I# d -> d
+      g i f' = (\(F# z) u a s -> writeFloatArray# a i z (u a s))
+                      <$> fa <*> f'
+      bs = n *# SIZEOF_HSFLOAT#
+
+wr :: ArrayF (ds :: [Nat]) -> Int# -> Int#
+   -> (MutableByteArray# RealWorld -> State# RealWorld -> State# RealWorld)
+   -> ArrayF ds
+wr _ bs n f' = case runRW#
+     ( \s0 -> case newByteArray# bs s0 of
+               (# s1, marr #) ->  case f' marr s1 of
+                 s2 -> unsafeFreezeByteArray# marr s2
+     ) of (# _, r #) -> ArrayF# 0# n r
+{-# INLINE wr #-}
+
+data ArrayUpdate# (f :: * -> *) s
+  = AU# Int# !(f (MutableByteArray# s -> State# s -> State# s))
 
 
 
@@ -306,7 +377,7 @@ zipV :: (Float# -> Float# -> Float#)
 zipV f (FromScalarF# a) (FromScalarF# b) = FromScalarF# (f a b)
 zipV f x (FromScalarF# b) = mapV (`f` b) x
 zipV f (FromScalarF# a) y = mapV (f a) y
-zipV f (ArrayF# offsetA n dims a) (ArrayF# offsetB _ _ b) = case runRW#
+zipV f (ArrayF# offsetA n a) (ArrayF# offsetB _ b) = case runRW#
      ( \s0 -> case newByteArray# (n *# SIZEOF_HSFLOAT#) s0 of
          (# s1, marr #) -> case loop1# n
                (\i s' -> case f (indexFloatArray# a (offsetA +# i))
@@ -314,30 +385,30 @@ zipV f (ArrayF# offsetA n dims a) (ArrayF# offsetB _ _ b) = case runRW#
                  r -> writeFloatArray# marr i r s'
                ) s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, r #) -> ArrayF# 0# n dims r
+     ) of (# _, r #) -> ArrayF# 0# n r
 
 
-mapV :: (Float# -> Float#) -> ArrayF ds-> ArrayF ds
+mapV :: (Float# -> Float#) -> ArrayF ds -> ArrayF ds
 mapV f (FromScalarF# x) = FromScalarF# (f x)
-mapV f (ArrayF# offset n dims a) = case runRW#
+mapV f (ArrayF# offset n a) = case runRW#
      ( \s0 -> case newByteArray# (n *# SIZEOF_HSFLOAT#) s0 of
          (# s1, marr #) -> case loop1# n
                (\i s' -> case f (indexFloatArray# a (offset +# i)) of
                  r -> writeFloatArray# marr i r s'
                ) s1 of
              s2 -> unsafeFreezeByteArray# marr s2
-     ) of (# _, r #) -> ArrayF# 0# n dims r
+     ) of (# _, r #) -> ArrayF# 0# n r
 
 -- | Accumulates only idempotent operations!
 --   Being applied to FromScalars, executes only once!
 accumV2 :: (Float# -> Float# -> a -> a)
         -> ArrayF ds -> ArrayF ds -> a -> a
 accumV2 f (FromScalarF# a) (FromScalarF# b) = f a b
-accumV2 f (ArrayF# offset n _ a) (FromScalarF# b) = loop1a# n
+accumV2 f (ArrayF# offset n a) (FromScalarF# b) = loop1a# n
     (\i -> f (indexFloatArray# a (offset +# i)) b)
-accumV2 f (FromScalarF# a) (ArrayF# offset n _ b) = loop1a# n
+accumV2 f (FromScalarF# a) (ArrayF# offset n b) = loop1a# n
     (\i -> f a (indexFloatArray# b (offset +# i)))
-accumV2 f (ArrayF# offsetA n _ a) (ArrayF# offsetB _ _ b) = loop1a# n
+accumV2 f (ArrayF# offsetA n a) (ArrayF# offsetB _ b) = loop1a# n
     (\i -> f (indexFloatArray# a (offsetA +# i))
              (indexFloatArray# b (offsetB +# i))
     )
