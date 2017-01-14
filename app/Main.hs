@@ -43,7 +43,9 @@ main = do
     s = withDim dimX (\ds -> show (dfFloat pi `inSpaceOf` ds))
       :: Either String String
 
-dfFloat :: (Fractional (DataFrame Float ds), Show (DataFrame Float ds))
+-- dfFloat :: (Fractional (DataFrame Float ds), Show (DataFrame Float ds))
+--         => Float -> DataFrame Float (ds :: [Nat])
+dfFloat :: Fractional (DataFrame Float ds)
         => Float -> DataFrame Float (ds :: [Nat])
 dfFloat x = realToFrac x
 
