@@ -48,6 +48,7 @@ library
         -- Numeric.Matrix.Family
         Numeric.Array.Base.ArrayF
         Numeric.Array.Family
+        Numeric.Array
         -- Numeric.Vector
         -- Numeric.Vector.Base.FloatX2
         -- Numeric.Vector.Base.FloatXN

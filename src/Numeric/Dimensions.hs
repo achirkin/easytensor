@@ -30,7 +30,8 @@ module Numeric.Dimensions
     -- * Operations
   , Dimensions' (..), Dimensions (..), inSpaceOf, PreservingDim (..)
     -- * Type-level programming
-  , type (++), Reverse, Take, Drop, Length, IsPrefixOf, IsSuffixOf
+  , FixedDim, IsFixedDim
+  , type (++), Reverse, Take, Drop, Length -- , IsPrefixOf, IsSuffixOf
   , type (:<), type (>:), type (:+), type (+:), Head, Tail, AllNats, WrapNats
   ) where
 
@@ -47,7 +48,7 @@ import Data.Type.Bool
 import Unsafe.Coerce
 
 -- | Type-level dimensional indexing with arbitrary Int values inside
-data Idx (ds :: [Nat]) where
+data Idx (ds :: k) where
    -- | Zero-rank dimensionality - scalar
    Z :: Idx '[]
    -- | List-like concatenation of indices
@@ -55,7 +56,7 @@ data Idx (ds :: [Nat]) where
 infixr 5 :!
 
 -- | Type-level dimensionality
-data Dim (ds :: [k]) where
+data Dim (ds :: k) where
    -- | Zero-rank dimensionality - scalar
   D   :: Dim '[]
   -- | List-like concatenation of known dimensionality
@@ -167,16 +168,16 @@ class PreservingDim a xa | a -> xa, xa -> a where
   -- | Put some of dimensions into existential data type
   looseDims :: a ns -> xa (WrapNats ns)
 
-class FixedOrder (ds :: [k]) where
+class FixedOrder (ds :: k) where
   -- | Number of elements in a dimension list
   order :: t ds -> Int
 
-class Dimensions' (ds :: [Nat]) where
+class Dimensions' (ds :: k) where
   -- | Dimensionality of our space
   dim :: Dim ds
 
 -- | Support for Idx GADT
-class (Dimensions' ds, FixedOrder ds) => Dimensions (ds :: [Nat]) where
+class (Dimensions' ds, FixedOrder ds) => Dimensions (ds :: k) where
   -- | Total number of elements - product of all dimension sizes (unboxed)
   totalDim :: t ds -> Int
   -- | Run a primitive loop over all dimensions (1..n)
@@ -376,8 +377,26 @@ instance FixedOrder ds => FixedOrder (d :+ ds) where
   order _ = 1 + order (Proxy @ds)
   {-# INLINE order #-}
 
+instance ( FixedOrder ds
+         ) => FixedOrder ('Drop 0 ds) where
+  order _ = order (Proxy @ds)
+  {-# INLINE order #-}
+
+instance FixedOrder ('Drop n '[]) where
+  order _ = 0
+  {-# INLINE order #-}
+
+-- instance ( FixedOrder ('Drop (n-1) (d :+ ds) )
+--          ) => FixedOrder ('Drop n (d :+ ds)) where
+--   order _ = order (Proxy @('Drop (n-1) ds)) - 1
+--   {-# INLINE order #-}
+
 instance (KnownNat d, Dimensions' (ds :: [Nat])) => Dimensions' (d :+ ds) where
   dim = Proxy :* dim
+  {-# INLINE dim #-}
+
+instance Dimensions' ('Drop n '[]) where
+--  dim = Z
   {-# INLINE dim #-}
 
 instance (KnownNat d, Dimensions ds)
@@ -446,7 +465,6 @@ instance (KnownNat d, Dimensions ds)
   {-# INLINE diffIdx #-}
 
 
-
 headDim# :: t (d ': ds :: [k]) -> Proxy# d
 headDim# _ = proxy#
 {-# INLINE headDim# #-}
@@ -498,10 +516,11 @@ type family KnownDim (x::k) :: Nat where
 --   WrapNats 'REmpty = 'REmpty
 --   WrapNats ('Reversing ns) = 'Reversing (WrapNats ns)
 
+  -- KnownDim (N n ': ns) =
 
 -- | FixedDim puts very tough constraints on what list of naturals can be.
 --   This allows establishing strong relations between [XNat] and [Nat].
-type family FixedDim (xns :: [XNat]) (ns :: [Nat]) :: Constraint where
+type family FixedDim (xns :: [k]) (ns :: [Nat]) :: Constraint where
   FixedDim xns ns = IsFixedDim xns ns ~ 'True
 
 -- | FixedDim as Bool kind. I need it to provide an evidence of having FixedDim
@@ -515,7 +534,7 @@ type family IsFixedDim (xns :: [XNat]) (ns :: [Nat]) :: Bool where
 
 -- | Synonym for a type-level cons
 type a :+ as = a ': as
-infixl 5 :+
+infixr 5 :+
 -- | Synonym for a type-level snoc
 type (ns :: [k]) +: (n :: k) = GetList (Snoc ns n)
 infixl 5 +:
@@ -619,18 +638,37 @@ type family Length (as :: [k]) :: Nat where
   Length '[] = 0
   Length (a ': as) = 1 + Length as
 
-type family Take (n::Nat) (as :: [k]) :: [k] where
-  Take _ '[] = '[]
-  Take 0 _   = '[]
-  Take n (a ': as) = a ': Take (n-1) as
 
-type family Drop (n::Nat) (as :: [k]) :: [k] where
-  Drop _ '[] = '[]
-  Drop 0 as  = as
-  Drop n (a ': as) = Drop (n-1) as
+type Take (n::Nat) (as :: k) = Taken (TakeF n as)
+data Taking k = Taking [k]
+type family TakeF (n::Nat) (as :: l) :: Taking k where
+  TakeF _ '[] = 'Taking '[]
+  TakeF 0 _   = 'Taking '[]
+  TakeF n (a ': as) = 'Taking (a ': Taken (TakeF (n-1) as))
+type family Taken (as :: Taking k) = (rs :: [k]) | rs -> as where
+  Taken ('Taking '[]) = '[]
+  Taken ('Taking (x :+ xs)) = x :+ xs
 
-type family IsSuffixOf (as :: [k]) (bs :: [k]) :: Bool where
-  IsSuffixOf '[] _ = 'True
-  IsSuffixOf as bs = If (CmpNat (Length as) (Length bs) == 'GT)
-                         'False
-                         (as == Drop (Length bs - Length as) bs)
+type Drop (n::Nat) (as::k) = Dropped ('Drop n as)
+data DropType k = Drop Nat k
+type family Dropped (as :: DropType l) :: [k] where
+  Dropped ('Drop _ '[]) = '[]
+  Dropped ('Drop 0 as)  = as
+  Dropped ('Drop n (a ': as)) = Dropped ('Drop (n-1) as)
+
+-- type Drop (n::Nat) (as :: k) = Dropped (DropF n as)
+-- data Dropping k = Dropping [k]
+-- type family DropF (n::Nat) (as :: l) :: Dropping k where
+--   DropF _ '[] = 'Dropping '[]
+--   DropF 0 as  = 'Dropping as
+--   DropF n (a ': as) = 'Dropping (Dropped (DropF (n-1) as))
+-- type family Dropped (as :: Dropping k) = (rs :: [k]) | rs -> as where
+--   Dropped ('Dropping '[]) = '[]
+--   Dropped ('Dropping (x :+ xs)) = x :+ xs
+
+
+-- type family IsSuffixOf (as :: [k]) (bs :: [k]) :: Bool where
+--   IsSuffixOf '[] _ = 'True
+--   IsSuffixOf as bs = If (CmpNat (Length as) (Length bs) == 'GT)
+--                          'False
+--                          (as == Drop (Length bs - Length as) bs)
