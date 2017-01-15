@@ -6,6 +6,7 @@
 {-# LANGUAGE KindSignatures, DataKinds #-}
 {-# LANGUAGE TypeOperators, FlexibleInstances, ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications, FunctionalDependencies     #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions
@@ -53,6 +54,8 @@ data Idx (ds :: k) where
    Z :: Idx '[]
    -- | List-like concatenation of indices
    (:!) :: !Int -> !(Idx ds) -> Idx (d ': ds)
+  --  -- | Using special data type for dependent types
+  --  LiftedIdx :: !(Idx (EvalList ds :: [k])) -> Idx (ds :: List k)
 infixr 5 :!
 
 -- | Type-level dimensionality
@@ -64,6 +67,8 @@ data Dim (ds :: k) where
        => !(Proxy (KnownDim d)) -> !(Dim ds) -> Dim (d ': ds)
   -- | List-like concatenation of unknown dimensionality
   (:?) :: !SomeNat -> !(Dim ds) -> Dim (XN ': ds)
+  -- -- | Using special data type for dependent types
+  -- LiftedDim :: !(Dim (EvalList ds :: [k])) -> Dim (ds :: List k)
 infixr 5 :*
 infixr 5 :?
 
@@ -172,12 +177,12 @@ class FixedOrder (ds :: k) where
   -- | Number of elements in a dimension list
   order :: t ds -> Int
 
-class Dimensions' (ds :: k) where
+class KnownDims ds => Dimensions' (ds :: [Nat]) where
   -- | Dimensionality of our space
   dim :: Dim ds
 
 -- | Support for Idx GADT
-class (Dimensions' ds, FixedOrder ds) => Dimensions (ds :: k) where
+class (Dimensions' ds, FixedOrder ds) => Dimensions (ds :: [Nat]) where
   -- | Total number of elements - product of all dimension sizes (unboxed)
   totalDim :: t ds -> Int
   -- | Run a primitive loop over all dimensions (1..n)
@@ -206,7 +211,8 @@ class (Dimensions' ds, FixedOrder ds) => Dimensions (ds :: k) where
   toIdx     :: Int -> Idx ds
   -- | For Enum -- step dimension index by an Integer offset
   stepIdx   :: Int -> Idx ds -> Idx ds
-  -- | For Enum -- difference in offsets between two Indices (a `diffIdx` b) = a - b
+  -- | For Enum -- difference in offsets between two Indices
+  --      (a `diffIdx` b) = a - b
   diffIdx   :: Idx ds -> Idx ds -> Int
 
 -- | Similar to `const` or `asProxyTypeOf`;
@@ -332,13 +338,189 @@ instance IsList (Idx ds) where
 headDim :: t (d ': ds :: [k]) -> Proxy d
 headDim _ = Proxy
 
-instance FixedOrder ('[] :: [k]) where
+
+
+
+instance {-# OVERLAPPING #-} FixedOrder ('[] :: [k]) where
   order _ = 0
   {-# INLINE order #-}
+
+instance {-# OVERLAPPING #-} FixedOrder ds => FixedOrder (d ': ds) where
+  order _ = 1 + order (Proxy @ds)
+  {-# INLINE order #-}
+
+instance FixedOrder ds => FixedOrder ('NoOp ds) where
+  order _ = order (Proxy @ds)
+  {-# INLINE order #-}
+
+instance FixedOrder ds
+      => FixedOrder ('Cons d ds) where
+  order _ = 1 + order (Proxy @ds)
+  {-# INLINE order #-}
+
+instance FixedOrder ds
+      => FixedOrder ('Snoc ds d) where
+  order _ = 1 + order (Proxy @ds)
+  {-# INLINE order #-}
+
+instance ( FixedOrder as, FixedOrder bs )
+      => FixedOrder ('Concat as bs) where
+  order _ = order (Proxy @as) + order (Proxy @bs)
+  {-# INLINE order #-}
+
+instance FixedOrder ds => FixedOrder ('Reverse ds) where
+  order _ = order (Proxy @ds)
+  {-# INLINE order #-}
+
+instance ( FixedOrder ds, KnownNat n )
+      => FixedOrder ('Drop n ds) where
+  order _ = max (l - n) 0
+      where
+        l = order $ Proxy @ds
+        n = fromInteger $ natVal (Proxy @n)
+  {-# INLINE order #-}
+
+instance ( FixedOrder ds, KnownNat n )
+      => FixedOrder ('Take n ds) where
+  order _ = min l n
+      where
+        l = order $ Proxy @ds
+        n = fromInteger $ natVal (Proxy @n)
+  {-# INLINE order #-}
+
+instance {-# OVERLAPPABLE #-} FixedOrder ('NoOp xs)
+      => FixedOrder xs where
+  order _ = order (Proxy @('NoOp xs))
+  {-# INLINE order #-}
+
+
+
+
+-- instance {-# OVERLAPPABLE #-} ( FixedOrder xs, EvalCons xs ~ ds )
+--       => FixedOrder ds where
+--   order _ = order (Proxy @xs)
+--   {-# INLINE order #-}
+--
+-- instance {-# OVERLAPPABLE #-} ( FixedOrder xs, EvalSnoc xs ~ ds )
+--       => FixedOrder ds where
+--   order _ = order (Proxy @xs)
+--   {-# INLINE order #-}
+--
+-- instance {-# OVERLAPPABLE #-} ( FixedOrder xs, EvalReverse xs ~ ds )
+--       => FixedOrder ds where
+--   order _ = order (Proxy @xs)
+--   {-# INLINE order #-}
+--
+--
+-- EvalList ('NoOp xs)      = EvalNoOp    ('NoOp xs)
+-- EvalList ('Cons x xs)    = EvalCons    ('Cons x xs)
+-- EvalList ('Snoc xs x)    = EvalSnoc    ('Snoc xs x)
+-- EvalList ('Concat xs ys) = EvalConcat  ('Concat xs ys)
+-- EvalList ('Reverse xs)   = EvalReverse ('Reverse xs)
+-- EvalList ('Drop n xs)    = EvalDrop    ('Drop n xs)
+-- EvalList ('Take n xs)    = EvalTake    ('Take n xs)
+
+    -- = NoOp [k]
+    -- | Cons k [k]
+    -- | Snoc [k] k
+    -- | Concat [k] [k]
+    -- | Reverse [k]
+    -- | Drop Nat [k]
+    -- | Take Nat [k]
+
+-- instance ( FixedOrder ds
+--          ) => FixedOrder ('Drop 0 ds) where
+--   order _ = order (Proxy @ds)
+--   {-# INLINE order #-}
+--
+-- instance FixedOrder ('Drop n '[]) where
+--   order _ = 0
+--   {-# INLINE order #-}
+--
+-- instance ( FixedOrder ('Drop (n-1) ds )
+--          ) => FixedOrder ('Drop n (d :+ ds)) where
+--   order _ = order (Proxy @('Drop (n-1) ds)) - 1
+--   {-# INLINE order #-}
+
+-- xx :: Dim (Drop 2 '[3,4,2,8])
+-- xx = Proxy :* Proxy :* D
+--
+--
+-- r = order xx
+--
+
 
 instance Dimensions' ('[] :: [Nat]) where
   dim = D
   {-# INLINE dim #-}
+
+instance ( Dimensions' (ds :: [Nat])
+         , KnownDims (d :+ ds)
+         ) => Dimensions' (d :+ ds) where
+  dim = Proxy :* dim
+  {-# INLINE dim #-}
+
+-- instance ( Dimensions' (ds :: [Nat])
+--          ) => Dimensions' ('NoOp ds) where
+--   dim = LiftedDim (unsafeCoerce $ dim `inSpaceOf` Proxy @ds)
+--   {-# INLINE dim #-}
+--
+-- instance ( Dimensions' (ds :: [Nat])
+--          , KnownNat d
+--          ) => Dimensions' ('Cons d ds) where
+--   dim = LiftedDim $ Proxy :* dim
+--   {-# INLINE dim #-}
+
+-- instance ( Dimensions' (ds :: [Nat])
+--          , KnownNat d
+--          ) => Dimensions' ('Snoc ds d) where
+--   dim = LiftedDim $ Proxy :* dim
+--   {-# INLINE dim #-}
+
+
+-- instance FixedOrder ds
+--       => FixedOrder ('Snoc ds d) where
+--   order _ = 1 + order (Proxy @ds)
+--   {-# INLINE order #-}
+--
+-- instance ( FixedOrder as, FixedOrder bs )
+--       => FixedOrder ('Concat as bs) where
+--   order _ = order (Proxy @as) + order (Proxy @bs)
+--   {-# INLINE order #-}
+--
+-- instance FixedOrder ds => FixedOrder ('Reverse ds) where
+--   order _ = order (Proxy @ds)
+--   {-# INLINE order #-}
+--
+-- instance ( FixedOrder ds, KnownNat n )
+--       => FixedOrder ('Drop n ds) where
+--   order _ = max (l - n) 0
+--       where
+--         l = order $ Proxy @ds
+--         n = fromInteger $ natVal (Proxy @n)
+--   {-# INLINE order #-}
+--
+-- instance ( FixedOrder ds, KnownNat n )
+--       => FixedOrder ('Take n ds) where
+--   order _ = min l n
+--       where
+--         l = order $ Proxy @ds
+--         n = fromInteger $ natVal (Proxy @n)
+--   {-# INLINE order #-}
+--
+-- instance {-# OVERLAPPABLE #-} FixedOrder ('NoOp xs)
+--       => FixedOrder xs where
+--   order _ = order (Proxy @('NoOp xs))
+--   {-# INLINE order #-}
+
+
+
+
+
+
+
+
+
 
 instance Dimensions ('[] :: [Nat]) where
   totalDim _ = 1
@@ -351,9 +533,9 @@ instance Dimensions ('[] :: [Nat]) where
   {-# INLINE loopReverse #-}
   ioffset _ = 0
   {-# INLINE ioffset #-}
-  dropDims _ Z = Z
+  dropDims _ Z = unsafeCoerce Z
   {-# INLINE dropDims #-}
-  takeDims _ Z = Z
+  takeDims _ Z = unsafeCoerce Z
   {-# INLINE takeDims #-}
   dimMax = Z
   {-# INLINE dimMax #-}
@@ -372,34 +554,9 @@ instance Dimensions ('[] :: [Nat]) where
   diffIdx _ _ = 0
   {-# INLINE diffIdx #-}
 
-
-instance FixedOrder ds => FixedOrder (d :+ ds) where
-  order _ = 1 + order (Proxy @ds)
-  {-# INLINE order #-}
-
-instance ( FixedOrder ds
-         ) => FixedOrder ('Drop 0 ds) where
-  order _ = order (Proxy @ds)
-  {-# INLINE order #-}
-
-instance FixedOrder ('Drop n '[]) where
-  order _ = 0
-  {-# INLINE order #-}
-
--- instance ( FixedOrder ('Drop (n-1) (d :+ ds) )
---          ) => FixedOrder ('Drop n (d :+ ds)) where
---   order _ = order (Proxy @('Drop (n-1) ds)) - 1
---   {-# INLINE order #-}
-
-instance (KnownNat d, Dimensions' (ds :: [Nat])) => Dimensions' (d :+ ds) where
-  dim = Proxy :* dim
-  {-# INLINE dim #-}
-
-instance Dimensions' ('Drop n '[]) where
---  dim = Z
-  {-# INLINE dim #-}
-
-instance (KnownNat d, Dimensions ds)
+instance ( Dimensions ds
+         , KnownDims (d ': ds)
+         )
           => Dimensions (d ': ds) where
   totalDim _ = fromIntegral (natVal (Proxy @d))
              * totalDim (Proxy @ds)
@@ -465,6 +622,15 @@ instance (KnownNat d, Dimensions ds)
   {-# INLINE diffIdx #-}
 
 
+
+
+
+
+
+
+
+
+
 headDim# :: t (d ': ds :: [k]) -> Proxy# d
 headDim# _ = proxy#
 {-# INLINE headDim# #-}
@@ -500,6 +666,12 @@ loopReverse1 n f = loop' n
 -- * Type-level programming
 --------------------------------------------------------------------------------
 
+type family KnownDims (xs :: [Nat]) :: Constraint where
+  KnownDims '[] = ()
+  KnownDims (x ': xs) = KnownNat x
+  -- KnownDims '[x,y] = ( KnownNat x, KnownNat y )
+  -- KnownDims xs = ()
+
 -- | Unify usage of XNat and Nat.
 --   This is useful in function and type definitions.
 --   Assumes a given XNat to be known at type-level (N n constructor).
@@ -510,8 +682,8 @@ type family KnownDim (x::k) :: Nat where
 -- type family WrapNats (ns :: k Nat) = (xns :: l XNat) | xns -> ns where
 --   WrapNats '[] = '[]
 --   WrapNats (n ': ns) = N n ': WrapNats ns
---   WrapNats 'LEmpty = 'LEmpty
---   WrapNats ('LSingle n) = 'LSingle (N n)
+--   WrapNats 'L1Empty = 'L1Empty
+--   WrapNats ('L1Single n) = 'L1Single (N n)
 --   WrapNats ('List n ns) = 'List (N n) (WrapNats ns)
 --   WrapNats 'REmpty = 'REmpty
 --   WrapNats ('Reversing ns) = 'Reversing (WrapNats ns)
@@ -536,33 +708,105 @@ type family IsFixedDim (xns :: [XNat]) (ns :: [Nat]) :: Bool where
 type a :+ as = a ': as
 infixr 5 :+
 -- | Synonym for a type-level snoc
-type (ns :: [k]) +: (n :: k) = GetList (Snoc ns n)
+type (ns :: [k]) +: (n :: k) = EvalSnoc ('Snoc ns n)
 infixl 5 +:
-
--- | A weird data type used to make `(+:)` operation injective.
---   `List k [k]` must have at least two elements.
-data List k = LEmpty | LSingle k | List k [k]
-type family Snoc (ns :: [k]) (n :: k) = (rs :: List k) | rs -> ns n where
-  Snoc '[] n        = 'LSingle n
-  Snoc (x :+ xs) n  = 'List x (GetList (Snoc xs n))
-type family GetList (ts :: List k) = (rs :: [k]) | rs -> ts where
-  GetList 'LEmpty = '[]
-  GetList ('LSingle x) = '[x]
-  GetList ('List y (x ':xs)) = y ': x ': xs
-
--- | List concatenation
-type as ++ bs = GetConcat ('Concat as bs)
+-- | List1 concatenation
+type as ++ bs = EvalConcat ('Concat as bs)
 infixr 5 ++
+-- | Reverse a list
+type Reverse (xs :: [k]) = EvalReverse ('Reverse xs)
+-- | Drop a number of elements
+type Drop (n::Nat) (xs :: [k]) = EvalDrop ('Drop n xs)
+-- | Take a number of elements
+type Take (n::Nat) (xs :: [k]) = EvalTake ('Take n xs)
 
-data Concat k = Concat [k] [k]
+-- | Type-level list operations
+data List k
+  = NoOp [k]
+  | Cons k [k]
+  | Snoc [k] k
+  | Concat [k] [k]
+  | Reverse [k]
+  | Drop Nat [k]
+  | Take Nat [k]
+
+type family EvalNoOp (xs :: List k) = (ys :: [k]) | ys -> xs where
+  EvalNoOp ('NoOp '[]) = '[]
+  EvalNoOp ('NoOp (x ': xs)) = x ': xs
+
+type family EvalCons (xs :: List k) = (ys :: [k]) | ys -> xs where
+  EvalCons ('Cons x xs) = x ': xs
+
+type EvalSnoc (xs :: List k) = GetList1 (Snoc1 xs)
+
+type family EvalConcat (xs :: List k) :: [k] where
+  EvalConcat ('Concat as '[]) = as
+  EvalConcat ('Concat as (b ': bs)) = EvalConcat ('Concat (as +: b) bs)
+
 type instance 'Concat as  '[]       == 'Concat bs '[] = as == bs
 type instance 'Concat as (a ': as1) == 'Concat bs (b ': bs1)
             = 'Concat (as +: a) as1 == 'Concat (bs +: b) bs1
 type instance 'Concat _ (_ ': _)    == 'Concat _ '[] = 'False
 type instance 'Concat _   '[]       == 'Concat _ (_ ': _) = 'False
-type family GetConcat (c :: Concat k) :: [k] where
-  GetConcat ('Concat as '[]) = as
-  GetConcat ('Concat as (b ': bs)) = GetConcat ('Concat (as +: b) bs)
+
+type EvalReverse (xs :: List k) = Reversed (Reverse' xs)
+
+type family EvalDrop (xs :: List k) :: [k] where
+  EvalDrop ('Drop _ '[])       = '[]
+  EvalDrop ('Drop 0 xs)        = xs
+  EvalDrop ('Drop n (x ': xs)) = EvalDrop ('Drop (n-1) xs)
+
+type family EvalTake (xs :: List k) :: [k] where
+  EvalTake ('Take _ '[])       = '[]
+  EvalTake ('Take 0 xs)        = '[]
+  EvalTake ('Take n (x ': xs)) = x ': EvalTake ('Take (n-1) xs)
+
+
+
+type family EvalList (x :: l) :: [k] where
+  EvalList (xs :: [k])     = xs
+  EvalList ('NoOp xs)      = EvalNoOp    ('NoOp xs)
+  EvalList ('Cons x xs)    = EvalCons    ('Cons x xs)
+  EvalList ('Snoc xs x)    = EvalSnoc    ('Snoc xs x)
+  EvalList ('Concat xs ys) = EvalConcat  ('Concat xs ys)
+  EvalList ('Reverse xs)   = EvalReverse ('Reverse xs)
+  EvalList ('Drop n xs)    = EvalDrop    ('Drop n xs)
+  EvalList ('Take n xs)    = EvalTake    ('Take n xs)
+
+
+
+
+type family (:++) (x :: k) (xs::l) = (ys :: l) | ys -> xs x where
+  x :++ (xs :: [k])     = x ': xs
+  x :++ ('NoOp xs)      = 'NoOp (x ': xs)
+  y :++ ('Cons x xs)    = 'Cons y (x ': xs)
+  y :++ ('Snoc xs x)    = 'Snoc (y ': xs) x
+  y :++ ('Concat xs ys) = 'Concat (y ': xs) ys
+  y :++ ('Reverse xs)   = 'Reverse (xs +: y)
+  y :++ ('Drop 0 xs)    = 'Drop 0 (y ': xs)
+  y :++ ('Take 0 xs)    = 'Take 1 (y ': xs)
+  y :++ ('Take 1 xs)    = 'Take 2 (y ': xs)
+  y :++ ('Take 2 xs)    = 'Take 3 (y ': xs)
+  y :++ ('Take 3 xs)    = 'Take 4 (y ': xs)
+  y :++ ('Take 4 xs)    = 'Take 5 (y ': xs)
+infixr 5 :++
+
+
+
+
+
+
+-- | A weird data type used to make `(+:)` operation injective.
+--   `List k [k]` must have at least two elements.
+data List1 k = L1Empty | L1Single k | List1 k [k]
+type family Snoc1 (xs :: List k) = (ys :: List1 k) | ys -> xs where
+  Snoc1 ('Snoc '[] y)        = 'L1Single y
+  Snoc1 ('Snoc (x ': xs) y)  = 'List1 x (GetList1 (Snoc1 ('Snoc xs y)))
+type family GetList1 (ts :: List1 k) = (rs :: [k]) | rs -> ts where
+  GetList1 'L1Empty = '[]
+  GetList1 ('L1Single x) = '[x]
+  GetList1 ('List1 y (x ':xs)) = y ': x ': xs
+
 
 
 -- | Synonym for (:+) that ignores Nat values 0 and 1
@@ -593,9 +837,9 @@ type family AllNats (xs :: [k]) :: [Nat] where
 type family WrapNats (ns :: k Nat) = (xns :: l XNat) | xns -> ns where
   WrapNats '[] = '[]
   WrapNats (n ': ns) = N n ': WrapNats ns
-  WrapNats 'LEmpty = 'LEmpty
-  WrapNats ('LSingle n) = 'LSingle (N n)
-  WrapNats ('List n ns) = 'List (N n) (WrapNats ns)
+  WrapNats 'L1Empty = 'L1Empty
+  WrapNats ('L1Single n) = 'L1Single (N n)
+  WrapNats ('List1 n ns) = 'List1 (N n) (WrapNats ns)
   WrapNats 'REmpty = 'REmpty
   WrapNats ('Reversing ns) = 'Reversing (WrapNats ns)
 
@@ -612,16 +856,15 @@ type family Tail (xs :: [k]) :: [k] where
     "Tail -- empty type-level list."
    )
 
--- | Reverse a list
-type Reverse (xs :: [k]) = Reversed (Reverse' xs)
-data Reversing k = REmpty | Reversing (List k)
-type family Reverse' (as :: [k]) = (rs :: Reversing k) | rs -> as where
-  Reverse' '[] = 'REmpty
-  Reverse' (a ': as) = 'Reversing (Snoc (Reversed (Reverse' as)) a)
+data Reversing k = REmpty | Reversing (List1 k)
+type family Reverse' (as :: List k) = (rs :: Reversing k) | rs -> as where
+  Reverse' ('Reverse '[]) = 'REmpty
+  Reverse' ('Reverse (a ': as)) = 'Reversing
+    (Snoc1 ('Snoc (Reversed (Reverse' ('Reverse as))) a))
 type family Reversed (ts :: Reversing k) = (rs :: [k]) | rs -> ts where
   Reversed 'REmpty = '[]
-  Reversed ('Reversing ('LSingle a)) = '[a]
-  Reversed ('Reversing ('List y (x ':xs))) = y ': x ': xs
+  Reversed ('Reversing ('L1Single a)) = '[a]
+  Reversed ('Reversing ('List1 y (x ':xs))) = y ': x ': xs
 
 type family IsSubSetOf (as :: [k]) (bs :: [k]) :: Bool where
   IsSubSetOf '[]       xs = 'True
@@ -639,36 +882,14 @@ type family Length (as :: [k]) :: Nat where
   Length (a ': as) = 1 + Length as
 
 
-type Take (n::Nat) (as :: k) = Taken (TakeF n as)
-data Taking k = Taking [k]
-type family TakeF (n::Nat) (as :: l) :: Taking k where
-  TakeF _ '[] = 'Taking '[]
-  TakeF 0 _   = 'Taking '[]
-  TakeF n (a ': as) = 'Taking (a ': Taken (TakeF (n-1) as))
-type family Taken (as :: Taking k) = (rs :: [k]) | rs -> as where
-  Taken ('Taking '[]) = '[]
-  Taken ('Taking (x :+ xs)) = x :+ xs
-
-type Drop (n::Nat) (as::k) = Dropped ('Drop n as)
-data DropType k = Drop Nat k
-type family Dropped (as :: DropType l) :: [k] where
-  Dropped ('Drop _ '[]) = '[]
-  Dropped ('Drop 0 as)  = as
-  Dropped ('Drop n (a ': as)) = Dropped ('Drop (n-1) as)
-
--- type Drop (n::Nat) (as :: k) = Dropped (DropF n as)
--- data Dropping k = Dropping [k]
--- type family DropF (n::Nat) (as :: l) :: Dropping k where
---   DropF _ '[] = 'Dropping '[]
---   DropF 0 as  = 'Dropping as
---   DropF n (a ': as) = 'Dropping (Dropped (DropF (n-1) as))
--- type family Dropped (as :: Dropping k) = (rs :: [k]) | rs -> as where
---   Dropped ('Dropping '[]) = '[]
---   Dropped ('Dropping (x :+ xs)) = x :+ xs
-
 
 -- type family IsSuffixOf (as :: [k]) (bs :: [k]) :: Bool where
 --   IsSuffixOf '[] _ = 'True
 --   IsSuffixOf as bs = If (CmpNat (Length as) (Length bs) == 'GT)
 --                          'False
 --                          (as == Drop (Length bs - Length as) bs)
+
+
+-- unsafeProof :: p a -> q b -> a :~: b
+-- unsafeProof _ _ = unsafeCoerce Refl
+-- {-# INLINE unsafeProof #-}
