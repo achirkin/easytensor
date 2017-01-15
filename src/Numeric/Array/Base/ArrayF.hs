@@ -30,7 +30,7 @@ module Numeric.Array.Base.ArrayF () where
 
 import           GHC.Base             (runRW#)
 import           GHC.Prim
--- import           GHC.TypeLits
+import           GHC.TypeLits
 import           Data.Proxy
 import           Data.Type.Equality
 import           GHC.Types
@@ -43,20 +43,16 @@ import           Numeric.Dimensions
 
 
 -- instance ( Dimensions ds
---          , Dimensions (Take 2 ds)
---          , Dimensions (Drop 2 ds)
---          ) => Show (ArrayF ds) where
+--          ) => Show (ArrayF (ds :: [Nat])) where
 --   show x = drop 1 $ foldr loopOuter "" [minBound..maxBound]
 --     where
 --       loopInner :: Proxy ds
 --                -> Idx (Drop 2 ds) -> Idx (Take 2 ds) -> String
 --       loopInner _ _ Z = "{}"
---       loopInner p ods ids@(n:!Z) = case proof1 p ids ods of
---         Refl -> ('{' :) . drop 1 $
+--       loopInner p ods ids@(n:!Z) = drop 1 $
 --                       foldr (\i s -> ", " ++ show (x ! i) ++ s) " }"
 --                               [1 :! ods .. n :! ods]
---       loopInner p ods ids@(n:!m:!_) = case proof2 p ids ods of
---         Refl -> ('{' :) . drop 2 $
+--       loopInner p ods ids@(n:!m:!_) = ('{' :) . drop 2 $
 --                       foldr (\i ss -> '\n':
 --                               foldr (\j s ->
 --                                        ", " ++ show (x ! (i :! j :! ods)) ++ s
@@ -79,22 +75,23 @@ instance Dimensions '[n] => Show (ArrayF '[n]) where
   show x = ('{' :) . drop 1 $
                 foldr (\i s -> ", " ++ show (x ! i) ++ s) " }"
                         [minBound .. maxBound]
-instance Dimensions (n :+ m :+ ds) => Show (ArrayF (n :+ m :+ ds)) where
-  show x = drop 1 $ foldr loopIt "" [minBOuter..maxBOuter]
-    where
-      loopIt :: Idx (n :+ m :+ ds) -> String -> String
-      loopIt (1 :! 1 :! ods) s = 
-      loopInner :: Idx ds -> Idx '[n,m] -> String
-      loopInner ods ids@(n:!m:!_) = ('{' :) . drop 2 $
-                      foldr (\i ss -> '\n':
-                              foldr (\j s ->
-                                       ", " ++ show (x ! (i :! j :! ods)) ++ s
-                                    ) ss [1..m]
-                            ) " }" [1..n]
-      loopOuter :: Idx ds -> String -> String
-      loopOuter Z s  = "\n" ++ loopInner Z maxBound ++ s
-      loopOuter ds s = "\n" ++ show ds ++ ":\n"
-                            ++ loopInner ds maxBound ++ s
+instance ( Dimensions (n :+ m :+ ds)
+         , Length ds <= 10
+         ) => Show (ArrayF (n :+ m :+ ds)) where
+  show x = "hello"
+  -- show x = drop 1 $ foldr loopOuter "" [minBound..maxBound]
+  --   where
+  --     loopInner :: Idx ds -> Idx '[n,m] -> String
+  --     loopInner ods ids@(n:!m:!_) = ('{' :) . drop 2 $
+  --                     foldr (\i ss -> '\n':
+  --                             foldr (\j s ->
+  --                                      ", " ++ show (x ! (i :! j :! ods)) ++ s
+  --                                   ) ss [1..m]
+  --                           ) " }" [1..n]
+  --     loopOuter :: Idx ds -> String -> String
+  --     loopOuter Z s  = "\n" ++ loopInner Z maxBound ++ s
+  --     loopOuter ds s = "\n" ++ show ds ++ ":\n"
+  --                           ++ loopInner ds maxBound ++ s
 
 
 
