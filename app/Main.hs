@@ -3,6 +3,7 @@
 {-# LANGUAGE GADTs     #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeOperators #-}
 module Main where
 
 import Data.Proxy
@@ -19,9 +20,10 @@ import GHC.TypeLits
 -- import           Foreign.Marshal
 -- import           Foreign.Ptr
 -- import           Foreign.Storable
-
+import Data.Type.Equality
 import           Numeric.Dimensions
 import Numeric.DataFrame
+import Unsafe.Coerce
 
 main :: IO ()
 main = do
@@ -40,14 +42,25 @@ main = do
     Just d3 = someNatVal 5
     dimX :: Dim '[N 3, XN, XN]
     dimX = Proxy :* d2 :? d3 :? D
-    s = withDim dimX (\ds -> show (dfFloat pi `inSpaceOf` ds))
+    s = withDim dimX (\ds -> case as3 ds of
+                        (Refl, Refl) -> show (dfFloat pi `inSpaceOf` ds)
+                     )
       :: Either String String
 
 -- dfFloat :: (Fractional (DataFrame Float ds), Show (DataFrame Float ds))
 --         => Float -> DataFrame Float (ds :: [Nat])
-dfFloat :: Fractional (DataFrame Float ds)
-        => Float -> DataFrame Float (ds :: [Nat])
+dfFloat :: Fractional (DataFrame Float (d ': ds))
+        => Float -> DataFrame Float ((d ': ds) :: [Nat])
 dfFloat x = realToFrac x
+
+as3 :: p (ds :: [Nat]) -> ((Take 3 ds) :~: '[3,2,5], ds :~: '[3,2,5])
+as3 _ = unsafeCoerce (Refl, Refl)
+
+asCons :: p (ds :: [Nat]) -> ds :~: (a ': as)
+asCons _ = unsafeCoerce Refl
+
+asNil :: p ds -> ds :~: '[]
+asNil _ = unsafeCoerce Refl
 
 --   print (two + vec2 3 4)
 --   print (two + vec2 3 4 + 5)
