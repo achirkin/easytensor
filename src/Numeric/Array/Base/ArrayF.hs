@@ -28,11 +28,11 @@ module Numeric.Array.Base.ArrayF () where
 #include "MachDeps.h"
 #include "HsBaseConfig.h"
 
+import           Data.Proxy
+import           Data.Type.Equality
 import           GHC.Base             (runRW#)
 import           GHC.Prim
 import           GHC.TypeLits
-import           Data.Proxy
-import           Data.Type.Equality
 import           GHC.Types
 import           Unsafe.Coerce
 
@@ -76,22 +76,21 @@ instance Dimensions '[n] => Show (ArrayF '[n]) where
                 foldr (\i s -> ", " ++ show (x ! i) ++ s) " }"
                         [minBound .. maxBound]
 instance ( Dimensions (n :+ m :+ ds)
-         , Length ds <= 10
          ) => Show (ArrayF (n :+ m :+ ds)) where
   show x = "hello"
-  -- show x = drop 1 $ foldr loopOuter "" [minBound..maxBound]
-  --   where
-  --     loopInner :: Idx ds -> Idx '[n,m] -> String
-  --     loopInner ods ids@(n:!m:!_) = ('{' :) . drop 2 $
-  --                     foldr (\i ss -> '\n':
-  --                             foldr (\j s ->
-  --                                      ", " ++ show (x ! (i :! j :! ods)) ++ s
-  --                                   ) ss [1..m]
-  --                           ) " }" [1..n]
-  --     loopOuter :: Idx ds -> String -> String
-  --     loopOuter Z s  = "\n" ++ loopInner Z maxBound ++ s
-  --     loopOuter ds s = "\n" ++ show ds ++ ":\n"
-  --                           ++ loopInner ds maxBound ++ s
+  show x = drop 1 $ foldr loopOuter "" [minBound..maxBound]
+    where
+      loopInner :: Idx ds -> Idx '[n,m] -> String
+      loopInner ods ids@(n:!m:!_) = ('{' :) . drop 2 $
+                      foldr (\i ss -> '\n':
+                              foldr (\j s ->
+                                       ", " ++ show (x ! (i :! j :! ods)) ++ s
+                                    ) ss [1..m]
+                            ) " }" [1..n]
+      loopOuter :: Idx ds -> String -> String
+      loopOuter Z s  = "\n" ++ loopInner Z maxBound ++ s
+      loopOuter ds s = "\n" ++ show ds ++ ":\n"
+                            ++ loopInner ds maxBound ++ s
 
 
 

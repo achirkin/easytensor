@@ -6,7 +6,7 @@
 {-# LANGUAGE KindSignatures, DataKinds #-}
 {-# LANGUAGE TypeOperators, FlexibleInstances, ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications, FunctionalDependencies     #-}
-{-# LANGUAGE UndecidableSuperClasses #-}
+{-# LANGUAGE ConstraintKinds      #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions
@@ -29,7 +29,8 @@ module Numeric.Dimensions
   , Slice (..)
   , Dimensional (..), runDimensional, withDim
     -- * Operations
-  , Dimensions' (..), Dimensions (..), inSpaceOf, PreservingDim (..)
+  , Dimensions, Dimensions' (..), Dimensions'' (..)
+  , inSpaceOf, PreservingDim (..)
     -- * Type-level programming
   , FixedDim, IsFixedDim
   , type (++), Reverse, Take, Drop, Length -- , IsPrefixOf, IsSuffixOf
@@ -89,13 +90,14 @@ type N (n::Nat) = 'N n
 
 -- | Similar to SomeNat, hide some dimensions under an existential constructor.
 data SomeDim (xns :: [XNat])
-  = forall ns . (Dimensions ns, FixedDim xns ns) => SomeDim (Dim ns)
+  = forall ns . (Dimensions ns, FixedDim xns ns, SameConstr xns ns) => SomeDim (Dim ns)
 
 -- | Construct dimensionality at runtime
 someDimVal :: Dim (xns :: [XNat]) -> Maybe (SomeDim xns)
 someDimVal D = Just $ SomeDim D
 someDimVal xxs@(p :* xs) = someDimVal xs >>=
-  \(SomeDim ps) -> (\Refl -> SomeDim (p :* ps)) <$> bringToScope xxs p ps
+  \(SomeDim ps) -> withSuccKnown (order ps) ps
+      (\Refl -> (\Refl -> SomeDim (p :* ps)) <$> bringToScope xxs p ps)
   where
     -- I know for sure that the constraint (FixedDim xns ns) holds,
     --   but I need to convince the compiler that this is the case
@@ -103,11 +105,24 @@ someDimVal xxs@(p :* xs) = someDimVal xs >>=
                  -> Maybe ((IsFixedDim (ym :+ yms) (m :+ ms)) :~: 'True)
     bringToScope _ _ _ = unsafeCoerce (Just Refl)
 someDimVal (SomeNat p :? xs) = someDimVal xs >>=
-  \(SomeDim ps) -> Just $ SomeDim (p :* ps)
+  \(SomeDim ps) -> withSuccKnown (order ps) ps
+      (\Refl -> Just $ SomeDim (p :* ps))
+
+withSuccKnown :: Int
+              -> p xs
+              -> ( forall n . KnownNat n => (1 + Length xs) :~: n -> a)
+              -> a
+withSuccKnown n p g = case someNatVal (fromIntegral n) of
+    Just (SomeNat m) -> g (evidence p m)
+    Nothing          -> error "Something is terribly wrong. Length is negative?"
+  where
+    evidence:: KnownNat m => p xs -> q m -> (1 + Length xs) :~: m
+    evidence _ _ = unsafeCoerce Refl
+
 
 -- | Fix runtime-obtained dimensions for use in some function
 withDim :: Dim (xns :: [XNat])
-        -> (forall ns . (Dimensions ns, FixedDim xns ns)
+        -> (forall ns . (Dimensions ns, FixedDim xns ns, SameConstr xns ns)
              => Dim ns -> a)
         -> Either String a
 withDim xds f = case someDimVal xds of
@@ -119,8 +134,8 @@ withDim xds f = case someDimVal xds of
 --             . (xns' `IsSubSetOf` xns ~ 'True, PreservingDim a)
 --            => Dim (xns :: [XNat])
 --            -> a xns'
---            -> ( forall ns ns' . ( Dimensions ns
---                                 , Dimensions ns'
+--            -> ( forall ns ns' . ( Dimensions'' ns
+--                                 , Dimensions'' ns'
 --                                 , FixedDim xns ns
 --                                 , FixedDim xns' ns'
 --                                 , ns' `IsSubSetOf` ns ~ 'True)
@@ -148,7 +163,7 @@ withDim xds f = case someDimVal xds of
 --   that require compile-time-known dimensions.
 newtype Dimensional (xns :: [XNat]) a = Dimensional
   { _runDimensional ::
-    ( forall ns . (Dimensions ns, FixedDim xns ns) => Dim ns -> a )
+    ( forall ns . (Dimensions ns, FixedDim xns ns, SameConstr xns ns) => Dim ns -> a )
   }
 
 -- | Run Dimension-enabled computation with dimensionality known at runtime
@@ -168,21 +183,29 @@ class PreservingDim a xa | a -> xa, xa -> a where
   shape   :: a ns -> Dim ns
   -- | Apply a function that requires a dixed dimension
   withShape :: xa xns
-            -> (forall ns . (Dimensions ns, FixedDim xns ns) => a ns -> b)
+            -> (forall ns . (Dimensions ns, FixedDim xns ns, SameConstr xns ns) => a ns -> b)
             -> b
   -- | Put some of dimensions into existential data type
   looseDims :: a ns -> xa (WrapNats ns)
 
-class FixedOrder (ds :: k) where
-  -- | Number of elements in a dimension list
-  order :: t ds -> Int
+type Dimensions xs = ( KnownDims xs
+                     , KnownOrder xs
+                     , Dimensions' xs
+                     , Dimensions'' xs)
 
-class KnownDims ds => Dimensions' (ds :: [Nat]) where
+order :: KnownOrder xs => t xs -> Int
+order = fromInteger . natVal . f
+  where
+    f :: t xs -> Proxy (Length xs)
+    f _ = Proxy
+{-# INLINE order #-}
+
+class Dimensions' (ds :: [Nat]) where
   -- | Dimensionality of our space
   dim :: Dim ds
 
 -- | Support for Idx GADT
-class (Dimensions' ds, FixedOrder ds) => Dimensions (ds :: [Nat]) where
+class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
   -- | Total number of elements - product of all dimension sizes (unboxed)
   totalDim :: t ds -> Int
   -- | Run a primitive loop over all dimensions (1..n)
@@ -221,8 +244,8 @@ inSpaceOf :: a ds -> b ds -> a ds
 inSpaceOf x _ = x
 
 -- -- | Get some dimensions of lower order.
--- subDim :: ( Dimensions ds )
---        => t ds -> ((ds' `IsSubSetOf` ds ~ 'True, Dimensions ds') => Dim ds')
+-- subDim :: ( Dimensions'' ds )
+--        => t ds -> ((ds' `IsSubSetOf` ds ~ 'True, Dimensions'' ds') => Dim ds')
 -- subDim _ = dim
 
 --------------------------------------------------------------------------------
@@ -233,7 +256,7 @@ instance Show (Idx ds) where
   show Z = "Idx Ø"
   show xs = "Idx" ++ foldr (\i s -> " " ++ show i ++ s) "" (idxToList xs)
 
-instance Dimensions ds => Show (Dim ds) where
+instance Dimensions'' ds => Show (Dim ds) where
   show D = "Dim Ø"
   show xs = "Dim" ++ foldr (\i s -> " " ++ show i ++ s) ""
     (idxToList $ dimMax `inSpaceOf` xs)
@@ -294,13 +317,13 @@ instance Dimensions' ds => Bounded (Dim ds) where
   minBound = dim
   {-# INLINE minBound #-}
 
-instance Dimensions ds => Bounded (Idx ds) where
+instance Dimensions'' ds => Bounded (Idx ds) where
   maxBound = dimMax
   {-# INLINE maxBound #-}
   minBound = dimMin
   {-# INLINE minBound #-}
 
-instance Dimensions ds => Enum (Idx ds) where
+instance Dimensions'' ds => Enum (Idx ds) where
   succ = succIdx
   {-# INLINE succ #-}
   pred = predIdx
@@ -337,61 +360,6 @@ instance IsList (Idx ds) where
 -- | Get the first dimension
 headDim :: t (d ': ds :: [k]) -> Proxy d
 headDim _ = Proxy
-
-
-
-
-instance {-# OVERLAPPING #-} FixedOrder ('[] :: [k]) where
-  order _ = 0
-  {-# INLINE order #-}
-
-instance {-# OVERLAPPING #-} FixedOrder ds => FixedOrder (d ': ds) where
-  order _ = 1 + order (Proxy @ds)
-  {-# INLINE order #-}
-
-instance FixedOrder ds => FixedOrder ('NoOp ds) where
-  order _ = order (Proxy @ds)
-  {-# INLINE order #-}
-
-instance FixedOrder ds
-      => FixedOrder ('Cons d ds) where
-  order _ = 1 + order (Proxy @ds)
-  {-# INLINE order #-}
-
-instance FixedOrder ds
-      => FixedOrder ('Snoc ds d) where
-  order _ = 1 + order (Proxy @ds)
-  {-# INLINE order #-}
-
-instance ( FixedOrder as, FixedOrder bs )
-      => FixedOrder ('Concat as bs) where
-  order _ = order (Proxy @as) + order (Proxy @bs)
-  {-# INLINE order #-}
-
-instance FixedOrder ds => FixedOrder ('Reverse ds) where
-  order _ = order (Proxy @ds)
-  {-# INLINE order #-}
-
-instance ( FixedOrder ds, KnownNat n )
-      => FixedOrder ('Drop n ds) where
-  order _ = max (l - n) 0
-      where
-        l = order $ Proxy @ds
-        n = fromInteger $ natVal (Proxy @n)
-  {-# INLINE order #-}
-
-instance ( FixedOrder ds, KnownNat n )
-      => FixedOrder ('Take n ds) where
-  order _ = min l n
-      where
-        l = order $ Proxy @ds
-        n = fromInteger $ natVal (Proxy @n)
-  {-# INLINE order #-}
-
-instance {-# OVERLAPPABLE #-} FixedOrder ('NoOp xs)
-      => FixedOrder xs where
-  order _ = order (Proxy @('NoOp xs))
-  {-# INLINE order #-}
 
 
 
@@ -449,80 +417,29 @@ instance {-# OVERLAPPABLE #-} FixedOrder ('NoOp xs)
 -- r = order xx
 --
 
+instance ( KnownOrder (d ': ds)
+         , KnownDims (d ': ds)
+         ) => Dimensions' ((d ': ds) :: [Nat]) where
+  dim = iter n f (unsafeCoerce D)
+    where
+      n = order (Proxy @(d ': ds))
+      f :: Dim (d ': ds) -> Dim (d ': ds)
+      f = unsafeCoerce . ((Proxy @0) :*)
+      iter 0 _ x = x
+      iter k g x = iter (k-1) g (g x)
+  {-# INLINE dim #-}
 
 instance Dimensions' ('[] :: [Nat]) where
   dim = D
   {-# INLINE dim #-}
 
-instance ( Dimensions' (ds :: [Nat])
-         , KnownDims (d :+ ds)
-         ) => Dimensions' (d :+ ds) where
-  dim = Proxy :* dim
-  {-# INLINE dim #-}
-
--- instance ( Dimensions' (ds :: [Nat])
---          ) => Dimensions' ('NoOp ds) where
---   dim = LiftedDim (unsafeCoerce $ dim `inSpaceOf` Proxy @ds)
---   {-# INLINE dim #-}
---
--- instance ( Dimensions' (ds :: [Nat])
---          , KnownNat d
---          ) => Dimensions' ('Cons d ds) where
---   dim = LiftedDim $ Proxy :* dim
---   {-# INLINE dim #-}
-
--- instance ( Dimensions' (ds :: [Nat])
---          , KnownNat d
---          ) => Dimensions' ('Snoc ds d) where
---   dim = LiftedDim $ Proxy :* dim
---   {-# INLINE dim #-}
-
-
--- instance FixedOrder ds
---       => FixedOrder ('Snoc ds d) where
---   order _ = 1 + order (Proxy @ds)
---   {-# INLINE order #-}
---
--- instance ( FixedOrder as, FixedOrder bs )
---       => FixedOrder ('Concat as bs) where
---   order _ = order (Proxy @as) + order (Proxy @bs)
---   {-# INLINE order #-}
---
--- instance FixedOrder ds => FixedOrder ('Reverse ds) where
---   order _ = order (Proxy @ds)
---   {-# INLINE order #-}
---
--- instance ( FixedOrder ds, KnownNat n )
---       => FixedOrder ('Drop n ds) where
---   order _ = max (l - n) 0
---       where
---         l = order $ Proxy @ds
---         n = fromInteger $ natVal (Proxy @n)
---   {-# INLINE order #-}
---
--- instance ( FixedOrder ds, KnownNat n )
---       => FixedOrder ('Take n ds) where
---   order _ = min l n
---       where
---         l = order $ Proxy @ds
---         n = fromInteger $ natVal (Proxy @n)
---   {-# INLINE order #-}
---
--- instance {-# OVERLAPPABLE #-} FixedOrder ('NoOp xs)
---       => FixedOrder xs where
---   order _ = order (Proxy @('NoOp xs))
---   {-# INLINE order #-}
 
 
 
 
 
 
-
-
-
-
-instance Dimensions ('[] :: [Nat]) where
+instance Dimensions'' ('[] :: [Nat]) where
   totalDim _ = 1
   {-# INLINE totalDim #-}
   loopS _ f = f Z
@@ -554,10 +471,11 @@ instance Dimensions ('[] :: [Nat]) where
   diffIdx _ _ = 0
   {-# INLINE diffIdx #-}
 
-instance ( Dimensions ds
+instance ( Dimensions'' ds
          , KnownDims (d ': ds)
+         , KnownOrder (d ': ds)
          )
-          => Dimensions (d ': ds) where
+          => Dimensions'' (d ': ds) where
   totalDim _ = fromIntegral (natVal (Proxy @d))
              * totalDim (Proxy @ds)
   {-# INLINE totalDim #-}
@@ -666,11 +584,16 @@ loopReverse1 n f = loop' n
 -- * Type-level programming
 --------------------------------------------------------------------------------
 
-type family KnownDims (xs :: [Nat]) :: Constraint where
+type KnownOrder (ns :: [k]) = KnownNat (Length ns)
+
+type family KnownDims (ns :: [Nat]) :: Constraint where
   KnownDims '[] = ()
-  KnownDims (x ': xs) = KnownNat x
-  -- KnownDims '[x,y] = ( KnownNat x, KnownNat y )
-  -- KnownDims xs = ()
+  KnownDims (x ': xs) = ( KnownNat x
+                        , KnownOrder xs
+                        , Dimensions' xs
+                        , Dimensions'' xs
+                        , KnownDims xs)
+
 
 -- | Unify usage of XNat and Nat.
 --   This is useful in function and type definitions.
@@ -694,6 +617,13 @@ type family KnownDim (x::k) :: Nat where
 --   This allows establishing strong relations between [XNat] and [Nat].
 type family FixedDim (xns :: [k]) (ns :: [Nat]) :: Constraint where
   FixedDim xns ns = IsFixedDim xns ns ~ 'True
+
+type family SameConstr (xns :: [k]) (ns :: [Nat]) :: Constraint where
+  SameConstr (_ ': _) (_ ': _) = ()
+  SameConstr '[] '[] = ()
+  SameConstr _ _ = TypeError ( 'Text
+    "Lists for fixed dim should be of the same length."
+   )
 
 -- | FixedDim as Bool kind. I need it to provide an evidence of having FixedDim
 --   using Data.Type.Equality reflection ( IsFixedDim xns ns :~: 'True ).

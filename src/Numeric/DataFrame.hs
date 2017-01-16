@@ -44,31 +44,32 @@ import           Data.Type.Equality
 --    and maintain information about dimensions in the type-system
 data DataFrame :: (Type -> [k] -> Type) where
    DataFrameKnown :: forall t ns
-                   . Dimensions (KnownDims ns)
-                  => Array t (KnownDims ns) -> DataFrame t ns
+                   . Dimensions (KnownDims1 ns)
+                  => Array t (KnownDims1 ns) -> DataFrame t ns
    DataFrameSome  :: forall t ns xns
                    . (Dimensions ns, FixedDim xns ns)
                   => Dim xns -> Array t ns -> DataFrame t xns
 
 
-type family KnownDims (x::[k]) = (y :: [Nat]) | y -> x where
-  KnownDims ('[]::[Nat]) = '[]
-  KnownDims (n ': ns) = n ': ns
+type family KnownDims1 (x::[k]) = (y :: [Nat]) | y -> x where
+  KnownDims1 ('[]::[Nat]) = '[]
+  KnownDims1 (n ': ns) = n ': ns
 
 
 wrapKnown :: Dimensions ns => Array t ns -> DataFrame t ns
 wrapKnown a = case f a of
   Refl -> DataFrameKnown a
   where
-    f :: a ns -> ns :~: KnownDims ns
+    f :: a ns -> ns :~: KnownDims1 ns
     f _ = unsafeCoerce Refl
 
--- instance ( Show (Array t ds)
---          , Show (Dim ds)
---          ) => Show (DataFrame t (ds :: [Nat])) where
---   show (DataFrame ds arr) = "DataFrame:"
---                          ++ "\n\tShape: " ++ show ds
---                          ++ "\n\tContent:\n" ++ show arr
+instance ( Show (Array t (KnownDims1 ds))
+         , Show (Dim ds)
+         ) => Show (DataFrame t (ds :: [Nat])) where
+  show (DataFrameKnown arr) = "DataFrame:"
+                         ++ "\n\tShape: " ++ show (dim `inSpaceOf` arr)
+                         ++ "\n\tContent:\n" ++ show arr
+
 
 -- instance ( Show (Dim ds)
 --          ) => Show (DataFrame t (ds :: [XNat])) where
@@ -79,23 +80,23 @@ wrapKnown a = case f a of
 --     )
 --
 --
-instance PreservingDim (DataFrame t) (DataFrame t) where
-  shape x@(DataFrameKnown a) = case unsafeProof x a of
-    Refl -> dim
-  shape (DataFrameSome ds _) = ds
-  looseDims x@(DataFrameKnown a)
-      = case (unsafeProof x a, unsafeIsFixed d a) of
-        (Refl, Refl) -> DataFrameSome d a
-    where
-      d = wrapDims (dim `inSpaceOf` a)
-      wrapDims :: Dim ns -> Dim (WrapNats ns)
-      wrapDims D         = D
-      wrapDims (n :* ns) = n :* wrapDims ns
-  looseDims (DataFrameSome _ _) = error
-    "Something is wrong: DataFrameSome should be parameterized by XNat."
-  withShape (DataFrameSome _ a) f = f (wrapKnown a)
-  withShape (DataFrameKnown _) _ = error
-    "Something is wrong: DataFrameKnown should be parameterized by Nat."
+-- instance PreservingDim (DataFrame t) (DataFrame t) where
+--   shape x@(DataFrameKnown a) = case unsafeProof x a of
+--     Refl -> dim
+--   shape (DataFrameSome ds _) = ds
+--   looseDims x@(DataFrameKnown a)
+--       = case (unsafeProof x a, unsafeIsFixed d a) of
+--         (Refl, Refl) -> DataFrameSome d a
+--     where
+--       d = wrapDims (dim `inSpaceOf` a)
+--       wrapDims :: Dim ns -> Dim (WrapNats ns)
+--       wrapDims D         = D
+--       wrapDims (n :* ns) = n :* wrapDims ns
+--   looseDims (DataFrameSome _ _) = error
+--     "Something is wrong: DataFrameSome should be parameterized by XNat."
+--   withShape (DataFrameSome _ a) f = f (wrapKnown a)
+--   withShape (DataFrameKnown _) _ = error
+--     "Something is wrong: DataFrameKnown should be parameterized by Nat."
 
 --
 -- instance ( Bounded (Array t ds)
