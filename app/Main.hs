@@ -36,8 +36,11 @@ main = do
                                     of
       Nothing -> Nothing
       Just (a,b,c,d) -> someDimVal $ a :? b :? c :? d :? D
-    print s
+    printEither s
   where
+    printEither :: Either String String -> IO ()
+    printEither (Left s) = putStrLn s
+    printEither (Right s) = putStrLn s
     Just d2 = someNatVal 2
     Just d3 = someNatVal 5
     dimX :: Dim '[N 3, XN, XN]
@@ -49,11 +52,11 @@ main = do
 
 -- dfFloat :: (Fractional (DataFrame Float ds), Show (DataFrame Float ds))
 --         => Float -> DataFrame Float (ds :: [Nat])
-dfFloat :: Fractional (DataFrame Float (d ': ds))
-        => Float -> DataFrame Float ((d ': ds) :: [Nat])
+dfFloat :: Fractional (DataFrame Float ds)
+        => Float -> DataFrame Float (ds :: [Nat])
 dfFloat x = realToFrac x
 
-as3 :: p (ds :: [Nat]) -> ((Take 3 ds) :~: '[3,2,5], ds :~: '[3,2,5])
+as3 :: p (ds :: [Nat]) -> ((Take 3 ds) :~: '[a,b,c], ds :~: '[a,b,c])
 as3 _ = unsafeCoerce (Refl, Refl)
 
 asCons :: p (ds :: [Nat]) -> ds :~: (a ': as)

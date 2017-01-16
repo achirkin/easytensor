@@ -417,23 +417,28 @@ headDim _ = Proxy
 -- r = order xx
 --
 
-instance ( KnownOrder (d ': ds)
-         , KnownDims (d ': ds)
-         ) => Dimensions' ((d ': ds) :: [Nat]) where
-  dim = iter n f (unsafeCoerce D)
-    where
-      n = order (Proxy @(d ': ds))
-      f :: Dim (d ': ds) -> Dim (d ': ds)
-      f = unsafeCoerce . ((Proxy @0) :*)
-      iter 0 _ x = x
-      iter k g x = iter (k-1) g (g x)
-  {-# INLINE dim #-}
+-- instance ( KnownOrder (d ': ds)
+--          , KnownDims (d ': ds)
+--          ) => Dimensions' ((d ': ds) :: [Nat]) where
+--   dim = iter n f (unsafeCoerce D)
+--     where
+--       n = order (Proxy @(d ': ds))
+--       f :: Dim (d ': ds) -> Dim (d ': ds)
+--       f = unsafeCoerce . ((Proxy @0) :*)
+--       iter 0 _ x = x
+--       iter k g x = iter (k-1) g (g x)
+--   {-# INLINE dim #-}
 
 instance Dimensions' ('[] :: [Nat]) where
   dim = D
   {-# INLINE dim #-}
 
-
+instance ( KnownOrder (d ': ds)
+         , KnownDims (d ': ds)
+         , Dimensions' ds
+         )  => Dimensions' ((d ': ds) :: [Nat]) where
+  dim = Proxy :* dim
+  {-# INLINE dim #-}
 
 
 
