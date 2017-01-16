@@ -93,6 +93,7 @@ data SomeDim (xns :: [XNat])
   = forall ns . ( Dimensions ns
                 , IsFixedDim xns ns ~ 'True
                 , FixedDim xns ns ~ ns
+                , GeneratedDim xns ns ~ ns
                 )  => SomeDim (Dim (FixedDim xns ns))
 
 -- | Construct dimensionality at runtime
@@ -101,8 +102,8 @@ someDimVal D = Just $ SomeDim D
 someDimVal xxs@(p :* xs) = someDimVal xs >>=
   \(SomeDim ps) -> withSuccKnown (order ps) ps
       (\Refl -> (\Refl -> let pps = p :* ps
-                          in case isFixed xxs pps pps of
-                               Refl -> SomeDim pps
+                          in case (isFixed xxs pps pps, isGen xxs pps pps) of
+                               (Refl, Refl) -> SomeDim pps
                 ) <$> bringToScope xxs p ps)
   where
     -- I know for sure that the constraint (FixedDim xns ns) holds,
@@ -112,6 +113,8 @@ someDimVal xxs@(p :* xs) = someDimVal xs >>=
     bringToScope _ _ _ = unsafeCoerce (Just Refl)
     isFixed :: Dim xns -> Dim ns -> Dim ds -> (FixedDim xns ns) :~: ds
     isFixed _ _ _ = unsafeCoerce Refl
+    isGen :: Dim xns -> Dim ns -> Dim ds -> (GeneratedDim xns ns) :~: ds
+    isGen _ _ _ = unsafeCoerce Refl
 someDimVal (SomeNat p :? xs) = someDimVal xs >>=
   \(SomeDim ps) -> withSuccKnown (order ps) ps
       (\Refl -> Just $ SomeDim (p :* ps))
@@ -133,6 +136,7 @@ withDim :: Dim (xns :: [XNat])
         -> (forall ns . ( Dimensions ns
                         , IsFixedDim xns ns ~ 'True
                         , FixedDim xns ns ~ ns
+                        , GeneratedDim xns ns ~ ns
                         ) => Dim (FixedDim xns ns) -> a)
         -> Either String a
 withDim xds f = case someDimVal xds of
@@ -176,6 +180,7 @@ newtype Dimensional (xns :: [XNat]) a = Dimensional
     ( forall ns . ( Dimensions ns
                   , IsFixedDim xns ns ~ 'True
                   , FixedDim xns ns ~ ns
+                  , GeneratedDim xns ns ~ ns
                   ) => Dim (FixedDim xns ns) -> a )
   }
 
@@ -199,6 +204,7 @@ class PreservingDim a xa | a -> xa, xa -> a where
             -> (forall ns . ( Dimensions ns
                             , IsFixedDim xns ns ~ 'True
                             , FixedDim xns ns ~ ns
+                            , GeneratedDim xns ns ~ ns
                             ) => a (FixedDim xns ns) -> b)
             -> b
   -- | Put some of dimensions into existential data type
@@ -640,6 +646,15 @@ type family FixedDim (xns :: [k]) (ns :: [Nat]) = (rs :: [Nat]) | rs -> ns where
   FixedDim (XN ': xns) (n ': ns) = n ': FixedDim xns ns
   FixedDim (N n ': xns) (n ': ns) = n ': FixedDim xns ns
   FixedDim '[] '[] = '[]
+
+type family GeneratedDim (xns :: [k]) (ns :: [Nat]) :: [Nat] where
+  GeneratedDim (XN ': xns) (n ': ns) = n ': GeneratedDim xns ns
+  GeneratedDim (N n ': xns) (n ': ns) = n ': GeneratedDim xns ns
+  GeneratedDim (XN ': xns) '[] = 0 ': GeneratedDim xns '[]
+  GeneratedDim (N n ': xns) '[] = n ': GeneratedDim xns '[]
+  GeneratedDim '[] '[] = '[]
+  GeneratedDim xns '[] = xns
+
 
 type family SameConstr (xns :: [k]) (ns :: [Nat]) :: Constraint where
   SameConstr (_ ': _) (_ ': _) = ()
