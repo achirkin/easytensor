@@ -77,7 +77,6 @@ instance Dimensions '[n] => Show (ArrayF '[n]) where
                         [minBound .. maxBound]
 instance ( Dimensions (n :+ m :+ ds)
          ) => Show (ArrayF (n :+ m :+ ds)) where
-  show x = "hello"
   show x = drop 1 $ foldr loopOuter "" [minBound..maxBound]
     where
       loopInner :: Idx ds -> Idx '[n,m] -> String
