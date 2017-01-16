@@ -43,10 +43,14 @@ for example, `Vector t n` implemented as `ByteArray#` is overloaded by a special
 Just a reminder:
 if using atom editor with `haskell-ghc-mod`, you need to build a `ghc-mod` executable
 in the project folder.
-There is a problem in lts-7.11 that it does not compile due to package `extra`.
-To overcome this and successfully install ghc-mod, you need to run:
+Recently I have changed to `ghc-8.0.2`, which currently lacks an accompanying stack snapshot.
+Thus, I have specified a custom compiler.
+To compile ghc-mod with that version I added a special stack configuration file.
+Therefore, to install ghc-mod, type following:
 ```
-  stack build ghc-mod extra-1.4.12
+  stack setup
+  stack build happy --stack-yaml stack-ghc-mod.yaml
+  stack build ghc-mod --stack-yaml stack-ghc-mod.yaml 
 ```
 Also, do not forget to remove folder `dist` if cabal created it,
 and make sure atom plugin uses stack sandboxing.
