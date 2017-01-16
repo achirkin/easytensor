@@ -47,8 +47,10 @@ data DataFrame :: (Type -> [k] -> Type) where
                    . Dimensions (NatList ns)
                   => Array t (NatList ns) -> DataFrame t ns
    DataFrameSome  :: forall t ns xns
-                   . (Dimensions ns, FixedDim xns ns)
-                  => Dim xns -> Array t ns -> DataFrame t xns
+                   . ( Dimensions ns
+                     , FixedDim xns ns ~ ns
+                     , IsFixedDim xns ns ~ 'True)
+                  => Dim xns -> Array t (FixedDim xns ns) -> DataFrame t xns
 
 
 type family NatList (x::[k]) :: [Nat] where

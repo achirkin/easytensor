@@ -45,8 +45,7 @@ main = do
     Just d3 = someNatVal 5
     dimX :: Dim '[N 3, XN, XN]
     dimX = Proxy :* d2 :? d3 :? D
-    s = withDim dimX (\ds -> case as3 ds of
-                        (Refl, Refl) -> show (dfFloat pi `inSpaceOf` ds)
+    s = withDim dimX (\ds -> show (dfFloat pi `inSpaceOf` ds)
                      )
       :: Either String String
 

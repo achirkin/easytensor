@@ -90,20 +90,28 @@ type N (n::Nat) = 'N n
 
 -- | Similar to SomeNat, hide some dimensions under an existential constructor.
 data SomeDim (xns :: [XNat])
-  = forall ns . (Dimensions ns, FixedDim xns ns, SameConstr xns ns) => SomeDim (Dim ns)
+  = forall ns . ( Dimensions ns
+                , IsFixedDim xns ns ~ 'True
+                , FixedDim xns ns ~ ns
+                )  => SomeDim (Dim (FixedDim xns ns))
 
 -- | Construct dimensionality at runtime
 someDimVal :: Dim (xns :: [XNat]) -> Maybe (SomeDim xns)
 someDimVal D = Just $ SomeDim D
 someDimVal xxs@(p :* xs) = someDimVal xs >>=
   \(SomeDim ps) -> withSuccKnown (order ps) ps
-      (\Refl -> (\Refl -> SomeDim (p :* ps)) <$> bringToScope xxs p ps)
+      (\Refl -> (\Refl -> let pps = p :* ps
+                          in case isFixed xxs pps pps of
+                               Refl -> SomeDim pps
+                ) <$> bringToScope xxs p ps)
   where
     -- I know for sure that the constraint (FixedDim xns ns) holds,
     --   but I need to convince the compiler that this is the case
     bringToScope :: Dim (ym :+ yms) -> Proxy m -> Dim ms
                  -> Maybe ((IsFixedDim (ym :+ yms) (m :+ ms)) :~: 'True)
     bringToScope _ _ _ = unsafeCoerce (Just Refl)
+    isFixed :: Dim xns -> Dim ns -> Dim ds -> (FixedDim xns ns) :~: ds
+    isFixed _ _ _ = unsafeCoerce Refl
 someDimVal (SomeNat p :? xs) = someDimVal xs >>=
   \(SomeDim ps) -> withSuccKnown (order ps) ps
       (\Refl -> Just $ SomeDim (p :* ps))
@@ -122,8 +130,10 @@ withSuccKnown n p g = case someNatVal (fromIntegral n) of
 
 -- | Fix runtime-obtained dimensions for use in some function
 withDim :: Dim (xns :: [XNat])
-        -> (forall ns . (Dimensions ns, FixedDim xns ns, SameConstr xns ns)
-             => Dim ns -> a)
+        -> (forall ns . ( Dimensions ns
+                        , IsFixedDim xns ns ~ 'True
+                        , FixedDim xns ns ~ ns
+                        ) => Dim (FixedDim xns ns) -> a)
         -> Either String a
 withDim xds f = case someDimVal xds of
   Just (SomeDim ds) -> Right $ f ds
@@ -163,7 +173,10 @@ withDim xds f = case someDimVal xds of
 --   that require compile-time-known dimensions.
 newtype Dimensional (xns :: [XNat]) a = Dimensional
   { _runDimensional ::
-    ( forall ns . (Dimensions ns, FixedDim xns ns, SameConstr xns ns) => Dim ns -> a )
+    ( forall ns . ( Dimensions ns
+                  , IsFixedDim xns ns ~ 'True
+                  , FixedDim xns ns ~ ns
+                  ) => Dim (FixedDim xns ns) -> a )
   }
 
 -- | Run Dimension-enabled computation with dimensionality known at runtime
@@ -183,7 +196,10 @@ class PreservingDim a xa | a -> xa, xa -> a where
   shape   :: a ns -> Dim ns
   -- | Apply a function that requires a dixed dimension
   withShape :: xa xns
-            -> (forall ns . (Dimensions ns, FixedDim xns ns, SameConstr xns ns) => a ns -> b)
+            -> (forall ns . ( Dimensions ns
+                            , IsFixedDim xns ns ~ 'True
+                            , FixedDim xns ns ~ ns
+                            ) => a (FixedDim xns ns) -> b)
             -> b
   -- | Put some of dimensions into existential data type
   looseDims :: a ns -> xa (WrapNats ns)
@@ -620,8 +636,10 @@ type family KnownDim (x::k) :: Nat where
 
 -- | FixedDim puts very tough constraints on what list of naturals can be.
 --   This allows establishing strong relations between [XNat] and [Nat].
-type family FixedDim (xns :: [k]) (ns :: [Nat]) :: Constraint where
-  FixedDim xns ns = IsFixedDim xns ns ~ 'True
+type family FixedDim (xns :: [k]) (ns :: [Nat]) = (rs :: [Nat]) | rs -> ns where
+  FixedDim (XN ': xns) (n ': ns) = n ': FixedDim xns ns
+  FixedDim (N n ': xns) (n ': ns) = n ': FixedDim xns ns
+  FixedDim '[] '[] = '[]
 
 type family SameConstr (xns :: [k]) (ns :: [Nat]) :: Constraint where
   SameConstr (_ ': _) (_ ': _) = ()
@@ -632,7 +650,7 @@ type family SameConstr (xns :: [k]) (ns :: [Nat]) :: Constraint where
 
 -- | FixedDim as Bool kind. I need it to provide an evidence of having FixedDim
 --   using Data.Type.Equality reflection ( IsFixedDim xns ns :~: 'True ).
-type family IsFixedDim (xns :: [XNat]) (ns :: [Nat]) :: Bool where
+type family IsFixedDim (xns :: [k]) (ns :: [Nat]) :: Bool where
   IsFixedDim (XN  ': xns) (_ ': ns) = IsFixedDim xns ns
   IsFixedDim (N n ': xns) (m ': ns) = (n == m) && IsFixedDim xns ns
   IsFixedDim '[]          '[]       = 'True
