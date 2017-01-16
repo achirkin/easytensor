@@ -1,11 +1,18 @@
-resolver: lts-7.11
+resolver: lts-8.0.2
 
 packages:
-- '.'
+  - "."
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps: []
 
 # Override default flag values for local packages and extra-deps
 flags: {}
-
+compiler: ghc-8.0.2
+setup-info:
+  ghc:
+   linux:
+    8.0.2:
+     url: http://downloads.haskell.org/~ghc/8.0.2/ghc-8.0.2-x86_64-deb8-linux.tar.xz
+     content-length: 114373576
+     sha1: f298b7d0f37cc9ded7ac66b2662b0fa5ac6d0809
