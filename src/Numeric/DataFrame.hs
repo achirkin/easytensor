@@ -1,6 +1,4 @@
 {-# LANGUAGE FlexibleInstances      #-}
--- {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE MagicHash              #-}
 {-# LANGUAGE Rank2Types             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 -- {-# LANGUAGE TypeApplications       #-}
@@ -17,6 +15,9 @@
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving   #-}
+{-# LANGUAGE UnboxedTuples, MagicHash #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame
@@ -30,382 +31,130 @@
 
 module Numeric.DataFrame
   ( DataFrame
+  , withShape
+  , unboundShape
   ) where
 
-import           Control.Arrow      (first, second)
 import           Data.Type.Equality
 import           GHC.TypeLits       (Nat)
 import           GHC.Types          (Type)
 import           Numeric.Array
 import           Numeric.Commons
 import           Numeric.Dimensions
-import           Text.Read
 import           Unsafe.Coerce
 
 -- | Keep data in a primitive data frame
 --    and maintain information about dimensions in the type-system
-data DataFrame :: (Type -> [k] -> Type) where
-   DataFrameKnown :: forall t ns
-                   . Dimensions (NatList ns)
-                  => Array t (NatList ns) -> DataFrame t ns
-   DataFrameSome  :: forall t ns xns
-                   . ( Dimensions ns
-                     , FixedDim xns ns ~ ns
-                     )
-                  => Dim xns -> Array t (FixedDim xns ns) -> DataFrame t xns
+data family DataFrame (t :: Type) (xs :: [k])
 
+-- | Completely fixed at compile time
+newtype instance Dimensions ns => DataFrame t (ns :: [Nat])
+  = KnownDataFrame { _getDF :: Array t ns }
 
-type family NatList (x::[k]) :: [Nat] where
-  NatList xs = xs
+-- | Partially known at compile time
+data instance DataFrame t (xns :: [XNat])
+  = forall (ns :: [Nat])
+  . ( Dimensions ns
+    , FixedDim xns ns ~ ns
+    , FixedXDim xns ns ~ xns
+    , Show (Array t ns)
+    , Eq (Array t ns)
+    )
+  => SomeDataFrame (Dim xns) (Array t ns)
 
-
-wrapKnown :: Dimensions ns => Array t ns -> DataFrame t ns
-wrapKnown a = case f a of
-  Refl -> DataFrameKnown a
-  where
-    f :: a ns -> ns :~: NatList ns
-    f _ = unsafeCoerce Refl
-
-instance ( Show (Array t (NatList ds))
-         ) => Show (DataFrame t (ds :: [Nat])) where
-  show (DataFrameKnown arr) = "DataFrame:"
+instance ( Show (Array t ds)
+         , Dimensions ds
+         ) => Show (DataFrame t ds) where
+  show (KnownDataFrame arr) = "DataFrame:"
                          ++ "\n\tShape: " ++ show (dim `inSpaceOf` arr)
                          ++ "\n\tContent:\n" ++ show arr
-  show DataFrameSome {} = undefined
 
-dData :: NatList ds ~ ds => DataFrame t ds -> Array t (ds :: [Nat])
-dData (DataFrameKnown a)  = a
-dData (DataFrameSome _ a) = unsafeCoerce a
-
-
-
-instance PreservingDim (DataFrame t) (DataFrame t) where
-  shape x@(DataFrameKnown a) = case unsafeProof x a of
-    Refl -> dim
-  shape (DataFrameSome ds _) = ds
-  looseDims (DataFrameKnown a)
-      = let rez = DataFrameSome d a
-            d = xdim (dim `inSpaceOf` a) `inSpaceOf` rez
-        in rez
-  looseDims (DataFrameSome _ _) = error
-    "Something is wrong: DataFrameSome should be parameterized by XNat."
-  withShape (DataFrameSome _ a) f = f (wrapKnown a)
-  withShape (DataFrameKnown _) _ = error
-    "Something is wrong: DataFrameKnown should be parameterized by Nat."
-
-
-instance ( Bounded (Array t ds)
-         , Dimensions ds
-         , NatList ds ~ ds
-         ) => Bounded (DataFrame t ds) where
-  minBound = DataFrameKnown minBound
-  {-# INLINE minBound #-}
-  maxBound = DataFrameKnown maxBound
-  {-# INLINE maxBound #-}
-
-instance ( Enum (Array t ds)
-         , Dimensions ds
-         , NatList ds ~ ds
-         ) => Enum (DataFrame t ds) where
-  succ = mapV succ
-  {-# INLINE succ #-}
-  pred = mapV pred
-  {-# INLINE pred #-}
-  toEnum = DataFrameKnown . toEnum
-  {-# INLINE toEnum #-}
-  fromEnum = fromEnum . dData
-  {-# INLINE fromEnum #-}
-  enumFrom = fmap DataFrameKnown . enumFrom . dData
-  {-# INLINE enumFrom #-}
-  enumFromTo x y
-    = DataFrameKnown <$> enumFromTo (dData x) (dData y)
-  {-# INLINE enumFromTo #-}
-  enumFromThen x x'
-    = DataFrameKnown <$> enumFromThen (dData x) (dData x')
-  {-# INLINE enumFromThen #-}
-  enumFromThenTo x x' y
-    = DataFrameKnown <$> enumFromThenTo (dData x) (dData x') (dData y)
-  {-# INLINE enumFromThenTo #-}
-
-instance ( Eq (Array t (NatList ds))
-         , NatList ds ~ ds
-         ) => Eq (DataFrame t ds) where
-  DataFrameKnown arr1 == DataFrameKnown arr2 = arr1 == arr2
-  _ == _ = undefined
-  {-# INLINE (==) #-}
-  DataFrameKnown arr1 /= DataFrameKnown arr2 = arr1 /= arr2
-  _ /= _ = undefined
-  {-# INLINE (/=) #-}
-
-instance ( Integral (Array t ds)
-         , Real (DataFrame t ds)
-         , Enum (DataFrame t ds)
-         , NatList ds ~ ds
-         ) => Integral (DataFrame t ds) where
-  quot = zipV quot
-  {-# INLINE quot #-}
-  rem = zipV rem
-  {-# INLINE rem #-}
-  div = zipV div
-  {-# INLINE div #-}
-  mod = zipV mod
-  {-# INLINE mod #-}
-  quotRem (DataFrameKnown x) (DataFrameKnown y) = case quotRem x y of
-    (a,b) -> (DataFrameKnown a, DataFrameKnown b)
-  quotRem _ _ = undefined
-  {-# INLINE quotRem #-}
-  divMod (DataFrameKnown x) (DataFrameKnown y) = case divMod x y of
-    (a,b) -> (DataFrameKnown a, DataFrameKnown b)
-  divMod _ _ = undefined
-  {-# INLINE divMod #-}
-  toInteger = toInteger . dData
-  {-# INLINE toInteger #-}
-
--- | Implement partial ordering for `>`, `<`, `>=`, `<=`
---     and lexicographical ordering for `compare`
-instance ( Ord (Array t ds)
-         , NatList ds ~ ds
-         )  => Ord (DataFrame t ds) where
-  (>) = combineV (>)
-  {-# INLINE (>) #-}
-  (<) = combineV (<)
-  {-# INLINE (<) #-}
-  (>=) = combineV (>=)
-  {-# INLINE (>=) #-}
-  (<=) = combineV (<=)
-  {-# INLINE (<=) #-}
-  -- | Compare lexicographically
-  compare = combineV compare
-  {-# INLINE compare #-}
-  -- | Element-wise minimum
-  min = zipV min
-  {-# INLINE min #-}
-  -- | Element-wise maximum
-  max = zipV max
-  {-# INLINE max #-}
-
-
-instance ( Num (Array t ds)
-         , NatList ds ~ ds
-         , Dimensions ds
-         ) => Num (DataFrame t ds) where
-  (+) = zipV (+)
-  {-# INLINE (+) #-}
-  (-) = zipV (-)
-  {-# INLINE (-) #-}
-  (*) = zipV (*)
-  {-# INLINE (*) #-}
-  negate = mapV negate
-  {-# INLINE negate #-}
-  abs = mapV abs
-  {-# INLINE abs #-}
-  signum = mapV signum
-  {-# INLINE signum #-}
-  fromInteger = DataFrameKnown . fromInteger
-  {-# INLINE fromInteger #-}
-
-instance ( Fractional (Array t ds)
-         , NatList ds ~ ds
-         , Dimensions ds
-         ) => Fractional (DataFrame t ds) where
-  (/) = zipV (/)
-  {-# INLINE (/) #-}
-  recip = mapV recip
-  {-# INLINE recip #-}
-  fromRational = DataFrameKnown . fromRational
-  {-# INLINE fromRational #-}
-
-
-instance ( Floating (Array t ds)
-         , NatList ds ~ ds
-         , Dimensions ds
-         ) => Floating (DataFrame t ds) where
-  pi = DataFrameKnown pi
-  {-# INLINE pi #-}
-  exp = mapV exp
-  {-# INLINE exp #-}
-  log = mapV log
-  {-# INLINE log #-}
-  sqrt = mapV sqrt
-  {-# INLINE sqrt #-}
-  sin = mapV sin
-  {-# INLINE sin #-}
-  cos = mapV cos
-  {-# INLINE cos #-}
-  tan = mapV tan
-  {-# INLINE tan #-}
-  asin = mapV asin
-  {-# INLINE asin #-}
-  acos = mapV acos
-  {-# INLINE acos #-}
-  atan = mapV atan
-  {-# INLINE atan #-}
-  sinh = mapV sinh
-  {-# INLINE sinh #-}
-  cosh = mapV cosh
-  {-# INLINE cosh #-}
-  tanh = mapV tanh
-  {-# INLINE tanh #-}
-  (**) = zipV (**)
-  {-# INLINE (**) #-}
-  logBase = zipV logBase
-  {-# INLINE logBase #-}
-  asinh = mapV asinh
-  {-# INLINE asinh #-}
-  acosh = mapV acosh
-  {-# INLINE acosh #-}
-  atanh = mapV atanh
-  {-# INLINE atanh #-}
-
-instance ( Read (Array t ds)
-         , NatList ds ~ ds
-         , Dimensions ds
-         ) => Read (DataFrame t ds) where
-  readsPrec n =  map (first DataFrameKnown) . readsPrec n
-  {-# INLINE readsPrec #-}
-  readList = map (first (map DataFrameKnown)) . readList
-  {-# INLINE readList #-}
-  readPrec = DataFrameKnown <$> readPrec
-  {-# INLINE readPrec #-}
-  readListPrec = map DataFrameKnown <$> readListPrec
-  {-# INLINE readListPrec #-}
-
-instance ( Real (Array t ds)
-         , Num (DataFrame t ds)
-         , NatList ds ~ ds
-         ) => Real (DataFrame t ds) where
-  toRational = toRational . dData
-  {-# INLINE toRational #-}
-
-
-instance ( RealFrac (Array t ds)
-         , Real (DataFrame t ds)
-         , Fractional (DataFrame t ds)
-         , NatList ds ~ ds
-         , Dimensions ds
-         ) => RealFrac (DataFrame t ds) where
-  properFraction = second DataFrameKnown . properFraction . dData
-  {-# INLINE properFraction #-}
-  truncate = truncate . dData
-  {-# INLINE truncate #-}
-  round = round . dData
-  {-# INLINE round #-}
-  ceiling = ceiling . dData
-  {-# INLINE ceiling #-}
-  floor = floor . dData
-  {-# INLINE floor #-}
-
-instance ( RealFloat (Array t ds)
-         , RealFrac (DataFrame t ds)
-         , Floating (DataFrame t ds)
-         , Dimensions ds
-         , NatList ds ~ ds
-         ) => RealFloat (DataFrame t ds) where
-   floatRadix = floatRadix . dData
-   {-# INLINE floatRadix #-}
-   floatDigits = floatDigits . dData
-   {-# INLINE floatDigits #-}
-   floatRange = floatRange . dData
-   {-# INLINE floatRange #-}
-   decodeFloat = decodeFloat . dData
-   {-# INLINE decodeFloat #-}
-   encodeFloat i = DataFrameKnown . encodeFloat i
-   {-# INLINE encodeFloat #-}
-   exponent = exponent . dData
-   {-# INLINE exponent #-}
-   significand = mapV significand
-   {-# INLINE significand #-}
-   scaleFloat i = mapV (scaleFloat i)
-   {-# INLINE scaleFloat #-}
-   isNaN = isNaN  . dData
-   {-# INLINE isNaN #-}
-   isInfinite = isInfinite . dData
-   {-# INLINE isInfinite #-}
-   isDenormalized = isDenormalized . dData
-   {-# INLINE isDenormalized #-}
-   isNegativeZero = isNegativeZero . dData
-   {-# INLINE isNegativeZero #-}
-   isIEEE = isIEEE . dData
-   {-# INLINE isIEEE #-}
-   atan2 = zipV atan2
-   {-# INLINE atan2 #-}
-
-
-instance ( PrimBytes (Array t ds)
-         , Dimensions ds
-         , NatList ds ~ ds
-         ) => PrimBytes (DataFrame t ds) where
-  toBytes x = toBytes (dData x)
-  {-# INLINE toBytes #-}
-  fromBytes b = DataFrameKnown (fromBytes b)
-  {-# INLINE fromBytes #-}
-  byteSize x = byteSize (dData x)
-  {-# INLINE byteSize #-}
-  byteAlign x = byteAlign (dData x)
-  {-# INLINE byteAlign #-}
-  elementByteSize x = elementByteSize (dData x)
-  {-# INLINE elementByteSize #-}
-
-instance ( FloatBytes (Array t ds)
-         , NatList ds ~ ds
-         ) => FloatBytes (DataFrame t ds) where
-  ixF i x = ixF i (dData x)
-instance ( DoubleBytes (Array t ds)
-         , NatList ds ~ ds
-         ) => DoubleBytes (DataFrame t ds) where
-  ixD i x = ixD i (dData x)
-instance ( IntBytes (Array t ds)
-         , NatList ds ~ ds
-         ) => IntBytes (DataFrame t ds) where
-  ixI i x = ixI i (dData x)
-instance ( WordBytes (Array t ds)
-         , NatList ds ~ ds
-         ) => WordBytes (DataFrame t ds) where
-  ixW i x = ixW i (dData x)
-
-
-instance ( ElementWise (Idx ds) t (Array t ds)
-         , NatList ds ~ ds
-         , Dimensions ds
-         ) => ElementWise (Idx ds) t (DataFrame t ds) where
-  (!) = (!) . dData
+deriving instance Bounded (Array t ds) => Bounded (DataFrame t ds)
+deriving instance Enum (Array t ds) => Enum (DataFrame t ds)
+deriving instance Eq (Array t ds) => Eq (DataFrame t ds)
+deriving instance Integral (Array t ds)
+               => Integral (DataFrame t ds)
+deriving instance Num (Array t ds)
+               => Num (DataFrame t ds)
+deriving instance Fractional (Array t ds)
+               => Fractional (DataFrame t ds)
+deriving instance Floating (Array t ds)
+               => Floating (DataFrame t ds)
+deriving instance Ord (Array t ds)
+               => Ord (DataFrame t ds)
+deriving instance ( Read (Array t ds), Dimensions ds )
+               => Read (DataFrame t ds)
+deriving instance Real (Array t ds)
+               => Real (DataFrame t ds)
+deriving instance RealFrac (Array t ds)
+               => RealFrac (DataFrame t ds)
+deriving instance RealFloat (Array t ds)
+               => RealFloat (DataFrame t ds)
+deriving instance PrimBytes (Array t ds)
+               => PrimBytes (DataFrame t ds)
+deriving instance FloatBytes (Array t ds)
+               => FloatBytes (DataFrame t ds)
+deriving instance DoubleBytes (Array t ds)
+               => DoubleBytes (DataFrame t ds)
+deriving instance IntBytes (Array t ds)
+               => IntBytes (DataFrame t ds)
+deriving instance WordBytes (Array t ds)
+               => WordBytes (DataFrame t ds)
+instance ( Dimensions ds
+         , ElementWise (Idx ds) t (Array Float ds)
+         ) => ElementWise (Idx ds) t (DataFrame Float ds) where
+  (!) = (!) . _getDF
   {-# INLINE (!) #-}
-  ewmap f = DataFrameKnown . ewmap f . dData
+  ewmap f = KnownDataFrame . ewmap f . _getDF
   {-# INLINE ewmap #-}
-  ewgen = DataFrameKnown . ewgen
+  ewgen = KnownDataFrame . ewgen
   {-# INLINE ewgen #-}
-  ewfold f x0 = ewfold f x0 . dData
+  ewfold f x0 = ewfold f x0 . _getDF
   {-# INLINE ewfold #-}
-  elementWise f = fmap DataFrameKnown . elementWise f . dData
+  elementWise f = fmap KnownDataFrame . elementWise f . _getDF
   {-# INLINE elementWise #-}
-  indexWise f = fmap DataFrameKnown . indexWise f . dData
+  indexWise f = fmap KnownDataFrame . indexWise f . _getDF
   {-# INLINE indexWise #-}
 
 
+instance Show (Dim ds)
+      => Show (DataFrame t (ds :: [XNat])) where
+  show (SomeDataFrame d arr) = "DataFrame:"
+                         ++ "\n\tShape: " ++ show d
+                         ++ "\n\tContent:\n" ++ show arr
 
-combineV :: (Array t ds -> Array t ds -> a)
-         -> DataFrame t ds -> DataFrame t ds -> a
-combineV f x@(DataFrameKnown arr1) (DataFrameKnown arr2)
-  = case unsafeIsNatList x of Refl -> f arr1 arr2
-combineV _ _ _ = undefined
-{-# INLINE combineV #-}
+instance Eq (DataFrame t (ds :: [XNat])) where
+  SomeDataFrame d1 a1 == SomeDataFrame d2 a2
+      = case check d1 d2 a1 a2 of
+          Just Refl -> a1 == a2
+          Nothing   -> False
+    where
+      check :: Dim ds -> Dim ds
+            -> p ns1 -> q ns2
+            -> Maybe (ns1 :~: ns2)
+      check a b _ _ | a == b  = Just (unsafeCoerce Refl)
+                    | otherwise = Nothing
 
-zipV :: (Array t ds -> Array t ds -> Array t ds)
-     -> DataFrame t ds -> DataFrame t ds -> DataFrame t ds
-zipV f x@(DataFrameKnown arr1) (DataFrameKnown arr2)
-  = case unsafeIsNatList x of Refl -> DataFrameKnown (f arr1 arr2)
-zipV _ _ _ = undefined
-{-# INLINE zipV #-}
+-- | Do something with
+withShape :: DataFrame t xns
+          -> (forall ns . ( Dimensions ns
+                          , FixedDim xns ns ~ ns
+                          , FixedXDim xns ns ~ xns
+                          ) => DataFrame t ns -> b)
+          -> b
+withShape (SomeDataFrame _ a) f = f (KnownDataFrame a)
 
-mapV :: (Array t (NatList ds) -> Array t (NatList ds))
-     -> DataFrame t ds -> DataFrame t ds
-mapV f (DataFrameKnown arr1) = DataFrameKnown (f arr1)
-mapV _ _                     = undefined
-{-# INLINE mapV #-}
+-- | Put some of dimensions into existential data type
+unboundShape :: ( FixedXDim xns ns ~ xns
+                , FixedDim xns ns ~ ns
+                , XDimensions ns xns
+                , Dimensions ns
+                , Show (Array t ns)
+                , Eq (Array t ns)
+                ) => DataFrame t ns -> DataFrame t xns
+unboundShape (KnownDataFrame a)
+    = SomeDataFrame (xdim $ dim `inSpaceOf` a) a
 
-unsafeIsNatList :: t ds -> NatList ds :~: ds
-unsafeIsNatList _ = unsafeCoerce Refl
 
-unsafeProof :: p a -> q b -> a :~: b
-unsafeProof _ _ = unsafeCoerce Refl
-{-# INLINE unsafeProof #-}
+_suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)
+_suppressHlintUnboxedTuplesWarning = undefined

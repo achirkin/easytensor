@@ -42,6 +42,7 @@ main = do
     -- look at this hole: amazing type inference!
     -- putStrLn $ _ x3
     printEither s3
+    print x3
   where
     printEither :: Either String String -> IO ()
     printEither (Left a) = putStrLn a
@@ -52,7 +53,7 @@ main = do
     dimX = Proxy :* d2 :? d3 :? Proxy :* D
     s2 = withDim dimX (\ds -> show (dfFloat (exp 3) `inSpaceOf` ds)
                      )
-    x3 = case withDim dimX (\ds -> looseDims $ dfFloat 42.0001 `inSpaceOf` ds
+    x3 = case withDim dimX (\ds -> unboundShape $ dfFloat 42.0001 `inSpaceOf` ds
                       ) of
         Right x -> Right $ x `inSpaceOf` Proxy @'[XN,XN,XN,N _]
         Left a -> Left a
