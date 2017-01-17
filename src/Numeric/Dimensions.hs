@@ -31,7 +31,7 @@ module Numeric.Dimensions
     -- * Operations
   , Dimensions, Dimensions' (..), Dimensions'' (..)
   , FixedXDim, XDimensions (..)
-  , inSpaceOf, PreservingDim (..), order
+  , inSpaceOf, order
     -- * Type-level programming
   , FixedDim
   , type (++), Reverse, Take, Drop, Length
@@ -50,7 +50,7 @@ import Data.Type.Equality
 import Unsafe.Coerce
 
 -- | Type-level dimensional indexing with arbitrary Int values inside
-data Idx (ds :: k) where
+data Idx (ds :: [Nat]) where
    -- | Zero-rank dimensionality - scalar
    Z :: Idx '[]
    -- | List-like concatenation of indices
@@ -88,6 +88,7 @@ type N (n::Nat) = 'N n
 data SomeDim (xns :: [XNat])
   = forall ns . ( Dimensions ns
                 , FixedDim xns ns ~ ns
+                , FixedXDim xns ns ~ xns
                 ) => SomeDim (Dim ns)
 
 -- | Construct dimensionality at runtime
@@ -96,7 +97,8 @@ someDimVal D = Just $ SomeDim D
 someDimVal xxs@(p :* xs) =
     ( \(SomeDim ps) -> withSuccKnown (order ps) ps
       ( \Refl -> let pps = p :* ps
-                 in case isFixed xxs pps of Refl -> SomeDim pps
+                 in case (isFixed xxs pps, isXFixed xxs pps) of
+                      (Refl, Refl) -> SomeDim pps
       )
     ) <$> someDimVal xs
   where
@@ -104,6 +106,8 @@ someDimVal xxs@(p :* xs) =
     --   but I need to convince the compiler that this is the case
     isFixed :: Dim xns -> Dim ns -> FixedDim xns ns :~: ns
     isFixed _ _ = unsafeCoerce Refl
+    isXFixed :: Dim xns -> Dim ns -> FixedXDim xns ns :~: xns
+    isXFixed _ _ = unsafeCoerce Refl
 someDimVal (SomeNat p :? xs) = someDimVal xs >>=
   \(SomeDim ps) -> withSuccKnown (order ps) ps
       (\Refl -> Just $ SomeDim (p :* ps))
@@ -124,6 +128,7 @@ withSuccKnown n p g = case someNatVal (fromIntegral n) of
 withDim :: Dim (xns :: [XNat])
         -> (forall ns . ( Dimensions ns
                         , FixedDim xns ns ~ ns
+                        , FixedXDim xns ns ~ xns
                         )  => Dim ns -> a)
         -> Either String a
 withDim xds f = case someDimVal xds of
@@ -136,6 +141,7 @@ newtype Dimensional (xns :: [XNat]) a = Dimensional
   { _runDimensional ::
       forall ns . ( Dimensions ns
                   , FixedDim xns ns ~ ns
+                  , FixedXDim xns ns ~ xns
                   ) => Dim ns -> a
   }
 
@@ -149,22 +155,25 @@ runDimensional xds d = withDim xds $ _runDimensional d
 -- * Dimension-enabled operations
 --------------------------------------------------------------------------------
 
--- | Data types that can be parametrized by dimenions
---    - either compile-time or run-time
-class PreservingDim a xa | a -> xa, xa -> a where
-  -- | Get dimensionality of a data type
-  shape   :: a ns -> Dim ns
-  -- | Apply a function that requires a dixed dimension
-  withShape :: xa xns
-            -> (forall ns . ( Dimensions ns
-                            , FixedDim xns ns ~ ns
-                            ) => a ns -> b)
-            -> b
-  -- | Put some of dimensions into existential data type
-  looseDims :: ( FixedXDim xns ns ~ xns
-               , FixedDim xns ns ~ ns
-               , XDimensions ns xns
-               ) => a ns -> xa xns
+-- -- | Data types that can be parametrized by dimenions
+-- --    - either compile-time or run-time
+-- class PreservingDim (xns :: [XNat])
+--                     (a :: [Nat] -> Type)
+--                     (xa :: [XNat] -> Type)
+--                    | a -> xa, xa -> a where
+--   -- | Apply a function that requires a dixed dimension
+--   withShape :: xa xns
+--             -> (forall ns . ( Dimensions ns
+--                             , FixedDim xns ns ~ ns
+--                             , FixedXDim xns ns ~ xns
+--                             ) => a ns -> b)
+--             -> b
+--   -- | Put some of dimensions into existential data type
+--   looseDims :: ( FixedXDim xns ns ~ xns
+--                , FixedDim xns ns ~ ns
+--                , XDimensions ns xns
+--                , Dimensions ns
+--                ) => a ns -> xa xns
 
 -- | The main constraint type.
 --   With this we are sure that all dimension values are known at compile time,
@@ -244,6 +253,11 @@ instance Dimensions'' ds => Show (Dim ds) where
 
 instance Show (SomeDim xns) where
   show (SomeDim p) = show p
+
+instance Show (Dim (xds :: [XNat])) where
+  show d = case someDimVal d of
+    Nothing -> "Unknown dim"
+    Just sd -> show sd
 
 instance Functor (Dimensional xns) where
   fmap f d = Dimensional (f . _runDimensional d)
@@ -532,12 +546,12 @@ type family KnownDim (x::k) :: Nat where
 
 -- | FixedDim puts very tight constraints on what list of naturals can be.
 --   This allows establishing strong relations between [XNat] and [Nat].
-type family FixedDim (xns :: [k]) (ns :: [Nat]) :: [Nat] where
+type family FixedDim (xns :: [XNat]) (ns :: [Nat]) :: [Nat] where
   FixedDim '[] ns = '[]
   FixedDim (N n ': xs) ns = n ': FixedDim xs (Tail ns)
   FixedDim (XN  ': xs) ns = Head ns ': FixedDim xs (Tail ns)
 
-type family FixedXDim (xns :: [k]) (ns :: [Nat]) :: [XNat] where
+type family FixedXDim (xns :: [XNat]) (ns :: [Nat]) :: [XNat] where
   FixedXDim xs '[] = '[]
   FixedXDim xs (n ': ns) = WrapHead n xs ': FixedXDim (Tail xs) ns
 
