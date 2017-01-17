@@ -1,8 +1,10 @@
+
 {-# LANGUAGE DataKinds, PolyKinds, TypeFamilyDependencies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleContexts, FlexibleInstances #-}
 {-# LANGUAGE TypeOperators    #-}
 {-# LANGUAGE UnboxedTuples, MagicHash #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.Family
@@ -22,7 +24,7 @@ module Numeric.Array.Family
 import GHC.TypeLits (Nat)
 import GHC.Prim
 import Numeric.Commons
-
+import Numeric.Dimensions
 
 type family ArrayType t (ds :: [Nat]) = v | v -> t ds where
   ArrayType t     '[] = Scalar t
@@ -37,6 +39,20 @@ newtype Scalar t = Scalar { _unScalar :: t }
 instance Show t => Show (Scalar t) where
   show (Scalar t) = "{ " ++ show t ++ " }"
 
+-- | Indexing over scalars is trivial...
+instance ElementWise (Idx ('[] :: [Nat])) t (Scalar t) where
+  (!) x _ = _unScalar x
+  {-# INLINE (!) #-}
+  ewmap f = Scalar . f Z . _unScalar
+  {-# INLINE ewmap #-}
+  ewgen f = Scalar $ f Z
+  {-# INLINE ewgen #-}
+  ewfold f x0 x = f Z (_unScalar x) x0
+  {-# INLINE ewfold #-}
+  elementWise f = fmap Scalar . f . _unScalar
+  {-# INLINE elementWise #-}
+  indexWise f = fmap Scalar . f Z . _unScalar
+  {-# INLINE indexWise #-}
 
 -- * Array implementations.
 --   All array implementations have the same structure:
@@ -47,3 +63,7 @@ instance Show t => Show (Scalar t) where
 -- | N-Dimensional arrays based on Float# type
 data ArrayF (ds :: [Nat]) = ArrayF# Int# Int# ByteArray#
                         | FromScalarF# Float#
+
+
+_suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)
+_suppressHlintUnboxedTuplesWarning = undefined

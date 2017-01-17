@@ -20,10 +20,11 @@ import GHC.TypeLits
 -- import           Foreign.Marshal
 -- import           Foreign.Ptr
 -- import           Foreign.Storable
-import Data.Type.Equality
-import           Numeric.Dimensions
+-- import Data.Type.Equality
+import Numeric.Dimensions
 import Numeric.DataFrame
-import Unsafe.Coerce
+import Numeric.Commons
+-- import Unsafe.Coerce
 
 main :: IO ()
 main = do
@@ -37,18 +38,30 @@ main = do
       Nothing -> Nothing
       Just (a,b,c,d) -> someDimVal $ a :? b :? c :? d :? D
     printEither s
+    printEither s2
+    -- look at this hole: amazing type inference!
+    -- putStrLn $ _ x3
+    printEither s3
   where
     printEither :: Either String String -> IO ()
-    printEither (Left s) = putStrLn s
-    printEither (Right s) = putStrLn s
+    printEither (Left a) = putStrLn a
+    printEither (Right a) = putStrLn a
     Just d2 = someNatVal 2
     Just d3 = someNatVal 5
-    dimX :: Dim '[N 3, XN, XN]
-    dimX = Proxy :* d2 :? d3 :? D
-    s = withDim dimX (\ds -> show (2 * dfFloat pi `inSpaceOf` ds)
+    dimX :: Dim '[N 3, XN, XN, N 2]
+    dimX = Proxy :* d2 :? d3 :? Proxy :* D
+    s2 = withDim dimX (\ds -> show (dfFloat (exp 3) `inSpaceOf` ds)
+                     )
+    x3 = case withDim dimX (\ds -> looseDims $ dfFloat 42.0001 `inSpaceOf` ds
+                      ) of
+        Right x -> Right $ x `inSpaceOf` Proxy @'[XN,XN,XN,N _]
+        Left a -> Left a
+    s = withDim dimX (\ds -> let pix = 2 * dfFloat pi `inSpaceOf` ds
+                             in show pix
+                              ++ show (pix ! (1 :! 2 :! 1 :! 2 :! Z) )
                      )
       :: Either String String
-
+    s3 = (`withShape` show) <$> x3
 
 dfFloat :: Fractional (DataFrame Float ds)
         => Float -> DataFrame Float (ds :: [Nat])
