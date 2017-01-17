@@ -29,18 +29,20 @@ for example, `Vector t n` implemented as `ByteArray#` is overloaded by a special
 
   - [x] Basic implementation of generic n-dimensional vectors and matrices based on type Float
   - [ ] Basic implementation of generic n-dimensional vectors and matrices based other types (Double, Int, Word, Int8.. etc.)
+  - [x] `DataFrame t [Nat]` type for multi-dimensional arrays.
   - [x] EasyTensor wrapper, limited to rank (1,1) tensors (and also (0,0),(1,0), and (0,1))
   - [ ] Overloaded fast implementation for low-dimensional vectors and matrices: only VFloatX2 is done.
   - [ ] Overloaded fast SIMD implementation based on fastvec (avx2, foreign import prim and llvm)
   - [ ] `Tensor t [Nat] [Nat]` rank (n,m) flexible tensor wrapper
-  - [ ] Lens-like interfaces
-  - [ ] Release last dimension from requiring KnownNat in order to flexibly read data at runtime.
+  - [ ] Lens-like interfaces - partially
+  - [ ] ~~Release last dimension from requiring KnownNat in order to flexibly read data at runtime.~~
+  - [x] Flexible inference between statically known and runtime known dimensions `Dim [Nat]` and `Dim [XNat]`
   - [ ] Smart MATLAB- or R-like indexing of rows and columns.
 
 
 #### NB on using Atom
 
-Just a reminder:
+Just as a reminder:
 if using atom editor with `haskell-ghc-mod`, you need to build a `ghc-mod` executable
 in the project folder.
 Recently I have changed to `ghc-8.0.2`, which currently lacks an accompanying stack snapshot.
