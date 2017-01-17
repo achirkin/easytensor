@@ -28,46 +28,15 @@ module Numeric.Array.Base.ArrayF () where
 #include "MachDeps.h"
 #include "HsBaseConfig.h"
 
-import           Data.Proxy
-import           Data.Type.Equality
 import           GHC.Base             (runRW#)
 import           GHC.Prim
 import           GHC.TypeLits
 import           GHC.Types
-import           Unsafe.Coerce
 
 import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.Dimensions
 
-
-
--- instance ( Dimensions ds
---          ) => Show (ArrayF (ds :: [Nat])) where
---   show x = drop 1 $ foldr loopOuter "" [minBound..maxBound]
---     where
---       loopInner :: Proxy ds
---                -> Idx (Drop 2 ds) -> Idx (Take 2 ds) -> String
---       loopInner _ _ Z = "{}"
---       loopInner p ods ids@(n:!Z) = drop 1 $
---                       foldr (\i s -> ", " ++ show (x ! i) ++ s) " }"
---                               [1 :! ods .. n :! ods]
---       loopInner p ods ids@(n:!m:!_) = ('{' :) . drop 2 $
---                       foldr (\i ss -> '\n':
---                               foldr (\j s ->
---                                        ", " ++ show (x ! (i :! j :! ods)) ++ s
---                                     ) ss [1..m]
---                             ) " }" [1..n]
---       loopOuter :: Idx (Drop 2 ds) -> String -> String
---       loopOuter Z s  = "\n" ++ loopInner (unsafeCoerce Refl) Z maxBound ++ s
---       loopOuter ds s = "\n" ++ show ds ++ ":\n"
---                             ++ loopInner (unsafeCoerce Refl) ds maxBound ++ s
---       proof1 :: Proxy ns -> Idx '[n] -> Idx (Drop 2 ns)
---              -> ns :~: (n :+ Drop 2 ns)
---       proof1 _ _ _ = unsafeCoerce Refl
---       proof2 :: Proxy ns -> Idx (n ': m ': mns) -> Idx (Drop 2 ns)
---              -> ns :~: (n :+ (m :+ Drop 2 ns))
---       proof2 _ _ _ = unsafeCoerce Refl
 
 instance Show (ArrayF '[]) where
   show x = "{ " ++ show (x ! Z) ++ " }"
@@ -80,7 +49,7 @@ instance ( Dimensions (n :+ m :+ ds)
   show x = drop 1 $ foldr loopOuter "" [minBound..maxBound]
     where
       loopInner :: Idx ds -> Idx '[n,m] -> String
-      loopInner ods ids@(n:!m:!_) = ('{' :) . drop 2 $
+      loopInner ods (n:!m:!_) = ('{' :) . drop 2 $
                       foldr (\i ss -> '\n':
                               foldr (\j s ->
                                        ", " ++ show (x ! (i :! j :! ods)) ++ s

@@ -134,3 +134,37 @@ deriving instance {-# OVERLAPPING #-} WordBytes t => WordBytes (Array t '[])
 
 -- deriving instance Dimensions (d ': ds)
 --     => ElementWise (Idx (d ': ds)) Float (Array Float (d ': ds))
+
+
+instance ElementWise (Idx ('[] :: [Nat])) t (Array t '[]) where
+  (!) = (!) . _unArray
+  {-# INLINE (!) #-}
+  ewmap f = Array . ewmap f . _unArray
+  {-# INLINE ewmap #-}
+  ewgen = Array . ewgen
+  {-# INLINE ewgen #-}
+  ewfold f x0 = ewfold f x0 . _unArray
+  {-# INLINE ewfold #-}
+  elementWise f = fmap Array . elementWise f . _unArray
+  {-# INLINE elementWise #-}
+  indexWise f = fmap Array . indexWise f . _unArray
+  {-# INLINE indexWise #-}
+
+instance Dimensions (d ': ds)
+      => ElementWise (Idx (d ': ds)) Float (Array Float (d ': ds)) where
+  (!) = (!) . _unArray
+  {-# INLINE (!) #-}
+  ewmap f = Array . ewmap f . _unArray
+  {-# INLINE ewmap #-}
+  ewgen = Array . ewgen
+  {-# INLINE ewgen #-}
+  ewfold f x0 = ewfold f x0 . _unArray
+  {-# INLINE ewfold #-}
+  elementWise f = fmap Array . elementWise f . _unArray
+  {-# INLINE elementWise #-}
+  indexWise f = fmap Array . indexWise f . _unArray
+  {-# INLINE indexWise #-}
+
+
+_suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)
+_suppressHlintUnboxedTuplesWarning = undefined

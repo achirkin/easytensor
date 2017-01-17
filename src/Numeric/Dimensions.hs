@@ -30,6 +30,7 @@ module Numeric.Dimensions
   , Dimensional (..), runDimensional, withDim
     -- * Operations
   , Dimensions, Dimensions' (..), Dimensions'' (..)
+  , FixedXDim, XDimensions (..)
   , inSpaceOf, PreservingDim (..), order
     -- * Type-level programming
   , FixedDim
@@ -129,7 +130,6 @@ withDim xds f = case someDimVal xds of
   Just (SomeDim ds) -> Right $ f ds
   Nothing -> Left "Could not extract runtime naturals to construct dimensions."
 
-
 -- | Provide runtime-known dimensions and execute inside functions
 --   that require compile-time-known dimensions.
 newtype Dimensional (xns :: [XNat]) a = Dimensional
@@ -161,7 +161,10 @@ class PreservingDim a xa | a -> xa, xa -> a where
                             ) => a ns -> b)
             -> b
   -- | Put some of dimensions into existential data type
-  looseDims :: FixedDim xns ns ~ ns => a ns -> xa xns
+  looseDims :: ( FixedXDim xns ns ~ xns
+               , FixedDim xns ns ~ ns
+               , XDimensions ns xns
+               ) => a ns -> xa xns
 
 -- | The main constraint type.
 --   With this we are sure that all dimension values are known at compile time,
@@ -182,6 +185,10 @@ order = fromInteger . natVal . f
 class Dimensions' (ds :: [Nat]) where
   -- | Dimensionality of our space
   dim :: Dim ds
+
+class XDimensions (ds :: [Nat]) (xds :: [XNat]) where
+  -- | Loose compile-time information about dimensionalities
+  xdim :: FixedXDim xds ds ~ xds => p ds -> Dim xds
 
 -- | Support for Idx GADT
 class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
@@ -346,6 +353,24 @@ instance ( KnownOrder (d ': ds)
          )  => Dimensions' ((d ': ds) :: [Nat]) where
   dim = Proxy :* dim
   {-# INLINE dim #-}
+
+instance XDimensions ns '[] where
+  xdim _ = D
+  {-# INLINE xdim #-}
+
+instance ( XDimensions ns xs
+         , KnownNat n
+         ) => XDimensions (n ': ns) (XN ': xs) where
+  xdim _ = case someNatVal (natVal $ Proxy @n) of
+    Just sv -> sv :? xdim (Proxy @ns)
+    Nothing -> error "Impossible happend: someNatVal (natVal n) == Nothing!"
+  {-# INLINE xdim #-}
+
+instance ( XDimensions ns xs
+         , KnownNat n
+         ) => XDimensions (n ': ns) (N n ': xs) where
+  xdim _ = Proxy @n :* xdim (Proxy @ns)
+  {-# INLINE xdim #-}
 
 
 instance Dimensions'' ('[] :: [Nat]) where
@@ -512,6 +537,14 @@ type family FixedDim (xns :: [k]) (ns :: [Nat]) :: [Nat] where
   FixedDim (N n ': xs) ns = n ': FixedDim xs (Tail ns)
   FixedDim (XN  ': xs) ns = Head ns ': FixedDim xs (Tail ns)
 
+type family FixedXDim (xns :: [k]) (ns :: [Nat]) :: [XNat] where
+  FixedXDim xs '[] = '[]
+  FixedXDim xs (n ': ns) = WrapHead n xs ': FixedXDim (Tail xs) ns
+
+type family WrapHead (n :: Nat) (xs :: [XNat]) :: XNat where
+  WrapHead x (N _ ': _) = N x
+  WrapHead _ (XN  ': _) = XN
+  WrapHead x '[]         = N x
 
 -- | Synonym for a type-level cons
 type a :+ as = a ': as
