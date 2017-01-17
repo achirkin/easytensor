@@ -30,11 +30,11 @@ module Numeric.Dimensions
   , Dimensional (..), runDimensional, withDim
     -- * Operations
   , Dimensions, Dimensions' (..), Dimensions'' (..)
-  , inSpaceOf, PreservingDim (..)
+  , inSpaceOf, PreservingDim (..), order
     -- * Type-level programming
-  , FixedDim, IsFixedDim
-  , type (++), Reverse, Take, Drop, Length -- , IsPrefixOf, IsSuffixOf
-  , type (:<), type (>:), type (:+), type (+:), Head, Tail, AllNats, WrapNats
+  , FixedDim
+  , type (++), Reverse, Take, Drop, Length
+  , type (:<), type (>:), type (:+), type (+:), Head, Tail
   ) where
 
 
@@ -45,7 +45,6 @@ import GHC.Types
 import GHC.Exts
 import Data.Proxy
 import Data.Type.Equality
-import Data.Type.Bool
 
 import Unsafe.Coerce
 
@@ -55,8 +54,6 @@ data Idx (ds :: k) where
    Z :: Idx '[]
    -- | List-like concatenation of indices
    (:!) :: !Int -> !(Idx ds) -> Idx (d ': ds)
-  --  -- | Using special data type for dependent types
-  --  LiftedIdx :: !(Idx (EvalList ds :: [k])) -> Idx (ds :: List k)
 infixr 5 :!
 
 -- | Type-level dimensionality
@@ -68,8 +65,6 @@ data Dim (ds :: k) where
        => !(Proxy (KnownDim d)) -> !(Dim ds) -> Dim (d ': ds)
   -- | List-like concatenation of unknown dimensionality
   (:?) :: !SomeNat -> !(Dim ds) -> Dim (XN ': ds)
-  -- -- | Using special data type for dependent types
-  -- LiftedDim :: !(Dim (EvalList ds :: [k])) -> Dim (ds :: List k)
 infixr 5 :*
 infixr 5 :?
 
@@ -91,30 +86,23 @@ type N (n::Nat) = 'N n
 -- | Similar to SomeNat, hide some dimensions under an existential constructor.
 data SomeDim (xns :: [XNat])
   = forall ns . ( Dimensions ns
-                , IsFixedDim xns ns ~ 'True
                 , FixedDim xns ns ~ ns
-                , GeneratedDim xns ns ~ ns
-                )  => SomeDim (Dim (FixedDim xns ns))
+                ) => SomeDim (Dim ns)
 
 -- | Construct dimensionality at runtime
 someDimVal :: Dim (xns :: [XNat]) -> Maybe (SomeDim xns)
 someDimVal D = Just $ SomeDim D
-someDimVal xxs@(p :* xs) = someDimVal xs >>=
-  \(SomeDim ps) -> withSuccKnown (order ps) ps
-      (\Refl -> (\Refl -> let pps = p :* ps
-                          in case (isFixed xxs pps pps, isGen xxs pps pps) of
-                               (Refl, Refl) -> SomeDim pps
-                ) <$> bringToScope xxs p ps)
+someDimVal xxs@(p :* xs) =
+    ( \(SomeDim ps) -> withSuccKnown (order ps) ps
+      ( \Refl -> let pps = p :* ps
+                 in case isFixed xxs pps of Refl -> SomeDim pps
+      )
+    ) <$> someDimVal xs
   where
-    -- I know for sure that the constraint (FixedDim xns ns) holds,
+    -- I know for sure that the constraint (FixedDim xns ns ~ ns) holds,
     --   but I need to convince the compiler that this is the case
-    bringToScope :: Dim (ym :+ yms) -> Proxy m -> Dim ms
-                 -> Maybe ((IsFixedDim (ym :+ yms) (m :+ ms)) :~: 'True)
-    bringToScope _ _ _ = unsafeCoerce (Just Refl)
-    isFixed :: Dim xns -> Dim ns -> Dim ds -> (FixedDim xns ns) :~: ds
-    isFixed _ _ _ = unsafeCoerce Refl
-    isGen :: Dim xns -> Dim ns -> Dim ds -> (GeneratedDim xns ns) :~: ds
-    isGen _ _ _ = unsafeCoerce Refl
+    isFixed :: Dim xns -> Dim ns -> FixedDim xns ns :~: ns
+    isFixed _ _ = unsafeCoerce Refl
 someDimVal (SomeNat p :? xs) = someDimVal xs >>=
   \(SomeDim ps) -> withSuccKnown (order ps) ps
       (\Refl -> Just $ SomeDim (p :* ps))
@@ -125,7 +113,7 @@ withSuccKnown :: Int
               -> a
 withSuccKnown n p g = case someNatVal (fromIntegral n) of
     Just (SomeNat m) -> g (evidence p m)
-    Nothing          -> error "Something is terribly wrong. Length is negative?"
+    Nothing          -> error "Something is terribly wrong. Is the length negative?"
   where
     evidence:: KnownNat m => p xs -> q m -> (1 + Length xs) :~: m
     evidence _ _ = unsafeCoerce Refl
@@ -134,54 +122,21 @@ withSuccKnown n p g = case someNatVal (fromIntegral n) of
 -- | Fix runtime-obtained dimensions for use in some function
 withDim :: Dim (xns :: [XNat])
         -> (forall ns . ( Dimensions ns
-                        , IsFixedDim xns ns ~ 'True
                         , FixedDim xns ns ~ ns
-                        , GeneratedDim xns ns ~ ns
-                        ) => Dim (FixedDim xns ns) -> a)
+                        )  => Dim ns -> a)
         -> Either String a
 withDim xds f = case someDimVal xds of
   Just (SomeDim ds) -> Right $ f ds
   Nothing -> Left "Could not extract runtime naturals to construct dimensions."
-
--- withSubDim :: forall (a :: forall k . k -> Type) b
---                      (xns :: [XNat]) (xns' :: [XNat])
---             . (xns' `IsSubSetOf` xns ~ 'True, PreservingDim a)
---            => Dim (xns :: [XNat])
---            -> a xns'
---            -> ( forall ns ns' . ( Dimensions'' ns
---                                 , Dimensions'' ns'
---                                 , FixedDim xns ns
---                                 , FixedDim xns' ns'
---                                 , ns' `IsSubSetOf` ns ~ 'True)
---                        => Dim ns -> a ns' -> b
---               )
---            -> Either String b
--- withSubDim xds x' f = withDim xds $
---     \ds -> undefined
---
--- someSubDimVal :: ( xns' `IsSubSetOf` xns ~ 'True
---                  , FixedOrder xns')
---               => Dim xns
---               -> a xns'
---               -> Maybe (SomeDim xns')
--- -- someSubDimVal _ x |
--- someSubDimVal D x = (\Refl -> SomeDim D) <$> bringToScope x
---   where
---     bringToScope :: p as -> Maybe ((IsFixedDim as '[]) :~: 'True)
---     bringToScope _ = unsafeCoerce (Just Refl)
--- someSubDimVal (SomeNat p :? ds) x = someDimVal xs >>=
---   \(SomeDim ps) -> Just $ SomeDim (p :* ps)
 
 
 -- | Provide runtime-known dimensions and execute inside functions
 --   that require compile-time-known dimensions.
 newtype Dimensional (xns :: [XNat]) a = Dimensional
   { _runDimensional ::
-    ( forall ns . ( Dimensions ns
-                  , IsFixedDim xns ns ~ 'True
+      forall ns . ( Dimensions ns
                   , FixedDim xns ns ~ ns
-                  , GeneratedDim xns ns ~ ns
-                  ) => Dim (FixedDim xns ns) -> a )
+                  ) => Dim ns -> a
   }
 
 -- | Run Dimension-enabled computation with dimensionality known at runtime
@@ -202,19 +157,21 @@ class PreservingDim a xa | a -> xa, xa -> a where
   -- | Apply a function that requires a dixed dimension
   withShape :: xa xns
             -> (forall ns . ( Dimensions ns
-                            , IsFixedDim xns ns ~ 'True
                             , FixedDim xns ns ~ ns
-                            , GeneratedDim xns ns ~ ns
-                            ) => a (FixedDim xns ns) -> b)
+                            ) => a ns -> b)
             -> b
   -- | Put some of dimensions into existential data type
-  looseDims :: a ns -> xa (WrapNats ns)
+  looseDims :: FixedDim xns ns ~ ns => a ns -> xa xns
 
+-- | The main constraint type.
+--   With this we are sure that all dimension values are known at compile time,
+--   plus we have all handy functions for `Dim` and `Idx` types.
 type Dimensions xs = ( KnownDims xs
                      , KnownOrder xs
                      , Dimensions' xs
                      , Dimensions'' xs)
 
+-- | Length of a dimension list
 order :: KnownOrder xs => t xs -> Int
 order = fromInteger . natVal . f
   where
@@ -264,11 +221,6 @@ class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
 --   to be used on such implicit functions as `dim`, `dimMax`, etc.
 inSpaceOf :: a ds -> b ds -> a ds
 inSpaceOf x _ = x
-
--- -- | Get some dimensions of lower order.
--- subDim :: ( Dimensions'' ds )
---        => t ds -> ((ds' `IsSubSetOf` ds ~ 'True, Dimensions'' ds') => Dim ds')
--- subDim _ = dim
 
 --------------------------------------------------------------------------------
 -- Some important instances
@@ -384,73 +336,6 @@ headDim :: t (d ': ds :: [k]) -> Proxy d
 headDim _ = Proxy
 
 
-
-
--- instance {-# OVERLAPPABLE #-} ( FixedOrder xs, EvalCons xs ~ ds )
---       => FixedOrder ds where
---   order _ = order (Proxy @xs)
---   {-# INLINE order #-}
---
--- instance {-# OVERLAPPABLE #-} ( FixedOrder xs, EvalSnoc xs ~ ds )
---       => FixedOrder ds where
---   order _ = order (Proxy @xs)
---   {-# INLINE order #-}
---
--- instance {-# OVERLAPPABLE #-} ( FixedOrder xs, EvalReverse xs ~ ds )
---       => FixedOrder ds where
---   order _ = order (Proxy @xs)
---   {-# INLINE order #-}
---
---
--- EvalList ('NoOp xs)      = EvalNoOp    ('NoOp xs)
--- EvalList ('Cons x xs)    = EvalCons    ('Cons x xs)
--- EvalList ('Snoc xs x)    = EvalSnoc    ('Snoc xs x)
--- EvalList ('Concat xs ys) = EvalConcat  ('Concat xs ys)
--- EvalList ('Reverse xs)   = EvalReverse ('Reverse xs)
--- EvalList ('Drop n xs)    = EvalDrop    ('Drop n xs)
--- EvalList ('Take n xs)    = EvalTake    ('Take n xs)
-
-    -- = NoOp [k]
-    -- | Cons k [k]
-    -- | Snoc [k] k
-    -- | Concat [k] [k]
-    -- | Reverse [k]
-    -- | Drop Nat [k]
-    -- | Take Nat [k]
-
--- instance ( FixedOrder ds
---          ) => FixedOrder ('Drop 0 ds) where
---   order _ = order (Proxy @ds)
---   {-# INLINE order #-}
---
--- instance FixedOrder ('Drop n '[]) where
---   order _ = 0
---   {-# INLINE order #-}
---
--- instance ( FixedOrder ('Drop (n-1) ds )
---          ) => FixedOrder ('Drop n (d :+ ds)) where
---   order _ = order (Proxy @('Drop (n-1) ds)) - 1
---   {-# INLINE order #-}
-
--- xx :: Dim (Drop 2 '[3,4,2,8])
--- xx = Proxy :* Proxy :* D
---
---
--- r = order xx
---
-
--- instance ( KnownOrder (d ': ds)
---          , KnownDims (d ': ds)
---          ) => Dimensions' ((d ': ds) :: [Nat]) where
---   dim = iter n f (unsafeCoerce D)
---     where
---       n = order (Proxy @(d ': ds))
---       f :: Dim (d ': ds) -> Dim (d ': ds)
---       f = unsafeCoerce . ((Proxy @0) :*)
---       iter 0 _ x = x
---       iter k g x = iter (k-1) g (g x)
---   {-# INLINE dim #-}
-
 instance Dimensions' ('[] :: [Nat]) where
   dim = D
   {-# INLINE dim #-}
@@ -461,9 +346,6 @@ instance ( KnownOrder (d ': ds)
          )  => Dimensions' ((d ': ds) :: [Nat]) where
   dim = Proxy :* dim
   {-# INLINE dim #-}
-
-
-
 
 
 instance Dimensions'' ('[] :: [Nat]) where
@@ -566,16 +448,7 @@ instance ( Dimensions'' ds
         + fromInteger (natVal' (headDim# ds)) * diffIdx is1 is2
   {-# INLINE diffIdx #-}
 
-
-
-
-
-
-
-
-
-
-
+-- | Primitive proxy for taking head dimension
 headDim# :: t (d ': ds :: [k]) -> Proxy# d
 headDim# _ = proxy#
 {-# INLINE headDim# #-}
@@ -611,8 +484,10 @@ loopReverse1 n f = loop' n
 -- * Type-level programming
 --------------------------------------------------------------------------------
 
+-- | It is better to know the length of a dimension list and avoid infinite types.
 type KnownOrder (ns :: [k]) = KnownNat (Length ns)
 
+-- | A constraint family that makes sure all subdimensions are known.
 type family KnownDims (ns :: [Nat]) :: Constraint where
   KnownDims '[] = ()
   KnownDims (x ': xs) = ( KnownNat x
@@ -629,47 +504,13 @@ type family KnownDim (x::k) :: Nat where
   KnownDim n = n
   KnownDim (N n) = n
 
--- type family WrapNats (ns :: k Nat) = (xns :: l XNat) | xns -> ns where
---   WrapNats '[] = '[]
---   WrapNats (n ': ns) = N n ': WrapNats ns
---   WrapNats 'L1Empty = 'L1Empty
---   WrapNats ('L1Single n) = 'L1Single (N n)
---   WrapNats ('List n ns) = 'List (N n) (WrapNats ns)
---   WrapNats 'REmpty = 'REmpty
---   WrapNats ('Reversing ns) = 'Reversing (WrapNats ns)
 
-  -- KnownDim (N n ': ns) =
-
--- | FixedDim puts very tough constraints on what list of naturals can be.
+-- | FixedDim puts very tight constraints on what list of naturals can be.
 --   This allows establishing strong relations between [XNat] and [Nat].
-type family FixedDim (xns :: [k]) (ns :: [Nat]) = (rs :: [Nat]) | rs -> ns where
-  FixedDim (XN ': xns) (n ': ns) = n ': FixedDim xns ns
-  FixedDim (N n ': xns) (n ': ns) = n ': FixedDim xns ns
-  FixedDim '[] '[] = '[]
-
-type family GeneratedDim (xns :: [k]) (ns :: [Nat]) :: [Nat] where
-  GeneratedDim (XN ': xns) (n ': ns) = n ': GeneratedDim xns ns
-  GeneratedDim (N n ': xns) (n ': ns) = n ': GeneratedDim xns ns
-  GeneratedDim (XN ': xns) '[] = 0 ': GeneratedDim xns '[]
-  GeneratedDim (N n ': xns) '[] = n ': GeneratedDim xns '[]
-  GeneratedDim '[] '[] = '[]
-  GeneratedDim xns '[] = xns
-
-
-type family SameConstr (xns :: [k]) (ns :: [Nat]) :: Constraint where
-  SameConstr (_ ': _) (_ ': _) = ()
-  SameConstr '[] '[] = ()
-  SameConstr _ _ = TypeError ( 'Text
-    "Lists for fixed dim should be of the same length."
-   )
-
--- | FixedDim as Bool kind. I need it to provide an evidence of having FixedDim
---   using Data.Type.Equality reflection ( IsFixedDim xns ns :~: 'True ).
-type family IsFixedDim (xns :: [k]) (ns :: [Nat]) :: Bool where
-  IsFixedDim (XN  ': xns) (_ ': ns) = IsFixedDim xns ns
-  IsFixedDim (N n ': xns) (m ': ns) = (n == m) && IsFixedDim xns ns
-  IsFixedDim '[]          '[]       = 'True
-  IsFixedDim _            _         = 'False
+type family FixedDim (xns :: [k]) (ns :: [Nat]) :: [Nat] where
+  FixedDim '[] ns = '[]
+  FixedDim (N n ': xs) ns = n ': FixedDim xs (Tail ns)
+  FixedDim (XN  ': xs) ns = Head ns ': FixedDim xs (Tail ns)
 
 
 -- | Synonym for a type-level cons
@@ -742,24 +583,20 @@ type family EvalList (x :: l) :: [k] where
   EvalList ('Take n xs)    = EvalTake    ('Take n xs)
 
 
-
-
-type family (:++) (x :: k) (xs::l) = (ys :: l) | ys -> xs x where
-  x :++ (xs :: [k])     = x ': xs
-  x :++ ('NoOp xs)      = 'NoOp (x ': xs)
-  y :++ ('Cons x xs)    = 'Cons y (x ': xs)
-  y :++ ('Snoc xs x)    = 'Snoc (y ': xs) x
-  y :++ ('Concat xs ys) = 'Concat (y ': xs) ys
-  y :++ ('Reverse xs)   = 'Reverse (xs +: y)
-  y :++ ('Drop 0 xs)    = 'Drop 0 (y ': xs)
-  y :++ ('Take 0 xs)    = 'Take 1 (y ': xs)
-  y :++ ('Take 1 xs)    = 'Take 2 (y ': xs)
-  y :++ ('Take 2 xs)    = 'Take 3 (y ': xs)
-  y :++ ('Take 3 xs)    = 'Take 4 (y ': xs)
-  y :++ ('Take 4 xs)    = 'Take 5 (y ': xs)
-infixr 5 :++
-
-
+-- type family (:++) (x :: k) (xs::l) = (ys :: l) | ys -> xs x where
+--   x :++ (xs :: [k])     = x ': xs
+--   x :++ ('NoOp xs)      = 'NoOp (x ': xs)
+--   y :++ ('Cons x xs)    = 'Cons y (x ': xs)
+--   y :++ ('Snoc xs x)    = 'Snoc (y ': xs) x
+--   y :++ ('Concat xs ys) = 'Concat (y ': xs) ys
+--   y :++ ('Reverse xs)   = 'Reverse (xs +: y)
+--   y :++ ('Drop 0 xs)    = 'Drop 0 (y ': xs)
+--   y :++ ('Take 0 xs)    = 'Take 1 (y ': xs)
+--   y :++ ('Take 1 xs)    = 'Take 2 (y ': xs)
+--   y :++ ('Take 2 xs)    = 'Take 3 (y ': xs)
+--   y :++ ('Take 3 xs)    = 'Take 4 (y ': xs)
+--   y :++ ('Take 4 xs)    = 'Take 5 (y ': xs)
+-- infixr 5 :++
 
 
 
@@ -791,27 +628,6 @@ type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
   ns >: n = ns +: n
 infixl 6 >:
 
-
-
-type family AllNats (xs :: [k]) :: [Nat] where
-  AllNats '[]           = '[]
-  AllNats (xs :: [Nat]) = xs
-  AllNats (N n ': xs)   = n ': AllNats xs
-  AllNats (XN ': _)     = TypeError ( 'Text
-    "Can't map XNat to Nat, because some dimensions aren't known at compile time."
-   )
-
-
-type family WrapNats (ns :: k Nat) = (xns :: l XNat) | xns -> ns where
-  WrapNats '[] = '[]
-  WrapNats (n ': ns) = N n ': WrapNats ns
-  WrapNats 'L1Empty = 'L1Empty
-  WrapNats ('L1Single n) = 'L1Single (N n)
-  WrapNats ('List1 n ns) = 'List1 (N n) (WrapNats ns)
-  WrapNats 'REmpty = 'REmpty
-  WrapNats ('Reversing ns) = 'Reversing (WrapNats ns)
-
-
 type family Head (xs :: [k]) :: k where
   Head (x ': xs) = x
   Head '[]       = TypeError ( 'Text
@@ -834,30 +650,6 @@ type family Reversed (ts :: Reversing k) = (rs :: [k]) | rs -> ts where
   Reversed ('Reversing ('L1Single a)) = '[a]
   Reversed ('Reversing ('List1 y (x ':xs))) = y ': x ': xs
 
-type family IsSubSetOf (as :: [k]) (bs :: [k]) :: Bool where
-  IsSubSetOf '[]       xs = 'True
-  IsSubSetOf (_ ': _) '[] = 'False
-  IsSubSetOf (a ': as) (b ': xs) = If (a == b) (IsSubSetOf as xs)
-                                               (IsSubSetOf (a ': as) xs)
-
-type family IsPrefixOf (as :: [k]) (bs :: [k]) :: Bool where
-  IsPrefixOf '[] _ = 'True
-  IsPrefixOf (a ': as)  (b ': bs) = a == b && IsPrefixOf as bs
-  IsPrefixOf _ _ = 'False
-
 type family Length (as :: [k]) :: Nat where
   Length '[] = 0
   Length (a ': as) = 1 + Length as
-
-
-
--- type family IsSuffixOf (as :: [k]) (bs :: [k]) :: Bool where
---   IsSuffixOf '[] _ = 'True
---   IsSuffixOf as bs = If (CmpNat (Length as) (Length bs) == 'GT)
---                          'False
---                          (as == Drop (Length bs - Length as) bs)
-
-
--- unsafeProof :: p a -> q b -> a :~: b
--- unsafeProof _ _ = unsafeCoerce Refl
--- {-# INLINE unsafeProof #-}

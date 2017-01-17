@@ -1,20 +1,22 @@
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE Rank2Types, FlexibleContexts #-}
-{-# LANGUAGE GADTs, TypeInType #-}
-{-# LANGUAGE TypeFamilies, TypeFamilyDependencies #-}
-{-# LANGUAGE MultiParamTypeClasses, MagicHash #-}
-{-# LANGUAGE KindSignatures, DataKinds #-}
-{-# LANGUAGE TypeOperators, FlexibleInstances, ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications, FunctionalDependencies     #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MagicHash              #-}
+{-# LANGUAGE Rank2Types             #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeInType             #-}
+{-# LANGUAGE TypeOperators          #-}
 
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds             #-}
-{-# LANGUAGE UndecidableInstances  #-}
-{-# LANGUAGE RankNTypes  #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE KindSignatures         #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE UndecidableInstances   #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame
@@ -30,15 +32,15 @@ module Numeric.DataFrame
   ( DataFrame
   ) where
 
-import GHC.Types (Type)
-import           Control.Arrow        (first, second)
-import           GHC.TypeLits         (Nat)
+import           Control.Arrow      (first, second)
+import           Data.Type.Equality
+import           GHC.TypeLits       (Nat)
+import           GHC.Types          (Type)
 import           Numeric.Array
 import           Numeric.Commons
 import           Numeric.Dimensions
 import           Text.Read
 import           Unsafe.Coerce
-import           Data.Type.Equality
 
 -- | Keep data in a primitive data frame
 --    and maintain information about dimensions in the type-system
@@ -49,7 +51,7 @@ data DataFrame :: (Type -> [k] -> Type) where
    DataFrameSome  :: forall t ns xns
                    . ( Dimensions ns
                      , FixedDim xns ns ~ ns
-                     , IsFixedDim xns ns ~ 'True)
+                     )
                   => Dim xns -> Array t (FixedDim xns ns) -> DataFrame t xns
 
 
@@ -71,7 +73,7 @@ instance ( Show (Array t (NatList ds))
                          ++ "\n\tContent:\n" ++ show arr
 
 dData :: NatList ds ~ ds => DataFrame t ds -> Array t (ds :: [Nat])
-dData (DataFrameKnown a) = a
+dData (DataFrameKnown a)  = a
 dData (DataFrameSome _ a) = unsafeCoerce a
 
 -- instance ( Show (Dim ds)
@@ -390,8 +392,3 @@ unsafeIsNatList _ = unsafeCoerce Refl
 unsafeProof :: p a -> q b -> a :~: b
 unsafeProof _ _ = unsafeCoerce Refl
 {-# INLINE unsafeProof #-}
-
-unsafeIsFixed :: p xns -> q ns
-             -> (IsFixedDim xns ns) :~: 'True
-unsafeIsFixed _ _ = unsafeCoerce Refl
-{-# INLINE unsafeIsFixed #-}
