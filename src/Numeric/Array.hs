@@ -38,6 +38,8 @@ import           Numeric.Dimensions
 --   to eliminate any possible ambiguity.
 newtype Array t (ds :: [Nat]) = Array {_unArray :: ArrayType t ds }
 
+
+
 instance Show t => Show (Array t '[]) where
   show (Array t) = show t
 instance KnownNat d => Show (Array Float '[d]) where

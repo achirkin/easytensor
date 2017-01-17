@@ -28,7 +28,7 @@ import Unsafe.Coerce
 main :: IO ()
 main = do
     putStrLn "Hello world!"
-    print $ (Proxy @3 :* Proxy @2 :* (D :: Dim ('[] :: [Nat])))
+    print (Proxy @3 :* Proxy @2 :* (D :: Dim ('[] :: [Nat])))
     print $ case (,,,) <$> someNatVal 3
                                     <*> someNatVal 6
                                     <*> someNatVal 8
@@ -45,24 +45,15 @@ main = do
     Just d3 = someNatVal 5
     dimX :: Dim '[N 3, XN, XN]
     dimX = Proxy :* d2 :? d3 :? D
-    s = withDim dimX (\ds -> show (dfFloat pi `inSpaceOf` ds)
+    s = withDim dimX (\ds -> show (2 * dfFloat pi `inSpaceOf` ds)
                      )
       :: Either String String
 
--- dfFloat :: (Fractional (DataFrame Float ds), Show (DataFrame Float ds))
---         => Float -> DataFrame Float (ds :: [Nat])
+
 dfFloat :: Fractional (DataFrame Float ds)
         => Float -> DataFrame Float (ds :: [Nat])
-dfFloat x = realToFrac x
+dfFloat = realToFrac
 
-as3 :: p (ds :: [Nat]) -> ((Take 3 ds) :~: '[a,b,c], ds :~: '[a,b,c])
-as3 _ = unsafeCoerce (Refl, Refl)
-
-asCons :: p (ds :: [Nat]) -> ds :~: (a ': as)
-asCons _ = unsafeCoerce Refl
-
-asNil :: p ds -> ds :~: '[]
-asNil _ = unsafeCoerce Refl
 
 --   print (two + vec2 3 4)
 --   print (two + vec2 3 4 + 5)
