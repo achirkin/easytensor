@@ -34,16 +34,18 @@ module Numeric.DataFrame
   , withShape
   , unboundShape
   , (%*), (<::>), (<+:>), (<:>)
-  , Vector, Matrix
+  , Vector, Matrix, Scalar
   , Vec2f, Vec3f, Vec4f
   , Mat22f, Mat23f, Mat24f
   , Mat32f, Mat33f, Mat34f
   , Mat42f, Mat43f, Mat44f
+  , scalar, unScalar
   , vec2, vec3, vec4
   , mat22, mat33, mat44
   , (.*.), dot, (·)
   , cross, (×), det2
   , normL1, normL2, normLPInf, normLNInf, normLP
+  , inverse, det, trace, eye, diag, transpose
   ) where
 
 
@@ -51,11 +53,13 @@ import           Data.Proxy
 import           Data.Type.Equality
 import           GHC.Base (runRW#)
 import           GHC.Prim
-import           GHC.TypeLits       (Nat, natVal, type (+))
+import           GHC.TypeLits       (Nat, natVal, type (+), KnownNat)
 import           GHC.Types          (Type)
 import           Numeric.Array
+import qualified Numeric.Array.Family as AFam (Scalar (..))
 import           Numeric.Commons
 import           Numeric.Dimensions
+import qualified Numeric.Matrix.Class as M
 import           Unsafe.Coerce
 
 -- | Keep data in a primitive data frame
@@ -274,7 +278,15 @@ infixl 5 <+:>
 -- * Scalar type
 --------------------------------------------------------------------------------
 
-type Scalar t = DataFrame t '[]
+type Scalar t = DataFrame t ('[] :: [Nat])
+
+-- | Convert scalar back to ordinary type
+unScalar :: Scalar t -> t
+unScalar = AFam._unScalar . _unArray . _getDF
+
+-- | Convert any type to scalar wrapper
+scalar :: t -> Scalar t
+scalar = KnownDataFrame . Array . AFam.Scalar
 
 --------------------------------------------------------------------------------
 -- * Vector type
@@ -466,3 +478,45 @@ mat44 :: ( PrimBytes (Vector t 4)
          )
       => Vector t 4 -> Vector t 4 -> Vector t 4 -> Vector t 4 -> Matrix t 4 4
 mat44 a b c d = (a <::>) b <:> (c <::> d)
+
+
+-- | Matrix transpose
+transpose :: ( KnownNat n
+             , KnownNat m
+             , M.MatrixCalculus t n m (Array t '[n,m])
+             , M.MatrixCalculus t m n (Array t '[m,n])
+             , PrimBytes (Array t '[m,n])
+             )
+          => Matrix t n m -> Matrix t m n
+transpose = KnownDataFrame . M.transpose . _getDF
+
+-- | One on a diagonal, zero everywhere else
+eye :: ( KnownNat n
+       , M.SquareMatrixCalculus t n (Array t '[n,n])
+       ) => Matrix t n n
+eye = KnownDataFrame M.eye
+
+-- | Single element on a diagonal, zero everywhere else
+diag :: ( KnownNat n
+        , M.SquareMatrixCalculus t n (Array t '[n,n])
+        ) => Scalar t -> Matrix t n n
+diag = KnownDataFrame . M.diag . unScalar
+
+-- | Determinant of  Mat
+det :: ( KnownNat n
+       , M.SquareMatrixCalculus t n (Array t '[n,n])
+       ) => Matrix t n n -> Scalar t
+det = scalar . M.det . _getDF
+
+-- | Sum of diagonal elements
+trace :: ( KnownNat n
+         , M.SquareMatrixCalculus t n (Array t '[n,n])
+         ) => Matrix t n n -> Scalar t
+trace = scalar . M.trace . _getDF
+
+
+-- | Sum of diagonal elements
+inverse :: ( KnownNat n
+           , M.MatrixInverse (Array t '[n,n])
+           ) => Matrix t n n -> Matrix t n n
+inverse = KnownDataFrame . M.inverse . _getDF

@@ -21,7 +21,7 @@ module Numeric.Array.Family
   -- , VectorType
   -- , MatrixType
   , ArrayF (..)
-  , Scalar
+  , Scalar (..)
   ) where
 
 import GHC.TypeLits (Nat)

@@ -44,7 +44,7 @@ library
     other-modules:
         -- Numeric.Matrix
         -- Numeric.Matrix.Base.FloatXNM
-        -- Numeric.Matrix.Class
+        Numeric.Matrix.Class
         -- Numeric.Matrix.Family
         Numeric.Array.Base.ArrayF
         Numeric.Array.Family

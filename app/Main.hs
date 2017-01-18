@@ -47,7 +47,13 @@ main = do
     print x3
     print dfY
     print $ vec2 2 (3 :: Float) %* mat22 (vec2 1 0) (vec2 0 2)
+    print $ vec2 2 3 %* matX
+    print $ vec2 2 3 %* transpose matX
+    print $ matX %* transpose matX
+    print $ det matX
+    print $ inverse matX
   where
+    matX = mat22 (vec2 0 2) (vec2 1 (0 :: Float))
     printEither :: Either String String -> IO ()
     printEither (Left a) = putStrLn a
     printEither (Right a) = putStrLn a
