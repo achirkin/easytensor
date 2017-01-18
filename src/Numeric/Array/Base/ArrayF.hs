@@ -228,6 +228,9 @@ instance Dimensions ds => ElementWise (Idx ds) Float (ArrayF (ds :: [Nat])) wher
   (!) (FromScalarF# x) _ = F# x
   {-# INLINE (!) #-}
 
+  broadcast (F# x) = (FromScalarF# x)
+  {-# INLINE broadcast #-}
+
   ewmap f x@(ArrayF# offset n arr) = case runRW#
      (\s0 -> case newByteArray# bs s0 of
        (# s1, marr #) -> case newMutVar# 0 s1 of

@@ -149,6 +149,8 @@ instance ElementWise (Idx ('[] :: [Nat])) t (Array t '[]) where
   {-# INLINE elementWise #-}
   indexWise f = fmap Array . indexWise f . _unArray
   {-# INLINE indexWise #-}
+  broadcast = Array . broadcast
+  {-# INLINE broadcast #-}
 
 instance Dimensions (d ': ds)
       => ElementWise (Idx (d ': ds)) Float (Array Float (d ': ds)) where
@@ -164,6 +166,8 @@ instance Dimensions (d ': ds)
   {-# INLINE elementWise #-}
   indexWise f = fmap Array . indexWise f . _unArray
   {-# INLINE indexWise #-}
+  broadcast = Array . broadcast
+  {-# INLINE broadcast #-}
 
 
 _suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)

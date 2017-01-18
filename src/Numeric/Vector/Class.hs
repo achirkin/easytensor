@@ -21,12 +21,13 @@ module Numeric.Vector.Class
 
 import GHC.TypeLits
 
-import Numeric.Vector.Family (Vector)
+import Numeric.Array.Family (VectorType)
 
 class VectorCalculus t (n :: Nat) v | v -> t, v -> n where
     -- | Fill Vec with the same value
     broadcastVec :: t -> v
-    -- | Scalar product -- sum of Vecs' components products, propagated into whole Vec
+    -- | Scalar product -- sum of Vecs' components products,
+    --          propagated into whole Vec
     infixl 7 .*.
     (.*.) :: v -> v -> v
     -- | Scalar product -- sum of Vecs' components products -- a scalar
@@ -53,18 +54,18 @@ class VectorCalculus t (n :: Nat) v | v -> t, v -> n where
 
 class Vector2D t where
   -- | Compose a 2D vector
-  vec2 :: t -> t -> Vector t 2
+  vec2 :: t -> t -> VectorType t 2
   -- | Take a determinant of a matrix composed from two 2D vectors.
   --   Like a cross product in 2D.
-  det2 :: Vector t 2 -> Vector t 2 -> t
+  det2 :: VectorType t 2 -> VectorType t 2 -> t
 
 
 class Vector3D t where
   -- | Compose a 3D vector
-  vec3 :: t -> t -> t -> Vector t 3
+  vec3 :: t -> t -> t -> VectorType t 3
   -- | Cross product
-  cross :: Vector t 3 -> Vector t 3 -> Vector t 3
+  cross :: VectorType t 3 -> VectorType t 3 -> VectorType t 3
 
 class Vector4D t where
   -- | Compose a 4D vector
-  vec4 :: t -> t -> t -> t -> Vector t 4
+  vec4 :: t -> t -> t -> t -> VectorType t 4

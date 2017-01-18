@@ -305,5 +305,3 @@ accumVReverse f x@(VFloatXN a) = loop' (n -# 1#)
     loop' i acc | isTrue# (i ==# -1#) = acc
                 | otherwise = loop' (i -# 1#) (f (indexFloatArray# a i) acc)
     n = dim# x
-
-

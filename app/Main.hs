@@ -4,6 +4,8 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE IncoherentInstances #-}
+
 module Main where
 
 import Data.Proxy
@@ -43,6 +45,8 @@ main = do
     -- putStrLn $ _ x3
     printEither s3
     print x3
+    print dfY
+    print $ vec2 2 (3 :: Float) %* mat22 (vec2 1 0) (vec2 0 2)
   where
     printEither :: Either String String -> IO ()
     printEither (Left a) = putStrLn a
@@ -51,6 +55,10 @@ main = do
     Just d3 = someNatVal 5
     dimX :: Dim '[N 3, XN, XN, N 2]
     dimX = Proxy :* d2 :? d3 :? Proxy :* D
+    dimVec2 :: Dim '[XN]
+    dimVec2 = d2 :? D
+    sVec2 = withDim dimVec2 (\ds -> show (dfFloat 3.11 `inSpaceOf` ds)
+                            )
     s2 = withDim dimX (\ds -> show (dfFloat (exp 3) `inSpaceOf` ds)
                      )
     x3 = case withDim dimX (\ds -> unboundShape $ dfFloat 42.0001 `inSpaceOf` ds
@@ -63,11 +71,23 @@ main = do
                      )
       :: Either String String
     s3 = (`withShape` show) <$> x3
+    dimX1 :: Dim '[3,2,4]
+    dimX1 = dim
+    dimX2 :: Dim '[4,5,2]
+    dimX2 = dim
+    dfX1  :: DFF '[3,2,4]
+    dfX1  = pi
+    dfX2  :: DFF '[4,5]
+    dfX2  = 1
+    -- dfY :: DFF '[3,2,5,6]
+    dfY   = dfX1 %* dfX2
 
 dfFloat :: Fractional (DataFrame Float ds)
         => Float -> DataFrame Float (ds :: [Nat])
 dfFloat = realToFrac
 
+
+type DFF (ds :: [Nat]) = DataFrame Float ds
 
 --   print (two + vec2 3 4)
 --   print (two + vec2 3 4 + 5)

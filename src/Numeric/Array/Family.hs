@@ -18,16 +18,27 @@
 
 module Numeric.Array.Family
   ( ArrayType
+  -- , VectorType
+  -- , MatrixType
   , ArrayF (..)
+  , Scalar
   ) where
 
 import GHC.TypeLits (Nat)
 import GHC.Prim
 import Numeric.Commons
 import Numeric.Dimensions
+-- import Numeric.Vector.Family
 
+-- -- | Simplified synonym for an array of order 1
+-- type VectorType t (n :: Nat) = ArrayType t '[n]
+-- -- | Simplified synonym for an array of order 2
+-- type MatrixType t (n :: Nat) (m :: Nat) = ArrayType t '[n,m]
+
+-- | Full collection of n-order arrays
 type family ArrayType t (ds :: [Nat]) = v | v -> t ds where
-  ArrayType t     '[] = Scalar t
+  ArrayType t     '[]  = Scalar t
+  -- ArrayType Float '[2] = VFloatX2
   ArrayType Float (d ': ds)    = ArrayF (d ': ds)
 
 
@@ -53,6 +64,8 @@ instance ElementWise (Idx ('[] :: [Nat])) t (Scalar t) where
   {-# INLINE elementWise #-}
   indexWise f = fmap Scalar . f Z . _unScalar
   {-# INLINE indexWise #-}
+  broadcast = Scalar
+  {-# INLINE broadcast #-}
 
 -- * Array implementations.
 --   All array implementations have the same structure:
@@ -62,7 +75,7 @@ instance ElementWise (Idx ('[] :: [Nat])) t (Scalar t) where
 
 -- | N-Dimensional arrays based on Float# type
 data ArrayF (ds :: [Nat]) = ArrayF# Int# Int# ByteArray#
-                        | FromScalarF# Float#
+                          | FromScalarF# Float#
 
 
 _suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)
