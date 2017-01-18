@@ -25,7 +25,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.Array
-  ( Array
+  ( Array (..)
   ) where
 
 import           GHC.TypeLits              (KnownNat, Nat)
@@ -33,6 +33,7 @@ import           Numeric.Array.Base.ArrayF ()
 import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.Dimensions
+import           Numeric.Matrix.Class
 
 -- | A wrapper on top of ArrayType type family
 --   to eliminate any possible ambiguity.
@@ -47,6 +48,7 @@ instance KnownNat d => Show (Array Float '[d]) where
 instance ( Dimensions (n :+ m :+ ds)
          ) => Show (Array Float ((n :+ m :+ ds) :: [Nat])) where
   show (Array t) = show t
+
 
 
 deriving instance Bounded (ArrayType t ds) => Bounded (Array t ds)
@@ -169,6 +171,12 @@ instance Dimensions (d ': ds)
   broadcast = Array . broadcast
   {-# INLINE broadcast #-}
 
+deriving instance ( KnownNat n, KnownNat m )
+               => MatrixCalculus Float n m (Array Float '[n,m])
+deriving instance KnownNat n
+               => SquareMatrixCalculus Float n (Array Float '[n,n])
+deriving instance KnownNat n
+               => MatrixInverse (Array Float '[n,n])
 
 _suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)
 _suppressHlintUnboxedTuplesWarning = undefined
