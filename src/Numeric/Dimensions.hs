@@ -30,16 +30,16 @@ module Numeric.Dimensions
   , Dimensional (..), runDimensional, withDim
     -- * Operations
   , Dimensions, Dimensions' (..), Dimensions'' (..)
-  , FixedXDim, XDimensions (..)
-  , inSpaceOf, order
+  , XDimensions (..)
+  , inSpaceOf, order, appendIdx, splitIdx
     -- * Type-level programming
-  , FixedDim
+  , FixedDim, FixedXDim, KnownOrder
   , type (++), Reverse, Take, Drop, Length
   , type (:<), type (>:), type (:+), type (+:), Head, Tail
   ) where
 
 
-
+import Control.Arrow (first)
 import GHC.TypeLits
 import GHC.Prim
 import GHC.Types
@@ -487,6 +487,31 @@ instance ( Dimensions'' ds
         + fromInteger (natVal' (headDim# ds)) * diffIdx is1 is2
   {-# INLINE diffIdx #-}
 
+
+appendIdx :: Idx as -> Int -> Idx (as +: b)
+appendIdx Z i = i :! Z
+appendIdx jjs@(j :! js) i = case proofCons jjs js of
+    Refl -> unsafeCoerce $ j :! appendIdx js i
+  where
+    proofCons :: Idx as -> Idx bs -> as :~: (b :+ bs)
+    proofCons _ _ = unsafeCoerce Refl
+{-# INLINE appendIdx #-}
+
+splitIdx :: KnownOrder as => Idx (as ++ bs) -> (Idx as, Idx bs)
+splitIdx idx = rez
+  where
+    getAs :: (Idx as, Idx bs) -> Proxy as
+    getAs _ = Proxy
+    rez = splitN (order $ getAs rez) idx
+    splitN :: Int -> Idx (as ++ bs) -> (Idx as, Idx bs)
+    splitN 0 js = unsafeCoerce (Z, js)
+    splitN n (j :! js) = first (unsafeCoerce . (j :!))
+                       $ splitN (n-1) (unsafeCoerce js)
+    splitN _ Z  = unsafeCoerce (Z, Z)
+{-# INLINE splitIdx #-}
+
+
+
 -- | Primitive proxy for taking head dimension
 headDim# :: t (d ': ds :: [k]) -> Proxy# d
 headDim# _ = proxy#
@@ -561,13 +586,16 @@ type family WrapHead (n :: Nat) (xs :: [XNat]) :: XNat where
   WrapHead x '[]         = N x
 
 -- | Synonym for a type-level cons
-type a :+ as = a ': as
+type (a :: k) :+ (as :: [k]) = a ': as
 infixr 5 :+
 -- | Synonym for a type-level snoc
 type (ns :: [k]) +: (n :: k) = EvalSnoc ('Snoc ns n)
 infixl 5 +:
--- | List1 concatenation
-type as ++ bs = EvalConcat ('Concat as bs)
+
+
+
+-- | List concatenation
+type (as :: [k]) ++ (bs :: [k]) = EvalConcat ('Concat as bs)
 infixr 5 ++
 -- | Reverse a list
 type Reverse (xs :: [k]) = EvalReverse ('Reverse xs)
@@ -596,8 +624,25 @@ type family EvalCons (xs :: List k) = (ys :: [k]) | ys -> xs where
 type EvalSnoc (xs :: List k) = GetList1 (Snoc1 xs)
 
 type family EvalConcat (xs :: List k) :: [k] where
-  EvalConcat ('Concat as '[]) = as
+  EvalConcat ('Concat '[a] '[b]) = '[a,b]
   EvalConcat ('Concat as (b ': bs)) = EvalConcat ('Concat (as +: b) bs)
+  EvalConcat ('Concat as _) = as
+
+  -- EvalConcat ('Concat (as :: [k]) ('[] :: [k])) = (as :: [k])
+  -- EvalConcat ('Concat ('[] :: [k]) (bs :: [k])) = (bs :: [k])
+  -- EvalConcat ('Concat '[a1] bs) = a1 ': bs
+  -- EvalConcat ('Concat '[a1,a2] bs) = a1 ': a2 ': bs
+  -- EvalConcat ('Concat '[a1,a2,a3] bs) = a1 ': a2 ': a3 ': bs
+  -- EvalConcat ('Concat (as :: [k]) ((b :: k) ': (bs :: [k])))
+  --   = ( EvalConcat (('Concat ((as +: b) :: [k]) (bs :: [k])) :: List k)
+  --       :: [k]
+  --     )
+--   EvalConcat ('Concat as bs) = EvalReverseConcat ('Concat (Reverse as) bs)
+--
+-- type family EvalReverseConcat (xs :: List k) :: [k] where
+--   EvalReverseConcat ('Concat '[] bs) = bs
+--   EvalReverseConcat ('Concat (a ': as) bs) = EvalReverseConcat ('Concat as (a ': bs))
+
 
 type instance 'Concat as  '[]       == 'Concat bs '[] = as == bs
 type instance 'Concat as (a ': as1) == 'Concat bs (b ': bs1)
@@ -619,8 +664,8 @@ type family EvalTake (xs :: List k) :: [k] where
 
 
 
-type family EvalList (x :: l) :: [k] where
-  EvalList (xs :: [k])     = xs
+type family EvalList (x :: List k) :: [k] where
+  -- EvalList (xs :: [k])     = xs
   EvalList ('NoOp xs)      = EvalNoOp    ('NoOp xs)
   EvalList ('Cons x xs)    = EvalCons    ('Cons x xs)
   EvalList ('Snoc xs x)    = EvalSnoc    ('Snoc xs x)
@@ -648,16 +693,41 @@ type family EvalList (x :: l) :: [k] where
 
 
 
+
 -- | A weird data type used to make `(+:)` operation injective.
 --   `List k [k]` must have at least two elements.
-data List1 k = L1Empty | L1Single k | List1 k [k]
+data List1 k = L1Single k | L1Head k [k]
 type family Snoc1 (xs :: List k) = (ys :: List1 k) | ys -> xs where
   Snoc1 ('Snoc '[] y)        = 'L1Single y
-  Snoc1 ('Snoc (x ': xs) y)  = 'List1 x (GetList1 (Snoc1 ('Snoc xs y)))
+  Snoc1 ('Snoc (x ': xs) y :: List Nat)
+      = ('L1Head x (GetList1Nat (SnocNat xs y)) :: List1 Nat)
+  Snoc1 ('Snoc (x ': xs) y :: List XNat)
+      = ('L1Head x (GetList1XNat (SnocXNat xs y)) :: List1 XNat)
+  Snoc1 ('Snoc (x ': xs) y)  = 'L1Head x (xs +: y)
 type family GetList1 (ts :: List1 k) = (rs :: [k]) | rs -> ts where
-  GetList1 'L1Empty = '[]
   GetList1 ('L1Single x) = '[x]
-  GetList1 ('List1 y (x ':xs)) = y ': x ': xs
+  GetList1 ('L1Head y (x ':xs)) = y ': x ': xs
+
+-- | Even more weird thing - specialization to kind Nat
+--   Otherwise, example below will not typecheck:
+-- ff :: Proxy k -> Proxy (as +: k) -> Proxy (k :+ bs) -> Proxy (as ++ bs)
+-- ff _ _ _ = Proxy
+-- yy :: Proxy ('[3,7,2] :: [Nat])
+-- yy = ff (Proxy @5) (Proxy @'[3,7,5]) (Proxy @'[5,2])
+type SnocNat (ns :: [Nat]) (n :: Nat) = Snoc1 ('Snoc ns n)
+type family GetList1Nat (ts :: List1 Nat) = (rs :: [Nat]) | rs -> ts where
+  GetList1Nat ('L1Single x) = '[x]
+  GetList1Nat ('L1Head y (x ':xs)) = y ': x ': xs
+type SnocXNat (ns :: [XNat]) (n :: XNat) = Snoc1 ('Snoc ns n)
+type family GetList1XNat (ts :: List1 XNat) = (rs :: [XNat]) | rs -> ts where
+  GetList1XNat ('L1Single x) = '[x]
+  GetList1XNat ('L1Head y (x ':xs)) = y ': x ': xs
+
+
+type family Reversed (ts :: Reversing k) = (rs :: [k]) | rs -> ts where
+  Reversed 'REmpty = '[]
+  Reversed ('Reversing ('L1Single a)) = '[a]
+  Reversed ('Reversing ('L1Head y (x ':xs))) = y ': x ': xs
 
 
 
@@ -692,10 +762,6 @@ type family Reverse' (as :: List k) = (rs :: Reversing k) | rs -> as where
   Reverse' ('Reverse '[]) = 'REmpty
   Reverse' ('Reverse (a ': as)) = 'Reversing
     (Snoc1 ('Snoc (Reversed (Reverse' ('Reverse as))) a))
-type family Reversed (ts :: Reversing k) = (rs :: [k]) | rs -> ts where
-  Reversed 'REmpty = '[]
-  Reversed ('Reversing ('L1Single a)) = '[a]
-  Reversed ('Reversing ('List1 y (x ':xs))) = y ': x ': xs
 
 type family Length (as :: [k]) :: Nat where
   Length '[] = 0
