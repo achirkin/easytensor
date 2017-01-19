@@ -4,7 +4,7 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE IncoherentInstances #-}
+-- {-# LANGUAGE IncoherentInstances #-}
 
 module Main where
 
@@ -52,6 +52,7 @@ main = do
     print $ matX %* transpose matX
     print $ det matX
     print $ inverse matX
+    print $ dfY2
   where
     matX = mat22 (vec2 0 2) (vec2 1 (0 :: Float))
     printEither :: Either String String -> IO ()
@@ -66,14 +67,14 @@ main = do
     sVec2 = withDim dimVec2 (\ds -> show (dfFloat 3.11 `inSpaceOf` ds)
                             )
     s2 = withDim dimX (\ds -> show (dfFloat (exp 3) `inSpaceOf` ds)
-                     )
+                      )
     x3 = case withDim dimX (\ds -> unboundShape $ dfFloat 42.0001 `inSpaceOf` ds
                       ) of
         Right x -> Right $ x `inSpaceOf` Proxy @'[XN,XN,XN,N _]
         Left a -> Left a
     s = withDim dimX (\ds -> let pix = 2 * dfFloat pi `inSpaceOf` ds
                              in show pix
-                              ++ show (pix ! (1 :! 2 :! 1 :! 2 :! Z) )
+                              ++ show (pix ! (1 :! 2 :! 1 :! 2) )
                      )
       :: Either String String
     s3 = (`withShape` show) <$> x3
@@ -85,8 +86,12 @@ main = do
     dfX1  = pi
     dfX2  :: DFF '[4,5]
     dfX2  = 1
-    -- dfY :: DFF '[3,2,5,6]
+    -- dfY :: DFF '[3,2,5]
     dfY   = dfX1 %* dfX2
+    dfY2  = (runSlice . slice (Get 4 )
+                      $ slice (Get 2 :& 1 :& 1)
+                      (\(i :! j :! Z) v -> [ scalar (v ! 1) - realToFrac i
+                                           , scalar (v ! 2) *2 / realToFrac j])) dfY
 
 dfFloat :: Fractional (DataFrame Float ds)
         => Float -> DataFrame Float (ds :: [Nat])
