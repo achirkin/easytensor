@@ -35,7 +35,7 @@ module Numeric.DataFrame
   , withShape
   , unboundShape
   , (%*), (<::>), (<+:>), (<:>)
-  , Vector, Matrix, Scalar
+  , Vector, Matrix, Scalar, Scf
   , Vec2f, Vec3f, Vec4f
   , Mat22f, Mat23f, Mat24f
   , Mat32f, Mat33f, Mat34f
@@ -48,6 +48,7 @@ module Numeric.DataFrame
   , normL1, normL2, normLPInf, normLNInf, normLP
   , inverse, det, trace, eye, diag, transpose
   , slice, runSlice, subSpace
+  , M.MatrixCalculus (), M.SquareMatrixCalculus (), M.MatrixInverse ()
   ) where
 
 
@@ -378,6 +379,7 @@ slice2list xx@(x :& i) = slice2list (xx `f` unsafeCoerce x) ++ [i]
 --------------------------------------------------------------------------------
 
 type Scalar t = DataFrame t ('[] :: [Nat])
+type Scf = Scalar Float
 
 -- | Convert scalar back to ordinary type
 unScalar :: Scalar t -> t
@@ -386,6 +388,8 @@ unScalar = AFam._unScalar . _unArray . _getDF
 -- | Convert any type to scalar wrapper
 scalar :: t -> Scalar t
 scalar = KnownDataFrame . Array . AFam.Scalar
+
+
 
 --------------------------------------------------------------------------------
 -- * Vector type

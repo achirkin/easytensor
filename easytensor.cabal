@@ -31,7 +31,7 @@ library
     if flag(unsafeindices)
         cpp-options: -DUNSAFE_INDICES
     exposed-modules:
-        -- Numeric.EasyTensor
+        Numeric.EasyTensor
         -- Numeric.Tensor
         Numeric.Commons
         Numeric.DataFrame
