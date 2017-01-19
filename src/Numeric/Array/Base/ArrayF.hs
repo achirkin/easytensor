@@ -43,12 +43,12 @@ import           Numeric.Matrix.Class
 
 instance Show (ArrayF '[]) where
   show x = "{ " ++ show (x ! Z) ++ " }"
-instance Dimensions '[n] => Show (ArrayF '[n]) where
+instance KnownNat n => Show (ArrayF '[n]) where
   show x = ('{' :) . drop 1 $
                 foldr (\i s -> ", " ++ show (x ! i) ++ s) " }"
                         [minBound .. maxBound]
-instance ( Dimensions (n :+ m :+ ds)
-         ) => Show (ArrayF (n :+ m :+ ds)) where
+instance Dimensions (n :+ m :+ ds)
+      => Show (ArrayF (n :+ m :+ ds)) where
   show x = drop 1 $ foldr loopOuter "" [minBound..maxBound]
     where
       loopInner :: Idx ds -> Idx '[n,m] -> String
@@ -372,7 +372,8 @@ instance (KnownNat n, KnownNat m) => MatrixCalculus Float n m (ArrayF '[n,m]) wh
       bs = n *# m *# SIZEOF_HSFLOAT#
   transpose (FromScalarF# x) = unsafeCoerce# $ FromScalarF# x
 
-instance KnownNat n => SquareMatrixCalculus Float n (ArrayF '[n,n]) where
+instance Dimensions '[n,n]
+      => SquareMatrixCalculus Float n (ArrayF '[n,n]) where
   eye = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop1# n

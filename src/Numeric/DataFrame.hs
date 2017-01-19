@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE Rank2Types             #-}
--- {-# LANGUAGE ScopedTypeVariables    #-}
--- {-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeInType             #-}
@@ -18,6 +18,7 @@
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving   #-}
 {-# LANGUAGE UnboxedTuples, MagicHash #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame
@@ -46,6 +47,7 @@ module Numeric.DataFrame
   , cross, (×), det2
   , normL1, normL2, normLPInf, normLNInf, normLP
   , inverse, det, trace, eye, diag, transpose
+  , slice, runSlice, subSpace
   ) where
 
 
@@ -54,7 +56,7 @@ import           Data.Type.Equality
 import           GHC.Base (runRW#)
 import           GHC.Prim
 import           GHC.TypeLits       (Nat, natVal, type (+), KnownNat)
-import           GHC.Types          (Type)
+import           GHC.Types
 import           Numeric.Array
 import qualified Numeric.Array.Family as AFam (Scalar (..))
 import           Numeric.Commons
@@ -273,6 +275,103 @@ a <+:> b = case (# toBytes a, toBytes b
      ) of (# _, r #) -> fromBytes (# 0#, n1 +# n2, r #)
 infixl 5 <+:>
 
+runSlice :: forall (t :: Type) (f :: Type -> Type)
+                     (ods :: [Nat]) (nds :: [Nat])
+           . (Idx '[] -> DataFrame t ods -> f (DataFrame t nds))
+          -> DataFrame t ods
+          -> f (DataFrame t nds)
+runSlice f = f Z
+
+subSpace :: forall (t :: Type) (f :: Type -> Type) (n :: Nat)
+                   (ods :: [Nat]) (nds :: [Nat]) (remDs :: [Nat])
+         . ( Applicative f
+           , Dimensions ods
+           , Dimensions nds
+           , Dimensions (ods +: n)
+           , Dimensions (nds +: n)
+           , KnownNat n
+           , PrimBytes (DataFrame t ods)
+           , PrimBytes (DataFrame t nds)
+           , PrimBytes (DataFrame t (ods +: n))
+           , PrimBytes (DataFrame t (nds +: n))
+           )
+        -- slice
+        => (Idx (n :+ remDs) -> DataFrame t ods -> f (DataFrame t nds))
+        -- new transform
+        -> Idx remDs
+        -> DataFrame t (ods +: n)
+        -> f (DataFrame t (nds +: n))
+subSpace = case unsafeCoerce Refl :: (nds >: n) :~: (nds +: n) of
+    Refl -> slice Every
+
+slice :: forall (t :: Type) (f :: Type -> Type)
+                    (o :: Nat) (n :: Nat)
+                    (ods :: [Nat]) (nds :: [Nat]) (remDs :: [Nat])
+           . ( Applicative f
+             , Dimensions ods
+             , Dimensions nds
+             , Dimensions (ods +: o)
+             , Dimensions (nds +: n)
+             , KnownNat o
+             , KnownNat n
+             , PrimBytes (DataFrame t ods)
+             , PrimBytes (DataFrame t nds)
+             , PrimBytes (DataFrame t (ods +: o))
+             , PrimBytes (DataFrame t (nds >: n))
+             )
+          -- slice
+          => Slice o n
+          -- old transform
+          -> (Idx (n :+ remDs) -> DataFrame t ods -> f (DataFrame t nds))
+          -- new transform
+          -> Idx remDs
+          -> DataFrame t (ods +: o)
+          -> f (DataFrame t (nds >: n))
+slice s f remIds oldDF
+    = merge <$> traverse (\i@(I# i#) -> f (i:!remIds)
+                           (fromBytes (# offOld +# (i# -# 1#) *# lengthOld'
+                                       , lengthOld'
+                                       , arrOld #))
+                         ) (slice2list s)
+  where
+    merge xs = case runRW#
+       (\s0 -> case newByteArray# bsNew s0 of
+         (# s1, marr #) -> case writeOne xs marr 0# s1 of
+           s2 -> unsafeFreezeByteArray# marr s2
+       ) of (# _, r #) -> fromBytes (# 0#, lengthNew, r #)
+    writeOne [] _ _ s' = s'
+    writeOne (x : xs) mr pos s' = case toBytes x of
+        (# off, l, a #) ->  writeOne xs mr (pos +# l)
+            (copyByteArray# a (off *# elSize) mr (pos *# elSize) (l *# elSize) s')
+    (# offOld, _, arrOld #) = toBytes oldDF
+    elSize = elementByteSize oldDF
+    lengthOld' = case totalDim (Proxy @ods) of I# lo -> lo
+    lengthNew  = case totalDim (Proxy @(nds +: n)) of I# ln -> ln
+    bsNew      = lengthNew *# elSize
+
+slice2list :: KnownNat m => Slice n m -> [Int]
+slice2list x@Every = [1..fromInteger (natVal x)]
+slice2list (Get i) = [i]
+slice2list xx@(x :& i) = slice2list (xx `f` unsafeCoerce x) ++ [i]
+  where
+    f :: a -> a -> a
+    f _ = id
+
+-- ff = runSlice . slice Every
+--                 . slice (Get 4 :& 7 :& 4)
+--                 $ slice (Get 1 :& 2) (const Just)
+
+-- fancyFunc :: forall (t :: Type) (f :: Type -> Type)
+--                     (n :: Nat) (m :: Nat)
+--                     (oldRems :: [Nat]) (newRems :: [Nat])
+--                     (oldIds :: [Nat])  (newIds :: [Nat])
+--            . (Applicative f)
+--           => Slice n m
+--           -> (Idx (m :+ newIds) -> DataFrame t oldRems -> f (DataFrame t newRems))
+--           -> Idx newIds
+--           -> DataFrame t ((oldRems +: n) ++ oldIds)
+--           -> f (DataFrame t ((newRems +: m) ++ newIds))
+-- fancyFunc _slice _map _ids _oldDF = undefined
 
 --------------------------------------------------------------------------------
 -- * Scalar type

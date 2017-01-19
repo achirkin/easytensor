@@ -28,7 +28,7 @@ module Numeric.Array
   ( Array (..)
   ) where
 
-import           GHC.TypeLits              (KnownNat, Nat)
+import           GHC.TypeLits              (KnownNat, Nat, type (<=))
 import           Numeric.Array.Base.ArrayF ()
 import           Numeric.Array.Family
 import           Numeric.Commons
@@ -173,7 +173,7 @@ instance Dimensions (d ': ds)
 
 deriving instance ( KnownNat n, KnownNat m )
                => MatrixCalculus Float n m (Array Float '[n,m])
-deriving instance KnownNat n
+deriving instance (KnownNat n, 2 <= n)
                => SquareMatrixCalculus Float n (Array Float '[n,n])
 deriving instance KnownNat n
                => MatrixInverse (Array Float '[n,n])

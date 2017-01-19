@@ -33,7 +33,7 @@ module Numeric.Dimensions
   , XDimensions (..)
   , inSpaceOf, order, appendIdx, splitIdx
     -- * Type-level programming
-  , FixedDim, FixedXDim, KnownOrder
+  , FixedDim, FixedXDim, KnownOrder, ValidDims
   , type (++), Reverse, Take, Drop, Length
   , type (:<), type (>:), type (:+), type (+:), Head, Tail
   ) where
@@ -87,6 +87,7 @@ type N (n::Nat) = 'N n
 -- | Similar to SomeNat, hide some dimensions under an existential constructor.
 data SomeDim (xns :: [XNat])
   = forall ns . ( Dimensions ns
+                , ValidDims ns
                 , FixedDim xns ns ~ ns
                 , FixedXDim xns ns ~ xns
                 ) => SomeDim (Dim ns)
@@ -94,13 +95,15 @@ data SomeDim (xns :: [XNat])
 -- | Construct dimensionality at runtime
 someDimVal :: Dim (xns :: [XNat]) -> Maybe (SomeDim xns)
 someDimVal D = Just $ SomeDim D
-someDimVal xxs@(p :* xs) =
-    ( \(SomeDim ps) -> withSuccKnown (order ps) ps
-      ( \Refl -> let pps = p :* ps
-                 in case (isFixed xxs pps, isXFixed xxs pps) of
-                      (Refl, Refl) -> SomeDim pps
-      )
-    ) <$> someDimVal xs
+someDimVal xxs@(p :* xs) = do
+    Refl <- isGoodDim p
+    SomeDim ps <- someDimVal xs
+    return $ withSuccKnown (order ps) ps
+          ( \Refl -> let pps = p :* ps
+                     in case ( isFixed xxs pps
+                             , isXFixed xxs pps ) of
+                          (Refl, Refl) -> SomeDim pps
+          )
   where
     -- I know for sure that the constraint (FixedDim xns ns ~ ns) holds,
     --   but I need to convince the compiler that this is the case
@@ -108,9 +111,17 @@ someDimVal xxs@(p :* xs) =
     isFixed _ _ = unsafeCoerce Refl
     isXFixed :: Dim xns -> Dim ns -> FixedXDim xns ns :~: xns
     isXFixed _ _ = unsafeCoerce Refl
-someDimVal (SomeNat p :? xs) = someDimVal xs >>=
-  \(SomeDim ps) -> withSuccKnown (order ps) ps
-      (\Refl -> Just $ SomeDim (p :* ps))
+someDimVal (SomeNat p :? xs) = do
+  Refl <- isGoodDim p
+  SomeDim ps <- someDimVal xs
+  return $ withSuccKnown (order ps) ps
+            (\Refl -> SomeDim (p :* ps)
+            )
+
+isGoodDim :: KnownNat d => p d -> Maybe ((2 <=? d) :~: 'True)
+isGoodDim p = if 2 <= natVal p then unsafeCoerce (Just Refl)
+                               else unsafeCoerce Nothing
+
 
 withSuccKnown :: Int
               -> p xs
@@ -294,6 +305,31 @@ instance Eq (Dim ds) where
   (a:?as) == (b:?bs) = a == b && as == bs
   (a:*as) == (b:?bs) = SomeNat a == b && as == bs
   (a:?as) == (b:*bs) = a == SomeNat b && as == bs
+
+-- | With this instance we can slightly reduce indexing expressions
+--   e.g. x ! (1 :! 2 :! 4) == x ! (1 :! 2 :! 4 :! Z)
+instance Num (Idx '[n]) where
+  (a:!Z) + (b:!Z) = (a+b) :! Z
+  (a:!Z) - (b:!Z) = (a-b) :! Z
+  (a:!Z) * (b:!Z) = (a*b) :! Z
+  signum (a:!Z)   = signum a :! Z
+  abs (a:!Z)      = abs a :! Z
+  fromInteger i   = fromInteger i :! Z
+
+-- Disable this because it causes Nat ambiguity when being used
+-- instance Num (Slice n 1) where
+--   Get a + Get b = Get (a+b)
+--   _ + _ = Get 1
+--   Get a - Get b = Get (a-b)
+--   _ - _ = Get 1
+--   Get a * Get b = Get (a*b)
+--   _ * _ = Get 1
+--   signum (Get a) = Get $ signum a
+--   signum x       = x
+--   abs (Get a)    = Get $ abs a
+--   abs x          = x
+--   fromInteger i  = Get $ fromInteger i
+
 
 instance Ord (Idx ds) where
   compare Z Z = EQ
@@ -560,6 +596,11 @@ type family KnownDims (ns :: [Nat]) :: Constraint where
                         , Dimensions'' xs
                         , KnownDims xs)
 
+-- | Make sure all dimensions are not degenerate
+type family ValidDims (ns :: [Nat]) :: Constraint where
+  ValidDims '[] = ()
+  ValidDims (x ': xs) = (2 <= x, ValidDims xs)
+
 
 -- | Unify usage of XNat and Nat.
 --   This is useful in function and type definitions.
@@ -586,9 +627,10 @@ type family WrapHead (n :: Nat) (xs :: [XNat]) :: XNat where
   WrapHead x '[]         = N x
 
 -- | Synonym for a type-level cons
+--     (injective, since this is just a synonym for the list constructor)
 type (a :: k) :+ (as :: [k]) = a ': as
 infixr 5 :+
--- | Synonym for a type-level snoc
+-- | Synonym for a type-level snoc (injective!)
 type (ns :: [k]) +: (n :: k) = EvalSnoc ('Snoc ns n)
 infixl 5 +:
 
@@ -597,7 +639,7 @@ infixl 5 +:
 -- | List concatenation
 type (as :: [k]) ++ (bs :: [k]) = EvalConcat ('Concat as bs)
 infixr 5 ++
--- | Reverse a list
+-- | Reverse a list (injective!)
 type Reverse (xs :: [k]) = EvalReverse ('Reverse xs)
 -- | Drop a number of elements
 type Drop (n::Nat) (xs :: [k]) = EvalDrop ('Drop n xs)
@@ -628,20 +670,6 @@ type family EvalConcat (xs :: List k) :: [k] where
   EvalConcat ('Concat as (b ': bs)) = EvalConcat ('Concat (as +: b) bs)
   EvalConcat ('Concat as _) = as
 
-  -- EvalConcat ('Concat (as :: [k]) ('[] :: [k])) = (as :: [k])
-  -- EvalConcat ('Concat ('[] :: [k]) (bs :: [k])) = (bs :: [k])
-  -- EvalConcat ('Concat '[a1] bs) = a1 ': bs
-  -- EvalConcat ('Concat '[a1,a2] bs) = a1 ': a2 ': bs
-  -- EvalConcat ('Concat '[a1,a2,a3] bs) = a1 ': a2 ': a3 ': bs
-  -- EvalConcat ('Concat (as :: [k]) ((b :: k) ': (bs :: [k])))
-  --   = ( EvalConcat (('Concat ((as +: b) :: [k]) (bs :: [k])) :: List k)
-  --       :: [k]
-  --     )
---   EvalConcat ('Concat as bs) = EvalReverseConcat ('Concat (Reverse as) bs)
---
--- type family EvalReverseConcat (xs :: List k) :: [k] where
---   EvalReverseConcat ('Concat '[] bs) = bs
---   EvalReverseConcat ('Concat (a ': as) bs) = EvalReverseConcat ('Concat as (a ': bs))
 
 
 type instance 'Concat as  '[]       == 'Concat bs '[] = as == bs
@@ -708,8 +736,11 @@ type family GetList1 (ts :: List1 k) = (rs :: [k]) | rs -> ts where
   GetList1 ('L1Single x) = '[x]
   GetList1 ('L1Head y (x ':xs)) = y ': x ': xs
 
--- | Even more weird thing - specialization to kind Nat
---   Otherwise, example below will not typecheck:
+-- | Even more weird thing - specialization to kind Nat and XNat.
+--   Otherwise, example below will not typecheck.
+--   The problem, I guess, is in too many layers of type families nested.
+--   Though, even if I fully annotate everything with kind signature
+--            it still does not work without this weird specialization.
 -- ff :: Proxy k -> Proxy (as +: k) -> Proxy (k :+ bs) -> Proxy (as ++ bs)
 -- ff _ _ _ = Proxy
 -- yy :: Proxy ('[3,7,2] :: [Nat])
