@@ -761,6 +761,15 @@ type family Reversed (ts :: Reversing k) = (rs :: [k]) | rs -> ts where
   Reversed ('Reversing ('L1Head y (x ':xs))) = y ': x ': xs
 
 
+type family ReversedNat (ts :: Reversing Nat) = (rs :: [Nat]) | rs -> ts where
+  ReversedNat 'REmpty = '[]
+  ReversedNat ('Reversing ('L1Single a)) = '[a]
+  ReversedNat ('Reversing ('L1Head y (x ':xs))) = y ': x ': xs
+type family ReversedXNat (ts :: Reversing XNat) = (rs :: [XNat]) | rs -> ts where
+  ReversedXNat 'REmpty = '[]
+  ReversedXNat ('Reversing ('L1Single a)) = '[a]
+  ReversedXNat ('Reversing ('L1Head y (x ':xs))) = y ': x ': xs
+
 
 -- | Synonym for (:+) that ignores Nat values 0 and 1
 type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
@@ -788,9 +797,15 @@ type family Tail (xs :: [k]) :: [k] where
     "Tail -- empty type-level list."
    )
 
+
+
 data Reversing k = REmpty | Reversing (List1 k)
 type family Reverse' (as :: List k) = (rs :: Reversing k) | rs -> as where
   Reverse' ('Reverse '[]) = 'REmpty
+  Reverse' ('Reverse (a ': as) :: List Nat) = 'Reversing
+    (SnocNat (ReversedNat (Reverse' ('Reverse as))) a)
+  Reverse' ('Reverse (a ': as) :: List XNat) = 'Reversing
+    (SnocXNat (ReversedXNat (Reverse' ('Reverse as))) a)
   Reverse' ('Reverse (a ': as)) = 'Reversing
     (Snoc1 ('Snoc (Reversed (Reverse' ('Reverse as))) a))
 

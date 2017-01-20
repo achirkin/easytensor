@@ -72,6 +72,9 @@ main = do
     print $ totalDim (Proxy @'[3,2])
     print $ totalDim (Proxy @'[3])
     print $ totalDim (Proxy @'[])
+    print $ mapDim (Proxy @4 :* D) (*0.5) ixs
+    -- print $ 3:!Z !. ixs
+    -- print $ 1:!3:!Z !. ixs
   where
     pleaseFire :: Idx i -> DataFrame Float '[3, 2] -> Const (Sum (DataFrame Float '[3, 2])) Scf
     pleaseFire _ = Const . Sum
