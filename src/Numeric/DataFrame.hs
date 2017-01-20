@@ -48,7 +48,8 @@ module Numeric.DataFrame
   , normL1, normL2, normLPInf, normLNInf, normLP
   , inverse, det, trace, eye, diag, transpose
   , slice, runSlice, subSpace
-  , M.MatrixCalculus (), M.SquareMatrixCalculus (), M.MatrixInverse ()
+  , M.MatrixCalculus (), M.SquareMatrixCalculus ()
+  , M.MatrixInverse (), M.MatrixProduct (..)
   ) where
 
 
@@ -188,31 +189,27 @@ _suppressHlintUnboxedTuplesWarning = undefined
 -- * Operations
 --------------------------------------------------------------------------------
 
+instance ( as' ~ (as +: m)
+         , cs  ~ (as ++ bs)
+         , Dimensions as'
+         , Dimensions (m ': bs)
+         , Dimensions cs
+         , M.MatrixProduct (Array t (as +: m)) (Array t (m ': bs)) (Array t cs)
+         )
+       => M.MatrixProduct (DataFrame t as') (DataFrame t (m ': bs)) (DataFrame t cs) where
+  prod x y = KnownDataFrame $ M.prod (_getDF x) (_getDF y)
+
 -- | Tensor contraction.
 --   In particular:
 --     1. matrix-matrix product
 --     2. matrix-vector or vector-matrix product
 --     3. dot product of two vectors.
-(%*) :: forall (t :: Type) (k :: Nat) (as :: [Nat]) (bs :: [Nat])
-      . ( Dimensions (k :+ bs)
-        , KnownOrder as
-        , ElementWise (Idx (as +: k)) t (DataFrame t (as +: k))
-        , ElementWise (Idx (k :+ bs)) t (DataFrame t (k :+ bs))
-        , ElementWise (Idx (as ++ bs)) t (DataFrame t (as ++ bs))
-        , Num t
+(%*) :: ( M.MatrixProduct (DataFrame t (as +: m))
+                          (DataFrame t (m ': bs))
+                          (DataFrame t (as ++ bs))
         )
-     => DataFrame t (as +: k) -> DataFrame t (k :+ bs) -> DataFrame t (as ++ bs)
-a %* b = ewgen $ \i -> uncurry f (splitIdx i)
-  where
-    -- get proxy for the contracted dimension
-    kp :: DataFrame t (as +: k) -> DataFrame t (k :+ bs) -> Proxy k
-    kp _ _ = Proxy
-    k :: Int
-    k = fromInteger . natVal $ kp a b
-    -- contraction function
-    f i j = foldr (\l x -> x + a ! appendIdx i l
-                             * b ! (l :! j)
-                      ) 0 [1..k]
+     => DataFrame t (as +: m) -> DataFrame t (m :+ bs) -> DataFrame t (as ++ bs)
+(%*) = M.prod
 {-# INLINE (%*) #-}
 infixl 7 %*
 

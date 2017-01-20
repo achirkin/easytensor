@@ -441,6 +441,23 @@ instance Dimensions '[n,n]
   {-# INLINE trace #-}
 
 
+instance ( as ~ Take (Length as' - 1) as'
+         , as' ~ (as +: m)
+         , cs  ~ (as ++ bs)
+         , Dimensions as
+         , Dimensions bs
+         , Dimensions cs
+         , KnownNat m
+         )
+       => MatrixProduct (ArrayF as') (ArrayF (m ': bs)) (ArrayF cs) where
+  prod = prodF n m k
+    where
+      m = case fromInteger $ natVal (Proxy @m) of I# mm -> mm
+      n = case totalDim (Proxy @as) of I# nn -> nn
+      k = case totalDim (Proxy @bs) of I# kk -> kk
+
+
+
 instance KnownNat n => MatrixInverse (ArrayF '[n,n]) where
   inverse (ArrayF# offs nsqr arr) = case runRW#
      ( \s0 -> case newByteArray# (bs *# 2#) s0 of
