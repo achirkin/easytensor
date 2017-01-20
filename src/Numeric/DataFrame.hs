@@ -19,6 +19,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving   #-}
 {-# LANGUAGE UnboxedTuples, MagicHash #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame
@@ -50,6 +52,7 @@ module Numeric.DataFrame
   , slice, runSlice, subSpace, index
   , M.MatrixCalculus (), M.SquareMatrixCalculus ()
   , M.MatrixInverse (), M.MatrixProduct (..)
+  , SubSpace (..)
   ) where
 
 import Data.Functor.Const
@@ -196,7 +199,9 @@ instance ( as' ~ (as +: m)
          , Dimensions cs
          , M.MatrixProduct (Array t (as +: m)) (Array t (m ': bs)) (Array t cs)
          )
-       => M.MatrixProduct (DataFrame t as') (DataFrame t (m ': bs)) (DataFrame t cs) where
+       => M.MatrixProduct (DataFrame t as')
+                          (DataFrame t (m ': bs))
+                          (DataFrame t cs) where
   prod x y = KnownDataFrame $ M.prod (_getDF x) (_getDF y)
 
 -- | Tensor contraction.
@@ -342,8 +347,8 @@ slice s f remIds oldDF
        ) of (# _, r #) -> fromBytes (# 0#, lengthNew, r #)
     writeOne [] _ _ s' = s'
     writeOne (x : xs) mr pos s' = case toBytes x of
-        (# off, l, a #) ->  writeOne xs mr (pos +# l)
-            (copyByteArray# a (off *# elSizeS) mr (pos *# elSizeS) (l *# elSizeS) s')
+      (# off, l, a #) ->  writeOne xs mr (pos +# l)
+        (copyByteArray# a (off *# elSizeS) mr (pos *# elSizeS) (l *# elSizeS) s')
     (# offOld, _, arrOld #) = toBytes oldDF
     elSizeS = elementByteSize (undefined :: DataFrame s nds)
     lengthOld' = case totalDim (Proxy @ods) of I# lo -> lo
@@ -441,8 +446,12 @@ index (I# i) f d = write <$> f x
     write y = case toBytes y of
       (# offX, lengthX, arrX #) -> case runRW#
        (\s0 -> case newByteArray# (lengthD *# elSize) s0 of
-         (# s1, marr #) -> case copyByteArray# arrD (offD *# elSize) marr 0# (lengthD *# elSize) s1 of
-           s2 -> case copyByteArray# arrX (offX *# elSize) marr (lengthX *# elSize *# (i -# 1#)) (lengthX *# elSize) s2 of
+         (# s1, marr #) -> case copyByteArray# arrD (offD *# elSize)
+                                               marr 0#
+                                               (lengthD *# elSize) s1 of
+           s2 -> case copyByteArray# arrX (offX *# elSize)
+                                     marr (lengthX *# elSize *# (i -# 1#))
+                                     (lengthX *# elSize) s2 of
              s3 -> unsafeFreezeByteArray# marr s3
        ) of (# _, r #) -> fromBytes (# 0#, lengthD, r #)
 {-# INLINE [2] index #-}
@@ -476,6 +485,70 @@ indexC (I# i) f d = Const . getConst $ f x
     tds = case totalDim (Proxy @ds) of I# q -> q
 
 
+class ( asbs ~ (as ++ bs)
+      , as ~ Take (Length as) asbs
+      , bs ~ Drop (Length as) asbs
+      , as ~ Reverse (Drop (Length bs) (Reverse asbs))
+      , bs ~ Reverse (Take (Length bs) (Reverse asbs))
+      , Dimensions as
+      , Dimensions bs
+      , Dimensions asbs
+      , PrimBytes (DataFrame t as)
+      , PrimBytes (DataFrame t asbs)
+      ) => SubSpace t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+                                 | asbs as -> bs
+                                 , asbs bs -> as
+                                 , as bs -> asbs where
+  mapDim :: Dim bs
+         -> (DataFrame t as -> DataFrame t as)
+         -> DataFrame t asbs
+         -> DataFrame t asbs
+  foldDim :: Monoid m
+          => Dim bs
+          -> (DataFrame t as -> m)
+          -> DataFrame t asbs
+          -> m
+  (!.) :: Idx bs -> DataFrame t (as ++ bs) -> DataFrame t as
+infixr 4 !.
+
+
+instance ( asbs ~ (as ++ bs)
+         , as ~ Take (Length as) asbs
+         , bs ~ Drop (Length as) asbs
+         , as ~ Reverse (Drop (Length bs) (Reverse asbs))
+         , bs ~ Reverse (Take (Length bs) (Reverse asbs))
+         , Dimensions as
+         , Dimensions bs
+         , Dimensions asbs
+         , PrimBytes (DataFrame t as)
+         , PrimBytes (DataFrame t asbs)
+         ) => SubSpace t as bs asbs where
+  mapDim ds f df = case (# toBytes df, totalDim ds #) of
+      (# (# off, len, arr #), I# l# #) -> case runRW#
+         ( \s0 -> case newByteArray# (len *# elS) s0 of
+             (# s1, marr #) -> case go off (off +# len) l# arr marr s1 of
+                 s2 -> unsafeFreezeByteArray# marr s2
+         ) of (# _, r #) -> fromBytes (# 0#, len, r #)
+    where
+      elS = elementByteSize df
+      go pos lim step arr marr s
+        | isTrue# (pos >=# lim) = s
+        | otherwise = case toBytes (f (fromBytes (# pos, step, arr #))) of
+           (# offX, _, arrX #) -> go (pos +# step) lim step arr marr
+             (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
+  foldDim ds f df = case (# toBytes df, totalDim ds #) of
+      (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr mempty
+    where
+      go pos lim step arr acc
+        | isTrue# (pos >=# lim) = acc
+        | otherwise = go (pos +# step) lim step arr
+            (acc `mappend` f (fromBytes (# pos, step, arr #)) )
+  i !. d = r
+    where
+      r = case (# toBytes d, fromIdx i, totalDim r #) of
+            (# (# off, _, arr #), I# i#, I# l# #)
+              -> fromBytes (# off +# i# *# l#, l#, arr #)
+
 -- ff = runSlice . slice Every
 --                 . slice (Get 4 :& 7 :& 4)
 --                 $ slice (Get 1 :& 2) (const Just)
@@ -485,11 +558,11 @@ indexC (I# i) f d = Const . getConst $ f x
 --                     (oldRems :: [Nat]) (newRems :: [Nat])
 --                     (oldIds :: [Nat])  (newIds :: [Nat])
 --            . (Applicative f)
---           => Slice n m
---           -> (Idx (m :+ newIds) -> DataFrame t oldRems -> f (DataFrame t newRems))
---           -> Idx newIds
---           -> DataFrame t ((oldRems +: n) ++ oldIds)
---           -> f (DataFrame t ((newRems +: m) ++ newIds))
+--       => Slice n m
+--       -> (Idx (m :+ newIds) -> DataFrame t oldRems -> f (DataFrame t newRems))
+--       -> Idx newIds
+--       -> DataFrame t ((oldRems +: n) ++ oldIds)
+--       -> f (DataFrame t ((newRems +: m) ++ newIds))
 -- fancyFunc _slice _map _ids _oldDF = undefined
 
 --------------------------------------------------------------------------------
