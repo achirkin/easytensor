@@ -27,6 +27,9 @@ import Numeric.Dimensions
 import Numeric.DataFrame
 import Numeric.Commons
 -- import Unsafe.Coerce
+import Data.Functor.Identity
+import Data.Functor.Const
+import Data.Semigroup
 
 main :: IO ()
 main = do
@@ -52,8 +55,20 @@ main = do
     print $ matX %* transpose matX
     print $ det matX
     print $ inverse matX
-    print $ dfY2
+    print dfY2
+    print ixs
+    print $ index 2 (Identity . (+0.5)) ixs
+    print $ index 3 Const ixs
+    print $ index 1 Const ixs
+    print $ runSlice (subSpace (\_ mat -> Const (Sum mat) :: Const (Sum (DataFrame Float '[3, 2])) Scf)) ixs
+    print $ runSlice (slice (Get 1 :& 3) pleaseFire) ixs
+    print $ runSlice (slice (Get 1 :& 3 :& 4) (const $ Identity . (* 0.7))) ixs
+    print dimVec2
+    print sVec2
   where
+    pleaseFire :: Idx i -> DataFrame Float '[3, 2] -> Const (Sum (DataFrame Float '[3, 2])) Scf
+    pleaseFire _ = Const . Sum
+    ixs = ewgen (\(i:!j:!k:!Z) -> realToFrac $ i*100 + j*10 + k) :: DFF '[3,2,4]
     matX = mat22 (vec2 0 2) (vec2 1 (0 :: Float))
     printEither :: Either String String -> IO ()
     printEither (Left a) = putStrLn a
@@ -78,10 +93,10 @@ main = do
                      )
       :: Either String String
     s3 = (`withShape` show) <$> x3
-    dimX1 :: Dim '[3,2,4]
-    dimX1 = dim
-    dimX2 :: Dim '[4,5,2]
-    dimX2 = dim
+    -- dimX1 :: Dim '[3,2,4]
+    -- dimX1 = dim
+    -- dimX2 :: Dim '[4,5,2]
+    -- dimX2 = dim
     dfX1  :: DFF '[3,2,4]
     dfX1  = pi
     dfX2  :: DFF '[4,5]
