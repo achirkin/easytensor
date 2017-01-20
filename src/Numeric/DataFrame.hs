@@ -47,12 +47,12 @@ module Numeric.DataFrame
   , cross, (×), det2
   , normL1, normL2, normLPInf, normLNInf, normLP
   , inverse, det, trace, eye, diag, transpose
-  , slice, runSlice, subSpace
+  , slice, runSlice, subSpace, index
   , M.MatrixCalculus (), M.SquareMatrixCalculus ()
   , M.MatrixInverse (), M.MatrixProduct (..)
   ) where
 
-
+import Data.Functor.Const
 import           Data.Proxy
 import           Data.Type.Equality
 import           GHC.Base (runRW#)
@@ -301,6 +301,7 @@ subSpace :: forall (t :: Type) (f :: Type -> Type) (n :: Nat)
         -> f (DataFrame t (nds +: n))
 subSpace = case unsafeCoerce Refl :: (nds >: n) :~: (nds +: n) of
     Refl -> slice Every
+{-# INLINE [2] subSpace #-}
 
 slice :: forall (t :: Type) (f :: Type -> Type)
                     (o :: Nat) (n :: Nat)
@@ -346,6 +347,64 @@ slice s f remIds oldDF
     lengthOld' = case totalDim (Proxy @ods) of I# lo -> lo
     lengthNew  = case totalDim (Proxy @(nds +: n)) of I# ln -> ln
     bsNew      = lengthNew *# elSize
+{-# INLINE [2] slice #-}
+
+sliceF :: forall (t :: Type) (acc :: Type)
+                 (o :: Nat) (n :: Nat)
+                    (ods :: [Nat]) (nds :: [Nat]) (remDs :: [Nat])
+           . ( Monoid acc
+             , Dimensions ods
+             , Dimensions nds
+             , Dimensions (ods +: o)
+             , Dimensions (nds +: n)
+             , KnownNat o
+             , KnownNat n
+             , PrimBytes (DataFrame t ods)
+             , PrimBytes (DataFrame t nds)
+             , PrimBytes (DataFrame t (ods +: o))
+             , PrimBytes (DataFrame t (nds >: n))
+             )
+          -- slice
+          => Slice o n
+          -- old transform
+          -> (Idx (n :+ remDs) -> DataFrame t ods -> Const acc (DataFrame t nds))
+          -- new transform
+          -> Idx remDs
+          -> DataFrame t (ods +: o)
+          -> Const acc (DataFrame t (nds >: n))
+sliceF s f remIds oldDF
+    = Const $ foldMap (\i@(I# i#) -> getConst $ f (i:!remIds)
+                           (fromBytes (# offOld +# (i# -# 1#) *# lengthOld'
+                                       , lengthOld'
+                                       , arrOld #))
+                         ) (slice2list s)
+  where
+    (# offOld, _, arrOld #) = toBytes oldDF
+    lengthOld' = case totalDim (Proxy @ods) of I# lo -> lo
+
+subSpaceF :: forall (t :: Type) (acc :: Type) (n :: Nat)
+                   (ods :: [Nat]) (nds :: [Nat]) (remDs :: [Nat])
+         . ( Monoid acc
+           , Dimensions ods
+           , Dimensions nds
+           , Dimensions (ods +: n)
+           , Dimensions (nds +: n)
+           , KnownNat n
+           , PrimBytes (DataFrame t ods)
+           , PrimBytes (DataFrame t nds)
+           , PrimBytes (DataFrame t (ods +: n))
+           , PrimBytes (DataFrame t (nds +: n))
+           )
+        -- slice
+        => (Idx (n :+ remDs) -> DataFrame t ods -> Const acc (DataFrame t nds))
+        -- new transform
+        -> Idx remDs
+        -> DataFrame t (ods +: n)
+        -> Const acc (DataFrame t (nds +: n))
+subSpaceF = case unsafeCoerce Refl :: (nds >: n) :~: (nds +: n) of
+    Refl -> sliceF Every
+
+
 
 slice2list :: KnownNat m => Slice n m -> [Int]
 slice2list x@Every = [1..fromInteger (natVal x)]
@@ -354,6 +413,66 @@ slice2list xx@(x :& i) = slice2list (xx `f` unsafeCoerce x) ++ [i]
   where
     f :: a -> a -> a
     f _ = id
+
+-- | Apply a functor over a single element in an outer dimension
+index :: forall (t :: Type) (f :: Type -> Type) (n :: Nat) (ds :: [Nat])
+           . ( Functor f
+             , Dimensions ds
+             , Dimensions (ds +: n)
+             , KnownNat n
+             , PrimBytes (DataFrame t ds)
+             , PrimBytes (DataFrame t (ds +: n))
+             )
+          -- slice a single element in an outer dimension
+          => Int
+          -- old transform
+          -> (DataFrame t ds -> f (DataFrame t ds))
+          -- new transform
+          -> DataFrame t (ds +: n)
+          -> f (DataFrame t (ds +: n))
+index (I# i) f d = write <$> f x
+  where
+    (# offD, lengthD, arrD #) = toBytes d
+    elSize = elementByteSize d
+    x = fromBytes (# offD +# tds *# (i -# 1#), tds , arrD #)
+    tds = case totalDim (Proxy @ds) of I# q -> q
+    write y = case toBytes y of
+      (# offX, lengthX, arrX #) -> case runRW#
+       (\s0 -> case newByteArray# (lengthD *# elSize) s0 of
+         (# s1, marr #) -> case copyByteArray# arrD (offD *# elSize) marr 0# (lengthD *# elSize) s1 of
+           s2 -> case copyByteArray# arrX (offX *# elSize) marr (tds *# elSize *# (i -# 1#)) (lengthX *# elSize) s2 of
+             s3 -> unsafeFreezeByteArray# marr s3
+       ) of (# _, r #) -> fromBytes (# 0#, lengthD, r #)
+{-# INLINE [2] index #-}
+
+{-# RULES
+"index/Const"   forall i (f :: DataFrame t ds -> Const a (DataFrame t ds)
+                         ) .  index i f = indexC i f
+"slice/Fold"    forall i (f :: Monoid m
+                             => a -> DataFrame t ods -> Const m (DataFrame t nds)
+                         ) . slice i f = sliceF i f
+"subSpace/Fold" forall   (f :: Monoid m
+                             => a -> DataFrame t ods -> Const m (DataFrame t nds)
+                         ) . subSpace f = subSpaceF f
+  #-}
+
+indexC :: forall (a :: Type) (t :: Type) (n :: Nat) (ds :: [Nat])
+           . ( Dimensions ds
+             , Dimensions (ds +: n)
+             , KnownNat n
+             , PrimBytes (DataFrame t ds)
+             , PrimBytes (DataFrame t (ds +: n))
+             )
+          => Int
+          -> (DataFrame t ds -> Const a (DataFrame t ds))
+          -> DataFrame t (ds +: n)
+          -> Const a (DataFrame t (ds +: n))
+indexC (I# i) f d = Const . getConst $ f x
+  where
+    (# offD, _, arrD #) = toBytes d
+    x = fromBytes (# offD +# tds *# (i -# 1#), tds , arrD #)
+    tds = case totalDim (Proxy @ds) of I# q -> q
+
 
 -- ff = runSlice . slice Every
 --                 . slice (Get 4 :& 7 :& 4)
