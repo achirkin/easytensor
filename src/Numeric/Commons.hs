@@ -144,7 +144,7 @@ instance PrimBytes Float where
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes (# _, _, arr #) = F# (indexFloatArray# arr 0#)
+  fromBytes (# off, _, arr #) = F# (indexFloatArray# arr off)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_HSFLOAT#
   {-# INLINE byteSize #-}
@@ -180,7 +180,7 @@ instance PrimBytes Double where
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes (# _, _, arr #) = D# (indexDoubleArray# arr 0#)
+  fromBytes (# off, _, arr #) = D# (indexDoubleArray# arr off)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_HSDOUBLE#
   {-# INLINE byteSize #-}
@@ -216,7 +216,7 @@ instance PrimBytes Int where
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes (# _, _, arr #) = I# (indexIntArray# arr 0#)
+  fromBytes (# off, _, arr #) = I# (indexIntArray# arr off)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_HSINT#
   {-# INLINE byteSize #-}
@@ -252,7 +252,7 @@ instance PrimBytes Int8 where
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes (# _, _, arr #) = I8# (indexInt8Array# arr 0#)
+  fromBytes (# off, _, arr #) = I8# (indexInt8Array# arr off)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_INT8#
   {-# INLINE byteSize #-}
@@ -288,7 +288,7 @@ instance PrimBytes Int16 where
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes (# _, _, arr #) = I16# (indexInt16Array# arr 0#)
+  fromBytes (# off, _, arr #) = I16# (indexInt16Array# arr off)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_INT16#
   {-# INLINE byteSize #-}
@@ -324,7 +324,7 @@ instance PrimBytes Int32 where
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes (# _, _, arr #) = I32# (indexInt32Array# arr 0#)
+  fromBytes (# off, _, arr #) = I32# (indexInt32Array# arr off)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_INT32#
   {-# INLINE byteSize #-}
@@ -360,7 +360,7 @@ instance PrimBytes Int64 where
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes (# _, _, arr #) = I64# (indexInt64Array# arr 0#)
+  fromBytes (# off, _, arr #) = I64# (indexInt64Array# arr off)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_INT64#
   {-# INLINE byteSize #-}
@@ -396,7 +396,7 @@ instance PrimBytes Word where
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes (# _, _, arr #) = W# (indexWordArray# arr 0#)
+  fromBytes (# off, _, arr #) = W# (indexWordArray# arr off)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_HSWORD#
   {-# INLINE byteSize #-}
@@ -432,7 +432,7 @@ instance PrimBytes Word8 where
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes (# _, _, arr #) = W8# (indexWord8Array# arr 0#)
+  fromBytes (# off, _, arr #) = W8# (indexWord8Array# arr off)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_WORD8#
   {-# INLINE byteSize #-}
@@ -468,7 +468,7 @@ instance PrimBytes Word16 where
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes (# _, _, arr #) = W16# (indexWord16Array# arr 0#)
+  fromBytes (# off, _, arr #) = W16# (indexWord16Array# arr off)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_WORD16#
   {-# INLINE byteSize #-}
@@ -504,7 +504,7 @@ instance PrimBytes Word32 where
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes (# _, _, arr #) = W32# (indexWord32Array# arr 0#)
+  fromBytes (# off, _, arr #) = W32# (indexWord32Array# arr off)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_WORD32#
   {-# INLINE byteSize #-}
@@ -540,7 +540,7 @@ instance PrimBytes Word64 where
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, a #) -> (# 0#, 1#, a #)
   {-# INLINE toBytes #-}
-  fromBytes (# _, _, arr #) = W64# (indexWord64Array# arr 0#)
+  fromBytes (# off, _, arr #) = W64# (indexWord64Array# arr off)
   {-# INLINE fromBytes #-}
   byteSize _ = SIZEOF_WORD64#
   {-# INLINE byteSize #-}

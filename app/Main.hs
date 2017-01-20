@@ -56,15 +56,22 @@ main = do
     print $ det matX
     print $ inverse matX
     print dfY2
-    print ixs
-    print $ index 2 (Identity . (+0.5)) ixs
-    print $ index 3 Const ixs
-    print $ index 1 Const ixs
     print $ runSlice (subSpace (\_ mat -> Const (Sum mat) :: Const (Sum (DataFrame Float '[3, 2])) Scf)) ixs
     print $ runSlice (slice (Get 1 :& 3) pleaseFire) ixs
     print $ runSlice (slice (Get 1 :& 3 :& 4) (const $ Identity . (* 0.7))) ixs
     print dimVec2
     print sVec2
+    print $ index 2 (Identity . (+0.5)) ixs
+    print $ index 3 Const ixs
+    print ixs
+    print $ index 3 Const ixs -- xx.yy.3
+    print $  (index 3 . index 1) Const ixs -- xx.1.3
+    print $  (index 3 . index 1 . index 2) Const ixs -- 2.1.3
+    print $  (index 2 . index 2 . index 2) Const ixs -- 2.2.2
+    print $ totalDim ixs
+    print $ totalDim (Proxy @'[3,2])
+    print $ totalDim (Proxy @'[3])
+    print $ totalDim (Proxy @'[])
   where
     pleaseFire :: Idx i -> DataFrame Float '[3, 2] -> Const (Sum (DataFrame Float '[3, 2])) Scf
     pleaseFire _ = Const . Sum

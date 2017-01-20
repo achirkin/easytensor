@@ -303,36 +303,38 @@ subSpace = case unsafeCoerce Refl :: (nds >: n) :~: (nds +: n) of
     Refl -> slice Every
 {-# INLINE [2] subSpace #-}
 
-slice :: forall (t :: Type) (f :: Type -> Type)
-                    (o :: Nat) (n :: Nat)
-                    (ods :: [Nat]) (nds :: [Nat]) (remDs :: [Nat])
+slice :: forall (t :: Type) (s :: Type) (f :: Type -> Type)
+                (o :: Nat) (n :: Nat)
+                (ods :: [Nat]) (nds :: [Nat]) (remDs :: [Nat])
            . ( Applicative f
              , Dimensions ods
              , Dimensions nds
              , Dimensions (ods +: o)
              , Dimensions (nds +: n)
+             , Dimensions (nds >: n)
              , KnownNat o
              , KnownNat n
              , PrimBytes (DataFrame t ods)
-             , PrimBytes (DataFrame t nds)
+             , PrimBytes (DataFrame s nds)
              , PrimBytes (DataFrame t (ods +: o))
-             , PrimBytes (DataFrame t (nds >: n))
+             , PrimBytes (DataFrame s (nds >: n))
              )
           -- slice
           => Slice o n
           -- old transform
-          -> (Idx (n :+ remDs) -> DataFrame t ods -> f (DataFrame t nds))
+          -> (Idx (n :+ remDs) -> DataFrame t ods -> f (DataFrame s nds))
           -- new transform
           -> Idx remDs
           -> DataFrame t (ods +: o)
-          -> f (DataFrame t (nds >: n))
+          -> f (DataFrame s (nds >: n))
 slice s f remIds oldDF
-    = merge <$> traverse (\i@(I# i#) -> f (i:!remIds)
+    = merge <$> traverse (\(I# i#, i) -> f (i:!remIds)
                            (fromBytes (# offOld +# (i# -# 1#) *# lengthOld'
                                        , lengthOld'
                                        , arrOld #))
-                         ) (slice2list s)
+                         ) (zip (slice2list s) [1..])
   where
+    merge [x] = fromBytes (toBytes x)
     merge xs = case runRW#
        (\s0 -> case newByteArray# bsNew s0 of
          (# s1, marr #) -> case writeOne xs marr 0# s1 of
@@ -341,12 +343,12 @@ slice s f remIds oldDF
     writeOne [] _ _ s' = s'
     writeOne (x : xs) mr pos s' = case toBytes x of
         (# off, l, a #) ->  writeOne xs mr (pos +# l)
-            (copyByteArray# a (off *# elSize) mr (pos *# elSize) (l *# elSize) s')
+            (copyByteArray# a (off *# elSizeS) mr (pos *# elSizeS) (l *# elSizeS) s')
     (# offOld, _, arrOld #) = toBytes oldDF
-    elSize = elementByteSize oldDF
+    elSizeS = elementByteSize (undefined :: DataFrame s nds)
     lengthOld' = case totalDim (Proxy @ods) of I# lo -> lo
-    lengthNew  = case totalDim (Proxy @(nds +: n)) of I# ln -> ln
-    bsNew      = lengthNew *# elSize
+    lengthNew  = case totalDim (Proxy @(nds >: n)) of I# ln -> ln
+    bsNew      = lengthNew *# elSizeS
 {-# INLINE [2] slice #-}
 
 sliceF :: forall (t :: Type) (acc :: Type)
@@ -373,11 +375,11 @@ sliceF :: forall (t :: Type) (acc :: Type)
           -> DataFrame t (ods +: o)
           -> Const acc (DataFrame t (nds >: n))
 sliceF s f remIds oldDF
-    = Const $ foldMap (\i@(I# i#) -> getConst $ f (i:!remIds)
+    = Const $ foldMap (\(I# i#, i) -> getConst $ f (i:!remIds)
                            (fromBytes (# offOld +# (i# -# 1#) *# lengthOld'
                                        , lengthOld'
                                        , arrOld #))
-                         ) (slice2list s)
+                         ) (zip (slice2list s) [1..])
   where
     (# offOld, _, arrOld #) = toBytes oldDF
     lengthOld' = case totalDim (Proxy @ods) of I# lo -> lo
@@ -440,7 +442,7 @@ index (I# i) f d = write <$> f x
       (# offX, lengthX, arrX #) -> case runRW#
        (\s0 -> case newByteArray# (lengthD *# elSize) s0 of
          (# s1, marr #) -> case copyByteArray# arrD (offD *# elSize) marr 0# (lengthD *# elSize) s1 of
-           s2 -> case copyByteArray# arrX (offX *# elSize) marr (tds *# elSize *# (i -# 1#)) (lengthX *# elSize) s2 of
+           s2 -> case copyByteArray# arrX (offX *# elSize) marr (lengthX *# elSize *# (i -# 1#)) (lengthX *# elSize) s2 of
              s3 -> unsafeFreezeByteArray# marr s3
        ) of (# _, r #) -> fromBytes (# 0#, lengthD, r #)
 {-# INLINE [2] index #-}
