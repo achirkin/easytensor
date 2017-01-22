@@ -60,7 +60,7 @@ import           Data.Proxy
 import           Data.Type.Equality
 import           GHC.Base (runRW#)
 import           GHC.Prim
-import           GHC.TypeLits       (Nat, natVal, type (+), KnownNat)
+import           GHC.TypeLits       (Nat, natVal, type (+), type (-), KnownNat)
 import           GHC.Types
 import           Numeric.Array
 import qualified Numeric.Array.Family as AFam (Scalar (..))
@@ -486,10 +486,8 @@ indexC (I# i) f d = Const . getConst $ f x
 
 
 class ( asbs ~ (as ++ bs)
-      , as ~ Take (Length as) asbs
+      , as ~ Take (Length asbs - Length bs) asbs
       , bs ~ Drop (Length as) asbs
-      , as ~ Reverse (Drop (Length bs) (Reverse asbs))
-      , bs ~ Reverse (Take (Length bs) (Reverse asbs))
       , Dimensions as
       , Dimensions bs
       , Dimensions asbs
@@ -513,10 +511,8 @@ infixr 4 !.
 
 
 instance ( asbs ~ (as ++ bs)
-         , as ~ Take (Length as) asbs
+         , as ~ Take (Length asbs - Length bs) asbs
          , bs ~ Drop (Length as) asbs
-         , as ~ Reverse (Drop (Length bs) (Reverse asbs))
-         , bs ~ Reverse (Take (Length bs) (Reverse asbs))
          , Dimensions as
          , Dimensions bs
          , Dimensions asbs
