@@ -21,6 +21,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
+{-# LANGUAGE ConstraintKinds #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame
@@ -52,7 +53,7 @@ module Numeric.DataFrame
   , slice, runSlice, subSpace, index
   , M.MatrixCalculus (), M.SquareMatrixCalculus ()
   , M.MatrixInverse (), M.MatrixProduct (..)
-  , SubSpace (..)
+  , SubSpace (..), NumSpace
   ) where
 
 import Data.Functor.Const
@@ -485,6 +486,16 @@ indexC (I# i) f d = Const . getConst $ f x
     tds = case totalDim (Proxy @ds) of I# q -> q
 
 
+type NumSpace t ds = ( PrimBytes (DataFrame t ds)
+                     , Dimensions ds
+                     , ElementWise (Idx ds) t (DataFrame t ds)
+                     , Eq (DataFrame t ds)
+                     , Ord (DataFrame t ds)
+                     , Num (DataFrame t ds)
+                     , Fractional (DataFrame t ds)
+                     , Floating (DataFrame t ds)
+                     )
+
 class ( asbs ~ (as ++ bs)
       , as ~ Take (Length asbs - Length bs) asbs
       , bs ~ Drop (Length as) asbs
@@ -519,7 +530,7 @@ instance ( asbs ~ (as ++ bs)
          , PrimBytes (DataFrame t as)
          , PrimBytes (DataFrame t asbs)
          ) => SubSpace t as bs asbs where
-  mapDim ds f df = case (# toBytes df, totalDim ds #) of
+  mapDim _ f df = case (# toBytes df, totalDim (Proxy @as) #) of
       (# (# off, len, arr #), I# l# #) -> case runRW#
          ( \s0 -> case newByteArray# (len *# elS) s0 of
              (# s1, marr #) -> case go off (off +# len) l# arr marr s1 of
@@ -532,13 +543,15 @@ instance ( asbs ~ (as ++ bs)
         | otherwise = case toBytes (f (fromBytes (# pos, step, arr #))) of
            (# offX, _, arrX #) -> go (pos +# step) lim step arr marr
              (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
-  foldDim ds f df = case (# toBytes df, totalDim ds #) of
+
+  foldDim _ f df = case (# toBytes df, totalDim ( Proxy @as) #) of
       (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr mempty
     where
       go pos lim step arr acc
         | isTrue# (pos >=# lim) = acc
         | otherwise = go (pos +# step) lim step arr
             (acc `mappend` f (fromBytes (# pos, step, arr #)) )
+
   i !. d = r
     where
       r = case (# toBytes d, fromIdx i, totalDim r #) of

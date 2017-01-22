@@ -73,6 +73,7 @@ main = do
     print $ totalDim (Proxy @'[3])
     print $ totalDim (Proxy @'[])
     print $ mapDim (Proxy @4 :* D) (*0.5) ixs
+    print $ foldDim (Proxy @4 :* D) (Sum) ixs
     print $ 3:!Z !. ixs
     print $ 1:!3:!Z !. ixs
   where
