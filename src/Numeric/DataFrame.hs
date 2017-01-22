@@ -53,7 +53,7 @@ module Numeric.DataFrame
   , slice, runSlice, subSpace, index
   , M.MatrixCalculus (), M.SquareMatrixCalculus ()
   , M.MatrixInverse (), M.MatrixProduct (..)
-  , SubSpace (..), NumSpace
+  , SubSpace (..), mapDims, NumSpace
   ) where
 
 import Data.Functor.Const
@@ -520,6 +520,29 @@ class ( asbs ~ (as ++ bs)
   (!.) :: Idx bs -> DataFrame t (as ++ bs) -> DataFrame t as
 infixr 4 !.
 
+mapDims :: forall t t' as as' bs
+         . ( SubSpace t as bs (as ++ bs)
+           , SubSpace t' as' bs (as' ++ bs)
+           )
+        => Dim bs
+        -> (DataFrame t as -> DataFrame t' as')
+        -> DataFrame t (as ++ bs)
+        -> DataFrame t' (as' ++ bs)
+mapDims _ f df = case (# toBytes df
+                       , totalDim (Proxy @as)
+                       , totalDim (Proxy @(as' ++ bs)) #) of
+    (# (# off, len1, arr #), I# l1#, I# len2 #) -> case runRW#
+       ( \s0 -> case newByteArray# (len2 *# elS2) s0 of
+           (# s1, marr #) -> case go off (off +# len1) l1# 0# arr marr s1 of
+               s2 -> unsafeFreezeByteArray# marr s2
+       ) of (# _, r #) -> fromBytes (# 0#, len2 , r #)
+  where
+    elS2 = elementByteSize (undefined :: DataFrame t' (as' ++ bs))
+    go pos1 lim1 step1 pos2 arr marr s
+      | isTrue# (pos1 >=# lim1) = s
+      | otherwise = case toBytes (f (fromBytes (# pos1, step1, arr #))) of
+         (# offX, step2, arrX #) -> go (pos1 +# step1) lim1 step1 (pos2 +# step2) arr marr
+           (copyByteArray# arrX (offX *# elS2) marr (pos2 *# elS2) (step2 *# elS2) s)
 
 instance ( asbs ~ (as ++ bs)
          , as ~ Take (Length asbs - Length bs) asbs
