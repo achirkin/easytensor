@@ -60,7 +60,7 @@ instance Dimensions (n :+ m :+ ds)
                             ) " }" [1..n]
       loopOuter :: Idx ds -> String -> String
       loopOuter Z s  = "\n" ++ loopInner Z maxBound ++ s
-      loopOuter ds s = "\n" ++ show ds ++ ":\n"
+      loopOuter ds s = "\n(i j" ++ drop 3 (show ds) ++ "):\n"
                             ++ loopInner ds maxBound ++ s
 
 
