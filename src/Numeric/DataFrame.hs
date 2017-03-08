@@ -92,9 +92,10 @@ data instance DataFrame t (xns :: [XNat])
 instance ( Show (Array t ds)
          , Dimensions ds
          ) => Show (DataFrame t ds) where
-  show (KnownDataFrame arr) = "DataFrame:"
-                         ++ "\n\tShape: " ++ show (dim `inSpaceOf` arr)
-                         ++ "\n\tContent:\n" ++ show arr
+  show (KnownDataFrame arr) = unlines
+                            [ "DF [" ++ drop 4 (show $ dim `inSpaceOf` arr) ++ "]:"
+                            , show arr
+                            ]
 
 deriving instance Bounded (Array t ds) => Bounded (DataFrame t ds)
 deriving instance Enum (Array t ds) => Enum (DataFrame t ds)

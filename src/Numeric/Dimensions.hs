@@ -59,7 +59,7 @@ infixr 5 :!
 
 -- | Type-level dimensionality
 data Dim (ds :: k) where
-   -- | Zero-rank dimensionality - scalar
+  -- | Zero-rank dimensionality - scalar
   D   :: Dim '[]
   -- | List-like concatenation of known dimensionality
   (:*) :: KnownNat (KnownDim d)
