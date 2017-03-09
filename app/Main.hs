@@ -25,7 +25,7 @@ import GHC.TypeLits
 -- import Data.Type.Equality
 import Numeric.Dimensions
 import Numeric.DataFrame
-import Numeric.Commons
+-- import Numeric.Commons
 -- import Unsafe.Coerce
 import Data.Functor.Identity
 import Data.Functor.Const
@@ -72,15 +72,15 @@ main = do
     print $ totalDim (Proxy @'[3,2])
     print $ totalDim (Proxy @'[3])
     print $ totalDim (Proxy @'[])
-    print $ mapDim (Proxy @4 :* D) (*0.5) ixs
-    print $ mapDims (Proxy @4 :* D) (%* vec2 2 (-1)) ixs
-    print $ foldDim (Proxy @4 :* D) Sum ixs
+    print $ ewmap (Proxy @4 :* D) (*0.5) ixs
+    print $ ewmap (Proxy @4 :* D) (%* vec2 2 (-1)) ixs
+    print $ ewfoldMap (Proxy @4 :* D) Sum ixs
     print $ 3:!Z !. ixs
     print $ 1:!3:!Z !. ixs
   where
     pleaseFire :: Idx i -> DataFrame Float '[3, 2] -> Const (Sum (DataFrame Float '[3, 2])) Scf
     pleaseFire _ = Const . Sum
-    ixs = ewgen (\(i:!j:!k:!Z) -> realToFrac $ i*100 + j*10 + k) :: DFF '[3,2,4]
+    ixs = iwgen $ dim @'[3,2,4] `asSpaceOf` (\(i :! j :! k :! Z) -> scalar . realToFrac $ i*100 + j*10 + k)
     matX = mat22 (vec2 0 2) (vec2 1 (0 :: Float))
     printEither :: Either String String -> IO ()
     printEither (Left a) = putStrLn a
@@ -100,8 +100,7 @@ main = do
         Right x -> Right $ x `inSpaceOf` Proxy @'[XN,XN,XN,N _]
         Left a -> Left a
     s = withDim dimX (\ds -> let pix = 2 * dfFloat pi `inSpaceOf` ds
-                             in show pix
-                              ++ show (pix ! (1 :! 2 :! 1 :! 2) )
+                             in show pix ++ show (pix ! (1 :! 2 :! 1 :! 2 :! Z) )
                      )
       :: Either String String
     s3 = (`withShape` show) <$> x3
@@ -117,8 +116,8 @@ main = do
     dfY   = dfX1 %* dfX2
     dfY2  = (runSlice . slice (Get 4 )
                       $ slice (Get 2 :& 1 :& 1)
-                      (\(i :! j :! Z) v -> [ scalar (v ! 1) - realToFrac i
-                                           , scalar (v ! 2) *2 / realToFrac j])) dfY
+                      (\(i :! j :! Z) v -> [ (v ! 1 :! Z) - realToFrac i
+                                           , (v ! 2 :! Z) *2 / realToFrac j])) dfY
 
 dfFloat :: Fractional (DataFrame Float ds)
         => Float -> DataFrame Float (ds :: [Nat])

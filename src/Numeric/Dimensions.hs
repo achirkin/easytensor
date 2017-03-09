@@ -31,11 +31,12 @@ module Numeric.Dimensions
     -- * Operations
   , Dimensions, Dimensions' (..), Dimensions'' (..)
   , XDimensions (..)
-  , inSpaceOf, order, appendIdx, splitIdx
+  , inSpaceOf, asSpaceOf, order, appendIdx, splitIdx
     -- * Type-level programming
   , FixedDim, FixedXDim, KnownOrder, ValidDims
   , type (++), Reverse, Take, Drop, Length
   , type (:<), type (>:), type (:+), type (+:), Head, Tail
+  , Suffix, Prefix
   ) where
 
 
@@ -46,6 +47,7 @@ import GHC.Types
 import GHC.Exts
 import Data.Proxy
 import Data.Type.Equality
+import Data.Type.Bool
 
 import Unsafe.Coerce
 
@@ -248,6 +250,11 @@ class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
 --   to be used on such implicit functions as `dim`, `dimMax`, etc.
 inSpaceOf :: a ds -> b ds -> a ds
 inSpaceOf x _ = x
+{-# INLINE inSpaceOf #-}
+
+asSpaceOf :: a ds -> (b ds -> c) -> (b ds -> c)
+asSpaceOf _ = id
+{-# INLINE asSpaceOf #-}
 
 --------------------------------------------------------------------------------
 -- Some important instances
@@ -812,3 +819,34 @@ type family Reverse' (as :: List k) = (rs :: Reversing k) | rs -> as where
 type family Length (as :: [k]) :: Nat where
   Length '[] = 0
   Length (a ': as) = 1 + Length as
+
+
+type family SameLength (as :: [k]) (bs :: [k]) :: Bool where
+  SameLength '[] '[] = 'True
+  SameLength (_ ': as) (_ ': bs) = SameLength as bs
+  SameLength _ _ = 'False
+
+-- x :: Proxy (Prefix '[3] '[2,7,3])
+-- x = _
+
+
+-- | Get a suffix part of a list, given its prefix
+--   This version is more permissive than Suffix type class:
+--     we do not check whether lhs is indeed a prefix
+type family Suffix (as :: [k]) (asbs :: [k]) :: [k] where
+  Suffix '[] asbs = asbs
+  Suffix (a ': as) (_ ': asbs) = Suffix as asbs
+  Suffix (_ ': _) '[] = TypeError (
+    'Text "Lhs Suffix parameter cannot have more elements than its rhs parameter"
+   )
+
+-- | Get a prefix part of a list, given its suffix
+type family Prefix (bs :: [k]) (asbs :: [k]) :: [k] where
+  Prefix '[] asbs  = asbs
+  Prefix bs (a ': asbs) = If (SameLength bs (a ': asbs)) '[] (a ': Prefix bs asbs)
+  -- Prefix bs bs = '[]
+  -- Prefix bs (a ': asbs) = a ': Prefix bs asbs
+  -- Prefix bs asbs = TypeError (
+  --   'Text "Lhs Prefix parameter must be a suffix of its rhs parameter"
+  --   ':$$: 'Text "Assertion failed: " ':<>: 'ShowType bs ':<>: 'Text " == " ':<>: 'ShowType asbs
+  --  )
