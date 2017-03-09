@@ -53,7 +53,7 @@ module Numeric.DataFrame
   , slice, runSlice, subSpace, index
   , M.MatrixCalculus (), M.SquareMatrixCalculus ()
   , M.MatrixInverse (), M.MatrixProduct (..)
-  , SubSpace (..), mapDims, NumSpace
+  , SubSpace (..), NumSpace, (!), ewfoldMap, iwfoldMap
   ) where
 
 import Data.Functor.Const
@@ -65,35 +65,36 @@ import           GHC.TypeLits       (Nat, natVal, type (+), type (-), KnownNat)
 import           GHC.Types
 import           Numeric.Array
 import qualified Numeric.Array.Family as AFam (Scalar (..))
-import           Numeric.Commons
-import           Numeric.Dimensions
+import qualified Numeric.Commons as NCommons
+import qualified Numeric.Dimensions as Dims
+import           Numeric.Dimensions (Dim (..), Idx (..), type (++))
 import qualified Numeric.Matrix.Class as M
 import           Unsafe.Coerce
 
 -- | Keep data in a primitive data frame
---    and maintain information about dimensions in the type-system
+--    and maintain information about Dims.Dimensions in the type-system
 data family DataFrame (t :: Type) (xs :: [k])
 
 -- | Completely fixed at compile time
-newtype instance Dimensions ns => DataFrame t (ns :: [Nat])
+newtype instance Dims.Dimensions ns => DataFrame t (ns :: [Nat])
   = KnownDataFrame { _getDF :: Array t ns }
 
 -- | Partially known at compile time
-data instance DataFrame t (xns :: [XNat])
+data instance DataFrame t (xns :: [Dims.XNat])
   = forall (ns :: [Nat])
-  . ( Dimensions ns
-    , FixedDim xns ns ~ ns
-    , FixedXDim xns ns ~ xns
+  . ( Dims.Dimensions ns
+    , Dims.FixedDim xns ns ~ ns
+    , Dims.FixedXDim xns ns ~ xns
     , Show (Array t ns)
     , Eq (Array t ns)
     )
-  => SomeDataFrame (Dim xns) (Array t ns)
+  => SomeDataFrame (Dims.Dim xns) (Array t ns)
 
 instance ( Show (Array t ds)
-         , Dimensions ds
+         , Dims.Dimensions ds
          ) => Show (DataFrame t ds) where
   show (KnownDataFrame arr) = unlines
-                            [ "DF [" ++ drop 4 (show $ dim `inSpaceOf` arr) ++ "]:"
+                            [ "DF [" ++ drop 4 (show $ Dims.dim `Dims.inSpaceOf` arr) ++ "]:"
                             , show arr
                             ]
 
@@ -110,7 +111,7 @@ deriving instance Floating (Array t ds)
                => Floating (DataFrame t ds)
 deriving instance Ord (Array t ds)
                => Ord (DataFrame t ds)
-deriving instance ( Read (Array t ds), Dimensions ds )
+deriving instance ( Read (Array t ds), Dims.Dimensions ds )
                => Read (DataFrame t ds)
 deriving instance Real (Array t ds)
                => Real (DataFrame t ds)
@@ -118,48 +119,48 @@ deriving instance RealFrac (Array t ds)
                => RealFrac (DataFrame t ds)
 deriving instance RealFloat (Array t ds)
                => RealFloat (DataFrame t ds)
-deriving instance PrimBytes (Array t ds)
-               => PrimBytes (DataFrame t ds)
-deriving instance FloatBytes (Array t ds)
-               => FloatBytes (DataFrame t ds)
-deriving instance DoubleBytes (Array t ds)
-               => DoubleBytes (DataFrame t ds)
-deriving instance IntBytes (Array t ds)
-               => IntBytes (DataFrame t ds)
-deriving instance WordBytes (Array t ds)
-               => WordBytes (DataFrame t ds)
-instance ( Dimensions ds
-         , ElementWise (Idx ds) t (Array Float ds)
-         ) => ElementWise (Idx ds) t (DataFrame Float ds) where
-  (!) = (!) . _getDF
+deriving instance NCommons.PrimBytes (Array t ds)
+               => NCommons.PrimBytes (DataFrame t ds)
+deriving instance NCommons.FloatBytes (Array t ds)
+               => NCommons.FloatBytes (DataFrame t ds)
+deriving instance NCommons.DoubleBytes (Array t ds)
+               => NCommons.DoubleBytes (DataFrame t ds)
+deriving instance NCommons.IntBytes (Array t ds)
+               => NCommons.IntBytes (DataFrame t ds)
+deriving instance NCommons.WordBytes (Array t ds)
+               => NCommons.WordBytes (DataFrame t ds)
+instance ( Dims.Dimensions ds
+         , NCommons.ElementWise (Dims.Idx ds) t (Array Float ds)
+         ) => NCommons.ElementWise (Dims.Idx ds) t (DataFrame Float ds) where
+  (!) = (NCommons.!) . _getDF
   {-# INLINE (!) #-}
-  ewmap f = KnownDataFrame . ewmap f . _getDF
+  ewmap f = KnownDataFrame . NCommons.ewmap f . _getDF
   {-# INLINE ewmap #-}
-  ewgen = KnownDataFrame . ewgen
+  ewgen = KnownDataFrame . NCommons.ewgen
   {-# INLINE ewgen #-}
-  ewfold f x0 = ewfold f x0 . _getDF
+  ewfold f x0 = NCommons.ewfold f x0 . _getDF
   {-# INLINE ewfold #-}
-  elementWise f = fmap KnownDataFrame . elementWise f . _getDF
+  elementWise f = fmap KnownDataFrame . NCommons.elementWise f . _getDF
   {-# INLINE elementWise #-}
-  indexWise f = fmap KnownDataFrame . indexWise f . _getDF
+  indexWise f = fmap KnownDataFrame . NCommons.indexWise f . _getDF
   {-# INLINE indexWise #-}
-  broadcast = KnownDataFrame . broadcast
-  {-# INLINE broadcast #-}
+  broadcast = KnownDataFrame . NCommons.broadcast
+  {-# INLINE NCommons.broadcast #-}
 
+instance Show (Dims.Dim ds)
+      => Show (DataFrame t (ds :: [Dims.XNat])) where
+  show (SomeDataFrame d arr) = unlines
+                            [ "DF [" ++ drop 4 (show d) ++ "]:"
+                            , show arr
+                            ]
 
-instance Show (Dim ds)
-      => Show (DataFrame t (ds :: [XNat])) where
-  show (SomeDataFrame d arr) = "DataFrame:"
-                         ++ "\n\tShape: " ++ show d
-                         ++ "\n\tContent:\n" ++ show arr
-
-instance Eq (DataFrame t (ds :: [XNat])) where
+instance Eq (DataFrame t (ds :: [Dims.XNat])) where
   SomeDataFrame d1 a1 == SomeDataFrame d2 a2
       = case check d1 d2 a1 a2 of
           Just Refl -> a1 == a2
           Nothing   -> False
     where
-      check :: Dim ds -> Dim ds
+      check :: Dims.Dim ds -> Dims.Dim ds
             -> p ns1 -> q ns2
             -> Maybe (ns1 :~: ns2)
       check a b _ _ | a == b  = Just (unsafeCoerce Refl)
@@ -167,23 +168,23 @@ instance Eq (DataFrame t (ds :: [XNat])) where
 
 -- | Do something with
 withShape :: DataFrame t xns
-          -> (forall ns . ( Dimensions ns
-                          , FixedDim xns ns ~ ns
-                          , FixedXDim xns ns ~ xns
+          -> (forall ns . ( Dims.Dimensions ns
+                          , Dims.FixedDim xns ns ~ ns
+                          , Dims.FixedXDim xns ns ~ xns
                           ) => DataFrame t ns -> b)
           -> b
 withShape (SomeDataFrame _ a) f = f (KnownDataFrame a)
 
--- | Put some of dimensions into existential data type
-unboundShape :: ( FixedXDim xns ns ~ xns
-                , FixedDim xns ns ~ ns
-                , XDimensions ns xns
-                , Dimensions ns
+-- | Put some of Dims.Dimensions into existential data type
+unboundShape :: ( Dims.FixedXDim xns ns ~ xns
+                , Dims.FixedDim xns ns ~ ns
+                , Dims.XDimensions ns xns
+                , Dims.Dimensions ns
                 , Show (Array t ns)
                 , Eq (Array t ns)
                 ) => DataFrame t ns -> DataFrame t xns
 unboundShape (KnownDataFrame a)
-    = SomeDataFrame (xdim $ dim `inSpaceOf` a) a
+    = SomeDataFrame (Dims.xdim $ Dims.dim `Dims.inSpaceOf` a) a
 
 
 _suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)
@@ -194,12 +195,241 @@ _suppressHlintUnboxedTuplesWarning = undefined
 -- * Operations
 --------------------------------------------------------------------------------
 
-instance ( as' ~ (as +: m)
-         , cs  ~ (as ++ bs)
-         , Dimensions as'
-         , Dimensions (m ': bs)
-         , Dimensions cs
-         , M.MatrixProduct (Array t (as +: m)) (Array t (m ': bs)) (Array t cs)
+-- | Operations on DataFrames
+-- as is an element dimensionality
+-- bs is an indexing dimensionality
+-- t is an underlying data type (i.e. Float, Int, Double)
+--
+class ( asbs ~ (as ++ bs)
+      -- , bs ~ Dims.Drop (Dims.Length as) asbs
+      -- , as ~ Dims.Take (Dims.Length asbs - Dims.Length bs) asbs
+      , as ~ Dims.Prefix bs asbs
+      , bs ~ Dims.Suffix as asbs
+      -- , as ~ Dims.Take (Dims.Length as) asbs
+      -- , bs ~ Dims.Drop (Dims.Length as) asbs
+      , Dims.Dimensions as
+      , Dims.Dimensions bs
+      , Dims.Dimensions asbs
+      , NCommons.PrimBytes (DataFrame t as)
+      , NCommons.PrimBytes (DataFrame t asbs)
+      ) => SubSpace t (as :: [Nat])
+                      (bs :: [Nat])
+                      (asbs :: [Nat])
+                     | asbs as -> bs
+                     , asbs bs -> as
+                     , as bs -> asbs where
+    -- | Get an element
+    (!.) :: Idx bs -> DataFrame t asbs -> DataFrame t as
+    -- | Map a function over each element of DataFrame
+    ewmap  :: SubSpace s as' bs asbs'
+           => proxy bs
+           -> (DataFrame t as -> DataFrame s as')
+           -> DataFrame t asbs -> DataFrame s asbs'
+    -- | Map a function over each element with its index of DataFrame
+    iwmap  :: SubSpace s as' bs asbs'
+           => (Idx bs -> DataFrame t as -> DataFrame s as')
+           -> DataFrame t asbs -> DataFrame s asbs'
+    -- | Generate a DataFrame by repeating an element
+    ewgen :: proxy bs -> DataFrame t as -> DataFrame t asbs
+    -- | Generate a DataFrame by iterating a function (index -> element)
+    iwgen :: (Idx bs -> DataFrame t as) -> DataFrame t asbs
+    -- | Left-associative fold of a DataFrame
+    ewfoldl :: proxy bs -> (b -> DataFrame t as -> b) -> b -> DataFrame t asbs -> b
+    -- | Left-associative fold of a DataFrame with an index
+    iwfoldl :: (Idx bs -> b -> DataFrame t as -> b) -> b -> DataFrame t asbs -> b
+    -- | Right-associative fold of a DataFrame
+    ewfoldr :: proxy bs -> (DataFrame t as -> b -> b) -> b -> DataFrame t asbs -> b
+    -- | Right-associative fold of a DataFrame with an index
+    iwfoldr :: (Idx bs -> DataFrame t as -> b -> b) -> b -> DataFrame t asbs -> b
+    -- | Apply an applicative functor on each element (Lens-like traversal)
+    elementWise :: ( Applicative f
+                   , SubSpace s as' bs asbs'
+                   )
+                => (DataFrame t as -> f (DataFrame t as'))
+                -> DataFrame t asbs -> f (DataFrame s asbs')
+    -- | Apply an applicative functor on each element with its index
+    --     (Lens-like indexed traversal)
+    indexWise :: ( Applicative f
+                 , SubSpace s as' bs asbs'
+                 )
+              => (Idx bs -> DataFrame t as -> f (DataFrame t as'))
+              -> DataFrame t asbs -> f (DataFrame s asbs')
+infixr 4 !.
+
+-- | Index an element (reverse of !.)
+(!) :: SubSpace t as bs asbs
+    => DataFrame t asbs -> Idx bs -> DataFrame t as
+(!) = flip (!.)
+infixl 4 !
+{-# INLINE (!) #-}
+
+
+ewfoldMap :: ( Monoid m, SubSpace t as bs asbs)
+          => Dim bs -> (DataFrame t as -> m) -> DataFrame t asbs -> m
+ewfoldMap bs f = ewfoldl bs (\b -> mappend b . f) mempty
+{-# INLINE ewfoldMap #-}
+
+iwfoldMap :: ( Monoid m, SubSpace t as bs asbs)
+          => (Idx bs -> DataFrame t as -> m) -> DataFrame t asbs -> m
+iwfoldMap f = iwfoldl (\i b -> mappend b . f i) mempty
+{-# INLINE iwfoldMap #-}
+
+
+instance ( asbs ~ (as ++ bs)
+        --  , bs ~ Dims.Drop (Dims.Length as) asbs
+        --  , as ~ Dims.Take (Dims.Length asbs - Dims.Length bs) asbs
+         , as ~ Dims.Prefix bs asbs
+         , bs ~ Dims.Suffix as asbs
+        --  , as ~ Dims.Take (Dims.Length as) asbs
+        --  , bs ~ Dims.Drop (Dims.Length as) asbs
+         , Dims.Dimensions as
+         , Dims.Dimensions bs
+         , Dims.Dimensions asbs
+         , NCommons.PrimBytes (DataFrame t as)
+         , NCommons.PrimBytes (DataFrame t asbs)
+         ) => SubSpace t as bs asbs where
+
+    i !. d = r
+        where
+          r = case (# NCommons.toBytes d, Dims.fromIdx i, Dims.totalDim r #) of
+                (# (# off, _, arr #), I# i#, I# l# #)
+                  -> NCommons.fromBytes (# off +# i# *# l#, l#, arr #)
+
+    ewmap _ f df = case (# NCommons.toBytes df, Dims.totalDim (Proxy @as) #) of
+        (# (# off, len, arr #), I# l# #) -> case runRW#
+           ( \s0 -> case newByteArray# (len *# elS) s0 of
+               (# s1, marr #) -> case go off (off +# len) l# arr marr s1 of
+                   s2 -> unsafeFreezeByteArray# marr s2
+           ) of (# _, r #) -> NCommons.fromBytes (# 0#, len, r #)
+      where
+        elS = NCommons.elementByteSize df
+        go pos lim step arr marr s
+          | isTrue# (pos >=# lim) = s
+          | otherwise = case NCommons.toBytes (f (NCommons.fromBytes (# pos, step, arr #))) of
+             (# offX, _, arrX #) -> go (pos +# step) lim step arr marr
+               (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
+
+    iwmap f df = case (# NCommons.toBytes df, Dims.totalDim (Proxy @as) #) of
+        (# (# off, len, arr #), I# l# #) -> case runRW#
+           ( \s0 -> case newByteArray# (len *# elS) s0 of
+               (# s1, marr #) -> case go off (off +# len) l# arr marr Dims.dimMin s1 of
+                   s2 -> unsafeFreezeByteArray# marr s2
+           ) of (# _, r #) -> NCommons.fromBytes (# 0#, len, r #)
+      where
+        elS = NCommons.elementByteSize df
+        go pos lim step arr marr curI s
+          | isTrue# (pos >=# lim) = s
+          | otherwise = case NCommons.toBytes (f curI (NCommons.fromBytes (# pos, step, arr #))) of
+             (# offX, _, arrX #) -> go (pos +# step) lim step arr marr (Dims.succIdx curI)
+               (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
+
+    ewgen _ x = case (# NCommons.toBytes x, Dims.totalDim (Proxy @asbs) #) of
+        (# tobytesX , I# len# #) -> case runRW#
+           ( \s0 -> case newByteArray# (len# *# elS) s0 of
+               (# s1, marr #) -> case go 0# len# tobytesX marr s1 of
+                   s2 -> unsafeFreezeByteArray# marr s2
+           ) of (# _, r #) -> NCommons.fromBytes (# 0#, len#, r #)
+      where
+        elS = NCommons.elementByteSize (undefined :: DataFrame t as)
+        go pos lim tobytesX@(# offX, step, arrX #) marr s
+          | isTrue# (pos >=# lim) = s
+          | otherwise = go (pos +# step) lim tobytesX marr
+               (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
+
+    iwgen f = case (# Dims.totalDim (Proxy @as), Dims.totalDim (Proxy @asbs) #) of
+        (# I# asl# , I# len# #) -> case runRW#
+           ( \s0 -> case newByteArray# (len# *# elS) s0 of
+               (# s1, marr #) -> case go 0# len# asl# marr Dims.dimMin s1 of
+                   s2 -> unsafeFreezeByteArray# marr s2
+           ) of (# _, r #) -> NCommons.fromBytes (# 0#, len#, r #)
+      where
+        elS = NCommons.elementByteSize (undefined :: DataFrame t as)
+        go pos lim step marr curI s
+          | isTrue# (pos >=# lim) = s
+          | otherwise = case NCommons.toBytes (f curI) of
+             (# offX, _, arrX #) -> go (pos +# step) lim step marr (Dims.succIdx curI)
+               (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
+
+    -- foldDim _ f df = case (# NCommons.toBytes df, Dims.totalDim ( Proxy @as) #) of
+    --     (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr mempty
+    --   where
+    --     go pos lim step arr acc
+    --       | isTrue# (pos >=# lim) = acc
+    --       | otherwise = go (pos +# step) lim step arr
+    --           (acc `mappend` f (NCommons.fromBytes (# pos, step, arr #)) )
+
+
+-- instance ( asbs ~ (as Dims.++ bs)
+--          , as ~ Dims.Take (Dims.Length asbs - Dims.Length bs) asbs
+--          , bs ~ Dims.Drop (Dims.Length as) asbs
+--          , Dims.Dimensions as
+--          , Dims.Dimensions bs
+--          , Dims.Dimensions asbs
+--          , NCommons.PrimBytes (DataFrame t as)
+--          , NCommons.PrimBytes (DataFrame t asbs)
+--          ) => SubSpace t as bs asbs where
+--   mapDim _ f df = case (# NCommons.toBytes df, Dims.totalDim (Proxy @as) #) of
+--       (# (# off, len, arr #), I# l# #) -> case runRW#
+--          ( \s0 -> case newByteArray# (len *# elS) s0 of
+--              (# s1, marr #) -> case go off (off +# len) l# arr marr s1 of
+--                  s2 -> unsafeFreezeByteArray# marr s2
+--          ) of (# _, r #) -> NCommons.fromBytes (# 0#, len, r #)
+--     where
+--       elS = NCommons.elementByteSize df
+--       go pos lim step arr marr s
+--         | isTrue# (pos >=# lim) = s
+--         | otherwise = case NCommons.toBytes (f (NCommons.fromBytes (# pos, step, arr #))) of
+--            (# offX, _, arrX #) -> go (pos +# step) lim step arr marr
+--              (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
+--
+--   foldDim _ f df = case (# NCommons.toBytes df, Dims.totalDim ( Proxy @as) #) of
+--       (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr mempty
+--     where
+--       go pos lim step arr acc
+--         | isTrue# (pos >=# lim) = acc
+--         | otherwise = go (pos +# step) lim step arr
+--             (acc `mappend` f (NCommons.fromBytes (# pos, step, arr #)) )
+--
+--   i !.. d = r
+--     where
+--       r = case (# NCommons.toBytes d, Dims.fromIdx i, Dims.totalDim r #) of
+--             (# (# off, _, arr #), I# i#, I# l# #)
+--               -> NCommons.fromBytes (# off +# i# *# l#, l#, arr #)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+instance ( as' ~ (as Dims.+: m)
+         , cs  ~ (as Dims.++ bs)
+         , Dims.Dimensions as'
+         , Dims.Dimensions (m ': bs)
+         , Dims.Dimensions cs
+         , M.MatrixProduct (Array t (as Dims.+: m)) (Array t (m ': bs)) (Array t cs)
          )
        => M.MatrixProduct (DataFrame t as')
                           (DataFrame t (m ': bs))
@@ -211,150 +441,150 @@ instance ( as' ~ (as +: m)
 --     1. matrix-matrix product
 --     2. matrix-vector or vector-matrix product
 --     3. dot product of two vectors.
-(%*) :: ( M.MatrixProduct (DataFrame t (as +: m))
+(%*) :: ( M.MatrixProduct (DataFrame t (as Dims.+: m))
                           (DataFrame t (m ': bs))
-                          (DataFrame t (as ++ bs))
+                          (DataFrame t (as Dims.++ bs))
         )
-     => DataFrame t (as +: m) -> DataFrame t (m :+ bs) -> DataFrame t (as ++ bs)
+     => DataFrame t (as Dims.+: m) -> DataFrame t (m Dims.:+ bs) -> DataFrame t (as Dims.++ bs)
 (%*) = M.prod
 {-# INLINE (%*) #-}
 infixl 7 %*
 
 -- | Append one DataFrame to another, adding up their last dimensionality
-(<:>) :: ( PrimBytes (DataFrame t (ds +: n))
-         , PrimBytes (DataFrame t (ds +: m))
-         , PrimBytes (DataFrame t (ds +: (n + m)))
+(<:>) :: ( NCommons.PrimBytes (DataFrame t (ds Dims.+: n))
+         , NCommons.PrimBytes (DataFrame t (ds Dims.+: m))
+         , NCommons.PrimBytes (DataFrame t (ds Dims.+: (n + m)))
          )
-        => DataFrame t (ds +: n)
-        -> DataFrame t (ds +: m)
-        -> DataFrame t (ds +: (n + m))
-a <:> b = case (# toBytes a, toBytes b
-                , byteSize a
-                , byteSize b
-                , elementByteSize a #) of
+        => DataFrame t (ds Dims.+: n)
+        -> DataFrame t (ds Dims.+: m)
+        -> DataFrame t (ds Dims.+: (n + m))
+a <:> b = case (# NCommons.toBytes a, NCommons.toBytes b
+                , NCommons.byteSize a
+                , NCommons.byteSize b
+                , NCommons.elementByteSize a #) of
   (# (# off1, n1, arr1 #), (# off2, n2, arr2 #), bs1, bs2, ebs #) -> case runRW#
      ( \s0 -> case newByteArray# (bs1 +# bs2) s0 of
          (# s1, mr #) -> case copyByteArray# arr1 (off1 *# ebs) mr 0# bs1 s1 of
            s2 -> case copyByteArray# arr2 (off2 *# ebs) mr bs1 bs2 s2 of
              s3 -> unsafeFreezeByteArray# mr s3
-     ) of (# _, r #) -> fromBytes (# 0#, n1 +# n2, r #)
+     ) of (# _, r #) -> NCommons.fromBytes (# 0#, n1 +# n2, r #)
 infixl 5 <:>
 
 -- | Append one DataFrame to another, adding up their last dimensionality
-(<::>) :: ( PrimBytes (DataFrame t ds)
-          , PrimBytes (DataFrame t ds)
-          , PrimBytes (DataFrame t (ds +: 2))
+(<::>) :: ( NCommons.PrimBytes (DataFrame t ds)
+          , NCommons.PrimBytes (DataFrame t ds)
+          , NCommons.PrimBytes (DataFrame t (ds Dims.+: 2))
           )
         => DataFrame t ds
         -> DataFrame t ds
-        -> DataFrame t (ds +: 2)
-a <::> b = case (# toBytes a, toBytes b
-                , byteSize a
-                , byteSize b
-                , elementByteSize a #) of
+        -> DataFrame t (ds Dims.+: 2)
+a <::> b = case (# NCommons.toBytes a, NCommons.toBytes b
+                , NCommons.byteSize a
+                , NCommons.byteSize b
+                , NCommons.elementByteSize a #) of
   (# (# off1, n1, arr1 #), (# off2, n2, arr2 #), bs1, bs2, ebs #) -> case runRW#
      ( \s0 -> case newByteArray# (bs1 +# bs2) s0 of
          (# s1, mr #) -> case copyByteArray# arr1 (off1 *# ebs) mr 0# bs1 s1 of
            s2 -> case copyByteArray# arr2 (off2 *# ebs) mr bs1 bs2 s2 of
              s3 -> unsafeFreezeByteArray# mr s3
-     ) of (# _, r #) -> fromBytes (# 0#, n1 +# n2, r #)
+     ) of (# _, r #) -> NCommons.fromBytes (# 0#, n1 +# n2, r #)
 infixl 5 <::>
 
 -- | Append one DataFrame to another, adding up their last dimensionality
-(<+:>) :: ( PrimBytes (DataFrame t (ds +: n))
-          , PrimBytes (DataFrame t ds)
-          , PrimBytes (DataFrame t (ds +: (n + 1)))
+(<+:>) :: ( NCommons.PrimBytes (DataFrame t (ds Dims.+: n))
+          , NCommons.PrimBytes (DataFrame t ds)
+          , NCommons.PrimBytes (DataFrame t (ds Dims.+: (n + 1)))
           )
-        => DataFrame t (ds +: n)
+        => DataFrame t (ds Dims.+: n)
         -> DataFrame t ds
-        -> DataFrame t (ds +: (n + 1))
-a <+:> b = case (# toBytes a, toBytes b
-                , byteSize a
-                , byteSize b
-                , elementByteSize a #) of
+        -> DataFrame t (ds Dims.+: (n + 1))
+a <+:> b = case (# NCommons.toBytes a, NCommons.toBytes b
+                , NCommons.byteSize a
+                , NCommons.byteSize b
+                , NCommons.elementByteSize a #) of
   (# (# off1, n1, arr1 #), (# off2, n2, arr2 #), bs1, bs2, ebs #) -> case runRW#
      ( \s0 -> case newByteArray# (bs1 +# bs2) s0 of
          (# s1, mr #) -> case copyByteArray# arr1 (off1 *# ebs) mr 0# bs1 s1 of
            s2 -> case copyByteArray# arr2 (off2 *# ebs) mr bs1 bs2 s2 of
              s3 -> unsafeFreezeByteArray# mr s3
-     ) of (# _, r #) -> fromBytes (# 0#, n1 +# n2, r #)
+     ) of (# _, r #) -> NCommons.fromBytes (# 0#, n1 +# n2, r #)
 infixl 5 <+:>
 
 runSlice :: forall (t :: Type) (f :: Type -> Type)
                      (ods :: [Nat]) (nds :: [Nat])
-           . (Idx '[] -> DataFrame t ods -> f (DataFrame t nds))
+           . (Dims.Idx '[] -> DataFrame t ods -> f (DataFrame t nds))
           -> DataFrame t ods
           -> f (DataFrame t nds)
-runSlice f = f Z
+runSlice f = f Dims.Z
 
 subSpace :: forall (t :: Type) (f :: Type -> Type) (n :: Nat)
                    (ods :: [Nat]) (nds :: [Nat]) (remDs :: [Nat])
          . ( Applicative f
-           , Dimensions ods
-           , Dimensions nds
-           , Dimensions (ods +: n)
-           , Dimensions (nds +: n)
+           , Dims.Dimensions ods
+           , Dims.Dimensions nds
+           , Dims.Dimensions (ods Dims.+: n)
+           , Dims.Dimensions (nds Dims.+: n)
            , KnownNat n
-           , PrimBytes (DataFrame t ods)
-           , PrimBytes (DataFrame t nds)
-           , PrimBytes (DataFrame t (ods +: n))
-           , PrimBytes (DataFrame t (nds +: n))
+           , NCommons.PrimBytes (DataFrame t ods)
+           , NCommons.PrimBytes (DataFrame t nds)
+           , NCommons.PrimBytes (DataFrame t (ods Dims.+: n))
+           , NCommons.PrimBytes (DataFrame t (nds Dims.+: n))
            )
         -- slice
-        => (Idx (n :+ remDs) -> DataFrame t ods -> f (DataFrame t nds))
+        => (Dims.Idx (n Dims.:+ remDs) -> DataFrame t ods -> f (DataFrame t nds))
         -- new transform
-        -> Idx remDs
-        -> DataFrame t (ods +: n)
-        -> f (DataFrame t (nds +: n))
-subSpace = case unsafeCoerce Refl :: (nds >: n) :~: (nds +: n) of
-    Refl -> slice Every
+        -> Dims.Idx remDs
+        -> DataFrame t (ods Dims.+: n)
+        -> f (DataFrame t (nds Dims.+: n))
+subSpace = case unsafeCoerce Refl :: (nds Dims.>: n) :~: (nds Dims.+: n) of
+    Refl -> slice Dims.Every
 {-# INLINE [2] subSpace #-}
 
 slice :: forall (t :: Type) (s :: Type) (f :: Type -> Type)
                 (o :: Nat) (n :: Nat)
                 (ods :: [Nat]) (nds :: [Nat]) (remDs :: [Nat])
            . ( Applicative f
-             , Dimensions ods
-             , Dimensions nds
-             , Dimensions (ods +: o)
-             , Dimensions (nds +: n)
-             , Dimensions (nds >: n)
+             , Dims.Dimensions ods
+             , Dims.Dimensions nds
+             , Dims.Dimensions (ods Dims.+: o)
+             , Dims.Dimensions (nds Dims.+: n)
+             , Dims.Dimensions (nds Dims.>: n)
              , KnownNat o
              , KnownNat n
-             , PrimBytes (DataFrame t ods)
-             , PrimBytes (DataFrame s nds)
-             , PrimBytes (DataFrame t (ods +: o))
-             , PrimBytes (DataFrame s (nds >: n))
+             , NCommons.PrimBytes (DataFrame t ods)
+             , NCommons.PrimBytes (DataFrame s nds)
+             , NCommons.PrimBytes (DataFrame t (ods Dims.+: o))
+             , NCommons.PrimBytes (DataFrame s (nds Dims.>: n))
              )
           -- slice
-          => Slice o n
+          => Dims.Slice o n
           -- old transform
-          -> (Idx (n :+ remDs) -> DataFrame t ods -> f (DataFrame s nds))
+          -> (Dims.Idx (n Dims.:+ remDs) -> DataFrame t ods -> f (DataFrame s nds))
           -- new transform
-          -> Idx remDs
-          -> DataFrame t (ods +: o)
-          -> f (DataFrame s (nds >: n))
+          -> Dims.Idx remDs
+          -> DataFrame t (ods Dims.+: o)
+          -> f (DataFrame s (nds Dims.>: n))
 slice s f remIds oldDF
-    = merge <$> traverse (\(I# i#, i) -> f (i:!remIds)
-                           (fromBytes (# offOld +# (i# -# 1#) *# lengthOld'
+    = merge <$> traverse (\(I# i#, i) -> f (i Dims.:!remIds)
+                           (NCommons.fromBytes (# offOld +# (i# -# 1#) *# lengthOld'
                                        , lengthOld'
                                        , arrOld #))
                          ) (zip (slice2list s) [1..])
   where
-    merge [x] = fromBytes (toBytes x)
+    merge [x] = NCommons.fromBytes (NCommons.toBytes x)
     merge xs = case runRW#
        (\s0 -> case newByteArray# bsNew s0 of
          (# s1, marr #) -> case writeOne xs marr 0# s1 of
            s2 -> unsafeFreezeByteArray# marr s2
-       ) of (# _, r #) -> fromBytes (# 0#, lengthNew, r #)
+       ) of (# _, r #) -> NCommons.fromBytes (# 0#, lengthNew, r #)
     writeOne [] _ _ s' = s'
-    writeOne (x : xs) mr pos s' = case toBytes x of
+    writeOne (x : xs) mr pos s' = case NCommons.toBytes x of
       (# off, l, a #) ->  writeOne xs mr (pos +# l)
         (copyByteArray# a (off *# elSizeS) mr (pos *# elSizeS) (l *# elSizeS) s')
-    (# offOld, _, arrOld #) = toBytes oldDF
-    elSizeS = elementByteSize (undefined :: DataFrame s nds)
-    lengthOld' = case totalDim (Proxy @ods) of I# lo -> lo
-    lengthNew  = case totalDim (Proxy @(nds >: n)) of I# ln -> ln
+    (# offOld, _, arrOld #) = NCommons.toBytes oldDF
+    elSizeS = NCommons.elementByteSize (undefined :: DataFrame s nds)
+    lengthOld' = case Dims.totalDim (Proxy @ods) of I# lo -> lo
+    lengthNew  = case Dims.totalDim (Proxy @(nds Dims.>: n)) of I# ln -> ln
     bsNew      = lengthNew *# elSizeS
 {-# INLINE [2] slice #-}
 
@@ -362,63 +592,63 @@ sliceF :: forall (t :: Type) (acc :: Type)
                  (o :: Nat) (n :: Nat)
                     (ods :: [Nat]) (nds :: [Nat]) (remDs :: [Nat])
            . ( Monoid acc
-             , Dimensions ods
-             , Dimensions nds
-             , Dimensions (ods +: o)
-             , Dimensions (nds +: n)
+             , Dims.Dimensions ods
+             , Dims.Dimensions nds
+             , Dims.Dimensions (ods Dims.+: o)
+             , Dims.Dimensions (nds Dims.+: n)
              , KnownNat o
              , KnownNat n
-             , PrimBytes (DataFrame t ods)
-             , PrimBytes (DataFrame t nds)
-             , PrimBytes (DataFrame t (ods +: o))
-             , PrimBytes (DataFrame t (nds >: n))
+             , NCommons.PrimBytes (DataFrame t ods)
+             , NCommons.PrimBytes (DataFrame t nds)
+             , NCommons.PrimBytes (DataFrame t (ods Dims.+: o))
+             , NCommons.PrimBytes (DataFrame t (nds Dims.>: n))
              )
           -- slice
-          => Slice o n
+          => Dims.Slice o n
           -- old transform
-          -> (Idx (n :+ remDs) -> DataFrame t ods -> Const acc (DataFrame t nds))
+          -> (Dims.Idx (n Dims.:+ remDs) -> DataFrame t ods -> Const acc (DataFrame t nds))
           -- new transform
-          -> Idx remDs
-          -> DataFrame t (ods +: o)
-          -> Const acc (DataFrame t (nds >: n))
+          -> Dims.Idx remDs
+          -> DataFrame t (ods Dims.+: o)
+          -> Const acc (DataFrame t (nds Dims.>: n))
 sliceF s f remIds oldDF
-    = Const $ foldMap (\(I# i#, i) -> getConst $ f (i:!remIds)
-                           (fromBytes (# offOld +# (i# -# 1#) *# lengthOld'
+    = Const $ foldMap (\(I# i#, i) -> getConst $ f (i Dims.:!remIds)
+                           (NCommons.fromBytes (# offOld +# (i# -# 1#) *# lengthOld'
                                        , lengthOld'
                                        , arrOld #))
                          ) (zip (slice2list s) [1..])
   where
-    (# offOld, _, arrOld #) = toBytes oldDF
-    lengthOld' = case totalDim (Proxy @ods) of I# lo -> lo
+    (# offOld, _, arrOld #) = NCommons.toBytes oldDF
+    lengthOld' = case Dims.totalDim (Proxy @ods) of I# lo -> lo
 
 subSpaceF :: forall (t :: Type) (acc :: Type) (n :: Nat)
                    (ods :: [Nat]) (nds :: [Nat]) (remDs :: [Nat])
          . ( Monoid acc
-           , Dimensions ods
-           , Dimensions nds
-           , Dimensions (ods +: n)
-           , Dimensions (nds +: n)
+           , Dims.Dimensions ods
+           , Dims.Dimensions nds
+           , Dims.Dimensions (ods Dims.+: n)
+           , Dims.Dimensions (nds Dims.+: n)
            , KnownNat n
-           , PrimBytes (DataFrame t ods)
-           , PrimBytes (DataFrame t nds)
-           , PrimBytes (DataFrame t (ods +: n))
-           , PrimBytes (DataFrame t (nds +: n))
+           , NCommons.PrimBytes (DataFrame t ods)
+           , NCommons.PrimBytes (DataFrame t nds)
+           , NCommons.PrimBytes (DataFrame t (ods Dims.+: n))
+           , NCommons.PrimBytes (DataFrame t (nds Dims.+: n))
            )
         -- slice
-        => (Idx (n :+ remDs) -> DataFrame t ods -> Const acc (DataFrame t nds))
+        => (Dims.Idx (n Dims.:+ remDs) -> DataFrame t ods -> Const acc (DataFrame t nds))
         -- new transform
-        -> Idx remDs
-        -> DataFrame t (ods +: n)
-        -> Const acc (DataFrame t (nds +: n))
-subSpaceF = case unsafeCoerce Refl :: (nds >: n) :~: (nds +: n) of
-    Refl -> sliceF Every
+        -> Dims.Idx remDs
+        -> DataFrame t (ods Dims.+: n)
+        -> Const acc (DataFrame t (nds Dims.+: n))
+subSpaceF = case unsafeCoerce Refl :: (nds Dims.>: n) :~: (nds Dims.+: n) of
+    Refl -> sliceF Dims.Every
 
 
 
-slice2list :: KnownNat m => Slice n m -> [Int]
-slice2list x@Every = [1..fromInteger (natVal x)]
-slice2list (Get i) = [i]
-slice2list xx@(x :& i) = slice2list (xx `f` unsafeCoerce x) ++ [i]
+slice2list :: KnownNat m => Dims.Slice n m -> [Int]
+slice2list x@Dims.Every = [1..fromInteger (natVal x)]
+slice2list (Dims.Get i) = [i]
+slice2list xx@(x Dims.:& i) = slice2list (xx `f` unsafeCoerce x) ++ [i]
   where
     f :: a -> a -> a
     f _ = id
@@ -426,26 +656,26 @@ slice2list xx@(x :& i) = slice2list (xx `f` unsafeCoerce x) ++ [i]
 -- | Apply a functor over a single element in an outer dimension
 index :: forall (t :: Type) (f :: Type -> Type) (n :: Nat) (ds :: [Nat])
            . ( Functor f
-             , Dimensions ds
-             , Dimensions (ds +: n)
+             , Dims.Dimensions ds
+             , Dims.Dimensions (ds Dims.+: n)
              , KnownNat n
-             , PrimBytes (DataFrame t ds)
-             , PrimBytes (DataFrame t (ds +: n))
+             , NCommons.PrimBytes (DataFrame t ds)
+             , NCommons.PrimBytes (DataFrame t (ds Dims.+: n))
              )
           -- slice a single element in an outer dimension
           => Int
           -- old transform
           -> (DataFrame t ds -> f (DataFrame t ds))
           -- new transform
-          -> DataFrame t (ds +: n)
-          -> f (DataFrame t (ds +: n))
+          -> DataFrame t (ds Dims.+: n)
+          -> f (DataFrame t (ds Dims.+: n))
 index (I# i) f d = write <$> f x
   where
-    (# offD, lengthD, arrD #) = toBytes d
-    elSize = elementByteSize d
-    x = fromBytes (# offD +# tds *# (i -# 1#), tds , arrD #)
-    tds = case totalDim (Proxy @ds) of I# q -> q
-    write y = case toBytes y of
+    (# offD, lengthD, arrD #) = NCommons.toBytes d
+    elSize = NCommons.elementByteSize d
+    x = NCommons.fromBytes (# offD +# tds *# (i -# 1#), tds , arrD #)
+    tds = case Dims.totalDim (Proxy @ds) of I# q -> q
+    write y = case NCommons.toBytes y of
       (# offX, lengthX, arrX #) -> case runRW#
        (\s0 -> case newByteArray# (lengthD *# elSize) s0 of
          (# s1, marr #) -> case copyByteArray# arrD (offD *# elSize)
@@ -455,7 +685,7 @@ index (I# i) f d = write <$> f x
                                      marr (lengthX *# elSize *# (i -# 1#))
                                      (lengthX *# elSize) s2 of
              s3 -> unsafeFreezeByteArray# marr s3
-       ) of (# _, r #) -> fromBytes (# 0#, lengthD, r #)
+       ) of (# _, r #) -> NCommons.fromBytes (# 0#, lengthD, r #)
 {-# INLINE [2] index #-}
 
 {-# RULES
@@ -470,26 +700,26 @@ index (I# i) f d = write <$> f x
   #-}
 
 indexC :: forall (a :: Type) (t :: Type) (n :: Nat) (ds :: [Nat])
-           . ( Dimensions ds
-             , Dimensions (ds +: n)
+           . ( Dims.Dimensions ds
+             , Dims.Dimensions (ds Dims.+: n)
              , KnownNat n
-             , PrimBytes (DataFrame t ds)
-             , PrimBytes (DataFrame t (ds +: n))
+             , NCommons.PrimBytes (DataFrame t ds)
+             , NCommons.PrimBytes (DataFrame t (ds Dims.+: n))
              )
           => Int
           -> (DataFrame t ds -> Const a (DataFrame t ds))
-          -> DataFrame t (ds +: n)
-          -> Const a (DataFrame t (ds +: n))
+          -> DataFrame t (ds Dims.+: n)
+          -> Const a (DataFrame t (ds Dims.+: n))
 indexC (I# i) f d = Const . getConst $ f x
   where
-    (# offD, _, arrD #) = toBytes d
-    x = fromBytes (# offD +# tds *# (i -# 1#), tds , arrD #)
-    tds = case totalDim (Proxy @ds) of I# q -> q
+    (# offD, _, arrD #) = NCommons.toBytes d
+    x = NCommons.fromBytes (# offD +# tds *# (i -# 1#), tds , arrD #)
+    tds = case Dims.totalDim (Proxy @ds) of I# q -> q
 
 
-type NumSpace t ds = ( PrimBytes (DataFrame t ds)
-                     , Dimensions ds
-                     , ElementWise (Idx ds) t (DataFrame t ds)
+type NumSpace t ds = ( NCommons.PrimBytes (DataFrame t ds)
+                     , Dims.Dimensions ds
+                     , NCommons.ElementWise (Dims.Idx ds) t (DataFrame t ds)
                      , Eq (DataFrame t ds)
                      , Ord (DataFrame t ds)
                      , Num (DataFrame t ds)
@@ -497,90 +727,90 @@ type NumSpace t ds = ( PrimBytes (DataFrame t ds)
                      , Floating (DataFrame t ds)
                      )
 
-class ( asbs ~ (as ++ bs)
-      , as ~ Take (Length asbs - Length bs) asbs
-      , bs ~ Drop (Length as) asbs
-      , Dimensions as
-      , Dimensions bs
-      , Dimensions asbs
-      , PrimBytes (DataFrame t as)
-      , PrimBytes (DataFrame t asbs)
-      ) => SubSpace t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-                                 | asbs as -> bs
-                                 , asbs bs -> as
-                                 , as bs -> asbs where
-  mapDim :: Dim bs
-         -> (DataFrame t as -> DataFrame t as)
-         -> DataFrame t asbs
-         -> DataFrame t asbs
-  foldDim :: Monoid m
-          => Dim bs
-          -> (DataFrame t as -> m)
-          -> DataFrame t asbs
-          -> m
-  (!.) :: Idx bs -> DataFrame t (as ++ bs) -> DataFrame t as
-infixr 4 !.
+-- class ( asbs ~ (as Dims.++ bs)
+--       , as ~ Dims.Take (Dims.Length asbs - Dims.Length bs) asbs
+--       , bs ~ Dims.Drop (Dims.Length as) asbs
+--       , Dims.Dimensions as
+--       , Dims.Dimensions bs
+--       , Dims.Dimensions asbs
+--       , NCommons.PrimBytes (DataFrame t as)
+--       , NCommons.PrimBytes (DataFrame t asbs)
+--       ) => SubSpace t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+--                                  | asbs as -> bs
+--                                  , asbs bs -> as
+--                                  , as bs -> asbs where
+--   mapDim :: Dims.Dim bs
+--          -> (DataFrame t as -> DataFrame t as)
+--          -> DataFrame t asbs
+--          -> DataFrame t asbs
+--   foldDim :: Monoid m
+--           => Dims.Dim bs
+--           -> (DataFrame t as -> m)
+--           -> DataFrame t asbs
+--           -> m
+--   (!..) :: Dims.Idx bs -> DataFrame t (as Dims.++ bs) -> DataFrame t as
+-- infixr 4 !..
 
-mapDims :: forall t t' as as' bs
-         . ( SubSpace t as bs (as ++ bs)
-           , SubSpace t' as' bs (as' ++ bs)
-           )
-        => Dim bs
-        -> (DataFrame t as -> DataFrame t' as')
-        -> DataFrame t (as ++ bs)
-        -> DataFrame t' (as' ++ bs)
-mapDims _ f df = case (# toBytes df
-                       , totalDim (Proxy @as)
-                       , totalDim (Proxy @(as' ++ bs)) #) of
-    (# (# off, len1, arr #), I# l1#, I# len2 #) -> case runRW#
-       ( \s0 -> case newByteArray# (len2 *# elS2) s0 of
-           (# s1, marr #) -> case go off (off +# len1) l1# 0# arr marr s1 of
-               s2 -> unsafeFreezeByteArray# marr s2
-       ) of (# _, r #) -> fromBytes (# 0#, len2 , r #)
-  where
-    elS2 = elementByteSize (undefined :: DataFrame t' (as' ++ bs))
-    go pos1 lim1 step1 pos2 arr marr s
-      | isTrue# (pos1 >=# lim1) = s
-      | otherwise = case toBytes (f (fromBytes (# pos1, step1, arr #))) of
-         (# offX, step2, arrX #) -> go (pos1 +# step1) lim1 step1 (pos2 +# step2) arr marr
-           (copyByteArray# arrX (offX *# elS2) marr (pos2 *# elS2) (step2 *# elS2) s)
-
-instance ( asbs ~ (as ++ bs)
-         , as ~ Take (Length asbs - Length bs) asbs
-         , bs ~ Drop (Length as) asbs
-         , Dimensions as
-         , Dimensions bs
-         , Dimensions asbs
-         , PrimBytes (DataFrame t as)
-         , PrimBytes (DataFrame t asbs)
-         ) => SubSpace t as bs asbs where
-  mapDim _ f df = case (# toBytes df, totalDim (Proxy @as) #) of
-      (# (# off, len, arr #), I# l# #) -> case runRW#
-         ( \s0 -> case newByteArray# (len *# elS) s0 of
-             (# s1, marr #) -> case go off (off +# len) l# arr marr s1 of
-                 s2 -> unsafeFreezeByteArray# marr s2
-         ) of (# _, r #) -> fromBytes (# 0#, len, r #)
-    where
-      elS = elementByteSize df
-      go pos lim step arr marr s
-        | isTrue# (pos >=# lim) = s
-        | otherwise = case toBytes (f (fromBytes (# pos, step, arr #))) of
-           (# offX, _, arrX #) -> go (pos +# step) lim step arr marr
-             (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
-
-  foldDim _ f df = case (# toBytes df, totalDim ( Proxy @as) #) of
-      (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr mempty
-    where
-      go pos lim step arr acc
-        | isTrue# (pos >=# lim) = acc
-        | otherwise = go (pos +# step) lim step arr
-            (acc `mappend` f (fromBytes (# pos, step, arr #)) )
-
-  i !. d = r
-    where
-      r = case (# toBytes d, fromIdx i, totalDim r #) of
-            (# (# off, _, arr #), I# i#, I# l# #)
-              -> fromBytes (# off +# i# *# l#, l#, arr #)
+-- mapDims :: forall t t' as as' bs
+--          . ( SubSpace t as bs (as Dims.++ bs)
+--            , SubSpace t' as' bs (as' Dims.++ bs)
+--            )
+--         => Dims.Dim bs
+--         -> (DataFrame t as -> DataFrame t' as')
+--         -> DataFrame t (as Dims.++ bs)
+--         -> DataFrame t' (as' Dims.++ bs)
+-- mapDims _ f df = case (# NCommons.toBytes df
+--                        , Dims.totalDim (Proxy @as)
+--                        , Dims.totalDim (Proxy @(as' Dims.++ bs)) #) of
+--     (# (# off, len1, arr #), I# l1#, I# len2 #) -> case runRW#
+--        ( \s0 -> case newByteArray# (len2 *# elS2) s0 of
+--            (# s1, marr #) -> case go off (off +# len1) l1# 0# arr marr s1 of
+--                s2 -> unsafeFreezeByteArray# marr s2
+--        ) of (# _, r #) -> NCommons.fromBytes (# 0#, len2 , r #)
+--   where
+--     elS2 = NCommons.elementByteSize (undefined :: DataFrame t' (as' Dims.++ bs))
+--     go pos1 lim1 step1 pos2 arr marr s
+--       | isTrue# (pos1 >=# lim1) = s
+--       | otherwise = case NCommons.toBytes (f (NCommons.fromBytes (# pos1, step1, arr #))) of
+--          (# offX, step2, arrX #) -> go (pos1 +# step1) lim1 step1 (pos2 +# step2) arr marr
+--            (copyByteArray# arrX (offX *# elS2) marr (pos2 *# elS2) (step2 *# elS2) s)
+--
+-- instance ( asbs ~ (as Dims.++ bs)
+--          , as ~ Dims.Take (Dims.Length asbs - Dims.Length bs) asbs
+--          , bs ~ Dims.Drop (Dims.Length as) asbs
+--          , Dims.Dimensions as
+--          , Dims.Dimensions bs
+--          , Dims.Dimensions asbs
+--          , NCommons.PrimBytes (DataFrame t as)
+--          , NCommons.PrimBytes (DataFrame t asbs)
+--          ) => SubSpace t as bs asbs where
+--   mapDim _ f df = case (# NCommons.toBytes df, Dims.totalDim (Proxy @as) #) of
+--       (# (# off, len, arr #), I# l# #) -> case runRW#
+--          ( \s0 -> case newByteArray# (len *# elS) s0 of
+--              (# s1, marr #) -> case go off (off +# len) l# arr marr s1 of
+--                  s2 -> unsafeFreezeByteArray# marr s2
+--          ) of (# _, r #) -> NCommons.fromBytes (# 0#, len, r #)
+--     where
+--       elS = NCommons.elementByteSize df
+--       go pos lim step arr marr s
+--         | isTrue# (pos >=# lim) = s
+--         | otherwise = case NCommons.toBytes (f (NCommons.fromBytes (# pos, step, arr #))) of
+--            (# offX, _, arrX #) -> go (pos +# step) lim step arr marr
+--              (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
+--
+--   foldDim _ f df = case (# NCommons.toBytes df, Dims.totalDim ( Proxy @as) #) of
+--       (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr mempty
+--     where
+--       go pos lim step arr acc
+--         | isTrue# (pos >=# lim) = acc
+--         | otherwise = go (pos +# step) lim step arr
+--             (acc `mappend` f (NCommons.fromBytes (# pos, step, arr #)) )
+--
+--   i !.. d = r
+--     where
+--       r = case (# NCommons.toBytes d, Dims.fromIdx i, Dims.totalDim r #) of
+--             (# (# off, _, arr #), I# i#, I# l# #)
+--               -> NCommons.fromBytes (# off +# i# *# l#, l#, arr #)
 
 -- ff = runSlice . slice Every
 --                 . slice (Get 4 :& 7 :& 4)
@@ -592,10 +822,10 @@ instance ( asbs ~ (as ++ bs)
 --                     (oldIds :: [Nat])  (newIds :: [Nat])
 --            . (Applicative f)
 --       => Slice n m
---       -> (Idx (m :+ newIds) -> DataFrame t oldRems -> f (DataFrame t newRems))
+--       -> (Dims.Idx (m Dims.:+ newIds) -> DataFrame t oldRems -> f (DataFrame t newRems))
 --       -> Idx newIds
---       -> DataFrame t ((oldRems +: n) ++ oldIds)
---       -> f (DataFrame t ((newRems +: m) ++ newIds))
+--       -> DataFrame t ((oldRems Dims.+: n) Dims.++ oldIds)
+--       -> f (DataFrame t ((newRems Dims.+: m) Dims.++ newIds))
 -- fancyFunc _slice _map _ids _oldDF = undefined
 
 --------------------------------------------------------------------------------
@@ -630,27 +860,27 @@ type Vec4f = Vector Float 4
 --                     propagated into whole Vec
 (.*.) :: ( Num t
          , Num (Vector t n)
-         , ElementWise (Idx '[n]) t (Vector t n)
+         , NCommons.ElementWise (Dims.Idx '[n]) t (Vector t n)
          )
       => Vector t n -> Vector t n -> Vector t n
-(.*.) a b = broadcast . ewfold (const (+)) 0 $ a * b
+(.*.) a b = NCommons.broadcast . NCommons.ewfold (const (+)) 0 $ a * b
 infixl 7 .*.
 
 -- | Scalar product -- sum of Vecs' components products -- a scalar
 dot :: ( Num t
        , Num (Vector t n)
-       , ElementWise (Idx '[]) t (Scalar t)
-       , ElementWise (Idx '[n]) t (Vector t n)
+       , NCommons.ElementWise (Dims.Idx '[]) t (Scalar t)
+       , NCommons.ElementWise (Dims.Idx '[n]) t (Vector t n)
        )
     => Vector t n -> Vector t n -> Scalar t
-dot a b = broadcast . ewfold (const (+)) 0 $ a * b
+dot a b = NCommons.broadcast . NCommons.ewfold (const (+)) 0 $ a * b
 
 -- | Dot product of two vectors
 infixl 7 ·
 (·) :: ( Num t
        , Num (Vector t n)
-       , ElementWise (Idx '[]) t (Scalar t)
-       , ElementWise (Idx '[n]) t (Vector t n)
+       , NCommons.ElementWise (Dims.Idx '[]) t (Scalar t)
+       , NCommons.ElementWise (Dims.Idx '[n]) t (Vector t n)
        )
     => Vector t n -> Vector t n -> Scalar t
 (·) = dot
@@ -659,44 +889,44 @@ infixl 7 ·
 
 -- | Sum of absolute values
 normL1 :: ( Num t
-          , ElementWise (Idx '[]) t (Scalar t)
-          , ElementWise (Idx '[n]) t (Vector t n)
+          , NCommons.ElementWise (Dims.Idx '[]) t (Scalar t)
+          , NCommons.ElementWise (Dims.Idx '[n]) t (Vector t n)
           )
        => Vector t n -> Scalar t
-normL1 = broadcast . ewfold (const (\a -> (abs a +))) 0
+normL1 = NCommons.broadcast . NCommons.ewfold (const (\a -> (abs a +))) 0
 
 -- | hypot function (square root of squares)
 normL2 :: ( Floating t
-          , ElementWise (Idx '[]) t (Scalar t)
-          , ElementWise (Idx '[n]) t (Vector t n)
+          , NCommons.ElementWise (Dims.Idx '[]) t (Scalar t)
+          , NCommons.ElementWise (Dims.Idx '[n]) t (Vector t n)
           )
        => Vector t n -> Scalar t
-normL2 = broadcast . sqrt . ewfold (const (\a -> (a*a +))) 0
+normL2 = NCommons.broadcast . sqrt . NCommons.ewfold (const (\a -> (a*a +))) 0
 
 -- | Maximum of absolute values
 normLPInf :: ( Ord t, Num t
-             , ElementWise (Idx '[]) t (Scalar t)
-             , ElementWise (Idx '[n]) t (Vector t n)
+             , NCommons.ElementWise (Dims.Idx '[]) t (Scalar t)
+             , NCommons.ElementWise (Dims.Idx '[n]) t (Vector t n)
              )
           => Vector t n -> Scalar t
-normLPInf = broadcast . ewfold (const (max . abs)) 0
+normLPInf = NCommons.broadcast . NCommons.ewfold (const (max . abs)) 0
 
 -- | Minimum of absolute values
 normLNInf :: ( Ord t, Num t
-             , ElementWise (Idx '[]) t (Scalar t)
-             , ElementWise (Idx '[n]) t (Vector t n)
+             , NCommons.ElementWise (Dims.Idx '[]) t (Scalar t)
+             , NCommons.ElementWise (Dims.Idx '[n]) t (Vector t n)
              )
           => Vector t n -> Scalar t
-normLNInf x = broadcast $ ewfold (const (min . abs))
-                                 (abs $ x ! (1:!Z)) x
+normLNInf x = NCommons.broadcast $ NCommons.ewfold (const (min . abs))
+                                 (abs $ x NCommons.! (1 Dims.:! Dims.Z)) x
 
 -- | Norm in Lp space
 normLP :: ( Floating t
-          , ElementWise (Idx '[]) t (Scalar t)
-          , ElementWise (Idx '[n]) t (Vector t n)
+          , NCommons.ElementWise (Dims.Idx '[]) t (Scalar t)
+          , NCommons.ElementWise (Dims.Idx '[n]) t (Vector t n)
           )
        => Int -> Vector t n -> Scalar t
-normLP i' = broadcast . (**ri) . ewfold (const (\a -> (a**i +))) 0
+normLP i' = NCommons.broadcast . (**ri) . NCommons.ewfold (const (\a -> (a**i +))) 0
   where
     i  = fromIntegral i'
     ri = recip i
@@ -707,46 +937,46 @@ normLP i' = broadcast . (**ri) . ewfold (const (\a -> (a**i +))) 0
   #-}
 
 -- | Compose a 2D vector
-vec2 :: ElementWise (Idx '[2]) t (Vector t 2) => t -> t -> Vector t 2
-vec2 a b = ewgen f
+vec2 :: NCommons.ElementWise (Dims.Idx '[2]) t (Vector t 2) => t -> t -> Vector t 2
+vec2 a b = NCommons.ewgen f
   where
-    f (1:!Z) = a
+    f (1 Dims.:! Dims.Z) = a
     f _ = b
 
--- | Take a determinant of a matrix composed from two 2D vectors.
+-- | Dims.Take a determinant of a matrix composed from two 2D vectors.
 --   Like a cross product in 2D.
-det2 :: ( ElementWise (Idx '[2]) t (Vector t 2)
-        , ElementWise (Idx '[]) t (Scalar t)
+det2 :: ( NCommons.ElementWise (Dims.Idx '[2]) t (Vector t 2)
+        , NCommons.ElementWise (Dims.Idx '[]) t (Scalar t)
         , Num t
         ) => Vector t 2 -> Vector t 2 -> Scalar t
-det2 a b = broadcast $ a ! (1 :! Z) * b ! (2 :! Z)
-                     - a ! (2 :! Z) * b ! (1 :! Z)
+det2 a b = NCommons.broadcast $ a NCommons.! (1 Dims.:! Dims.Z) * b NCommons.! (2 Dims.:! Dims.Z)
+                     - a NCommons.! (2 Dims.:! Dims.Z) * b NCommons.! (1 Dims.:! Dims.Z)
 
 -- | Compose a 3D vector
-vec3 :: ElementWise (Idx '[3]) t (Vector t 3) => t -> t -> t -> Vector t 3
-vec3 a b c = ewgen f
+vec3 :: NCommons.ElementWise (Dims.Idx '[3]) t (Vector t 3) => t -> t -> t -> Vector t 3
+vec3 a b c = NCommons.ewgen f
   where
-    f (1:!Z) = a
-    f (2:!Z) = b
+    f (1 Dims.:! Dims.Z) = a
+    f (2 Dims.:! Dims.Z) = b
     f _ = c
 
 -- | Cross product
-cross :: ( ElementWise (Idx '[3]) t (Vector t 3)
-         , ElementWise (Idx '[]) t (Scalar t)
+cross :: ( NCommons.ElementWise (Dims.Idx '[3]) t (Vector t 3)
+         , NCommons.ElementWise (Dims.Idx '[]) t (Scalar t)
          , Num t
          ) => Vector t 3 -> Vector t 3 -> Vector t 3
-cross a b = vec3 ( a ! (2 :! Z) * b ! (3 :! Z)
-                 - a ! (3 :! Z) * b ! (2 :! Z) )
-                 ( a ! (3 :! Z) * b ! (1 :! Z)
-                 - a ! (1 :! Z) * b ! (3 :! Z) )
-                 ( a ! (1 :! Z) * b ! (2 :! Z)
-                 - a ! (2 :! Z) * b ! (1 :! Z) )
+cross a b = vec3 ( a NCommons.! (2 Dims.:! Dims.Z) * b NCommons.! (3 Dims.:! Dims.Z)
+                 - a NCommons.! (3 Dims.:! Dims.Z) * b NCommons.! (2 Dims.:! Dims.Z) )
+                 ( a NCommons.! (3 Dims.:! Dims.Z) * b NCommons.! (1 Dims.:! Dims.Z)
+                 - a NCommons.! (1 Dims.:! Dims.Z) * b NCommons.! (3 Dims.:! Dims.Z) )
+                 ( a NCommons.! (1 Dims.:! Dims.Z) * b NCommons.! (2 Dims.:! Dims.Z)
+                 - a NCommons.! (2 Dims.:! Dims.Z) * b NCommons.! (1 Dims.:! Dims.Z) )
 
 
 -- | Cross product for two vectors in 3D
 infixl 7 ×
-(×) :: ( ElementWise (Idx '[3]) t (Vector t 3)
-       , ElementWise (Idx '[]) t (Scalar t)
+(×) :: ( NCommons.ElementWise (Dims.Idx '[3]) t (Vector t 3)
+       , NCommons.ElementWise (Dims.Idx '[]) t (Scalar t)
        , Num t
         ) => Vector t 3 -> Vector t 3 -> Vector t 3
 (×) = cross
@@ -754,13 +984,13 @@ infixl 7 ×
 
 
 -- | Compose a 3D vector
-vec4 :: ElementWise (Idx '[4]) t (Vector t 4)
+vec4 :: NCommons.ElementWise (Dims.Idx '[4]) t (Vector t 4)
      => t -> t -> t -> t -> Vector t 4
-vec4 a b c d = ewgen f
+vec4 a b c d = NCommons.ewgen f
   where
-    f (1:!Z) = a
-    f (2:!Z) = b
-    f (3:!Z) = c
+    f (1 Dims.:! Dims.Z) = a
+    f (2 Dims.:! Dims.Z) = b
+    f (3 Dims.:! Dims.Z) = c
     f _ = d
 
 
@@ -784,24 +1014,24 @@ type Mat44f = Matrix Float 4 4
 
 
 -- | Compose a 2x2D matrix
-mat22 :: ( PrimBytes (Vector t 2)
-         , PrimBytes (Matrix t 2 2)
+mat22 :: ( NCommons.PrimBytes (Vector t 2)
+         , NCommons.PrimBytes (Matrix t 2 2)
          )
       => Vector t 2 -> Vector t 2 -> Matrix t 2 2
 mat22 = (<::>)
 
 -- | Compose a 3x3D matrix
-mat33 :: ( PrimBytes (Vector t 3)
-         , PrimBytes (Matrix t 3 2)
-         , PrimBytes (Matrix t 3 3)
+mat33 :: ( NCommons.PrimBytes (Vector t 3)
+         , NCommons.PrimBytes (Matrix t 3 2)
+         , NCommons.PrimBytes (Matrix t 3 3)
          )
       => Vector t 3 -> Vector t 3 -> Vector t 3 -> Matrix t 3 3
 mat33 a b c = a <::> b <+:> c
 
 -- | Compose a 4x4D matrix
-mat44 :: ( PrimBytes (Vector t 4)
-         , PrimBytes (Matrix t 4 2)
-         , PrimBytes (Matrix t 4 4)
+mat44 :: ( NCommons.PrimBytes (Vector t 4)
+         , NCommons.PrimBytes (Matrix t 4 2)
+         , NCommons.PrimBytes (Matrix t 4 4)
          )
       => Vector t 4 -> Vector t 4 -> Vector t 4 -> Vector t 4 -> Matrix t 4 4
 mat44 a b c d = (a <::>) b <:> (c <::> d)
@@ -812,7 +1042,7 @@ transpose :: ( KnownNat n
              , KnownNat m
              , M.MatrixCalculus t n m (Array t '[n,m])
              , M.MatrixCalculus t m n (Array t '[m,n])
-             , PrimBytes (Array t '[m,n])
+             , NCommons.PrimBytes (Array t '[m,n])
              )
           => Matrix t n m -> Matrix t m n
 transpose = KnownDataFrame . M.transpose . _getDF

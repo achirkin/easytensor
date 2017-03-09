@@ -22,7 +22,7 @@ module Numeric.EasyTensor
   ) where
 
 import           GHC.TypeLits
-import           Numeric.Commons    as X
+-- import           Numeric.Commons    as X
 import           Numeric.DataFrame  as X
 import           Numeric.Dimensions as X
 

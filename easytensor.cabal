@@ -69,6 +69,8 @@ executable easytensor-exe
 test-suite easytensor-test
     type: exitcode-stdio-1.0
     main-is: Spec.hs
+    other-modules:
+        Numeric.DataFrame.SubSpaceTest
     build-depends:
         base -any,
         easytensor -any
