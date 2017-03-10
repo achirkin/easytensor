@@ -33,10 +33,10 @@ module Numeric.Dimensions
   , XDimensions (..)
   , inSpaceOf, asSpaceOf, order, appendIdx, splitIdx
     -- * Type-level programming
-  , FixedDim, FixedXDim, KnownOrder, ValidDims
-  , type (++), Reverse, Take, Drop, Length
-  , type (:<), type (>:), type (:+), type (+:), Head, Tail
-  , Suffix, Prefix
+  -- , FixedDim, FixedXDim, KnownOrder, ValidDims
+  -- , type (++), Reverse, Take, Drop, Length
+  -- , type (:<), type (>:), type (:+), type (+:), Head, Tail
+  -- , Suffix, Prefix
   ) where
 
 
@@ -225,9 +225,9 @@ class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
   -- | Get index offset: i1 + i2*n1 + i3*n1*n2 + ...
   ioffset   :: Idx ds -> Int
   -- | Drop a number of dimensions
-  dropDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (Drop n ds)
+  dropDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (EvalList (Drop n ds))
   -- | Take a number of dimensions
-  takeDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (Take n ds)
+  takeDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (EvalList (Take n ds))
   -- | Maximum values of all dimensions
   dimMax    :: Idx ds
   -- | Minimum values -- ones
@@ -532,7 +532,7 @@ instance ( Dimensions'' ds
 
 
 appendIdx :: Idx as -> Int -> Idx (as +: b)
-appendIdx Z i = i :! Z
+-- appendIdx Z i = i :! Z
 appendIdx jjs@(j :! js) i = case proofCons jjs js of
     Refl -> unsafeCoerce $ j :! appendIdx js i
   where
@@ -638,160 +638,262 @@ type family WrapHead (n :: Nat) (xs :: [XNat]) :: XNat where
 type (a :: k) :+ (as :: [k]) = a ': as
 infixr 5 :+
 -- | Synonym for a type-level snoc (injective!)
-type (ns :: [k]) +: (n :: k) = EvalSnoc ('Snoc ns n)
+type (ns :: [k]) +: (n :: k) = EvalList ('Snoc (ToList ns) n)
+-- type family (ns :: [k]) +: (n :: k) = (nns :: [k]) | nns -> ns n where
 infixl 5 +:
 
 
 
 -- | List concatenation
-type (as :: [k]) ++ (bs :: [k]) = EvalConcat ('Concat as bs)
+type (as :: [k]) ++ (bs :: [k]) = EvalList ('Concat (ToList as) (ToList bs))
 infixr 5 ++
--- | Reverse a list (injective!)
-type Reverse (xs :: [k]) = EvalReverse ('Reverse xs)
--- | Drop a number of elements
-type Drop (n::Nat) (xs :: [k]) = EvalDrop ('Drop n xs)
--- | Take a number of elements
-type Take (n::Nat) (xs :: [k]) = EvalTake ('Take n xs)
+-- -- | Reverse a list (injective!)
+-- type Reverse (xs :: [k]) = EvalReverse ('Reverse xs)
+-- -- | Drop a number of elements
+-- type Drop (n::Nat) (xs :: [k]) = EvalDrop ('Drop n xs)
+-- -- | Take a number of elements
+-- type Take (n::Nat) (xs :: [k]) = EvalTake ('Take n xs)
 
 -- | Type-level list operations
 data List k
-  = NoOp [k]
-  | Cons k [k]
-  | Snoc [k] k
-  | Concat [k] [k]
-  | Reverse [k]
-  | Drop Nat [k]
-  | Take Nat [k]
-
-type family EvalNoOp (xs :: List k) = (ys :: [k]) | ys -> xs where
-  EvalNoOp ('NoOp '[]) = '[]
-  EvalNoOp ('NoOp (x ': xs)) = x ': xs
-
-type family EvalCons (xs :: List k) = (ys :: [k]) | ys -> xs where
-  EvalCons ('Cons x xs) = x ': xs
-
-type EvalSnoc (xs :: List k) = GetList1 (Snoc1 xs)
-
-type family EvalConcat (xs :: List k) :: [k] where
-  EvalConcat ('Concat '[a] '[b]) = '[a,b]
-  EvalConcat ('Concat as (b ': bs)) = EvalConcat ('Concat (as +: b) bs)
-  EvalConcat ('Concat as _) = as
+  = Empty
+  | Cons k (List k)
+  | Snoc (List k) k
+  | Concat (List k) (List k)
+  | Reverse (List k)
+  | Drop Nat (List k)
+  | Take Nat (List k)
 
 
+-- type family EvalSnoc (xs :: List k) = (ys :: [k]) | ys -> xs where
 
-type instance 'Concat as  '[]       == 'Concat bs '[] = as == bs
-type instance 'Concat as (a ': as1) == 'Concat bs (b ': bs1)
-            = 'Concat (as +: a) as1 == 'Concat (bs +: b) bs1
-type instance 'Concat _ (_ ': _)    == 'Concat _ '[] = 'False
-type instance 'Concat _   '[]       == 'Concat _ (_ ': _) = 'False
+type family ToList (xs :: [k]) = (ys :: List k) | ys -> xs where
+    ToList '[] = 'Empty
+    ToList (x ': xs) = 'Cons x (ToList xs)
 
-type EvalReverse (xs :: List k) = Reversed (Reverse' xs)
+type family EvalList (xs :: List k) :: [k] where
+    -- | Transform from empty is trivial
+    EvalList 'Empty       = '[]
+    -- | 'Cons constructor matches the list constructor
+    EvalList ('Cons x xs) = x ': EvalList xs
+    -- | All other operations should be derived in terms of Cons
+    EvalList xs = EvalList (SimplifyList xs)
 
-type family EvalDrop (xs :: List k) :: [k] where
-  EvalDrop ('Drop _ '[])       = '[]
-  EvalDrop ('Drop 0 xs)        = xs
-  EvalDrop ('Drop n (x ': xs)) = EvalDrop ('Drop (n-1) xs)
+x :: Proxy (EvalList (Concat '[2,6] (Drop 1 (Reverse '[2,7,89,4]))))
+x = _
 
-type family EvalTake (xs :: List k) :: [k] where
-  EvalTake ('Take _ '[])       = '[]
-  EvalTake ('Take 0 xs)        = '[]
-  EvalTake ('Take n (x ': xs)) = x ': EvalTake ('Take (n-1) xs)
+-- | This function must guarantee that result of evaluation is
+--   either 'Empty or 'Cons
+type family SimplifyList (xs :: List k) :: List k where
+    SimplifyList 'Empty       = 'Empty
+    SimplifyList ('Cons x xs) = 'Cons x (SimplifyList xs)
 
+    SimplifyList ('Snoc 'Empty x)       = 'Cons x 'Empty
+    SimplifyList ('Snoc ('Cons x xs) y) = 'Cons x (SimplifyList ('Snoc xs y))
+    SimplifyList ('Snoc xs y)           = SimplifyList ('Snoc (SimplifyList xs) y)
 
+    SimplifyList ('Concat 'Empty xs)       = SimplifyList xs
+    SimplifyList ('Concat xs 'Empty)       = SimplifyList xs
+    SimplifyList ('Concat ('Cons x xs) ys) = 'Cons x (SimplifyList ('Concat xs ys))
+    SimplifyList ('Concat xs ys)           = SimplifyList ('Concat (SimplifyList xs) ys)
 
-type family EvalList (x :: List k) :: [k] where
-  -- EvalList (xs :: [k])     = xs
-  EvalList ('NoOp xs)      = EvalNoOp    ('NoOp xs)
-  EvalList ('Cons x xs)    = EvalCons    ('Cons x xs)
-  EvalList ('Snoc xs x)    = EvalSnoc    ('Snoc xs x)
-  EvalList ('Concat xs ys) = EvalConcat  ('Concat xs ys)
-  EvalList ('Reverse xs)   = EvalReverse ('Reverse xs)
-  EvalList ('Drop n xs)    = EvalDrop    ('Drop n xs)
-  EvalList ('Take n xs)    = EvalTake    ('Take n xs)
+    SimplifyList ('Reverse 'Empty)        = 'Empty
+    SimplifyList ('Reverse ('Reverse xs)) = SimplifyList xs
+    SimplifyList ('Reverse ('Snoc xs x))  = 'Cons x (SimplifyList ('Reverse xs))
+    SimplifyList ('Reverse ('Cons x xs))  = SimplifyList ('Snoc ('Reverse xs) x)
+    SimplifyList ('Reverse xs)            = SimplifyList ('Reverse (SimplifyList xs))
 
+    SimplifyList ('Drop 0 xs)           = SimplifyList xs
+    SimplifyList ('Drop n 'Empty)       = 'Empty
+    SimplifyList ('Drop n ('Cons x xs)) = SimplifyList ('Drop (n-1) xs)
+    SimplifyList ('Drop n xs)           = SimplifyList ('Drop n (SimplifyList xs))
 
--- type family (:++) (x :: k) (xs::l) = (ys :: l) | ys -> xs x where
---   x :++ (xs :: [k])     = x ': xs
---   x :++ ('NoOp xs)      = 'NoOp (x ': xs)
---   y :++ ('Cons x xs)    = 'Cons y (x ': xs)
---   y :++ ('Snoc xs x)    = 'Snoc (y ': xs) x
---   y :++ ('Concat xs ys) = 'Concat (y ': xs) ys
---   y :++ ('Reverse xs)   = 'Reverse (xs +: y)
---   y :++ ('Drop 0 xs)    = 'Drop 0 (y ': xs)
---   y :++ ('Take 0 xs)    = 'Take 1 (y ': xs)
---   y :++ ('Take 1 xs)    = 'Take 2 (y ': xs)
---   y :++ ('Take 2 xs)    = 'Take 3 (y ': xs)
---   y :++ ('Take 3 xs)    = 'Take 4 (y ': xs)
---   y :++ ('Take 4 xs)    = 'Take 5 (y ': xs)
--- infixr 5 :++
-
-
-
+    SimplifyList ('Take 0 _)            = 'Empty
+    SimplifyList ('Take n 'Empty)       = 'Empty
+    SimplifyList ('Take n ('Cons x xs)) = 'Cons x (SimplifyList ('Take (n-1) xs))
+    SimplifyList ('Take n xs)           = SimplifyList ('Take n (SimplifyList xs))
 
 
--- | A weird data type used to make `(+:)` operation injective.
---   `List k [k]` must have at least two elements.
-data List1 k = L1Single k | L1Head k [k]
-type family Snoc1 (xs :: List k) = (ys :: List1 k) | ys -> xs where
-  Snoc1 ('Snoc '[] y)        = 'L1Single y
-  Snoc1 ('Snoc (x ': xs) y :: List Nat)
-      = ('L1Head x (GetList1Nat (SnocNat xs y)) :: List1 Nat)
-  Snoc1 ('Snoc (x ': xs) y :: List XNat)
-      = ('L1Head x (GetList1XNat (SnocXNat xs y)) :: List1 XNat)
-  Snoc1 ('Snoc (x ': xs) y)  = 'L1Head x (xs +: y)
-type family GetList1 (ts :: List1 k) = (rs :: [k]) | rs -> ts where
-  GetList1 ('L1Single x) = '[x]
-  GetList1 ('L1Head y (x ':xs)) = y ': x ': xs
+type family Cons (x :: k) (xs :: l k) :: List k where
+    Cons x (xs :: [k]) = 'Cons x (ToList xs)
+    Cons x (xs :: List k) = 'Cons x xs
+    Cons _ xs = TypeError (
+      'Text "Cons supports types [k] and List k only"
+      ':$$: 'Text "But found: " ':<>: 'ShowType xs
+     )
 
--- | Even more weird thing - specialization to kind Nat and XNat.
---   Otherwise, example below will not typecheck.
---   The problem, I guess, is in too many layers of type families nested.
---   Though, even if I fully annotate everything with kind signature
---            it still does not work without this weird specialization.
--- ff :: Proxy k -> Proxy (as +: k) -> Proxy (k :+ bs) -> Proxy (as ++ bs)
--- ff _ _ _ = Proxy
--- yy :: Proxy ('[3,7,2] :: [Nat])
--- yy = ff (Proxy @5) (Proxy @'[3,7,5]) (Proxy @'[5,2])
-type SnocNat (ns :: [Nat]) (n :: Nat) = Snoc1 ('Snoc ns n)
-type family GetList1Nat (ts :: List1 Nat) = (rs :: [Nat]) | rs -> ts where
-  GetList1Nat ('L1Single x) = '[x]
-  GetList1Nat ('L1Head y (x ':xs)) = y ': x ': xs
-type SnocXNat (ns :: [XNat]) (n :: XNat) = Snoc1 ('Snoc ns n)
-type family GetList1XNat (ts :: List1 XNat) = (rs :: [XNat]) | rs -> ts where
-  GetList1XNat ('L1Single x) = '[x]
-  GetList1XNat ('L1Head y (x ':xs)) = y ': x ': xs
+type family Snoc (xs :: l k) (x :: k) :: List k where
+    Snoc (xs :: [k]) x = 'Snoc (ToList xs) x
+    Snoc (xs :: List k) x = 'Snoc xs x
+    Snoc xs _ = TypeError (
+      'Text "Snoc supports types [k] and List k only"
+      ':$$: 'Text "But found: " ':<>: 'ShowType xs
+     )
+
+type family Concat (xs :: l k) (ys :: m k) :: List k where
+    Concat (xs :: List k) (ys :: List k) = 'Concat xs ys
+    Concat (xs :: [k]) (ys :: [k]) = 'Concat (ToList xs) (ToList ys)
+    Concat (xs :: List k) (ys :: [k]) = 'Concat xs (ToList ys)
+    Concat (xs :: [k]) (ys :: List k) = 'Concat (ToList xs) ys
+    Concat xs ys = TypeError (
+      'Text "Concat supports types [k] and List k only"
+      ':$$: 'Text "But found: " ':<>: 'ShowType xs ':<>: 'Text " and " ':<>: 'ShowType ys
+     )
+
+type family Reverse (xs :: l k) :: List k where
+    Reverse (xs :: [k]) = 'Reverse (ToList xs)
+    Reverse (xs :: List k) = 'Reverse xs
+    Reverse xs = TypeError (
+      'Text "Reverse supports types [k] and List k only"
+      ':$$: 'Text "But found: " ':<>: 'ShowType xs
+     )
+
+type family Drop (n::Nat) (xs :: l k) :: List k where
+    Drop n (xs :: [k]) = 'Drop n (ToList xs)
+    Drop n (xs :: List k) = 'Drop n xs
+    Drop n xs = TypeError (
+      'Text "Drop supports types [k] and List k only"
+      ':$$: 'Text "But found: " ':<>: 'ShowType xs
+     )
+
+type family Take (n::Nat) (xs :: l k) :: List k where
+    Take n (xs :: [k]) = 'Take n (ToList xs)
+    Take n (xs :: List k) = 'Take n xs
+    Take n xs = TypeError (
+      'Text "Take supports types [k] and List k only"
+      ':$$: 'Text "But found: " ':<>: 'ShowType xs
+     )
 
 
-type family Reversed (ts :: Reversing k) = (rs :: [k]) | rs -> ts where
-  Reversed 'REmpty = '[]
-  Reversed ('Reversing ('L1Single a)) = '[a]
-  Reversed ('Reversing ('L1Head y (x ':xs))) = y ': x ': xs
-
-
-type family ReversedNat (ts :: Reversing Nat) = (rs :: [Nat]) | rs -> ts where
-  ReversedNat 'REmpty = '[]
-  ReversedNat ('Reversing ('L1Single a)) = '[a]
-  ReversedNat ('Reversing ('L1Head y (x ':xs))) = y ': x ': xs
-type family ReversedXNat (ts :: Reversing XNat) = (rs :: [XNat]) | rs -> ts where
-  ReversedXNat 'REmpty = '[]
-  ReversedXNat ('Reversing ('L1Single a)) = '[a]
-  ReversedXNat ('Reversing ('L1Head y (x ':xs))) = y ': x ': xs
-
-
--- | Synonym for (:+) that ignores Nat values 0 and 1
-type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
-  0 :< ns = ns
-  1 :< ns = ns
-  n :< ns = n :+ ns
-infixr 6 :<
-
--- | Synonym for (+:) that ignores Nat values 0 and 1
-type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
-  ns >: 0 = ns
-  ns >: 1 = ns
-  ns >: n = ns +: n
-infixl 6 >:
-
+-- type family EvalNoOp (xs :: List k) = (ys :: [k]) | ys -> xs where
+--   EvalNoOp ('NoOp '[]) = '[]
+--   EvalNoOp ('NoOp (x ': xs)) = x ': xs
+--
+-- type family EvalCons (xs :: List k) = (ys :: [k]) | ys -> xs where
+--   EvalCons ('Cons x xs) = x ': xs
+--
+-- type EvalSnoc (xs :: List k) = GetList1 (Snoc1 xs)
+--
+-- type family EvalConcat (xs :: List k) :: [k] where
+--   EvalConcat ('Concat '[a] '[b]) = '[a,b]
+--   EvalConcat ('Concat as (b ': bs)) = EvalConcat ('Concat (as +: b) bs)
+--   EvalConcat ('Concat as _) = as
+--
+--
+--
+-- -- type instance 'Concat as  '[]       == 'Concat bs '[] = as == bs
+-- -- type instance 'Concat as (a ': as1) == 'Concat bs (b ': bs1)
+-- --             = 'Concat (as +: a) as1 == 'Concat (bs +: b) bs1
+-- -- type instance 'Concat _ (_ ': _)    == 'Concat _ '[] = 'False
+-- -- type instance 'Concat _   '[]       == 'Concat _ (_ ': _) = 'False
+-- --
+-- -- type EvalReverse (xs :: List k) = Reversed (Reverse' xs)
+-- --
+-- -- type family EvalDrop (xs :: List k) :: [k] where
+-- --   EvalDrop ('Drop _ '[])       = '[]
+-- --   EvalDrop ('Drop 0 xs)        = xs
+-- --   EvalDrop ('Drop n (x ': xs)) = EvalDrop ('Drop (n-1) xs)
+-- --
+-- -- type family EvalTake (xs :: List k) :: [k] where
+-- --   EvalTake ('Take _ '[])       = '[]
+-- --   EvalTake ('Take 0 xs)        = '[]
+-- --   EvalTake ('Take n (x ': xs)) = x ': EvalTake ('Take (n-1) xs)
+--
+--
+--
+-- -- type family EvalList (x :: List k) :: [k] where
+-- --   -- EvalList (xs :: [k])     = xs
+-- --   EvalList ('NoOp xs)      = EvalNoOp    ('NoOp xs)
+-- --   EvalList ('Cons x xs)    = EvalCons    ('Cons x xs)
+-- --   EvalList ('Snoc xs x)    = EvalSnoc    ('Snoc xs x)
+-- --   EvalList ('Concat xs ys) = EvalConcat  ('Concat xs ys)
+-- --   EvalList ('Reverse xs)   = EvalReverse ('Reverse xs)
+-- --   EvalList ('Drop n xs)    = EvalDrop    ('Drop n xs)
+-- --   EvalList ('Take n xs)    = EvalTake    ('Take n xs)
+--
+--
+-- -- type family (:++) (x :: k) (xs::l) = (ys :: l) | ys -> xs x where
+-- --   x :++ (xs :: [k])     = x ': xs
+-- --   x :++ ('NoOp xs)      = 'NoOp (x ': xs)
+-- --   y :++ ('Cons x xs)    = 'Cons y (x ': xs)
+-- --   y :++ ('Snoc xs x)    = 'Snoc (y ': xs) x
+-- --   y :++ ('Concat xs ys) = 'Concat (y ': xs) ys
+-- --   y :++ ('Reverse xs)   = 'Reverse (xs +: y)
+-- --   y :++ ('Drop 0 xs)    = 'Drop 0 (y ': xs)
+-- --   y :++ ('Take 0 xs)    = 'Take 1 (y ': xs)
+-- --   y :++ ('Take 1 xs)    = 'Take 2 (y ': xs)
+-- --   y :++ ('Take 2 xs)    = 'Take 3 (y ': xs)
+-- --   y :++ ('Take 3 xs)    = 'Take 4 (y ': xs)
+-- --   y :++ ('Take 4 xs)    = 'Take 5 (y ': xs)
+-- -- infixr 5 :++
+--
+--
+--
+--
+--
+-- -- | A weird data type used to make `(+:)` operation injective.
+-- --   `List k [k]` must have at least two elements.
+-- data List1 k = L1Single k | L1Head k [k]
+-- type family Snoc1 (xs :: List k) = (ys :: List1 k) | ys -> xs where
+--   Snoc1 ('Snoc '[] y)        = 'L1Single y
+--   Snoc1 ('Snoc (x ': xs) y :: List Nat)
+--       = ('L1Head x (GetList1Nat (SnocNat xs y)) :: List1 Nat)
+--   Snoc1 ('Snoc (x ': xs) y :: List XNat)
+--       = ('L1Head x (GetList1XNat (SnocXNat xs y)) :: List1 XNat)
+--   Snoc1 ('Snoc (x ': xs) y)  = 'L1Head x (xs +: y)
+-- type family GetList1 (ts :: List1 k) = (rs :: [k]) | rs -> ts where
+--   GetList1 ('L1Single x) = '[x]
+--   GetList1 ('L1Head y (x ':xs)) = y ': x ': xs
+--
+-- -- | Even more weird thing - specialization to kind Nat and XNat.
+-- --   Otherwise, example below will not typecheck.
+-- --   The problem, I guess, is in too many layers of type families nested.
+-- --   Though, even if I fully annotate everything with kind signature
+-- --            it still does not work without this weird specialization.
+-- -- ff :: Proxy k -> Proxy (as +: k) -> Proxy (k :+ bs) -> Proxy (as ++ bs)
+-- -- ff _ _ _ = Proxy
+-- -- yy :: Proxy ('[3,7,2] :: [Nat])
+-- -- yy = ff (Proxy @5) (Proxy @'[3,7,5]) (Proxy @'[5,2])
+-- type SnocNat (ns :: [Nat]) (n :: Nat) = Snoc1 ('Snoc ns n)
+-- type family GetList1Nat (ts :: List1 Nat) = (rs :: [Nat]) | rs -> ts where
+--   GetList1Nat ('L1Single x) = '[x]
+--   GetList1Nat ('L1Head y (x ':xs)) = y ': x ': xs
+-- type SnocXNat (ns :: [XNat]) (n :: XNat) = Snoc1 ('Snoc ns n)
+-- type family GetList1XNat (ts :: List1 XNat) = (rs :: [XNat]) | rs -> ts where
+--   GetList1XNat ('L1Single x) = '[x]
+--   GetList1XNat ('L1Head y (x ':xs)) = y ': x ': xs
+--
+--
+-- type family Reversed (ts :: Reversing k) = (rs :: [k]) | rs -> ts where
+--   Reversed 'REmpty = '[]
+--   Reversed ('Reversing ('L1Single a)) = '[a]
+--   Reversed ('Reversing ('L1Head y (x ':xs))) = y ': x ': xs
+--
+--
+-- type family ReversedNat (ts :: Reversing Nat) = (rs :: [Nat]) | rs -> ts where
+--   ReversedNat 'REmpty = '[]
+--   ReversedNat ('Reversing ('L1Single a)) = '[a]
+--   ReversedNat ('Reversing ('L1Head y (x ':xs))) = y ': x ': xs
+-- type family ReversedXNat (ts :: Reversing XNat) = (rs :: [XNat]) | rs -> ts where
+--   ReversedXNat 'REmpty = '[]
+--   ReversedXNat ('Reversing ('L1Single a)) = '[a]
+--   ReversedXNat ('Reversing ('L1Head y (x ':xs))) = y ': x ': xs
+--
+--
+-- -- | Synonym for (:+) that ignores Nat values 0 and 1
+-- type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
+--   0 :< ns = ns
+--   1 :< ns = ns
+--   n :< ns = n :+ ns
+-- infixr 6 :<
+--
+-- -- | Synonym for (+:) that ignores Nat values 0 and 1
+-- type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
+--   ns >: 0 = ns
+--   ns >: 1 = ns
+--   ns >: n = ns +: n
+-- infixl 6 >:
+--
 type family Head (xs :: [k]) :: k where
   Head (x ': xs) = x
   Head '[]       = TypeError ( 'Text
@@ -803,50 +905,52 @@ type family Tail (xs :: [k]) :: [k] where
   Tail '[]       = TypeError ( 'Text
     "Tail -- empty type-level list."
    )
-
-
-
-data Reversing k = REmpty | Reversing (List1 k)
-type family Reverse' (as :: List k) = (rs :: Reversing k) | rs -> as where
-  Reverse' ('Reverse '[]) = 'REmpty
-  Reverse' ('Reverse (a ': as) :: List Nat) = 'Reversing
-    (SnocNat (ReversedNat (Reverse' ('Reverse as))) a)
-  Reverse' ('Reverse (a ': as) :: List XNat) = 'Reversing
-    (SnocXNat (ReversedXNat (Reverse' ('Reverse as))) a)
-  Reverse' ('Reverse (a ': as)) = 'Reversing
-    (Snoc1 ('Snoc (Reversed (Reverse' ('Reverse as))) a))
-
-type family Length (as :: [k]) :: Nat where
+--
+--
+--
+-- data Reversing k = REmpty | Reversing (List1 k)
+-- type family Reverse' (as :: List k) = (rs :: Reversing k) | rs -> as where
+--   Reverse' ('Reverse '[]) = 'REmpty
+--   Reverse' ('Reverse (a ': as) :: List Nat) = 'Reversing
+--     (SnocNat (ReversedNat (Reverse' ('Reverse as))) a)
+--   Reverse' ('Reverse (a ': as) :: List XNat) = 'Reversing
+--     (SnocXNat (ReversedXNat (Reverse' ('Reverse as))) a)
+--   Reverse' ('Reverse (a ': as)) = 'Reversing
+--     (Snoc1 ('Snoc (Reversed (Reverse' ('Reverse as))) a))
+--
+type family Length (as :: l) :: Nat where
   Length '[] = 0
   Length (a ': as) = 1 + Length as
+  Length (xs :: List k) = Length (EvalList xs)
 
 
-type family SameLength (as :: [k]) (bs :: [k]) :: Bool where
-  SameLength '[] '[] = 'True
-  SameLength (_ ': as) (_ ': bs) = SameLength as bs
-  SameLength _ _ = 'False
-
--- x :: Proxy (Prefix '[3] '[2,7,3])
--- x = _
-
-
--- | Get a suffix part of a list, given its prefix
---   This version is more permissive than Suffix type class:
---     we do not check whether lhs is indeed a prefix
-type family Suffix (as :: [k]) (asbs :: [k]) :: [k] where
-  Suffix '[] asbs = asbs
-  Suffix (a ': as) (_ ': asbs) = Suffix as asbs
-  Suffix (_ ': _) '[] = TypeError (
-    'Text "Lhs Suffix parameter cannot have more elements than its rhs parameter"
-   )
-
--- | Get a prefix part of a list, given its suffix
-type family Prefix (bs :: [k]) (asbs :: [k]) :: [k] where
-  Prefix '[] asbs  = asbs
-  Prefix bs (a ': asbs) = If (SameLength bs (a ': asbs)) '[] (a ': Prefix bs asbs)
-  -- Prefix bs bs = '[]
-  -- Prefix bs (a ': asbs) = a ': Prefix bs asbs
-  -- Prefix bs asbs = TypeError (
-  --   'Text "Lhs Prefix parameter must be a suffix of its rhs parameter"
-  --   ':$$: 'Text "Assertion failed: " ':<>: 'ShowType bs ':<>: 'Text " == " ':<>: 'ShowType asbs
-  --  )
+--
+-- type family SameLength (as :: [k]) (bs :: [k]) :: Bool where
+--   SameLength '[] '[] = 'True
+--   SameLength (_ ': as) (_ ': bs) = SameLength as bs
+--   SameLength _ _ = 'False
+--
+-- -- x :: Proxy (Prefix '[3] '[2,7,3])
+-- -- x = _
+--
+--
+-- -- | Get a suffix part of a list, given its prefix
+-- --   This version is more permissive than Suffix type class:
+-- --     we do not check whether lhs is indeed a prefix
+-- type family Suffix (as :: [k]) (asbs :: [k]) :: [k] where
+--   Suffix '[] asbs = asbs
+--   Suffix (a ': as) (_ ': asbs) = Suffix as asbs
+--   Suffix (_ ': _) '[] = TypeError (
+--     'Text "Lhs Suffix parameter cannot have more elements than its rhs parameter"
+--    )
+--
+-- -- | Get a prefix part of a list, given its suffix
+-- type family Prefix (bs :: [k]) (asbs :: [k]) :: [k] where
+--   Prefix '[] asbs  = asbs
+--   Prefix bs (a ': asbs) = If (SameLength bs (a ': asbs)) '[] (a ': Prefix bs asbs)
+--   -- Prefix bs bs = '[]
+--   -- Prefix bs (a ': asbs) = a ': Prefix bs asbs
+--   -- Prefix bs asbs = TypeError (
+--   --   'Text "Lhs Prefix parameter must be a suffix of its rhs parameter"
+--   --   ':$$: 'Text "Assertion failed: " ':<>: 'ShowType bs ':<>: 'Text " == " ':<>: 'ShowType asbs
+--   --  )
