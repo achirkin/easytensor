@@ -200,11 +200,13 @@ _suppressHlintUnboxedTuplesWarning = undefined
 -- bs is an indexing dimensionality
 -- t is an underlying data type (i.e. Float, Int, Double)
 --
-class ( asbs ~ (as ++ bs)
+class ( asbs ~  (as ++ bs)
+      , bs ~ Dims.EvalList (Dims.Drop (Dims.Length as) asbs)
+      , as ~ Dims.EvalList (Dims.Take (Dims.Length asbs - Dims.Length bs) asbs)
       -- , bs ~ Dims.Drop (Dims.Length as) asbs
       -- , as ~ Dims.Take (Dims.Length asbs - Dims.Length bs) asbs
-      , as ~ Dims.Prefix bs asbs
-      , bs ~ Dims.Suffix as asbs
+      -- , as ~ Dims.Prefix bs asbs
+      -- , bs ~ Dims.Suffix as asbs
       -- , as ~ Dims.Take (Dims.Length as) asbs
       -- , bs ~ Dims.Drop (Dims.Length as) asbs
       , Dims.Dimensions as
@@ -278,8 +280,8 @@ iwfoldMap f = iwfoldl (\i b -> mappend b . f i) mempty
 instance ( asbs ~ (as ++ bs)
         --  , bs ~ Dims.Drop (Dims.Length as) asbs
         --  , as ~ Dims.Take (Dims.Length asbs - Dims.Length bs) asbs
-         , as ~ Dims.Prefix bs asbs
-         , bs ~ Dims.Suffix as asbs
+         , bs ~ Dims.EvalList (Dims.Drop (Dims.Length as) asbs)
+         , as ~ Dims.EvalList (Dims.Take (Dims.Length asbs - Dims.Length bs) asbs)
         --  , as ~ Dims.Take (Dims.Length as) asbs
         --  , bs ~ Dims.Drop (Dims.Length as) asbs
          , Dims.Dimensions as
@@ -453,11 +455,14 @@ infixl 7 %*
 -- | Append one DataFrame to another, adding up their last dimensionality
 (<:>) :: ( NCommons.PrimBytes (DataFrame t (ds Dims.+: n))
          , NCommons.PrimBytes (DataFrame t (ds Dims.+: m))
-         , NCommons.PrimBytes (DataFrame t (ds Dims.+: (n + m)))
+         , NCommons.PrimBytes (DataFrame t (ds Dims.+: npm))
+         , npm ~ (n + m)
+         , n   ~ (npm - m)
+         , m   ~ (npm - n)
          )
         => DataFrame t (ds Dims.+: n)
         -> DataFrame t (ds Dims.+: m)
-        -> DataFrame t (ds Dims.+: (n + m))
+        -> DataFrame t (ds Dims.+: npm)
 a <:> b = case (# NCommons.toBytes a, NCommons.toBytes b
                 , NCommons.byteSize a
                 , NCommons.byteSize b

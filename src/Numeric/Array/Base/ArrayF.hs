@@ -441,7 +441,7 @@ instance Dimensions '[n,n]
   {-# INLINE trace #-}
 
 
-instance ( as ~ Take (Length as' - 1) as'
+instance ( as ~ EvalList (Take (Length as' - 1) as')
          , as' ~ (as +: m)
          , cs  ~ (as ++ bs)
          , Dimensions as
