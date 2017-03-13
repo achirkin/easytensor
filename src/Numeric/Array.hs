@@ -178,15 +178,15 @@ deriving instance (KnownNat n, 2 <= n)
 deriving instance KnownNat n
                => MatrixInverse (Array Float '[n,n])
 
-instance ( as ~ Take (Length as' - 1) as'
+instance ( as ~ EvalList (Take (Length as' - 1) as')
          , as' ~ (as +: m)
          , cs  ~ (as ++ bs)
          , Dimensions as
          , Dimensions bs
          , Dimensions cs
          , KnownNat m
-         , as' ~ (Head as' ': Drop 1 as')
-         , cs ~ (Head cs ': Drop 1 cs)
+         , as' ~ (Head as' ': EvalList (Drop 1 as'))
+         , cs ~ (Head cs ': EvalList (Drop 1 cs))
          )
        => MatrixProduct (Array Float as') (Array Float (m ': bs)) (Array Float cs) where
   prod x y = Array $ prod (_unArray x) (_unArray y)
