@@ -39,9 +39,9 @@ module Numeric.Dimensions
   , FixedDim, FixedXDim, KnownOrder, ValidDims
   , type (++), Length
   , type (:<), type (>:), type (:+), type (+:), Head, Tail
-  -- , Suffix, Prefix
+  , Suffix, Prefix
   , List (..), Cons, Snoc, Reverse, Take, Drop
-  , EvalList, EvalCons, ToList,
+  , EvalList, EvalCons, ToList, SimplifyList
   ) where
 
 
@@ -725,16 +725,18 @@ type family SimplifyList (xs :: List k) :: List k where
     SimplifyList ('Snoc ('Cons x xs) y) = 'Cons x (SimplifyList ('Snoc xs y))
     SimplifyList ('Snoc xs y)           = SimplifyList ('Snoc (SimplifyList xs) y)
 
-    SimplifyList ('Concat 'Empty xs)       = SimplifyList xs
-    SimplifyList ('Concat xs 'Empty)       = SimplifyList xs
-    SimplifyList ('Concat ('Cons x xs) ys) = 'Cons x (SimplifyList ('Concat xs ys))
-    SimplifyList ('Concat xs ys)           = SimplifyList ('Concat (SimplifyList xs) ys)
+    SimplifyList ('Concat ('Take n xs) ('Drop n xs)) = SimplifyList xs
+    SimplifyList ('Concat 'Empty xs)                 = SimplifyList xs
+    SimplifyList ('Concat xs 'Empty)                 = SimplifyList xs
+    SimplifyList ('Concat ('Cons x xs) ys)           = 'Cons x (SimplifyList ('Concat xs ys))
+    SimplifyList ('Concat xs ys)                     = SimplifyList ('Concat (SimplifyList xs) ys)
 
-    SimplifyList ('Reverse 'Empty)        = 'Empty
-    SimplifyList ('Reverse ('Reverse xs)) = SimplifyList xs
-    SimplifyList ('Reverse ('Snoc xs x))  = 'Cons x (SimplifyList ('Reverse xs))
-    SimplifyList ('Reverse ('Cons x xs))  = SimplifyList ('Snoc ('Reverse xs) x)
-    SimplifyList ('Reverse xs)            = SimplifyList ('Reverse (SimplifyList xs))
+    SimplifyList ('Reverse 'Empty)          = 'Empty
+    SimplifyList ('Reverse ('Concat xs ys)) = SimplifyList ('Concat ('Reverse ys) ('Reverse xs))
+    SimplifyList ('Reverse ('Reverse xs))   = SimplifyList xs
+    SimplifyList ('Reverse ('Snoc xs x))    = 'Cons x (SimplifyList ('Reverse xs))
+    SimplifyList ('Reverse ('Cons x xs))    = SimplifyList ('Snoc ('Reverse xs) x)
+    SimplifyList ('Reverse xs)              = SimplifyList ('Reverse (SimplifyList xs))
 
     SimplifyList ('Drop 0 xs)           = SimplifyList xs
     SimplifyList ('Drop n 'Empty)       = 'Empty
@@ -957,6 +959,74 @@ type family Length (as :: l) :: Nat where
   Length '[] = 0
   Length (a ': as) = 1 + Length as
   Length (xs :: List k) = Length (EvalList xs)
+
+
+
+
+-- | Get a suffix part of a list, given its prefix
+type family Suffix (as :: List k) (asbs :: List k) :: List k where
+  -- Found suffix!
+  Suffix 'Empty asbs = asbs
+  -- Error!
+  Suffix ('Cons _ _) 'Empty = TypeError (
+    'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter"
+   )
+  -- SimplifyList guarantees to return 'Cons or 'Empty constructors.
+  -- Therefore, suffix evaluation must finish
+
+  -- Variations of Cons stripping
+  Suffix ('Cons _ as) ('Cons _ asbs) = Suffix as asbs
+  Suffix ('Reverse ('Snoc as _)) ('Cons _ asbs) = Suffix ('Reverse as) asbs
+  Suffix ('Cons _ as) ('Reverse ('Snoc asbs _)) = Suffix as ('Reverse asbs)
+  Suffix ('Reverse ('Snoc as _))  ('Reverse ('Snoc asbs _)) = Suffix ('Reverse as) ('Reverse asbs)
+  -- Variations of Drop-Take
+  Suffix ('Take n asbs) asbs = 'Drop n asbs
+  Suffix ('Reverse ('Drop n asbs)) ('Reverse asbs) = 'Reverse ('Take n asbs)
+
+  -- General case
+  Suffix as asbs = Suffix (SimplifyList as) (SimplifyList asbs)
+
+
+-- | Get a prefix part of a list, given its suffix.
+--   I use Suffix+Reverse for it.
+type family Prefix (bs :: List k) (asbs :: List k) :: List k where
+  -- Found prefix!
+  Prefix 'Empty asbs = asbs
+
+  -- Variations of Snoc stripping
+  Prefix ('Snoc as _) ('Snoc asbs _) = Prefix as asbs
+  Prefix ('Reverse ('Cons _ as)) ('Snoc asbs _) = Prefix ('Reverse as) asbs
+  Prefix ('Snoc as _) ('Reverse ('Cons _ asbs)) = Prefix as ('Reverse asbs)
+  Prefix ('Reverse ('Cons _ as))  ('Reverse ('Cons _ asbs)) = Prefix ('Reverse as) ('Reverse asbs)
+  -- Variations of Drop-Take
+  Prefix ('Drop n asbs) asbs = 'Take n asbs
+  Prefix ('Reverse ('Take n asbs)) ('Reverse asbs) = 'Reverse ('Drop n asbs)
+
+  -- General case - compute via Suffix
+  Prefix as asbs = 'Reverse (Suffix ('Reverse as) ('Reverse asbs))
+
+
+
+-- data List k
+--   = Empty
+--   | Cons k (List k)
+--   | Snoc (List k) k
+--   | Concat (List k) (List k)
+--   | Reverse (List k)
+--   | Drop Nat (List k)
+--   | Take Nat (List k)
+
+
+-- -- | Get a prefix part of a list, given its suffix
+-- type family Prefix (bs :: List k) (asbs :: List k) :: List k where
+--   Prefix '[] asbs  = asbs
+--   Prefix bs (a ': asbs) = If (SameLength bs (a ': asbs)) '[] (a ': Prefix bs asbs)
+--   -- Prefix bs bs = '[]
+--   -- Prefix bs (a ': asbs) = a ': Prefix bs asbs
+--   -- Prefix bs asbs = TypeError (
+--   --   'Text "Lhs Prefix parameter must be a suffix of its rhs parameter"
+--   --   ':$$: 'Text "Assertion failed: " ':<>: 'ShowType bs ':<>: 'Text " == " ':<>: 'ShowType asbs
+--   --  )
 
 
 --

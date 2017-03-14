@@ -6,6 +6,7 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeInType             #-}
 {-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE InstanceSigs           #-}
 
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
@@ -22,6 +23,7 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE BangPatterns #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame
@@ -67,7 +69,7 @@ import           Numeric.Array
 import qualified Numeric.Array.Family as AFam (Scalar (..))
 import qualified Numeric.Commons as NCommons
 import qualified Numeric.Dimensions as Dims
-import           Numeric.Dimensions (Dim (..), Idx (..), type (++))
+import           Numeric.Dimensions (Dim (..), Idx (..), type (++), List (..), ToList, SimplifyList, Length, Suffix, Prefix)
 import qualified Numeric.Matrix.Class as M
 import           Unsafe.Coerce
 
@@ -200,26 +202,16 @@ _suppressHlintUnboxedTuplesWarning = undefined
 -- bs is an indexing dimensionality
 -- t is an underlying data type (i.e. Float, Int, Double)
 --
-class ( asbs ~  (as ++ bs)
-      , bs ~ Dims.EvalList (Dims.Drop (Dims.Length as) asbs)
-      , as ~ Dims.EvalList (Dims.Take (Dims.Length asbs - Dims.Length bs) asbs)
-      -- , bs ~ Dims.Drop (Dims.Length as) asbs
-      -- , as ~ Dims.Take (Dims.Length asbs - Dims.Length bs) asbs
-      -- , as ~ Dims.Prefix bs asbs
-      -- , bs ~ Dims.Suffix as asbs
-      -- , as ~ Dims.Take (Dims.Length as) asbs
-      -- , bs ~ Dims.Drop (Dims.Length as) asbs
+class ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
+      , ToList bs   ~ SimplifyList ( Suffix (ToList as) (ToList asbs))
+      , ToList as   ~ SimplifyList ( Prefix (ToList bs) (ToList asbs))
       , Dims.Dimensions as
       , Dims.Dimensions bs
       , Dims.Dimensions asbs
       , NCommons.PrimBytes (DataFrame t as)
       , NCommons.PrimBytes (DataFrame t asbs)
-      ) => SubSpace t (as :: [Nat])
-                      (bs :: [Nat])
-                      (asbs :: [Nat])
-                     | asbs as -> bs
-                     , asbs bs -> as
-                     , as bs -> asbs where
+      ) => SubSpace (t :: Type) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+                    | asbs as -> bs, asbs bs -> as, as bs -> asbs where
     -- | Get an element
     (!.) :: Idx bs -> DataFrame t asbs -> DataFrame t as
     -- | Map a function over each element of DataFrame
@@ -247,14 +239,14 @@ class ( asbs ~  (as ++ bs)
     elementWise :: ( Applicative f
                    , SubSpace s as' bs asbs'
                    )
-                => (DataFrame t as -> f (DataFrame t as'))
+                => (DataFrame t as -> f (DataFrame s as'))
                 -> DataFrame t asbs -> f (DataFrame s asbs')
     -- | Apply an applicative functor on each element with its index
     --     (Lens-like indexed traversal)
     indexWise :: ( Applicative f
                  , SubSpace s as' bs asbs'
                  )
-              => (Idx bs -> DataFrame t as -> f (DataFrame t as'))
+              => (Idx bs -> DataFrame t as -> f (DataFrame s as'))
               -> DataFrame t asbs -> f (DataFrame s asbs')
 infixr 4 !.
 
@@ -277,13 +269,9 @@ iwfoldMap f = iwfoldl (\i b -> mappend b . f i) mempty
 {-# INLINE iwfoldMap #-}
 
 
-instance ( asbs ~ (as ++ bs)
-        --  , bs ~ Dims.Drop (Dims.Length as) asbs
-        --  , as ~ Dims.Take (Dims.Length asbs - Dims.Length bs) asbs
-         , bs ~ Dims.EvalList (Dims.Drop (Dims.Length as) asbs)
-         , as ~ Dims.EvalList (Dims.Take (Dims.Length asbs - Dims.Length bs) asbs)
-        --  , as ~ Dims.Take (Dims.Length as) asbs
-        --  , bs ~ Dims.Drop (Dims.Length as) asbs
+instance ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
+         , ToList bs   ~ SimplifyList ( Suffix (ToList as) (ToList asbs))
+         , ToList as   ~ SimplifyList ( Prefix (ToList bs) (ToList asbs))
          , Dims.Dimensions as
          , Dims.Dimensions bs
          , Dims.Dimensions asbs
@@ -352,67 +340,196 @@ instance ( asbs ~ (as ++ bs)
              (# offX, _, arrX #) -> go (pos +# step) lim step marr (Dims.succIdx curI)
                (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
 
-    -- foldDim _ f df = case (# NCommons.toBytes df, Dims.totalDim ( Proxy @as) #) of
-    --     (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr mempty
+    ewfoldl _ f x0 df = case (# NCommons.toBytes df, Dims.totalDim ( Proxy @as) #) of
+        (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr x0
+      where
+        go pos lim step arr acc
+          | isTrue# (pos >=# lim) = acc
+          | otherwise = go (pos +# step) lim step arr
+              ( f acc (NCommons.fromBytes (# pos, step, arr #)) )
+
+    iwfoldl f x0 df = case (# NCommons.toBytes df, Dims.totalDim ( Proxy @as) #) of
+        (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr Dims.dimMin x0
+      where
+        go pos lim step arr curI acc
+          | isTrue# (pos >=# lim) = acc
+          | otherwise = go (pos +# step) lim step arr (Dims.succIdx curI)
+              ( f curI acc (NCommons.fromBytes (# pos, step, arr #)) )
+
+    ewfoldr _ f x0 df = case (# NCommons.toBytes df, Dims.totalDim ( Proxy @as) #) of
+        (# (# off, len, arr #), I# l# #) -> go (off +# len -# l#) off l# arr x0
+      where
+        go pos lim step arr acc
+          | isTrue# (pos <# lim) = acc
+          | otherwise = go (pos -# step) lim step arr
+              ( f (NCommons.fromBytes (# pos, step, arr #)) acc )
+
+    iwfoldr f x0 df = case (# NCommons.toBytes df, Dims.totalDim ( Proxy @as) #) of
+        (# (# off, len, arr #), I# l# #) -> go (off +# len -# l#) off l# arr Dims.dimMin x0
+      where
+        go pos lim step arr curI acc
+          | isTrue# (pos <# lim) = acc
+          | otherwise = go (pos -# step) lim step arr (Dims.succIdx curI)
+              ( f curI (NCommons.fromBytes (# pos, step, arr #)) acc )
+
+    elementWise :: forall (s :: Type) (f :: Type -> Type) (as' :: [Nat]) (asbs' :: [Nat])
+               . ( Applicative f
+                 , SubSpace s as' bs asbs'
+                 )
+              => (DataFrame t as -> f (DataFrame s as'))
+              -> DataFrame t asbs -> f (DataFrame s asbs')
+    elementWise f df = runWithState <$> ewfoldl (Proxy @bs) applyF (pure initialState) df
+      where
+        -- run a state-based continuation within RW
+        runWithState :: ( State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
+                     -> DataFrame s asbs'
+        runWithState g = case runRW#
+                           ( \s0 -> case g s0 of
+                                (# s1, (# marr, _ #) #) -> unsafeFreezeByteArray# marr s1
+                           ) of (# _, arr #) -> NCommons.fromBytes (# 0#, rezLength#, arr #)
+
+        -- Prepare empty byte array for the result DataFrame and keep a current position counter
+        -- Input: state
+        -- Output: state +
+        --     ( current mutable byte array + current write position )
+        initialState :: State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #)
+        initialState s0 = case newByteArray# (rezLength# *# rezElBSize#) s0 of
+                            (# s1, marr #) -> (# s1, (# marr, 0# #) #)
+
+        -- Given the result chunk, write it into a mutable array
+        updateChunk :: (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
+                    -> DataFrame s as'
+                    -> (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
+        updateChunk g dfChunk = case NCommons.toBytes dfChunk of
+            (# off#, _, arr#  #) -> ( \s -> case g s of
+                                        (# s1, (# marr#, pos# #) #) -> case
+                                            copyByteArray# arr# (off# *# rezElBSize#)
+                                                           marr# (pos# *# rezElBSize#)
+                                                           (rezStepN# *# rezElBSize#) s1 of
+                                          s2 -> (# s2, (# marr#, pos# +# rezStepN# #) #)
+                                    )
+
+        -- Apply applicative functor on each chunk and update a state.
+        applyF :: f (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
+               -> DataFrame t as
+               -> f (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
+        applyF s dfChunk = updateChunk <$> s <*> f dfChunk
+
+        -- Element byte size of the result DataFrame (byte size of s)
+        rezElBSize# = NCommons.elementByteSize (undefined :: DataFrame s asbs')
+        -- Number of primitive elements in the result DataFrame chunk
+        !(I# rezStepN#) = Dims.totalDim (Proxy @as')
+        -- Number of primitive elements in the result DataFrame
+        !(I# rezLength#) = Dims.totalDim (Proxy @asbs')
+
+
+
+    indexWise :: forall (s :: Type) (f :: Type -> Type) (as' :: [Nat]) (asbs' :: [Nat])
+               . ( Applicative f
+                 , SubSpace s as' bs asbs'
+                 )
+              => (Idx bs -> DataFrame t as -> f (DataFrame s as'))
+              -> DataFrame t asbs -> f (DataFrame s asbs')
+    indexWise f df = runWithState <$> iwfoldl applyF (pure initialState) df
+      where
+        -- run a state-based continuation within RW
+        runWithState :: ( State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
+                     -> DataFrame s asbs'
+        runWithState g = case runRW#
+                           ( \s0 -> case g s0 of
+                                (# s1, (# marr, _ #) #) -> unsafeFreezeByteArray# marr s1
+                           ) of (# _, arr #) -> NCommons.fromBytes (# 0#, rezLength#, arr #)
+
+        -- Prepare empty byte array for the result DataFrame and keep a current position counter
+        -- Input: state
+        -- Output: state +
+        --     ( current mutable byte array + current write position )
+        initialState :: State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #)
+        initialState s0 = case newByteArray# (rezLength# *# rezElBSize#) s0 of
+                            (# s1, marr #) -> (# s1, (# marr, 0# #) #)
+
+        -- Given the result chunk, write it into a mutable array
+        updateChunk :: (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
+                    -> DataFrame s as'
+                    -> (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
+        updateChunk g dfChunk = case NCommons.toBytes dfChunk of
+            (# off#, _, arr#  #) -> ( \s -> case g s of
+                                        (# s1, (# marr#, pos# #) #) -> case
+                                            copyByteArray# arr# (off# *# rezElBSize#)
+                                                           marr# (pos# *# rezElBSize#)
+                                                           (rezStepN# *# rezElBSize#) s1 of
+                                          s2 -> (# s2, (# marr#, pos# +# rezStepN# #) #)
+                                    )
+
+        -- Apply applicative functor on each chunk and update a state.
+        applyF :: Idx bs
+               -> f (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
+               -> DataFrame t as
+               -> f (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
+        applyF idx s dfChunk = updateChunk <$> s <*> f idx dfChunk
+
+        -- Element byte size of the result DataFrame (byte size of s)
+        rezElBSize# = NCommons.elementByteSize (undefined :: DataFrame s asbs')
+        -- Number of primitive elements in the result DataFrame chunk
+        !(I# rezStepN#) = Dims.totalDim (Proxy @as')
+        -- Number of primitive elements in the result DataFrame
+        !(I# rezLength#) = Dims.totalDim (Proxy @asbs')
+
+
+
+
+    --
+    -- -- Apply an applicative function f on each element of a dataframe;
+    -- -- result of this is a chain of element-dataframes.
+    -- -- Then, concatenate all results in a single dataframe.
+    -- -- The tricky part is that concatenation should be done in an applicative functor f.
+    -- indexWise f oldDF
+    --     = merge <$> traverse (\i@(I# i#) -> f (i Dims.:! remIds)
+    --                            (NCommons.fromBytes (# offOld +# (i# -# 1#) *# lengthOld'
+    --                                        , lengthOld'
+    --                                        , arrOld #))
+    --                          ) [1..]
     --   where
-    --     go pos lim step arr acc
-    --       | isTrue# (pos >=# lim) = acc
-    --       | otherwise = go (pos +# step) lim step arr
-    --           (acc `mappend` f (NCommons.fromBytes (# pos, step, arr #)) )
+    --     -- get a tranversable list of results and merge them into a single dataframe blob
+    --     merge [x] = NCommons.fromBytes (NCommons.toBytes x)
+    --     merge xs = case runRW#
+    --        (\s0 -> case newByteArray# bsNew s0 of
+    --          (# s1, marr #) -> case writeOne xs marr 0# s1 of
+    --            s2 -> unsafeFreezeByteArray# marr s2
+    --        ) of (# _, r #) -> NCommons.fromBytes (# 0#, lengthNew, r #)
+    --     -- write a single result into a dataframe at a given position
+    --     writeOne [] _ _ s' = s'
+    --     writeOne (x : xs) mr pos s' = case NCommons.toBytes x of
+    --       (# off, l, a #) ->  writeOne xs mr (pos +# l)
+    --         (copyByteArray# a (off *# elSizeS) mr (pos *# elSizeS) (l *# elSizeS) s')
+    --     (# offOld, _, arrOld #) = NCommons.toBytes oldDF
+    --     elSizeS = NCommons.elementByteSize (undefined :: DataFrame s nds)
+    --     lengthOld' = case Dims.totalDim (Proxy @ods) of I# lo -> lo
+    --     lengthNew  = case Dims.totalDim (Proxy @(nds Dims.>: n)) of I# ln -> ln
+    --     bsNew      = lengthNew *# elSizeS
+    -- {-# INLINE [2] indexWise #-}
+    --
 
+          -- => Dims.Slice o n
+          -- -- old transform
+          -- -> (Dims.Idx (n Dims.:+ remDs) -> DataFrame t ods -> f (DataFrame s nds))
+          -- -- new transform
+          -- -> Dims.Idx remDs
+          -- -> DataFrame t (ods Dims.+: o) -> f (DataFrame s (nds Dims.>: n))
 
--- instance ( asbs ~ (as Dims.++ bs)
---          , as ~ Dims.Take (Dims.Length asbs - Dims.Length bs) asbs
---          , bs ~ Dims.Drop (Dims.Length as) asbs
---          , Dims.Dimensions as
---          , Dims.Dimensions bs
---          , Dims.Dimensions asbs
---          , NCommons.PrimBytes (DataFrame t as)
---          , NCommons.PrimBytes (DataFrame t asbs)
---          ) => SubSpace t as bs asbs where
---   mapDim _ f df = case (# NCommons.toBytes df, Dims.totalDim (Proxy @as) #) of
---       (# (# off, len, arr #), I# l# #) -> case runRW#
---          ( \s0 -> case newByteArray# (len *# elS) s0 of
---              (# s1, marr #) -> case go off (off +# len) l# arr marr s1 of
---                  s2 -> unsafeFreezeByteArray# marr s2
---          ) of (# _, r #) -> NCommons.fromBytes (# 0#, len, r #)
---     where
---       elS = NCommons.elementByteSize df
---       go pos lim step arr marr s
---         | isTrue# (pos >=# lim) = s
---         | otherwise = case NCommons.toBytes (f (NCommons.fromBytes (# pos, step, arr #))) of
---            (# offX, _, arrX #) -> go (pos +# step) lim step arr marr
---              (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
---
---   foldDim _ f df = case (# NCommons.toBytes df, Dims.totalDim ( Proxy @as) #) of
---       (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr mempty
---     where
---       go pos lim step arr acc
---         | isTrue# (pos >=# lim) = acc
---         | otherwise = go (pos +# step) lim step arr
---             (acc `mappend` f (NCommons.fromBytes (# pos, step, arr #)) )
---
---   i !.. d = r
---     where
---       r = case (# NCommons.toBytes d, Dims.fromIdx i, Dims.totalDim r #) of
---             (# (# off, _, arr #), I# i#, I# l# #)
---               -> NCommons.fromBytes (# off +# i# *# l#, l#, arr #)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    -- -- | Apply an applicative functor on each element (Lens-like traversal)
+    -- elementWise :: ( Applicative f
+    --                , SubSpace s as' bs asbs'
+    --                )
+    --             => (DataFrame t as -> f (DataFrame t as'))
+    --             -> DataFrame t asbs -> f (DataFrame s asbs')
+    -- -- | Apply an applicative functor on each element with its index
+    -- --     (Lens-like indexed traversal)
+    -- indexWise :: ( Applicative f
+    --              , SubSpace s as' bs asbs'
+    --              )
+    --           => (Idx bs -> DataFrame t as -> f (DataFrame t as'))
+    --           -> DataFrame t asbs -> f (DataFrame s asbs')
 
 
 

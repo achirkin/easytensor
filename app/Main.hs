@@ -77,6 +77,11 @@ main = do
     print $ ewfoldMap (Proxy @4 :* D) Sum ixs
     print $ 3:!Z !. ixs
     print $ 1:!3:!Z !. ixs
+    ---
+    putStrLn "\n\nTesting elementWise.\n ixs:\n"
+    print ixs
+    putStrLn "\n List traversable:\n"
+    print $ elementWise (dim @'[3,2] `asSpaceOf` (\x -> [x, x+0.375])) ixs
   where
     pleaseFire :: Idx i -> DataFrame Float '[3, 2] -> Const (Sum (DataFrame Float '[3, 2])) Scf
     pleaseFire _ = Const . Sum
