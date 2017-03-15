@@ -13,6 +13,8 @@
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array
@@ -28,7 +30,9 @@ module Numeric.Array
   ( Array (..)
   ) where
 
-import           GHC.TypeLits              (KnownNat, Nat, type (<=), type (-))
+import           GHC.TypeLits              (KnownNat, Nat, type (<=), natVal)
+import           GHC.Types
+import           Data.Proxy
 import           Numeric.Array.Base.ArrayF ()
 import           Numeric.Array.Family
 import           Numeric.Commons
@@ -178,18 +182,30 @@ deriving instance (KnownNat n, 2 <= n)
 deriving instance KnownNat n
                => MatrixInverse (Array Float '[n,n])
 
-instance ( as ~ EvalList (Take (Length as' - 1) as')
-         , as' ~ (as +: m)
-         , cs  ~ (as ++ bs)
+
+instance ( KnownNat m )
+       => MatrixProduct (Array Float '[m]) (Array Float '[m]) (Array Float '[]) where
+  prod = prodF 1# m 1#
+      where
+        m = case fromInteger $ natVal (Proxy @m) of I# mm -> mm
+
+instance ( ToList as ~ SimplifyList (ListInit (ToList asm))
+         , ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs))
+         , asm ~ (as +: m)
          , Dimensions as
          , Dimensions bs
-         , Dimensions cs
+         , Dimensions asbs
          , KnownNat m
-         , as' ~ (Head as' ': EvalList (Drop 1 as'))
-         , cs ~ (Head cs ': EvalList (Drop 1 cs))
+         , asm ~ (Head asm ': Tail asm)
+         , asbs ~ (Head asbs ': Tail asbs)
          )
-       => MatrixProduct (Array Float as') (Array Float (m ': bs)) (Array Float cs) where
-  prod x y = Array $ prod (_unArray x) (_unArray y)
+       => MatrixProduct (Array Float asm) (Array Float (m ': bs)) (Array Float asbs) where
+  prod = prodF n m k
+      where
+        m = case fromInteger $ natVal (Proxy @m) of I# mm -> mm
+        n = case totalDim (Proxy @as) of I# nn -> nn
+        k = case totalDim (Proxy @bs) of I# kk -> kk
+
 
 
 _suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)

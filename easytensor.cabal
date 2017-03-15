@@ -49,6 +49,8 @@ library
         Numeric.Array.Base.ArrayF
         Numeric.Array.Family
         Numeric.Array
+        Numeric.DataFrame.SubSpace
+        Numeric.DataFrame.Type
         -- Numeric.Vector
         -- Numeric.Vector.Base.FloatX2
         -- Numeric.Vector.Base.FloatXN

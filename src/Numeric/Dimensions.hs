@@ -38,10 +38,11 @@ module Numeric.Dimensions
     -- * Type-level programming
   , FixedDim, FixedXDim, KnownOrder, ValidDims
   , type (++), Length
-  , type (:<), type (>:), type (:+), type (+:), Head, Tail
+  , type (:<), type (>:), type (:+), type (+:), SnocI, Head, Tail
   , Suffix, Prefix
   , List (..), Cons, Snoc, Reverse, Take, Drop
   , EvalList, EvalCons, ToList, SimplifyList
+  , ListHead, ListTail, ListLast, ListInit
   ) where
 
 
@@ -642,12 +643,13 @@ type family WrapHead (n :: Nat) (xs :: [XNat]) :: XNat where
 --     (injective, since this is just a synonym for the list constructor)
 type (a :: k) :+ (as :: [k]) = a ': as
 infixr 5 :+
+
 -- | Synonym for a type-level snoc (injective!)
 type (ns :: [k]) +: (n :: k) = GetSinkList (SinkFirst (n ': ns))
 -- type family (ns :: [k]) +: (n :: k) = (nsn :: [k]) | nsn -> ns n where
 --   xs +: x = GetListCons (SinkSnoc xs x)
 infixl 5 +:
-
+type SnocI (ns :: [k]) (n :: k) = GetSinkList (SinkFirst (n ': ns))
 
 
 -- | List concatenation
@@ -752,6 +754,41 @@ type family SimplifyList (xs :: List k) :: List k where
 --------------------------------------------------------------------------------
 -- Polymorphic type-level operations (work on [k] and on List k)
 --------------------------------------------------------------------------------
+
+type family ListHead (xs :: List k) :: k where
+    ListHead 'Empty = TypeError ('Text "Empty type-level list!")
+    ListHead ('Take 0 _) = TypeError ('Text "Empty type-level list!")
+    ListHead ('Take _ xs) = ListHead xs
+    ListHead ('Cons h _) = h
+    ListHead xs = ListHead (SimplifyList xs)
+
+type family ListLast (xs :: List k) :: k where
+    ListLast 'Empty = TypeError ('Text "Empty type-level list!")
+    ListLast ('Take 0 _) = TypeError ('Text "Empty type-level list!")
+    ListLast ('Snoc _ x) = x
+    ListLast ('Reverse xs) = ListHead xs
+    ListLast ('Cons x xs) = ListHead ('Reverse ('Cons x xs))
+    ListLast xs = ListLast (SimplifyList xs)
+
+type family ListTail (xs :: List k) :: List k where
+    ListTail 'Empty = TypeError ('Text "Empty type-level list!")
+    ListTail ('Take 0 _) = TypeError ('Text "Empty type-level list!")
+    ListTail ('Cons _ xs) = xs
+    ListTail ('Reverse ('Snoc xs _)) = 'Reverse xs
+    ListTail xs = ListTail (SimplifyList xs)
+
+type family ListInit (xs :: List k) :: List k where
+    ListInit 'Empty = TypeError ('Text "Empty type-level list!")
+    ListInit ('Take 0 _) = TypeError ('Text "Empty type-level list!")
+    ListInit ('Snoc xs _) = xs
+    ListInit ('Reverse ('Cons _ xs)) = 'Reverse xs
+    ListInit ('Cons x xs) = 'Reverse (ListTail ('Reverse ('Cons x xs)))
+    ListInit xs = ListInit (SimplifyList xs)
+
+-- x :: Proxy (EvalList ( ToList '[1,7,2,8] ))
+-- x :: Proxy (EvalList ( ListInit ('Reverse ('Drop 2 (ToList '[1,7,2,8]))) ))
+-- x = _
+
 
 type family Cons (x :: k) (xs :: l k) :: List k where
     Cons x (xs :: [k])    = 'Cons x (ToList xs)
@@ -1004,7 +1041,6 @@ type family Prefix (bs :: List k) (asbs :: List k) :: List k where
 
   -- General case - compute via Suffix
   Prefix as asbs = 'Reverse (Suffix ('Reverse as) ('Reverse asbs))
-
 
 
 -- data List k
