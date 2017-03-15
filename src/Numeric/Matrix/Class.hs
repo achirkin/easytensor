@@ -1,7 +1,7 @@
 {-# LANGUAGE MagicHash, UnboxedTuples, DataKinds #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE MultiParamTypeClasses, DataKinds, KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses, KindSignatures #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Matrix.Class
@@ -75,6 +75,11 @@ class SquareMatrixCalculus t (n :: Nat) v | v -> t, v -> n where
 --   rowsOfM22 :: Matrix t 2 2 -> (Vector t 2, Vector t 2)
 --   colsOfM22 :: Matrix t 2 2 -> (Vector t 2, Vector t 2)
 
+-- class ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs))
+--    => MatrixProduct t (m :: Nat) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+--                     | as bs -> asbs, asbs as -> bs, asbs bs -> as where
+--   -- | matrix-matrix or matrix-vector product
+--   prod :: t (as +: m) -> t (m :+ bs) -> t asbs
 
 
 class MatrixProduct a b c | a b -> c, a c -> b, b c -> a where
