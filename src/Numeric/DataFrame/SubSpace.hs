@@ -34,7 +34,9 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.SubSpace
-  ( SubSpace (..), (!), ewfoldMap, iwfoldMap
+  ( SubSpace (..), (!)
+  , ewfoldMap, iwfoldMap
+  , ewzip, iwzip
   ) where
 
 import           Data.Proxy
@@ -136,6 +138,7 @@ instance ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
           r = case (# NCommons.toBytes d, fromIdx i, totalDim r #) of
                 (# (# off, _, arr #), I# i#, I# l# #)
                   -> NCommons.fromBytes (# off +# i# *# l#, l#, arr #)
+    {-# INLINE (!.) #-}
 
     ewmap _ f df = case (# NCommons.toBytes df, totalDim (Proxy @as) #) of
         (# (# off, len, arr #), I# l# #) -> case runRW#
@@ -276,3 +279,30 @@ instance ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
         !(I# rezStepN#) = totalDim (Proxy @as')
         -- Number of primitive elements in the result DataFrame
         !(I# rezLength#) = totalDim (Proxy @asbs')
+
+-- | Zip two spaces on a specified subspace index-wise (with index)
+iwzip :: ( SubSpace t as bs asbs
+         , SubSpace s as' bs asbs'
+         , SubSpace r as'' bs asbs''
+         )
+      => (Idx bs -> DataFrame t as -> DataFrame s as' -> DataFrame r as'')
+      -> DataFrame t asbs
+      -> DataFrame s asbs'
+      -> DataFrame r asbs''
+iwzip f dft dfs = iwmap g dft
+  where
+    g i dft' = f i dft' (i !. dfs)
+{-# INLINE iwzip #-}
+
+-- | Zip two spaces on a specified subspace element-wise (without index)
+ewzip :: ( SubSpace t as bs asbs
+         , SubSpace s as' bs asbs'
+         , SubSpace r as'' bs asbs''
+         )
+      => proxy bs
+      -> (DataFrame t as -> DataFrame s as' -> DataFrame r as'')
+      -> DataFrame t asbs
+      -> DataFrame s asbs'
+      -> DataFrame r asbs''
+ewzip _ = iwzip . const
+{-# INLINE ewzip #-}
