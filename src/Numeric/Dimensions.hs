@@ -30,7 +30,7 @@ module Numeric.Dimensions
     Idx (..), Dim (..), XNat, XN, N
   , SomeDim (..), someDimVal
   , Slice (..)
-  , Dimensional (..), runDimensional, withDim
+  , Dimensional (..), runDimensional, withDim, withRuntimeDim
     -- * Operations
   , Dimensions, Dimensions' (..), Dimensions'' (..)
   , XDimensions (..)
@@ -130,6 +130,22 @@ isGoodDim :: KnownNat d => p d -> Maybe ((2 <=? d) :~: 'True)
 isGoodDim p = if 2 <= natVal p then unsafeCoerce (Just Refl)
                                else unsafeCoerce Nothing
 
+-- | Run a function on a dimensionality that is known only at runtime
+withRuntimeDim :: [Int]
+               -> (forall ns . ( Dimensions ns ) => Dim ns -> a)
+               -> Either String a
+withRuntimeDim xns f | any (< 2) xns = Left "All dimensions must be at least of size 2."
+                      | otherwise     = case someNatVal p of
+    Just (SomeNat _) -> withDim (constructXDims p xns) f
+    Nothing          -> Left "Cannot get length of a dimension list."
+  where
+    p = fromIntegral $ length xns
+    constructXDims :: Integer -> [Int] -> Dim (xns :: [XNat])
+    constructXDims 0 _  = unsafeCoerce D
+    constructXDims _ [] = unsafeCoerce D
+    constructXDims i (x:xs) = case someNatVal (fromIntegral x) of
+      Nothing -> constructXDims i xs
+      Just n  -> unsafeCoerce (n :? constructXDims (i+1) xs)
 
 withSuccKnown :: Int
               -> p xs
