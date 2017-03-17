@@ -174,26 +174,6 @@ runDimensional xds d = withDim xds $ _runDimensional d
 -- * Dimension-enabled operations
 --------------------------------------------------------------------------------
 
--- -- | Data types that can be parametrized by dimenions
--- --    - either compile-time or run-time
--- class PreservingDim (xns :: [XNat])
---                     (a :: [Nat] -> Type)
---                     (xa :: [XNat] -> Type)
---                    | a -> xa, xa -> a where
---   -- | Apply a function that requires a dixed dimension
---   withShape :: xa xns
---             -> (forall ns . ( Dimensions ns
---                             , FixedDim xns ns ~ ns
---                             , FixedXDim xns ns ~ xns
---                             ) => a ns -> b)
---             -> b
---   -- | Put some of dimensions into existential data type
---   looseDims :: ( FixedXDim xns ns ~ xns
---                , FixedDim xns ns ~ ns
---                , XDimensions ns xns
---                , Dimensions ns
---                ) => a ns -> xa xns
-
 -- | The main constraint type.
 --   With this we are sure that all dimension values are known at compile time,
 --   plus we have all handy functions for `Dim` and `Idx` types.
@@ -655,12 +635,7 @@ type SnocI (ns :: [k]) (n :: k) = GetSinkList (SinkFirst (n ': ns))
 -- | List concatenation
 type (as :: [k]) ++ (bs :: [k]) = EvalList ('Concat (ToList as) (ToList bs))
 infixr 5 ++
--- -- | Reverse a list (injective!)
--- type Reverse (xs :: [k]) = EvalReverse ('Reverse xs)
--- -- | Drop a number of elements
--- type Drop (n::Nat) (xs :: [k]) = EvalDrop ('Drop n xs)
--- -- | Take a number of elements
--- type Take (n::Nat) (xs :: [k]) = EvalTake ('Take n xs)
+
 
 -- | Type-level list operations
 data List k
@@ -845,13 +820,6 @@ type family Take (n::Nat) (xs :: l k) :: List k where
 --------------------------------------------------------------------------------
 
 
--- data ListCons k = ListSingle k | ListCons k [k]
---
--- type family GetListCons (xs :: ListCons k) = (ys :: [k]) | ys -> xs where
---   GetListCons ('ListSingle x :: ListCons k) = ('[x] :: [k])
---   GetListCons ('ListCons (y :: k) (x ': xs :: [k]) :: ListCons k) = (y ': x ': xs :: [k])
-
-
 data SinkList k = SLEmpty | SLSingle k | SLCons k [k]
 
 type family SinkFirst (xs :: [k]) = (ys :: SinkList k) | ys -> xs where
@@ -887,72 +855,6 @@ type family GetSinkList (xs :: SinkList k) = (ys :: [k]) | ys -> xs where
 -- x :: Proxy (('[1,2,3] +: 4) ~ '[1,2,3,4])
 -- x = _
 
--- type family EvalSnoc (xs :: l k) (x :: k) = (ys :: ListCons k) |  ys -> xs x where
---     EvalSnoc 'Empty y = 'ListCons y 'Empty
---     EvalSnoc ('ListCons x xs) y = 'ListCons x (EvalSnoc xs y)
-
--- type family SinkSnoc (xs :: List k) = (ys :: List k) |  ys -> xs where
---   SinkSnoc ('Snoc 'Empty x) = 'Cons x 'Empty
---   SinkSnoc ('Snoc ('Cons x xs) y) = 'Cons x (SinkSnoc ('Snoc xs y))
-
--- type family SnocToCons (xs :: List k) = (ys :: List k) |  ys -> xs where
---   SnocToCons 'Empty = 'Empty
---   SnocToCons ('Snoc 'Empty x) = ('Cons x 'Empty)
---   SnocToCons ('Snoc ('Snoc xs x) y) = ('Cons x 'Empty)
-
--- type family EvalSnoc (xs :: List k) = (ys :: [k]) |  ys -> xs where
---   EvalSnoc 'Empty = '[]
---   EvalSnoc ('Snoc xs x) = x ': EvalSnoc xs
-
--- | A weird data type used to make `(+:)` operation injective.
---   `List k [k]` must have at least two elements.
--- data List1 k = L1Single k | L1Head k [k]
--- type family Snoc1 (xs :: [k]) (x :: k) = (ys :: List1 k) | ys -> xs x where
---   Snoc1 '[] y        = 'L1Single y
---   Snoc1 (x ': xs :: [Nat]) y
---       = ('L1Head x (GetList1Nat (SnocNat xs y)) :: List1 Nat)
---   Snoc1 (x ': xs :: [XNat]) y
---       = ('L1Head x (GetList1XNat (SnocXNat xs y)) :: List1 XNat)
---   Snoc1 (x ': xs) y
---       = 'L1Head x (xs +: y)
--- type family GetList1 (ts :: List1 k) = (rs :: [k]) | rs -> ts where
---   GetList1 ('L1Single x) = '[x]
---   GetList1 ('L1Head y (x ':xs)) = y ': x ': xs
---
--- -- | Even more weird thing - specialization to kind Nat and XNat.
--- --   Otherwise, example below will not typecheck.
--- --   The problem, I guess, is in too many layers of type families nested.
--- --   Though, even if I fully annotate everything with kind signature
--- --            it still does not work without this weird specialization.
--- -- ff :: Proxy k -> Proxy (as +: k) -> Proxy (k :+ bs) -> Proxy (as ++ bs)
--- -- ff _ _ _ = Proxy
--- -- yy :: Proxy ('[3,7,2] :: [Nat])
--- -- yy = ff (Proxy @5) (Proxy @'[3,7,5]) (Proxy @'[5,2])
--- type SnocNat (ns :: [Nat]) (n :: Nat) = Snoc1 ('Snoc ns n)
--- type family GetList1Nat (ts :: List1 Nat) = (rs :: [Nat]) | rs -> ts where
---   GetList1Nat ('L1Single x) = '[x]
---   GetList1Nat ('L1Head y (x ':xs)) = y ': x ': xs
--- type SnocXNat (ns :: [XNat]) (n :: XNat) = Snoc1 ('Snoc ns n)
--- type family GetList1XNat (ts :: List1 XNat) = (rs :: [XNat]) | rs -> ts where
---   GetList1XNat ('L1Single x) = '[x]
---   GetList1XNat ('L1Head y (x ':xs)) = y ': x ': xs
-
---
--- type family Reversed (ts :: Reversing k) = (rs :: [k]) | rs -> ts where
---   Reversed 'REmpty = '[]
---   Reversed ('Reversing ('L1Single a)) = '[a]
---   Reversed ('Reversing ('L1Head y (x ':xs))) = y ': x ': xs
---
---
--- type family ReversedNat (ts :: Reversing Nat) = (rs :: [Nat]) | rs -> ts where
---   ReversedNat 'REmpty = '[]
---   ReversedNat ('Reversing ('L1Single a)) = '[a]
---   ReversedNat ('Reversing ('L1Head y (x ':xs))) = y ': x ': xs
--- type family ReversedXNat (ts :: Reversing XNat) = (rs :: [XNat]) | rs -> ts where
---   ReversedXNat 'REmpty = '[]
---   ReversedXNat ('Reversing ('L1Single a)) = '[a]
---   ReversedXNat ('Reversing ('L1Head y (x ':xs))) = y ': x ': xs
---
 
 -- | Synonym for (:+) that ignores Nat values 0 and 1
 type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
@@ -967,7 +869,8 @@ type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
   ns >: 1 = ns
   ns >: n = ns +: n
 infixl 6 >:
---
+
+
 type family Head (xs :: [k]) :: k where
   Head (x ': xs) = x
   Head '[]       = TypeError ( 'Text
@@ -979,19 +882,7 @@ type family Tail (xs :: [k]) :: [k] where
   Tail '[]       = TypeError ( 'Text
     "Tail -- empty type-level list."
    )
---
---
---
--- data Reversing k = REmpty | Reversing (List1 k)
--- type family Reverse' (as :: List k) = (rs :: Reversing k) | rs -> as where
---   Reverse' ('Reverse '[]) = 'REmpty
---   Reverse' ('Reverse (a ': as) :: List Nat) = 'Reversing
---     (SnocNat (ReversedNat (Reverse' ('Reverse as))) a)
---   Reverse' ('Reverse (a ': as) :: List XNat) = 'Reversing
---     (SnocXNat (ReversedXNat (Reverse' ('Reverse as))) a)
---   Reverse' ('Reverse (a ': as)) = 'Reversing
---     (Snoc1 ('Snoc (Reversed (Reverse' ('Reverse as))) a))
---
+
 type family Length (as :: l) :: Nat where
   Length '[] = 0
   Length (a ': as) = 1 + Length as
@@ -999,11 +890,14 @@ type family Length (as :: l) :: Nat where
 
 
 
-
 -- | Get a suffix part of a list, given its prefix
 type family Suffix (as :: List k) (asbs :: List k) :: List k where
   -- Found suffix!
   Suffix 'Empty asbs = asbs
+  -- Prefix matches exactly with the original string, so suffix is empty
+  Suffix (asbs :: List Nat) (asbs :: List Nat) = ('Empty :: List Nat)
+  Suffix (asbs :: List XNat) (asbs :: List XNat) = ('Empty :: List XNat)
+  Suffix (asbs :: List k) (asbs :: List k) = ('Empty :: List k)
   -- Error!
   Suffix ('Cons _ _) 'Empty = TypeError (
     'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter"
@@ -1020,6 +914,7 @@ type family Suffix (as :: List k) (asbs :: List k) :: List k where
   Suffix ('Take n asbs) asbs = 'Drop n asbs
   Suffix ('Reverse ('Drop n asbs)) ('Reverse asbs) = 'Reverse ('Take n asbs)
 
+
   -- General case
   Suffix as asbs = Suffix (SimplifyList as) (SimplifyList asbs)
 
@@ -1029,6 +924,10 @@ type family Suffix (as :: List k) (asbs :: List k) :: List k where
 type family Prefix (bs :: List k) (asbs :: List k) :: List k where
   -- Found prefix!
   Prefix 'Empty asbs = asbs
+  -- Suffix matches exactly with the original string, so prefix is empty
+  Prefix (asbs :: List Nat) (asbs :: List Nat) = ('Empty :: List Nat)
+  Prefix (asbs :: List XNat) (asbs :: List XNat) = ('Empty :: List XNat)
+  Prefix (asbs :: List k) (asbs :: List k) = ('Empty :: List k)
 
   -- Variations of Snoc stripping
   Prefix ('Snoc as _) ('Snoc asbs _) = Prefix as asbs
@@ -1039,59 +938,6 @@ type family Prefix (bs :: List k) (asbs :: List k) :: List k where
   Prefix ('Drop n asbs) asbs = 'Take n asbs
   Prefix ('Reverse ('Take n asbs)) ('Reverse asbs) = 'Reverse ('Drop n asbs)
 
+
   -- General case - compute via Suffix
   Prefix as asbs = 'Reverse (Suffix ('Reverse as) ('Reverse asbs))
-
-
--- data List k
---   = Empty
---   | Cons k (List k)
---   | Snoc (List k) k
---   | Concat (List k) (List k)
---   | Reverse (List k)
---   | Drop Nat (List k)
---   | Take Nat (List k)
-
-
--- -- | Get a prefix part of a list, given its suffix
--- type family Prefix (bs :: List k) (asbs :: List k) :: List k where
---   Prefix '[] asbs  = asbs
---   Prefix bs (a ': asbs) = If (SameLength bs (a ': asbs)) '[] (a ': Prefix bs asbs)
---   -- Prefix bs bs = '[]
---   -- Prefix bs (a ': asbs) = a ': Prefix bs asbs
---   -- Prefix bs asbs = TypeError (
---   --   'Text "Lhs Prefix parameter must be a suffix of its rhs parameter"
---   --   ':$$: 'Text "Assertion failed: " ':<>: 'ShowType bs ':<>: 'Text " == " ':<>: 'ShowType asbs
---   --  )
-
-
---
--- type family SameLength (as :: [k]) (bs :: [k]) :: Bool where
---   SameLength '[] '[] = 'True
---   SameLength (_ ': as) (_ ': bs) = SameLength as bs
---   SameLength _ _ = 'False
---
--- -- x :: Proxy (Prefix '[3] '[2,7,3])
--- -- x = _
---
---
--- -- | Get a suffix part of a list, given its prefix
--- --   This version is more permissive than Suffix type class:
--- --     we do not check whether lhs is indeed a prefix
--- type family Suffix (as :: [k]) (asbs :: [k]) :: [k] where
---   Suffix '[] asbs = asbs
---   Suffix (a ': as) (_ ': asbs) = Suffix as asbs
---   Suffix (_ ': _) '[] = TypeError (
---     'Text "Lhs Suffix parameter cannot have more elements than its rhs parameter"
---    )
---
--- -- | Get a prefix part of a list, given its suffix
--- type family Prefix (bs :: [k]) (asbs :: [k]) :: [k] where
---   Prefix '[] asbs  = asbs
---   Prefix bs (a ': asbs) = If (SameLength bs (a ': asbs)) '[] (a ': Prefix bs asbs)
---   -- Prefix bs bs = '[]
---   -- Prefix bs (a ': asbs) = a ': Prefix bs asbs
---   -- Prefix bs asbs = TypeError (
---   --   'Text "Lhs Prefix parameter must be a suffix of its rhs parameter"
---   --   ':$$: 'Text "Assertion failed: " ':<>: 'ShowType bs ':<>: 'Text " == " ':<>: 'ShowType asbs
---   --  )

@@ -55,7 +55,7 @@ main = do
     print $ matX %* transpose matX
     print $ det matX
     print $ inverse matX
-    print dfY2
+    -- print dfY2
     print $ runSlice (subSpace (\_ mat -> Const (Sum mat) :: Const (Sum (DataFrame Float '[3, 2])) Scf)) ixs
     print $ runSlice (slice (Get 1 :& 3) pleaseFire) ixs
     print $ runSlice (slice (Get 1 :& 3 :& 4) (const $ Identity . (* 0.7))) ixs
@@ -81,7 +81,7 @@ main = do
     putStrLn "\n\nTesting elementWise.\n ixs:\n"
     print ixs
     putStrLn "\n List traversable:\n"
-    print $ elementWise (dim @'[3,2] `asSpaceOf` (\x -> [x, x+0.375])) ixs
+    print $ elementWise (dim @'[4]) (\x -> [x, x+0.375]) ixs
   where
     pleaseFire :: Idx i -> DataFrame Float '[3, 2] -> Const (Sum (DataFrame Float '[3, 2])) Scf
     pleaseFire _ = Const . Sum
@@ -106,7 +106,7 @@ main = do
         Right x -> Right $ x `inSpaceOf` Proxy @'[XN,XN,XN,N _]
         Left a -> Left a
     s = withDim dimX (\ds -> let pix = 2 * dfFloat pi `inSpaceOf` ds
-                             in show pix ++ show (pix ! (1 :! 2 :! 1 :! 2 :! Z) )
+                             in show pix ++ show (pix ! (1 :! 2 :! 1 :! 2 :! Z) :: Scf)
                      )
       :: Either String String
     s3 = (`withShape` show) <$> x3
@@ -120,10 +120,11 @@ main = do
     dfX2  = 1
     -- dfY :: DFF '[3,2,5]
     dfY   = dfX1 %* dfX2
-    dfY2  = (runSlice . slice (Get 4 )
-                      $ slice (Get 2 :& 1 :& 1)
-                      (\(i :! j :! Z) v -> [ (v ! 1 :! Z) - realToFrac i
-                                           , (v ! 2 :! Z) *2 / realToFrac j])) dfY
+
+    -- dfY2  = (runSlice . slice (Get 4 )
+    --                   $ slice (Get 2 :& 1 :& 1)
+    --                   (\(i :! j :! Z) v -> [ (v ! 1 :! Z) - realToFrac i
+    --                                        , (v ! 2 :! Z) *2 / realToFrac j])) dfY
 
 dfFloat :: Fractional (DataFrame Float ds)
         => Float -> DataFrame Float (ds :: [Nat])

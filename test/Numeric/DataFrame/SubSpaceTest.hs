@@ -8,5 +8,16 @@
 --
 --
 -----------------------------------------------------------------------------
+{-# LANGUAGE TemplateHaskell #-}
 
-module Numeric.DataFrame.SubSpaceTest where
+module Numeric.DataFrame.SubSpaceTest (runTests) where
+
+
+import           Test.QuickCheck
+
+import           Numeric.DataFrame
+import           Numeric.Dimensions
+
+
+return []
+runTests = $quickCheckAll
