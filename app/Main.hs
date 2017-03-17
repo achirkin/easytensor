@@ -82,6 +82,7 @@ main = do
     print ixs
     putStrLn "\n List traversable:\n"
     print $ elementWise (dim @'[4]) (\x -> [x, x+0.375]) ixs
+    print ( withRuntimeDim [2,6,3] (\ds -> show (dimMax `inSpaceOf` ds) ) :: Either String String )
   where
     pleaseFire :: Idx i -> DataFrame Float '[3, 2] -> Const (Sum (DataFrame Float '[3, 2])) Scf
     pleaseFire _ = Const . Sum

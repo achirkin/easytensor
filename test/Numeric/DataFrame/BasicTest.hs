@@ -26,8 +26,7 @@ module Numeric.DataFrame.BasicTest (runTests) where
 
 import           GHC.TypeLits
 import           Test.QuickCheck
-import           Unsafe.Coerce
-import           Data.Type.Equality
+import           Data.Maybe
 
 import           Numeric.DataFrame
 import           Numeric.Dimensions
@@ -57,59 +56,20 @@ instance ( SubSpace Float '[] ds ds
       f :: Scalar Float -> [Scalar Float]
       f = fmap scalar . shrink . unScalar
 
-newtype SomeSimpleDF = SomeSimpleDF
-  { getSomeDF :: forall (ds :: [Nat])
-               . ProperDims ds => SimpleDF ds
-  }
+data SomeSimpleDF
+  = forall (ds :: [Nat]) . ProperDims ds
+    => SomeSimpleDF ( SimpleDF ds )
 
--- liftSomeDF :: forall f . Functor f
---            => ( forall (ds :: [Nat]) . ProperDims ds => SimpleDF ds -> f (SimpleDF ds) )
---            -> SomeSimpleDF -> f SomeSimpleDF
--- liftSomeDF f (SomeSimpleDF x) = g x f (unsafeCoerce SomeSimpleDF)
---   --   (fun, y) -> case i'mGood fun y of
---   --       Refl -> fun y
---   where
---     g :: forall (ds :: [Nat]) . ProperDims ds
---       => SimpleDF ds
---       -> ( forall (ds'' :: [Nat]) . ProperDims ds'' => SimpleDF ds'' -> f (SimpleDF ds'') )
---       -> ( forall (ds'  :: [Nat]) . ProperDims ds'  => SimpleDF ds'  -> SomeSimpleDF      )
---       -> f SomeSimpleDF
---     g x' f' c' = c' <$> f' x'
-  --   i'mGood :: (SimpleDF (a :: [Nat]) -> SomeSimpleDF) -> f (SimpleDF (b :: [Nat])) -> a :~: b
-  --   i'mGood _ _ = unsafeCoerce Refl
-    -- y :: ProperDims (ds :: [Nat]) => f (SimpleDF ds)
-    -- y = f x
 
-  -- where
-  --   y :: forall (ds :: [Nat])
-  --                . ( Eq (DataFrame Float ds)
-  --                  , Num (DataFrame Float ds)
-  --                  , Ord (DataFrame Float ds)
-  --                  , Fractional (DataFrame Float ds)
-  --                  , Floating (DataFrame Float ds)
-  --                  , Dimensions ds
-  --                  , SubSpace Float '[] ds ds
-  --                  , Functor f
-  --        ) => f (SimpleDF ds)
-  --   y = f x
-  --   mapy :: forall (ds :: [Nat])
-  --                . ( Eq (DataFrame Float ds)
-  --                  , Num (DataFrame Float ds)
-  --                  , Ord (DataFrame Float ds)
-  --                  , Fractional (DataFrame Float ds)
-  --                  , Floating (DataFrame Float ds)
-  --                  , Dimensions ds
-  --                  , SubSpace Float '[] ds ds
-  --                  , Functor f
-  --                  ) => f (SimpleDF ds) -> f SomeSimpleDF
-  --   mapy = fmap SomeSimpleDF
-
--- instance Arbitrary SomeSimpleDF where
---   -- arbitrary = SimpleDF <$> elementWise (dim @ds) f 0
---   --   where
---   --     f :: Scalar Float -> Gen (Scalar Float)
---   --     f _ = scalar <$> choose (-10000,100000)
---   shrink = liftSomeDF shrink
+instance Arbitrary SomeSimpleDF where
+  arbitrary = do
+    dimN <- choose (0, 6) :: Gen Int
+    dims <- mapM (\_ -> choose (2, 9) :: Gen Int) [1..dimN]
+    let eGen = withRuntimeDim dims (\(ds :: Dim ds) -> SomeSimpleDF <$> (arbitrary :: Gen (SimpleDF ds)) )
+    case eGen of
+      Left s -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
+      Right v -> v
+  shrink (SomeSimpleDF x) = SomeSimpleDF <$> shrink x
 
 
 
