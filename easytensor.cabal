@@ -73,8 +73,10 @@ test-suite easytensor-test
     main-is: Spec.hs
     other-modules:
         Numeric.DataFrame.SubSpaceTest
+        Numeric.DataFrame.BasicTest
     build-depends:
         base -any,
+        QuickCheck -any,
         easytensor -any
     default-language: Haskell2010
     hs-source-dirs: test

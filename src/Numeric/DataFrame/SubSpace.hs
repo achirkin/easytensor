@@ -93,7 +93,8 @@ class ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
     elementWise :: ( Applicative f
                    , SubSpace s as' bs asbs'
                    )
-                => (DataFrame t as -> f (DataFrame s as'))
+                => proxy bs
+                -> (DataFrame t as -> f (DataFrame s as'))
                 -> DataFrame t asbs -> f (DataFrame s asbs')
     -- | Apply an applicative functor on each element with its index
     --     (Lens-like indexed traversal)
@@ -228,7 +229,7 @@ instance ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
               ( f curI (NCommons.fromBytes (# pos, step, arr #)) acc )
 
     -- implement elementWise in terms of indexWise
-    elementWise f = indexWise (const f)
+    elementWise _ f = indexWise (const f)
 
     indexWise :: forall (s :: Type) (f :: Type -> Type) (as' :: [Nat]) (asbs' :: [Nat])
                . ( Applicative f
