@@ -57,8 +57,8 @@ import           Numeric.DataFrame.Type
 -- t is an underlying data type (i.e. Float, Int, Double)
 --
 class ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
-      , ToList bs   ~ SimplifyList ( Suffix (ToList as) (ToList asbs))
-      , ToList as   ~ SimplifyList ( Prefix (ToList bs) (ToList asbs))
+      , ToList bs   ~ SimplifyList ('Suffix (ToList as) (ToList asbs))
+      , ToList as   ~ SimplifyList ('Prefix (ToList bs) (ToList asbs))
       , Dimensions as
       , Dimensions bs
       , Dimensions asbs
@@ -93,7 +93,7 @@ class ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
     elementWise :: ( Applicative f
                    , SubSpace s as' bs asbs'
                    )
-                => proxy bs
+                => Dim bs
                 -> (DataFrame t as -> f (DataFrame s as'))
                 -> DataFrame t asbs -> f (DataFrame s asbs')
     -- | Apply an applicative functor on each element with its index
@@ -125,8 +125,8 @@ iwfoldMap f = iwfoldl (\i b -> mappend b . f i) mempty
 
 
 instance ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
-         , ToList bs   ~ SimplifyList ( Suffix (ToList as) (ToList asbs))
-         , ToList as   ~ SimplifyList ( Prefix (ToList bs) (ToList asbs))
+         , ToList bs   ~ SimplifyList ('Suffix (ToList as) (ToList asbs))
+         , ToList as   ~ SimplifyList ('Prefix (ToList bs) (ToList asbs))
          , Dimensions as
          , Dimensions bs
          , Dimensions asbs
@@ -229,7 +229,7 @@ instance ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
               ( f curI (NCommons.fromBytes (# pos, step, arr #)) acc )
 
     -- implement elementWise in terms of indexWise
-    elementWise _ f = indexWise (const f)
+    elementWise _ = indexWise . const
 
     indexWise :: forall (s :: Type) (f :: Type -> Type) (as' :: [Nat]) (asbs' :: [Nat])
                . ( Applicative f
