@@ -189,8 +189,11 @@ instance ( KnownNat m )
       where
         m = case fromInteger $ natVal (Proxy @m) of I# mm -> mm
 
-instance ( ToList as ~ SimplifyList (ListInit (ToList asm))
-         , ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs))
+instance ( asL ~ SimplifyList (ListInit (ToList asm))
+         , bsL ~ ToList bs
+         , asbsL ~ ToList asbs
+         , asbsL ~ SimplifyList ('Concat asL bsL)
+         , as ~ EvalCons asL
          , asm ~ (as +: m)
          , Dimensions as
          , Dimensions bs

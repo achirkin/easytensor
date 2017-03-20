@@ -36,13 +36,14 @@ module Numeric.Dimensions
   , XDimensions (..)
   , inSpaceOf, asSpaceOf, order, appendIdx, splitIdx
     -- * Type-level programming
-  , FixedDim, FixedXDim, KnownOrder, ValidDims
+  , FixedDim, FixedXDim, KnownOrder, KnownOrders, ValidDims
   , type (++), Length
   , type (:<), type (>:), type (:+), type (+:), SnocI, Head, Tail
-  , Suffix, Prefix
-  , List (..), Cons, Snoc, Reverse, Take, Drop
+  , List (..), Cons, Snoc, Reverse, Take, Drop, Concat, Suffix, Prefix
   , EvalList, EvalCons, ToList, SimplifyList
   , ListHead, ListTail, ListLast, ListInit
+  , idempSimplifyList, normalSimplifyList
+  , inferSubDimensions
   ) where
 
 
@@ -53,7 +54,6 @@ import GHC.Types
 import GHC.Exts
 import Data.Proxy
 import Data.Type.Equality
--- import Data.Type.Bool
 
 import Unsafe.Coerce
 
@@ -109,8 +109,9 @@ someDimVal xxs@(p :* xs) = do
     return $ withSuccKnown (order ps) ps
           ( \Refl -> let pps = p :* ps
                      in case ( isFixed xxs pps
-                             , isXFixed xxs pps ) of
-                          (Refl, Refl) -> SomeDim pps
+                             , isXFixed xxs pps
+                             , normalSimplifyList pps ) of
+                          (Refl, Refl, Refl) -> SomeDim pps
           )
   where
     -- I know for sure that the constraint (FixedDim xns ns ~ ns) holds,
@@ -123,8 +124,10 @@ someDimVal (SomeNat p :? xs) = do
   Refl <- isGoodDim p
   SomeDim ps <- someDimVal xs
   return $ withSuccKnown (order ps) ps
-            (\Refl -> SomeDim (p :* ps)
+            (\Refl -> case normalSimplifyList (p :* ps) of
+                Refl -> SomeDim (p :* ps)
             )
+
 
 isGoodDim :: KnownNat d => p d -> Maybe ((2 <=? d) :~: 'True)
 isGoodDim p = if 2 <= natVal p then unsafeCoerce (Just Refl)
@@ -135,7 +138,7 @@ withRuntimeDim :: [Int]
                -> (forall ns . ( Dimensions ns ) => Dim ns -> a)
                -> Either String a
 withRuntimeDim xns f | any (< 2) xns = Left "All dimensions must be at least of size 2."
-                      | otherwise     = case someNatVal p of
+                     | otherwise     = case someNatVal p of
     Just (SomeNat _) -> withDim (constructXDims p xns) f
     Nothing          -> Left "Cannot get length of a dimension list."
   where
@@ -193,7 +196,8 @@ runDimensional xds d = withDim xds $ _runDimensional d
 -- | The main constraint type.
 --   With this we are sure that all dimension values are known at compile time,
 --   plus we have all handy functions for `Dim` and `Idx` types.
-type Dimensions xs = ( KnownDims xs
+type Dimensions xs = ( ToList xs ~ SimplifyList (ToList xs)
+                     , KnownDims xs
                      , KnownOrder xs
                      , Dimensions' xs
                      , Dimensions'' xs)
@@ -227,9 +231,9 @@ class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
   -- | Get index offset: i1 + i2*n1 + i3*n1*n2 + ...
   ioffset   :: Idx ds -> Int
   -- | Drop a number of dimensions
-  dropDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (EvalList (Drop n ds))
+  dropDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (EvalList (Drop n (ToList ds)))
   -- | Take a number of dimensions
-  takeDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (EvalList (Take n ds))
+  takeDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (EvalList (Take n (ToList ds)))
   -- | Maximum values of all dimensions
   dimMax    :: Idx ds
   -- | Minimum values -- ones
@@ -324,20 +328,6 @@ instance Num (Idx '[n]) where
   signum (a:!Z)   = signum a :! Z
   abs (a:!Z)      = abs a :! Z
   fromInteger i   = fromInteger i :! Z
-
--- Disable this because it causes Nat ambiguity when being used
--- instance Num (Slice n 1) where
---   Get a + Get b = Get (a+b)
---   _ + _ = Get 1
---   Get a - Get b = Get (a-b)
---   _ - _ = Get 1
---   Get a * Get b = Get (a*b)
---   _ * _ = Get 1
---   signum (Get a) = Get $ signum a
---   signum x       = x
---   abs (Get a)    = Get $ abs a
---   abs x          = x
---   fromInteger i  = Get $ fromInteger i
 
 
 instance Ord (Idx ds) where
@@ -596,6 +586,12 @@ loopReverse1 n f = loop' n
 -- | It is better to know the length of a dimension list and avoid infinite types.
 type KnownOrder (ns :: [k]) = KnownNat (Length ns)
 
+type family KnownOrders (ns :: [k]) :: Constraint where
+  KnownOrders '[] = ()
+  KnownOrders (x ': xs) = ( KnownOrder (x ': xs)
+                          , KnownOrders xs
+                          )
+
 -- | A constraint family that makes sure all subdimensions are known.
 type family KnownDims (ns :: [Nat]) :: Constraint where
   KnownDims '[] = ()
@@ -603,6 +599,7 @@ type family KnownDims (ns :: [Nat]) :: Constraint where
                         , KnownOrder xs
                         , Dimensions' xs
                         , Dimensions'' xs
+                        , ToList xs ~ SimplifyList (ToList xs)
                         , KnownDims xs)
 
 -- | Make sure all dimensions are not degenerate
@@ -662,6 +659,8 @@ data List k
   | Reverse (List k)
   | Drop Nat (List k)
   | Take Nat (List k)
+  | Suffix (List k) (List k)
+  | Prefix (List k) (List k)
 type ListNat = List Nat
 type ListXNat = List XNat
 
@@ -722,6 +721,8 @@ type family SimplifyList (xs :: List k) :: List k where
     SimplifyList ('Concat 'Empty xs)                 = SimplifyList xs
     SimplifyList ('Concat xs 'Empty)                 = SimplifyList xs
     SimplifyList ('Concat ('Cons x xs) ys)           = 'Cons x (SimplifyList ('Concat xs ys))
+    SimplifyList ('Concat ('Prefix bs asbs) ('Suffix ('Prefix bs asbs) asbs)) = SimplifyList asbs
+    SimplifyList ('Concat ('Prefix ('Suffix as asbs) asbs) ('Suffix as asbs)) = SimplifyList asbs
     SimplifyList ('Concat xs ys)                     = SimplifyList ('Concat (SimplifyList xs) ys)
 
     SimplifyList ('Reverse 'Empty)          = 'Empty
@@ -741,6 +742,108 @@ type family SimplifyList (xs :: List k) :: List k where
     SimplifyList ('Take n ('Cons x xs)) = 'Cons x (SimplifyList ('Take (n-1) xs))
     SimplifyList ('Take n xs)           = SimplifyList ('Take n (SimplifyList xs))
 
+    SimplifyList ('Suffix 'Empty xs)
+        = SimplifyList xs
+    SimplifyList ('Suffix xs xs)
+        = 'Empty
+    SimplifyList ('Suffix ('Cons _ _) 'Empty)
+        = TypeError ( 'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter" )
+    SimplifyList ('Suffix ('Snoc _ _) 'Empty)
+        = TypeError ( 'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter" )
+    SimplifyList ('Suffix ('Cons _ as) ('Cons _ asbs))
+        = SimplifyList ('Suffix as asbs)
+    SimplifyList ('Suffix ('Reverse ('Snoc as _)) ('Cons _ asbs))
+        = SimplifyList ('Suffix ('Reverse as) asbs)
+    SimplifyList ('Suffix ('Cons _ as) ('Reverse ('Snoc asbs _)))
+        = SimplifyList ('Suffix as ('Reverse asbs))
+    SimplifyList ('Suffix ('Reverse ('Snoc as _)) ('Reverse ('Snoc asbs _)))
+        = SimplifyList ('Suffix ('Reverse as) ('Reverse asbs))
+    SimplifyList ('Suffix ('Take n asbs) asbs)
+        = SimplifyList ('Drop n asbs)
+    SimplifyList ('Suffix ('Reverse ('Drop n asbs)) ('Reverse asbs))
+        = SimplifyList ('Reverse ('Take n asbs))
+    SimplifyList ('Suffix as ('Concat as bs))
+        = SimplifyList bs
+    SimplifyList ('Suffix as asbs)
+        = SimplifyList ('Suffix (SimplifyList as) (SimplifyList asbs))
+
+    SimplifyList ('Prefix 'Empty asbs)
+        = SimplifyList asbs
+    SimplifyList ('Prefix xs xs)
+        = 'Empty
+    SimplifyList ('Prefix ('Cons _ _) 'Empty)
+        = TypeError ( 'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter" )
+    SimplifyList ('Prefix ('Snoc _ _) 'Empty)
+        = TypeError ( 'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter" )
+    SimplifyList ('Prefix ('Snoc as _) ('Snoc asbs _))
+        = SimplifyList ('Prefix as asbs)
+    SimplifyList ('Prefix ('Reverse ('Cons _ as)) ('Snoc asbs _))
+        = SimplifyList ('Prefix ('Reverse as) asbs)
+    SimplifyList ('Prefix ('Snoc as _) ('Reverse ('Cons _ asbs)))
+        = SimplifyList ('Prefix as ('Reverse asbs))
+    SimplifyList ('Prefix ('Reverse ('Cons _ as))  ('Reverse ('Cons _ asbs)))
+        = SimplifyList ('Prefix ('Reverse as) ('Reverse asbs))
+    SimplifyList ('Prefix ('Drop n asbs) asbs)
+        = SimplifyList ('Take n asbs)
+    SimplifyList ('Prefix ('Reverse ('Take n asbs)) ('Reverse asbs))
+        = SimplifyList ('Reverse ('Drop n asbs))
+    SimplifyList ('Prefix bs ('Concat as bs))
+        = SimplifyList as
+    SimplifyList ('Prefix bs asbs)
+        = SimplifyList ('Reverse ('Suffix ('Reverse bs) ('Reverse asbs)))
+
+
+-- | SimplifyList is an idempotent operation
+idempSimplifyList :: p (xs :: List k) -> SimplifyList xs :~: SimplifyList (SimplifyList xs)
+idempSimplifyList _ = unsafeCoerce Refl
+
+-- | Result of SimplifyList operation
+normalSimplifyList :: p (xs :: [k]) -> ToList xs :~: SimplifyList (ToList xs)
+normalSimplifyList _ = unsafeCoerce Refl
+
+normalSimplifyListNat :: p (xs :: [Nat]) -> ToListNat xs :~: SimplifyList (ToListNat xs)
+normalSimplifyListNat _ = unsafeCoerce Refl
+
+
+
+-- | If we know (1) Dimensions ds and (2) Size of prefix list,
+--   we can derive Dimensions instances for both, prefix and suffix of the list
+inferSubDimensions :: forall (x :: Type)
+                             (as :: [Nat]) (bs :: [Nat]) (asbsL :: List Nat) (asbs :: [Nat])
+                    . ( asbsL ~ SimplifyList ('Concat (ToList as) (ToList bs))
+                      , asbs ~ EvalCons asbsL
+                      , asbsL ~ ToList asbs
+                      , Dimensions (EvalCons asbsL)
+                      , KnownOrders as
+                      )
+                   => Dim as
+                   -> Dim bs
+                   -> ( forall (as' :: [Nat]) (bs' :: [Nat]) (asbsL' :: List Nat) (asbs' :: [Nat])
+                             . ( asbsL  ~ SimplifyList ('Concat (ToList as) (ToList bs))
+                               , asbsL' ~ SimplifyList ('Concat (ToList as') (ToList bs'))
+                               , as ~ as'
+                               , bs ~ bs'
+                               , asbsL ~ asbsL'
+                               , asbs' ~ EvalCons asbsL'
+                               , asbsL' ~ ToList asbs'
+                               , Dimensions as
+                               , Dimensions bs
+                               )
+                            => Dim as' -> Dim bs' -> x
+                      )
+                   -> x
+inferSubDimensions D D f = f D D
+inferSubDimensions as D f = case (unsafeCoerce Refl :: as :~: asbs) of Refl -> f as D
+inferSubDimensions D bs f = case (unsafeCoerce Refl :: bs :~: asbs) of Refl -> f D bs
+inferSubDimensions (a :* (as :: Dim (as' :: [Nat]))) bs f
+                          = case ( unsafeCoerce Refl :: asbs :~: (Head asbs ': Tail asbs)
+                                 , normalSimplifyListNat as
+                                 , unsafeCoerce Refl :: (SimplifyList ('Concat (ToList as') (ToList bs)))
+                                                    :~: ToList (EvalCons (SimplifyList ('Concat (ToList as') (ToList bs))))
+                                 , unsafeCoerce Refl :: EvalCons (SimplifyList ('Concat (ToList as') (ToList bs)))
+                                                    :~: Tail asbs
+                                 ) of
+    (Refl, Refl, Refl, Refl) -> inferSubDimensions as bs (f . (a :*))
 
 --------------------------------------------------------------------------------
 -- Polymorphic type-level operations (work on [k] and on List k)
@@ -781,55 +884,15 @@ type family ListInit (xs :: List k) :: List k where
 -- x = _
 
 
-type family Cons (x :: k) (xs :: l k) :: List k where
-    Cons x (xs :: [k])    = 'Cons x (ToList xs)
-    Cons x (xs :: List k) = 'Cons x xs
-    Cons _ xs = TypeError (
-      'Text "Cons supports types [k] and List k only"
-      ':$$: 'Text "But found: " ':<>: 'ShowType xs
-     )
+type Cons = 'Cons
+type Snoc = 'Snoc
+type Concat = 'Concat
+type Reverse = 'Reverse
+type Drop = 'Drop
+type Take = 'Take
+type Suffix = 'Suffix
+type Prefix = 'Prefix
 
-type family Snoc (xs :: l k) (x :: k) :: List k where
-    Snoc (xs :: [k]) x    = 'Snoc (ToList xs) x
-    Snoc (xs :: List k) x = 'Snoc xs x
-    Snoc xs _ = TypeError (
-      'Text "Snoc supports types [k] and List k only"
-      ':$$: 'Text "But found: " ':<>: 'ShowType xs
-     )
-
-type family Concat (xs :: l k) (ys :: m k) :: List k where
-    Concat (xs :: List k) (ys :: List k) = 'Concat xs ys
-    Concat (xs :: [k]) (ys :: [k])       = 'Concat (ToList xs) (ToList ys)
-    Concat (xs :: List k) (ys :: [k])    = 'Concat xs (ToList ys)
-    Concat (xs :: [k]) (ys :: List k)    = 'Concat (ToList xs) ys
-    Concat xs ys = TypeError (
-      'Text "Concat supports types [k] and List k only"
-      ':$$: 'Text "But found: " ':<>: 'ShowType xs ':<>: 'Text " and " ':<>: 'ShowType ys
-     )
-
-type family Reverse (xs :: l k) :: List k where
-    Reverse (xs :: [k])    = 'Reverse (ToList xs)
-    Reverse (xs :: List k) = 'Reverse xs
-    Reverse xs = TypeError (
-      'Text "Reverse supports types [k] and List k only"
-      ':$$: 'Text "But found: " ':<>: 'ShowType xs
-     )
-
-type family Drop (n::Nat) (xs :: l k) :: List k where
-    Drop n (xs :: [k])    = 'Drop n (ToList xs)
-    Drop n (xs :: List k) = 'Drop n xs
-    Drop n xs = TypeError (
-      'Text "Drop supports types [k] and List k only"
-      ':$$: 'Text "But found: " ':<>: 'ShowType xs
-     )
-
-type family Take (n::Nat) (xs :: l k) :: List k where
-    Take n (xs :: [k])    = 'Take n (ToList xs)
-    Take n (xs :: List k) = 'Take n xs
-    Take n xs = TypeError (
-      'Text "Take supports types [k] and List k only"
-      ':$$: 'Text "But found: " ':<>: 'ShowType xs
-     )
 
 --------------------------------------------------------------------------------
 -- Tricks to make some type-level operations injective
@@ -903,57 +966,3 @@ type family Length (as :: l) :: Nat where
   Length '[] = 0
   Length (a ': as) = 1 + Length as
   Length (xs :: List k) = Length (EvalList xs)
-
-
-
--- | Get a suffix part of a list, given its prefix
-type family Suffix (as :: List k) (asbs :: List k) :: List k where
-  -- Found suffix!
-  Suffix 'Empty asbs = asbs
-  -- Prefix matches exactly with the original string, so suffix is empty
-  Suffix (asbs :: List Nat) (asbs :: List Nat) = ('Empty :: List Nat)
-  Suffix (asbs :: List XNat) (asbs :: List XNat) = ('Empty :: List XNat)
-  Suffix (asbs :: List k) (asbs :: List k) = ('Empty :: List k)
-  -- Error!
-  Suffix ('Cons _ _) 'Empty = TypeError (
-    'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter"
-   )
-  -- SimplifyList guarantees to return 'Cons or 'Empty constructors.
-  -- Therefore, suffix evaluation must finish
-
-  -- Variations of Cons stripping
-  Suffix ('Cons _ as) ('Cons _ asbs) = Suffix as asbs
-  Suffix ('Reverse ('Snoc as _)) ('Cons _ asbs) = Suffix ('Reverse as) asbs
-  Suffix ('Cons _ as) ('Reverse ('Snoc asbs _)) = Suffix as ('Reverse asbs)
-  Suffix ('Reverse ('Snoc as _))  ('Reverse ('Snoc asbs _)) = Suffix ('Reverse as) ('Reverse asbs)
-  -- Variations of Drop-Take
-  Suffix ('Take n asbs) asbs = 'Drop n asbs
-  Suffix ('Reverse ('Drop n asbs)) ('Reverse asbs) = 'Reverse ('Take n asbs)
-
-
-  -- General case
-  Suffix as asbs = Suffix (SimplifyList as) (SimplifyList asbs)
-
-
--- | Get a prefix part of a list, given its suffix.
---   I use Suffix+Reverse for it.
-type family Prefix (bs :: List k) (asbs :: List k) :: List k where
-  -- Found prefix!
-  Prefix 'Empty asbs = asbs
-  -- Suffix matches exactly with the original string, so prefix is empty
-  Prefix (asbs :: List Nat) (asbs :: List Nat) = ('Empty :: List Nat)
-  Prefix (asbs :: List XNat) (asbs :: List XNat) = ('Empty :: List XNat)
-  Prefix (asbs :: List k) (asbs :: List k) = ('Empty :: List k)
-
-  -- Variations of Snoc stripping
-  Prefix ('Snoc as _) ('Snoc asbs _) = Prefix as asbs
-  Prefix ('Reverse ('Cons _ as)) ('Snoc asbs _) = Prefix ('Reverse as) asbs
-  Prefix ('Snoc as _) ('Reverse ('Cons _ asbs)) = Prefix as ('Reverse asbs)
-  Prefix ('Reverse ('Cons _ as))  ('Reverse ('Cons _ asbs)) = Prefix ('Reverse as) ('Reverse asbs)
-  -- Variations of Drop-Take
-  Prefix ('Drop n asbs) asbs = 'Take n asbs
-  Prefix ('Reverse ('Take n asbs)) ('Reverse asbs) = 'Reverse ('Drop n asbs)
-
-
-  -- General case - compute via Suffix
-  Prefix as asbs = 'Reverse (Suffix ('Reverse as) ('Reverse asbs))
