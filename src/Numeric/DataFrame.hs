@@ -24,6 +24,7 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE BangPatterns #-}
+{-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame
@@ -37,7 +38,7 @@
 
 module Numeric.DataFrame
   ( DataFrame, withShape, unboundShape
-  , (%*), (<::>), (<+:>), (<:>)
+  , (<::>), (<+:>), (<:>)
   , Vector, Matrix, Scalar, Scf
   , Vec2f, Vec3f, Vec4f
   , Mat22f, Mat23f, Mat24f
@@ -52,11 +53,12 @@ module Numeric.DataFrame
   , inverse, det, trace, eye, diag, transpose
   , slice, runSlice, subSpace, index
   , M.MatrixCalculus (), M.SquareMatrixCalculus ()
-  , M.MatrixInverse (), M.MatrixProduct (..)
-  , NumSpace
-  , module Numeric.DataFrame.SubSpace
+  , M.MatrixInverse ()
   , NumericFrame, FPDataFrame, ElementDataType (..), EDTRefl (..)
-  , inferNumeric, inferFloating
+  , inferNumeric, inferFloating, inferSubSpace
+   -- * Modules for DataFrame operations
+  , module Numeric.DataFrame.SubSpace
+  , module Numeric.DataFrame.Contraction
   ) where
 
 import Data.Functor.Const
@@ -70,12 +72,13 @@ import           Numeric.Array
 import qualified Numeric.Array.Family as AFam (Scalar (..))
 import qualified Numeric.Commons as NCommons
 import qualified Numeric.Dimensions as Dims
-import           Numeric.Dimensions (Dim (..), dim)
+import           Numeric.Dimensions (Dim (..), dim, Dimensions, List (..), SimplifyList, EvalCons, ToList)
 import qualified Numeric.Matrix.Class as M
 import           Unsafe.Coerce
 
 import           Numeric.DataFrame.Type
 import           Numeric.DataFrame.SubSpace
+import           Numeric.DataFrame.Contraction
 
 
 
@@ -86,19 +89,6 @@ import           Numeric.DataFrame.SubSpace
 
 
 
--- | Tensor contraction.
---   In particular:
---     1. matrix-matrix product
---     2. matrix-vector or vector-matrix product
---     3. dot product of two vectors.
-(%*) :: ( M.MatrixProduct (DataFrame t (as Dims.+: m))
-                          (DataFrame t (m ': bs))
-                          (DataFrame t (as Dims.++ bs))
-        )
-     => DataFrame t (as Dims.+: m) -> DataFrame t (m Dims.:+ bs) -> DataFrame t (as Dims.++ bs)
-(%*) = M.prod
-{-# INLINE (%*) #-}
-infixl 7 %*
 
 -- | Append one DataFrame to another, adding up their last dimensionality
 (<:>) :: ( NCommons.PrimBytes (DataFrame t (ds Dims.+: n))
@@ -370,117 +360,6 @@ indexC (I# i) f d = Const . getConst $ f x
     tds = case Dims.totalDim (Proxy @ds) of I# q -> q
 
 
-type NumSpace t ds = ( NCommons.PrimBytes (DataFrame t ds)
-                     , Dims.Dimensions ds
-                     , NCommons.ElementWise (Dims.Idx ds) t (DataFrame t ds)
-                     , Eq (DataFrame t ds)
-                     , Ord (DataFrame t ds)
-                     , Num (DataFrame t ds)
-                     , Fractional (DataFrame t ds)
-                     , Floating (DataFrame t ds)
-                     )
-
--- class ( asbs ~ (as Dims.++ bs)
---       , as ~ Dims.Take (Dims.Length asbs - Dims.Length bs) asbs
---       , bs ~ Dims.Drop (Dims.Length as) asbs
---       , Dims.Dimensions as
---       , Dims.Dimensions bs
---       , Dims.Dimensions asbs
---       , NCommons.PrimBytes (DataFrame t as)
---       , NCommons.PrimBytes (DataFrame t asbs)
---       ) => SubSpace t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
---                                  | asbs as -> bs
---                                  , asbs bs -> as
---                                  , as bs -> asbs where
---   mapDim :: Dims.Dim bs
---          -> (DataFrame t as -> DataFrame t as)
---          -> DataFrame t asbs
---          -> DataFrame t asbs
---   foldDim :: Monoid m
---           => Dims.Dim bs
---           -> (DataFrame t as -> m)
---           -> DataFrame t asbs
---           -> m
---   (!..) :: Dims.Idx bs -> DataFrame t (as Dims.++ bs) -> DataFrame t as
--- infixr 4 !..
-
--- mapDims :: forall t t' as as' bs
---          . ( SubSpace t as bs (as Dims.++ bs)
---            , SubSpace t' as' bs (as' Dims.++ bs)
---            )
---         => Dims.Dim bs
---         -> (DataFrame t as -> DataFrame t' as')
---         -> DataFrame t (as Dims.++ bs)
---         -> DataFrame t' (as' Dims.++ bs)
--- mapDims _ f df = case (# NCommons.toBytes df
---                        , Dims.totalDim (Proxy @as)
---                        , Dims.totalDim (Proxy @(as' Dims.++ bs)) #) of
---     (# (# off, len1, arr #), I# l1#, I# len2 #) -> case runRW#
---        ( \s0 -> case newByteArray# (len2 *# elS2) s0 of
---            (# s1, marr #) -> case go off (off +# len1) l1# 0# arr marr s1 of
---                s2 -> unsafeFreezeByteArray# marr s2
---        ) of (# _, r #) -> NCommons.fromBytes (# 0#, len2 , r #)
---   where
---     elS2 = NCommons.elementByteSize (undefined :: DataFrame t' (as' Dims.++ bs))
---     go pos1 lim1 step1 pos2 arr marr s
---       | isTrue# (pos1 >=# lim1) = s
---       | otherwise = case NCommons.toBytes (f (NCommons.fromBytes (# pos1, step1, arr #))) of
---          (# offX, step2, arrX #) -> go (pos1 +# step1) lim1 step1 (pos2 +# step2) arr marr
---            (copyByteArray# arrX (offX *# elS2) marr (pos2 *# elS2) (step2 *# elS2) s)
---
--- instance ( asbs ~ (as Dims.++ bs)
---          , as ~ Dims.Take (Dims.Length asbs - Dims.Length bs) asbs
---          , bs ~ Dims.Drop (Dims.Length as) asbs
---          , Dims.Dimensions as
---          , Dims.Dimensions bs
---          , Dims.Dimensions asbs
---          , NCommons.PrimBytes (DataFrame t as)
---          , NCommons.PrimBytes (DataFrame t asbs)
---          ) => SubSpace t as bs asbs where
---   mapDim _ f df = case (# NCommons.toBytes df, Dims.totalDim (Proxy @as) #) of
---       (# (# off, len, arr #), I# l# #) -> case runRW#
---          ( \s0 -> case newByteArray# (len *# elS) s0 of
---              (# s1, marr #) -> case go off (off +# len) l# arr marr s1 of
---                  s2 -> unsafeFreezeByteArray# marr s2
---          ) of (# _, r #) -> NCommons.fromBytes (# 0#, len, r #)
---     where
---       elS = NCommons.elementByteSize df
---       go pos lim step arr marr s
---         | isTrue# (pos >=# lim) = s
---         | otherwise = case NCommons.toBytes (f (NCommons.fromBytes (# pos, step, arr #))) of
---            (# offX, _, arrX #) -> go (pos +# step) lim step arr marr
---              (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
---
---   foldDim _ f df = case (# NCommons.toBytes df, Dims.totalDim ( Proxy @as) #) of
---       (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr mempty
---     where
---       go pos lim step arr acc
---         | isTrue# (pos >=# lim) = acc
---         | otherwise = go (pos +# step) lim step arr
---             (acc `mappend` f (NCommons.fromBytes (# pos, step, arr #)) )
---
---   i !.. d = r
---     where
---       r = case (# NCommons.toBytes d, Dims.fromIdx i, Dims.totalDim r #) of
---             (# (# off, _, arr #), I# i#, I# l# #)
---               -> NCommons.fromBytes (# off +# i# *# l#, l#, arr #)
-
--- ff = runSlice . slice Every
---                 . slice (Get 4 :& 7 :& 4)
---                 $ slice (Get 1 :& 2) (const Just)
-
--- fancyFunc :: forall (t :: Type) (f :: Type -> Type)
---                     (n :: Nat) (m :: Nat)
---                     (oldRems :: [Nat]) (newRems :: [Nat])
---                     (oldIds :: [Nat])  (newIds :: [Nat])
---            . (Applicative f)
---       => Slice n m
---       -> (Dims.Idx (m Dims.:+ newIds) -> DataFrame t oldRems -> f (DataFrame t newRems))
---       -> Idx newIds
---       -> DataFrame t ((oldRems Dims.+: n) Dims.++ oldIds)
---       -> f (DataFrame t ((newRems Dims.+: m) Dims.++ newIds))
--- fancyFunc _slice _map _ids _oldDF = undefined
-
 --------------------------------------------------------------------------------
 -- * Scalar type
 --------------------------------------------------------------------------------
@@ -732,6 +611,7 @@ inverse :: ( KnownNat n
 inverse = KnownDataFrame . M.inverse . _getDF
 
 
+
 -- | If instance of Dimensions ds is available, I must provide a way
 --   to bring instances of DataFrame into scope.
 --   For example, Ord, Num, Eq, and SubSpace t '[] ds ds must be there for any ds.
@@ -744,22 +624,12 @@ type NumericFrame (t :: Type) (ds :: [Nat]) =
   , ElementDataType t
   )
 
+-- | NumericFrame t ds plus Fractional and Floating instances
 type FPDataFrame (t :: Type) (ds :: [Nat]) =
   ( NumericFrame t ds
   , Fractional (DataFrame t ds)
   , Floating (DataFrame t ds)
   )
-
-
-class ElementDataType t where
-  edtRefl :: proxy t -> EDTRefl t
-
-data EDTRefl :: (Type -> Type) where
-  EDTFloat :: EDTRefl Float
-
-
-instance ElementDataType Float where
-  edtRefl _ = EDTFloat
 
 
 -- | Lookup a proper instance for our typeclasses at runtime
@@ -788,3 +658,43 @@ inferFloating x f = case (dim @as, edtRefl (Proxy @t)) of
     (D, _) -> f x
     (_ :* D, EDTFloat) -> f x
     (_ :* _ :* _, EDTFloat) -> f x
+
+
+
+inferSubSpace :: forall (x :: Type) (t :: Type)
+                       (as :: [Nat]) (bs :: [Nat]) (asbsL :: List Nat) (asbs :: [Nat])
+              . ( asbsL ~ SimplifyList ('Concat (ToList as) (ToList bs))
+                , ToList as ~ SimplifyList ('Prefix (ToList bs) asbsL)
+                , ToList bs ~ SimplifyList ('Suffix (ToList as) asbsL)
+                , asbs  ~ EvalCons asbsL
+                , asbsL ~ ToList asbs
+                , Dimensions (EvalCons asbsL)
+                , Dims.KnownOrders as
+                , SubSpace t '[] asbs asbs
+                , ElementDataType t
+                )
+             => Dim as
+             -> Dim bs
+             -> DataFrame t asbs
+             -> ( forall (as' :: [Nat]) (bs' :: [Nat]) (asbsL' :: List Nat) (asbs' :: [Nat])
+                       . ( asbsL  ~ SimplifyList ('Concat (ToList as) (ToList bs))
+                         , asbsL' ~ SimplifyList ('Concat (ToList as') (ToList bs'))
+                         , as ~ as'
+                         , bs ~ bs'
+                         , asbsL ~ asbsL'
+                         , asbs' ~ EvalCons asbsL'
+                         , asbsL' ~ ToList asbs'
+                         , Dimensions as
+                         , Dimensions bs
+                         , SubSpace t as' bs' asbs'
+                         )
+                      => Dim as' -> Dim bs' -> DataFrame t asbs' -> x
+                )
+             -> x
+inferSubSpace D D x f = f D D x
+inferSubSpace D bs x f = case ( unsafeCoerce Refl :: bs :~: asbs) of Refl -> f D bs x
+inferSubSpace as D x f = case ( unsafeCoerce Refl :: as :~: asbs
+                              ) of Refl -> f as D x
+inferSubSpace as0@(_:*_) bs0@(_:*_) x f = Dims.inferSubDimensions as0 bs0 $ \as bs ->
+    case ( edtRefl (Proxy @t) ) of
+      EDTFloat -> f as bs x
