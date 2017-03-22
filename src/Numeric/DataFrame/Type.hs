@@ -34,6 +34,7 @@
 
 module Numeric.DataFrame.Type
   ( DataFrame (..), withShape, unboundShape
+  , ElementDataType (..), EDTRefl (..)
   ) where
 
 import           Data.Type.Equality
@@ -65,6 +66,22 @@ data instance DataFrame t (xns :: [Dims.XNat])
     , Eq (Array t ns)
     )
   => SomeDataFrame (Dims.Dim xns) (Array t ns)
+
+
+-- | This class is used to pattern match against available data types
+--   represented by EDTRefl
+class ElementDataType t where
+  -- | Get corresponding singleton constructor for a given element data type
+  edtRefl :: proxy t -> EDTRefl t
+
+-- | Represent available element data types
+data EDTRefl :: (Type -> Type) where
+  EDTFloat :: EDTRefl Float
+
+instance ElementDataType Float where
+  edtRefl _ = EDTFloat
+
+
 
 
 -- | Do something with

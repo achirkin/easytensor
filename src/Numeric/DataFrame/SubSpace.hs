@@ -103,6 +103,9 @@ class ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
                  )
               => (Idx bs -> DataFrame t as -> f (DataFrame s as'))
               -> DataFrame t asbs -> f (DataFrame s asbs')
+    -- -- | Generalization of a matrix product: take scalar product over one dimension
+    -- --   and, thus, concatenate other dimesnions
+    -- contract :: DataFrame t (as +: m) -> DataFrame t (m ': bs) -> DataFrame t asbs
 infixr 4 !.
 
 -- | Index an element (reverse of !.)

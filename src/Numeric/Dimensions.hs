@@ -40,7 +40,7 @@ module Numeric.Dimensions
   , type (++), Length
   , type (:<), type (>:), type (:+), type (+:), SnocI, Head, Tail
   , List (..), Cons, Snoc, Reverse, Take, Drop, Concat, Suffix, Prefix
-  , EvalList, EvalCons, ToList, SimplifyList
+  , EvalList, EvalCons, ToList, SimplifyList, ToListNat, EvalConsNat
   , ListHead, ListTail, ListLast, ListInit
   , idempSimplifyList, normalSimplifyList
   , inferSubDimensions

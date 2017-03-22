@@ -20,4 +20,5 @@ import           Numeric.Dimensions
 
 
 return []
+runTests :: IO Bool
 runTests = $quickCheckAll
