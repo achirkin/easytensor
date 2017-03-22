@@ -11,59 +11,30 @@
 --  using GHC typechecker only.
 --
 -----------------------------------------------------------------------------
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE RecordWildCards      #-}
+
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Numeric.Dimensions.Inference (plugin) where
 
 import           Data.Maybe (catMaybes, fromMaybe)
+import           Data.Monoid
+import           Control.Monad.Fail
 
-import           Class      (Class)
-import           ConLike    (ConLike (..))
-import           Outputable (Outputable (..), showSDocUnsafe, text, ($$), (<+>))
+import           Outputable (Outputable (..), showSDocUnsafe)
 import           Plugins    (Plugin (..), defaultPlugin)
 import           TcEvidence (EvTerm (..))
-import           TcPluginM
-import           TcRnTypes  (Ct (..), TcPlugin (..), TcPluginResult (..),
-                             ctEvPred, ctEvidence, isWanted, mkNonCanonical)
-import           Type       (EqRel (..), Kind, PredTree (EqPred), PredType,
-                             classifyPredType, eqType, getEqPredTys, mkTyVarTy)
-import           TysWiredIn (typeNatKind)
-
-import           Coercion   (CoercionHole, Role (..), mkForAllCos, mkHoleCo,
-                             mkInstCo, mkNomReflCo, mkUnivCo)
-import           DataCon    (DataCon)
-import           HsBinds    (PatSynBind)
-import           HsExpr     (ArithSeqInfo, HsMatchContext (..),
-                             HsStmtContext (..), UnboundVar (..))
-import           HsLit      (HsOverLit)
-import           HsPat      (LPat)
-import           HsTypes    (HsIPName (..))
-import           Name       (Name)
+-- import           TysWiredIn (typeNatKind)
+import           Coercion
 import           OccName
-import           PatSyn     (PatSyn)
-import           RdrName    (GlobalRdrEnv (..), RdrName)
-import           TcPluginM  (newCoercionHole, newFlexiTyVar)
+import           TcPluginM
 import           TcRnTypes
 import           TcType
-import           TcTypeNats (typeNatAddTyCon, typeNatExpTyCon, typeNatMulTyCon,
-                             typeNatSubTyCon)
 import           TyCon
-import           TyCoRep    (UnivCoProvenance (..))
-import           TyCoRep    (Type (..))
-import           Type       (mkPrimEqPred)
-
-import           Module     (mkModuleName)
-import           TcTypeNats (typeNatLeqTyCon)
+import           TyCoRep
 import           Type
-import           TysWiredIn (promotedFalseDataCon, promotedTrueDataCon)
+import           Module
 
--- import           Debug.Trace
-
--- import           Numeric.Dimensions
 
 -- | To use the plugin, add
 --
@@ -75,138 +46,168 @@ import           TysWiredIn (promotedFalseDataCon, promotedTrueDataCon)
 plugin :: Plugin
 plugin = defaultPlugin { tcPlugin = const $ Just inferListOpsPlugin }
 
+-- | Initialize with "Numeric.Dimensions" module necessary types
 inferListOpsPlugin :: TcPlugin
 inferListOpsPlugin = TcPlugin
-  { tcPluginInit  = return ()
-  , tcPluginSolve = const decideListOps
+  { tcPluginInit  = initInferenceTypes
+  , tcPluginSolve = decideListOps
   , tcPluginStop  = const (return ())
   }
 
-decideListOps :: [Ct] -> [Ct] -> [Ct]
-               -> TcPluginM TcPluginResult
-decideListOps _givens _deriveds []     = return (TcPluginOk [] [])
-decideListOps givens  deriveds wanteds =
-  uncurry TcPluginOk . unzip . catMaybes <$> mapM eliminateIdentities wanteds
+-- | Go over all wanteds and try to simplify or solve them
+decideListOps :: Maybe InferenceTypes
+              -> [Ct] -- ^ Givens
+              -> [Ct] -- ^ Deriveds
+              -> [Ct] -- ^ Wanteds
+              -> TcPluginM TcPluginResult
+decideListOps Nothing _ _ _         = return (TcPluginOk [] [])
+decideListOps (Just it) _ _ wanteds =
+  uncurry TcPluginOk . unzip . catMaybes <$> mapM (check' it) wanteds
 
 
--- . traceShow (toConstr t)
-
-eliminateIdentities :: Ct -> TcPluginM (Maybe ((EvTerm, Ct), Ct))
-eliminateIdentities ct@(CNonCanonical CtWanted{ctev_pred = t, ctev_loc = myLoc})
+check' :: InferenceTypes -> Ct -> TcPluginM (Maybe ((EvTerm, Ct), Ct))
+check' InferenceTypes {..} ct@(CNonCanonical CtWanted{ctev_pred = t, ctev_loc = myLoc})
   = case classifyPredType t of
-      EqPred NomEq lhs rhs -> do
-        -- tcPluginIO . putStrLn $ showSDocUnsafe $ ppr t
-        frModule <- findImportedModule (mkModuleName "Numeric.Dimensions") Nothing
-        case frModule of
-          Found _ modNDims -> do
-            tSimplifyList <- lookupOrig modNDims (mkOccName tcName "SimplifyList") >>= tcLookupTyCon
-            tToList <- lookupOrig modNDims (mkOccName tcName "ToList") >>= tcLookupTyCon
-            tToListNat <- lookupOrig modNDims (mkOccName tcName "ToListNat") >>= tcLookupTyCon
-            tEvalConsNat <- lookupOrig modNDims (mkOccName tcName "EvalConsNat") >>= tcLookupTyCon
-            tEvalCons <- lookupOrig modNDims (mkOccName tcName "EvalCons") >>= tcLookupTyCon
-            let rSListToList :: Type -> Type
-                rSListToList myType = fromMaybe myType $
-                  splitTyConApp_maybe myType >>= \(constr, apps) ->
-                    if constr == tSimplifyList
-                    then case apps of
-                          [_, innerType] -> splitTyConApp_maybe innerType >>= \(innerConstr, _) -> Just $
-                            if innerConstr == tSimplifyList || innerConstr == tToList || innerConstr == tEvalConsNat
-                            then rSListToList innerType
-                            else mkTyConApp constr (rSListToList <$> apps)
-                          _ -> Nothing
-                    else Just $ mkTyConApp constr (rSListToList <$> apps)
-            -- tcPluginIO . print $ tyConArity tSimplifyList
-            -- tcPluginIO . print $ tyConArity tToList
-            -- tcPluginIO . print $ tyConArity tEvalCons
-            -- tcPluginIO . putStrLn $ "LHS TYPE: " ++ show lhs
-            -- tcPluginIO . putStrLn $ "LHS TYPE 2: " ++ show (rSListToList lhs)
-            -- tcPluginIO . putStrLn $ "RHS TYPE: " ++ show rhs
-            -- tcPluginIO . putStrLn $ "RHS TYPE 2: " ++ show (rSListToList rhs)
-            let newLhs = rSListToList lhs
-                newRhs = rSListToList rhs
-                newEqPred = mkPrimEqPredRole Nominal newLhs newRhs
+    EqPred NomEq lhs rhs -> do
+      let rSListToList :: Type -> Type
+          rSListToList myType = fromMaybe myType $
+            splitTyConApp_maybe myType >>= \(constr, apps) ->
+              if constr == tcSimplifyList
+              then case apps of
+                    [_, innerType] -> splitTyConApp_maybe innerType >>= \(innerConstr, _) -> Just $
+                      if innerConstr == tcSimplifyList || innerConstr == tcToList
+                      then rSListToList innerType
+                      else mkTyConApp constr (rSListToList <$> apps)
+                    _ -> Nothing
+              else Just $ mkTyConApp constr (rSListToList <$> apps)
+      tcPluginIO . print $ tyConArity tcSimplifyList
+      tcPluginIO . print $ tyConArity tcToList
+      tcPluginIO . print $ tyConArity tcEvalCons
+      tcPluginIO . putStrLn $ "LHS TYPE: " ++ show lhs
+      tcPluginIO . putStrLn $ "LHS TYPE 2: " ++ show (rSListToList lhs)
+      tcPluginIO . putStrLn $ "RHS TYPE: " ++ show rhs
+      tcPluginIO . putStrLn $ "RHS TYPE 2: " ++ show (rSListToList rhs)
+      let newLhs = rSListToList lhs
+          newRhs = rSListToList rhs
+          newEqPred = mkPrimEqPredRole Nominal newLhs newRhs
 
-            newWantedEq <- newWanted myLoc newEqPred
-            tcPluginIO . putStrLn $ "WAS: " ++ show t
-            tcPluginIO . putStrLn $ "NOW: " ++ show newEqPred
-            -- tcPluginIO . putStrLn $ "LHS EXPANSION: " ++ show (splitTyConApp_maybe lhs)
-            -- tcPluginIO . putStrLn $ "RHS EXPANSION: " ++ show (splitTyConApp_maybe rhs)
-            return $ Just ((EvCoercion (mkUnivCo (PluginProv "numeric-dimensions-inference") Nominal t newEqPred),ct), CNonCanonical newWantedEq)
-          _ -> return Nothing
-      _ -> return Nothing
-eliminateIdentities _ = return Nothing
+      newWantedEq <- newWanted myLoc newEqPred
+      tcPluginIO . putStrLn $ "WAS: " ++ show t
+      tcPluginIO . putStrLn $ "NOW: " ++ show newEqPred
+      tcPluginIO . putStrLn $ "LHS EXPANSION: " ++ show (splitTyConApp_maybe lhs)
+      tcPluginIO . putStrLn $ "RHS EXPANSION: " ++ show (splitTyConApp_maybe rhs)
+      return $ Just ((EvCoercion (mkUnivCo (PluginProv "numeric-dimensions-inference") Nominal t newEqPred),ct), CNonCanonical newWantedEq)
+    _ -> return Nothing
+check' _ _ = return Nothing
 
 
+solve :: Type -> Type -> Inference InferenceResult
+solve lhs rhs = undefined
+
+
+removeAllSimplifyList :: Type -> Inference Type
+removeAllSimplifyList t = do
+    (constr, apps) <- getTyConApp t
+    shouldRemove <- isSimplifyList constr
+    case (shouldRemove, apps) of
+      (True, [_, inner]) -> withDefault inner $ removeAllSimplifyList inner
+      (True, [inner]) -> withDefault inner $ removeAllSimplifyList inner
+      (_, []) -> return t
+      (False, xs) -> mkTyConApp constr <$> (traverse (\x -> withDefault x $ removeAllSimplifyList x) apps)
+
+-- simplify :: InferenceTypes -> Type -> InferenceResult
+-- simplify it@InferenceTypes{..} t
+--     | Just (constr, [_, innerType]) <- splitTyConApp_maybe t
+--     , constr == tcSimplifyList
+--        = case splitTyConApp_maybe innerType of
+--            Nothing -> NotApplicable
+--            Just (iConstr, apps) -> if iConstr == tcSimplifyList || iConstr == tcToList
+--                                    then simplify it innerType
+--                                    else mkTyConApp constr (rSListToList <$> apps)
+
+
+-- | Result of the plugin work
+data InferenceResult
+  = Simplified !String !Type !Type
+    -- ^ New equality
+  | Eliminated !String
+    -- ^ Best result: equality solved (reduced to trivial)
+
+-- instance Monoid InferenceResult where
+--   mempty = NotApplicable
+--   mappend NotApplicable x   = x
+--   mappend x NotApplicable   = x
+--   mappend (Eliminated s) _  = Eliminated s
+--   mappend _  (Eliminated s) = Eliminated s
+--   mappend _ x               = x
+
+
+newtype Inference a = Inference
+  { runInference :: InferenceTypes -> Maybe a }
+
+instance Functor Inference where
+  fmap f i = Inference $ fmap f . runInference i
+
+instance Applicative Inference where
+  pure = Inference . const . Just
+  mf <*> mx = Inference $ \it -> runInference mf it <*> runInference mx it
+
+instance Monad Inference where
+  return = pure
+  mx >>= fm = Inference $ \it -> runInference mx it
+                            >>= (\x -> runInference (fm x) it)
+  -- ma >> mb = Inference $ \it -> case (runInference ma it, runInference mb it) of
+  --                                  (Left ar, Left br) -> Left $ ar <> br
+  --                                  (_, x) -> x
+
+instance MonadFail Inference where
+  fail = const notApplicable
+
+notApplicable :: Inference a
+notApplicable = Inference $ const Nothing
+
+isToList :: TyCon -> Inference Bool
+isToList tc = (tc ==) .  tcToList <$> getIT
+
+isEvalCons :: TyCon -> Inference Bool
+isEvalCons tc = (tc ==) .  tcSimplifyList <$> getIT
+
+isSimplifyList :: TyCon -> Inference Bool
+isSimplifyList tc = (tc ==) .  tcSimplifyList <$> getIT
+
+getTyConApp :: Type -> Inference (TyCon, [Type])
+getTyConApp t = Inference . const $ splitTyConApp_maybe t
+
+getIT :: Inference InferenceTypes
+getIT = Inference Just
+
+withDefault :: a -> Inference a -> Inference a
+withDefault a i =  Inference $ \it -> Just $ fromMaybe a (runInference i it)
+
+data InferenceTypes = InferenceTypes
+  { tcToList       :: !TyCon
+  , tcEvalCons     :: !TyCon
+  , tcSimplifyList :: !TyCon
+  , mDimensions    :: !Module
+  }
+
+-- | Initialize important types from Numeric.Dimensions module
+initInferenceTypes :: TcPluginM (Maybe InferenceTypes)
+initInferenceTypes = do
+  frModule <- findImportedModule (mkModuleName "Numeric.Dimensions") Nothing
+  case frModule of
+    Found _ mDimensions -> do
+      tcSimplifyList <- lookupOrig mDimensions (mkOccName tcName "SimplifyList") >>= tcLookupTyCon
+      tcToList <- lookupOrig mDimensions (mkOccName tcName "ToList") >>= tcLookupTyCon
+      tcEvalCons <- lookupOrig mDimensions (mkOccName tcName "EvalCons") >>= tcLookupTyCon
+      return $ Just InferenceTypes {..}
+    _ -> return Nothing
 
 
 
 
 
-
-
-
-
-
-
-
-
-deriving instance Show Ct
-deriving instance Show CtEvidence
-deriving instance Show EqRel
-deriving instance Show Hole
-deriving instance Show CtLoc
-deriving instance Show TcEvDest
-deriving instance Show UnboundVar
-deriving instance Show CtOrigin
-deriving instance Show TypeOrKind
-deriving instance Show SkolemInfo
-deriving instance Show UserTypeCtxt
-deriving instance Show HsIPName
-deriving instance Show ConLike
-deriving instance Show (HsMatchContext Name)
-deriving instance Show (HsStmtContext Name)
-
-
-
-
-instance Show TcLclEnv where
-  show _ = "TcLclEnv{..}"
-instance Show ExpType where
-  show (Check t) = "Check " ++ show t
-  show Infer {}  = "Infer{..}::ExpType"
 instance Show TcPredType where
   show = showSDocUnsafe . ppr
-instance Show DataCon where
-  show = showSDocUnsafe . ppr
-instance Show Class where
-  show = showSDocUnsafe . ppr
-instance Show TcTyVar where
-  show = showSDocUnsafe . ppr
 instance Show TyCon where
-  show = showSDocUnsafe . ppr
-instance Show OccName where
-  show = showSDocUnsafe . ppr
-instance Show Name where
-  show = showSDocUnsafe . ppr
-instance Show RdrName where
-  show = showSDocUnsafe . ppr
-instance Show SubGoalDepth where
-  show = showSDocUnsafe . ppr
-instance Show CoercionHole where
-  show = showSDocUnsafe . ppr
-instance Show GlobalRdrEnv where
-  show = showSDocUnsafe . ppr
-instance Show ErrorThing where
-  show = showSDocUnsafe . ppr
-instance Show TypeSize where
-  show = showSDocUnsafe . ppr
-instance Show PatSyn where
-  show = showSDocUnsafe . ppr
-instance Outputable (PatSynBind idL idR) => Show (PatSynBind idL idR) where
-  show = showSDocUnsafe . ppr
-instance Outputable (LPat n) => Show (LPat n) where
-  show = showSDocUnsafe . ppr
-instance Outputable (HsOverLit n) => Show (HsOverLit n) where
-  show = showSDocUnsafe . ppr
-instance Outputable (ArithSeqInfo n) => Show (ArithSeqInfo n) where
   show = showSDocUnsafe . ppr
