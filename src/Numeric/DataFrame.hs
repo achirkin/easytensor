@@ -72,7 +72,7 @@ import           Numeric.Array
 import qualified Numeric.Array.Family as AFam (Scalar (..))
 import qualified Numeric.Commons as NCommons
 import qualified Numeric.Dimensions as Dims
-import           Numeric.Dimensions (Dim (..), dim, Dimensions, List (..), SimplifyList, EvalCons, ToList)
+import           Numeric.Dimensions (Dim (..), dim, Dimensions, List (..), SimplifyList, EvalCons, ToList, type (+:))
 import qualified Numeric.Matrix.Class as M
 import           Unsafe.Coerce
 
@@ -91,16 +91,18 @@ import           Numeric.DataFrame.Contraction
 
 
 -- | Append one DataFrame to another, adding up their last dimensionality
-(<:>) :: ( NCommons.PrimBytes (DataFrame t (ds Dims.+: n))
-         , NCommons.PrimBytes (DataFrame t (ds Dims.+: m))
-         , NCommons.PrimBytes (DataFrame t (ds Dims.+: npm))
+(<:>) :: forall (n :: Nat) (m :: Nat) (npm :: Nat) (ds :: [Nat])
+                (t :: Type)
+       . ( NCommons.PrimBytes (DataFrame t (ds +: n))
+         , NCommons.PrimBytes (DataFrame t (ds +: m))
+         , NCommons.PrimBytes (DataFrame t (ds +: npm))
          , npm ~ (n + m)
          , n   ~ (npm - m)
          , m   ~ (npm - n)
          )
-        => DataFrame t (ds Dims.+: n)
-        -> DataFrame t (ds Dims.+: m)
-        -> DataFrame t (ds Dims.+: npm)
+        => DataFrame t (ds +: n)
+        -> DataFrame t (ds +: m)
+        -> DataFrame t (ds +: npm)
 a <:> b = case (# NCommons.toBytes a, NCommons.toBytes b
                 , NCommons.byteSize a
                 , NCommons.byteSize b
@@ -114,13 +116,15 @@ a <:> b = case (# NCommons.toBytes a, NCommons.toBytes b
 infixl 5 <:>
 
 -- | Append one DataFrame to another, adding up their last dimensionality
-(<::>) :: ( NCommons.PrimBytes (DataFrame t ds)
+(<::>) :: forall (ds :: [Nat]) (t :: Type) (n :: Nat)
+       .  ( NCommons.PrimBytes (DataFrame t ds)
           , NCommons.PrimBytes (DataFrame t ds)
-          , NCommons.PrimBytes (DataFrame t (ds Dims.+: 2))
+          , NCommons.PrimBytes (DataFrame t (ds +: n :: [Nat]))
+          , n ~ 2
           )
         => DataFrame t ds
         -> DataFrame t ds
-        -> DataFrame t (ds Dims.+: 2)
+        -> DataFrame t (ds +: n :: [Nat])
 a <::> b = case (# NCommons.toBytes a, NCommons.toBytes b
                 , NCommons.byteSize a
                 , NCommons.byteSize b
@@ -134,13 +138,15 @@ a <::> b = case (# NCommons.toBytes a, NCommons.toBytes b
 infixl 5 <::>
 
 -- | Append one DataFrame to another, adding up their last dimensionality
-(<+:>) :: ( NCommons.PrimBytes (DataFrame t (ds Dims.+: n))
+(<+:>) :: forall (ds :: [Nat]) (n :: Nat) (m :: Nat) (t :: Type)
+        . ( NCommons.PrimBytes (DataFrame t (ds +: n))
           , NCommons.PrimBytes (DataFrame t ds)
-          , NCommons.PrimBytes (DataFrame t (ds Dims.+: (n + 1)))
+          , NCommons.PrimBytes (DataFrame t (ds +: m))
+          , m ~ (n + 1)
           )
-        => DataFrame t (ds Dims.+: n)
+        => DataFrame t (ds +: n)
         -> DataFrame t ds
-        -> DataFrame t (ds Dims.+: (n + 1))
+        -> DataFrame t (ds +: m)
 a <+:> b = case (# NCommons.toBytes a, NCommons.toBytes b
                 , NCommons.byteSize a
                 , NCommons.byteSize b
@@ -561,11 +567,13 @@ mat33 :: ( NCommons.PrimBytes (Vector t 3)
 mat33 a b c = a <::> b <+:> c
 
 -- | Compose a 4x4D matrix
-mat44 :: ( NCommons.PrimBytes (Vector t 4)
-         , NCommons.PrimBytes (Matrix t 4 2)
-         , NCommons.PrimBytes (Matrix t 4 4)
+mat44 :: forall (t :: Type)
+       . ( NCommons.PrimBytes (Vector t (4 :: Nat))
+         , NCommons.PrimBytes (Matrix t (4 :: Nat) (2 :: Nat))
+         , NCommons.PrimBytes (Matrix t (4 :: Nat) (4 :: Nat))
          )
-      => Vector t 4 -> Vector t 4 -> Vector t 4 -> Vector t 4 -> Matrix t 4 4
+      => Vector t (4 :: Nat) -> Vector t (4 :: Nat) -> Vector t (4 :: Nat) -> Vector t (4 :: Nat)
+      -> Matrix t (4 :: Nat) (4 :: Nat)
 mat44 a b c d = (a <::>) b <:> (c <::> d)
 
 
