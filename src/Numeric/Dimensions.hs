@@ -1,12 +1,13 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE Rank2Types, FlexibleContexts #-}
-{-# LANGUAGE GADTs, TypeInType #-}
+{-# LANGUAGE GADTs, PolyKinds #-}
 {-# LANGUAGE TypeFamilies, TypeFamilyDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses, MagicHash #-}
 {-# LANGUAGE KindSignatures, DataKinds #-}
 {-# LANGUAGE TypeOperators, FlexibleInstances, ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications, FunctionalDependencies     #-}
 {-# LANGUAGE ConstraintKinds      #-}
+{-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions
@@ -37,13 +38,9 @@ module Numeric.Dimensions
   , inSpaceOf, asSpaceOf, order, appendIdx, splitIdx
     -- * Type-level programming
   , FixedDim, FixedXDim, KnownOrder, KnownOrders, ValidDims
-  , type (++), Length
-  , type (:<), type (>:), type (:+), type (+:), SnocI, Head, Tail
-  , List (..), Cons, Snoc, Reverse, Take, Drop, Concat, Suffix, Prefix
-  , EvalList, EvalCons, ToList, SimplifyList, ToListNat, EvalConsNat
-  , ListHead, ListTail, ListLast, ListInit
-  , idempSimplifyList, normalSimplifyList
+  , type (:<), type (>:)
   , inferSubDimensions
+  , module Numeric.Dimensions.List
   ) where
 
 
@@ -56,6 +53,8 @@ import Data.Proxy
 import Data.Type.Equality
 
 import Unsafe.Coerce
+
+import Numeric.Dimensions.List
 
 -- | Type-level dimensional indexing with arbitrary Int values inside
 data Idx (ds :: [Nat]) where
@@ -110,8 +109,8 @@ someDimVal xxs@(p :* xs) = do
           ( \Refl -> let pps = p :* ps
                      in case ( isFixed xxs pps
                              , isXFixed xxs pps
-                             , normalSimplifyList pps ) of
-                          (Refl, Refl, Refl) -> SomeDim pps
+                             ) of
+                          (Refl, Refl) -> SomeDim pps
           )
   where
     -- I know for sure that the constraint (FixedDim xns ns ~ ns) holds,
@@ -632,178 +631,19 @@ type family WrapHead (n :: Nat) (xs :: [XNat]) :: XNat where
   WrapHead _ (XN  ': _) = XN
   WrapHead x '[]         = N x
 
--- | Synonym for a type-level cons
---     (injective, since this is just a synonym for the list constructor)
-type (a :: k) :+ (as :: [k]) = a ': as
-infixr 5 :+
+-- | Synonym for (:+) that ignores Nat values 0 and 1
+type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
+  0 :< ns = ns
+  1 :< ns = ns
+  n :< ns = n :+ ns
+infixr 6 :<
 
--- | Synonym for a type-level snoc (injective!)
-type (ns :: [k]) +: (n :: k) = GetSinkList (SinkFirst (n ': ns))
--- type family (ns :: [k]) +: (n :: k) = (nsn :: [k]) | nsn -> ns n where
---   xs +: x = GetListCons (SinkSnoc xs x)
-infixl 5 +:
-type SnocI (ns :: [k]) (n :: k) = GetSinkList (SinkFirst (n ': ns))
-
-
--- | List concatenation
-type (as :: [k]) ++ (bs :: [k]) = EvalList ('Concat (ToList as) (ToList bs))
-infixr 5 ++
-
-
--- | Type-level list operations
-data List k
-  = Empty
-  | Cons k (List k)
-  | Snoc (List k) k
-  | Concat (List k) (List k)
-  | Reverse (List k)
-  | Drop Nat (List k)
-  | Take Nat (List k)
-  | Suffix (List k) (List k)
-  | Prefix (List k) (List k)
-type ListNat = List Nat
-type ListXNat = List XNat
-
--- | Transform haskell list into a type-level list operations type List
-type family ToList (xs :: [k]) = (ys :: List k) | ys -> xs where
-    ToList ('[] :: [Nat]) = ('Empty :: ListNat)
-    ToList ('[] :: [XNat]) = ('Empty :: ListXNat)
-    ToList ('[] :: [k]) = ('Empty :: List k)
-    ToList (x ': xs :: [Nat]) = ('Cons x (ToListNat xs) :: ListNat)
-    ToList (x ': xs :: [XNat]) = ('Cons x (ToListXNat xs) :: ListXNat)
-    ToList (x ': xs) = 'Cons x (ToList xs)
-
-type family ToListNat (xs :: [Nat]) = (ys :: ListNat) | ys -> xs where
-    ToListNat ('[] :: [Nat]) = ('Empty :: ListNat)
-    ToListNat (x ': xs :: [Nat]) = ('Cons x (ToListNat xs) :: ListNat)
-
-type family ToListXNat (xs :: [XNat]) = (ys :: ListXNat) | ys -> xs where
-    ToListXNat ('[] :: [XNat]) = ('Empty :: ListXNat)
-    ToListXNat (x ': xs :: [XNat]) = ('Cons x (ToListXNat xs) :: ListXNat)
-
-
--- | Evaluate a type-level operations List type into a lifted haskell list
-type EvalList xs = EvalCons (SimplifyList xs)
-
--- | Evaluate a List into haskel list with a strong assumption that
---   the list consist only of 'Cons constructors.
-type family EvalCons (xs :: List k) = (ys :: [k]) |  ys -> xs where
-    EvalCons ('Empty :: ListNat) = ('[] :: [Nat])
-    EvalCons ('Empty :: ListXNat) = ('[] :: [XNat])
-    EvalCons ('Empty :: List k) = ('[] :: [k])
-    EvalCons ('Cons x xs :: ListNat) = x ': EvalConsNat xs
-    EvalCons ('Cons x xs :: ListXNat) = x ': EvalConsXNat xs
-    EvalCons ('Cons x xs) = x ': EvalCons xs
-
-type family EvalConsNat (xs :: List k) = (ys :: [k]) |  ys -> xs where
-    EvalConsNat ('Empty :: ListNat) = ('[] :: [Nat])
-    EvalConsNat ('Cons x xs :: ListNat) = x ': EvalConsNat xs
-
-type family EvalConsXNat (xs :: List k) = (ys :: [k]) |  ys -> xs where
-    EvalConsXNat ('Empty :: ListNat) = ('[] :: [Nat])
-    EvalConsXNat ('Cons x xs :: ListNat) = x ': EvalConsXNat xs
-
-
--- x :: Proxy (EvalList (Concat '[2,6] (Drop 1 (Reverse '[2,7,89,4]))))
--- x = _
-
--- | This function must guarantee that result of evaluation is
---   either 'Empty or 'Cons
-type family SimplifyList (xs :: List k) :: List k where
-    SimplifyList 'Empty       = 'Empty
-    SimplifyList ('Cons x xs) = 'Cons x (SimplifyList xs)
-
-    SimplifyList ('Snoc 'Empty x)       = 'Cons x 'Empty
-    SimplifyList ('Snoc ('Cons x xs) y) = 'Cons x (SimplifyList ('Snoc xs y))
-    SimplifyList ('Snoc xs y)           = SimplifyList ('Snoc (SimplifyList xs) y)
-
-    SimplifyList ('Concat ('Take n xs) ('Drop n xs)) = SimplifyList xs
-    SimplifyList ('Concat 'Empty xs)                 = SimplifyList xs
-    SimplifyList ('Concat xs 'Empty)                 = SimplifyList xs
-    SimplifyList ('Concat ('Cons x xs) ys)           = 'Cons x (SimplifyList ('Concat xs ys))
-    SimplifyList ('Concat ('Prefix bs asbs) ('Suffix ('Prefix bs asbs) asbs)) = SimplifyList asbs
-    SimplifyList ('Concat ('Prefix ('Suffix as asbs) asbs) ('Suffix as asbs)) = SimplifyList asbs
-    SimplifyList ('Concat xs ys)                     = SimplifyList ('Concat (SimplifyList xs) ys)
-
-    SimplifyList ('Reverse 'Empty)          = 'Empty
-    SimplifyList ('Reverse ('Concat xs ys)) = SimplifyList ('Concat ('Reverse ys) ('Reverse xs))
-    SimplifyList ('Reverse ('Reverse xs))   = SimplifyList xs
-    SimplifyList ('Reverse ('Snoc xs x))    = 'Cons x (SimplifyList ('Reverse xs))
-    SimplifyList ('Reverse ('Cons x xs))    = SimplifyList ('Snoc ('Reverse xs) x)
-    SimplifyList ('Reverse xs)              = SimplifyList ('Reverse (SimplifyList xs))
-
-    SimplifyList ('Drop 0 xs)           = SimplifyList xs
-    SimplifyList ('Drop n 'Empty)       = 'Empty
-    SimplifyList ('Drop n ('Cons x xs)) = SimplifyList ('Drop (n-1) xs)
-    SimplifyList ('Drop n xs)           = SimplifyList ('Drop n (SimplifyList xs))
-
-    SimplifyList ('Take 0 _)            = 'Empty
-    SimplifyList ('Take n 'Empty)       = 'Empty
-    SimplifyList ('Take n ('Cons x xs)) = 'Cons x (SimplifyList ('Take (n-1) xs))
-    SimplifyList ('Take n xs)           = SimplifyList ('Take n (SimplifyList xs))
-
-    SimplifyList ('Suffix 'Empty xs)
-        = SimplifyList xs
-    SimplifyList ('Suffix xs xs)
-        = 'Empty
-    SimplifyList ('Suffix ('Cons _ _) 'Empty)
-        = TypeError ( 'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter" )
-    SimplifyList ('Suffix ('Snoc _ _) 'Empty)
-        = TypeError ( 'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter" )
-    SimplifyList ('Suffix ('Cons _ as) ('Cons _ asbs))
-        = SimplifyList ('Suffix as asbs)
-    SimplifyList ('Suffix ('Reverse ('Snoc as _)) ('Cons _ asbs))
-        = SimplifyList ('Suffix ('Reverse as) asbs)
-    SimplifyList ('Suffix ('Cons _ as) ('Reverse ('Snoc asbs _)))
-        = SimplifyList ('Suffix as ('Reverse asbs))
-    SimplifyList ('Suffix ('Reverse ('Snoc as _)) ('Reverse ('Snoc asbs _)))
-        = SimplifyList ('Suffix ('Reverse as) ('Reverse asbs))
-    SimplifyList ('Suffix ('Take n asbs) asbs)
-        = SimplifyList ('Drop n asbs)
-    SimplifyList ('Suffix ('Reverse ('Drop n asbs)) ('Reverse asbs))
-        = SimplifyList ('Reverse ('Take n asbs))
-    SimplifyList ('Suffix as ('Concat as bs))
-        = SimplifyList bs
-    SimplifyList ('Suffix as asbs)
-        = SimplifyList ('Suffix (SimplifyList as) (SimplifyList asbs))
-
-    SimplifyList ('Prefix 'Empty asbs)
-        = SimplifyList asbs
-    SimplifyList ('Prefix xs xs)
-        = 'Empty
-    SimplifyList ('Prefix ('Cons _ _) 'Empty)
-        = TypeError ( 'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter" )
-    SimplifyList ('Prefix ('Snoc _ _) 'Empty)
-        = TypeError ( 'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter" )
-    SimplifyList ('Prefix ('Snoc as _) ('Snoc asbs _))
-        = SimplifyList ('Prefix as asbs)
-    SimplifyList ('Prefix ('Reverse ('Cons _ as)) ('Snoc asbs _))
-        = SimplifyList ('Prefix ('Reverse as) asbs)
-    SimplifyList ('Prefix ('Snoc as _) ('Reverse ('Cons _ asbs)))
-        = SimplifyList ('Prefix as ('Reverse asbs))
-    SimplifyList ('Prefix ('Reverse ('Cons _ as))  ('Reverse ('Cons _ asbs)))
-        = SimplifyList ('Prefix ('Reverse as) ('Reverse asbs))
-    SimplifyList ('Prefix ('Drop n asbs) asbs)
-        = SimplifyList ('Take n asbs)
-    SimplifyList ('Prefix ('Reverse ('Take n asbs)) ('Reverse asbs))
-        = SimplifyList ('Reverse ('Drop n asbs))
-    SimplifyList ('Prefix bs ('Concat as bs))
-        = SimplifyList as
-    SimplifyList ('Prefix bs asbs)
-        = SimplifyList ('Reverse ('Suffix ('Reverse bs) ('Reverse asbs)))
-
-
--- | SimplifyList is an idempotent operation
-idempSimplifyList :: p (xs :: List k) -> SimplifyList xs :~: SimplifyList (SimplifyList xs)
-idempSimplifyList _ = unsafeCoerce Refl
-
--- | Result of SimplifyList operation
-normalSimplifyList :: p (xs :: [k]) -> ToList xs :~: SimplifyList (ToList xs)
-normalSimplifyList _ = unsafeCoerce Refl
-
-normalSimplifyListNat :: p (xs :: [Nat]) -> ToListNat xs :~: SimplifyList (ToListNat xs)
-normalSimplifyListNat _ = unsafeCoerce Refl
-
+-- | Synonym for (+:) that ignores Nat values 0 and 1
+type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
+  ns >: 0 = ns
+  ns >: 1 = ns
+  ns >: n = ns +: n
+infixl 6 >:
 
 
 -- | If we know (1) Dimensions ds and (2) Size of prefix list,
@@ -837,132 +677,9 @@ inferSubDimensions as D f = case (unsafeCoerce Refl :: as :~: asbs) of Refl -> f
 inferSubDimensions D bs f = case (unsafeCoerce Refl :: bs :~: asbs) of Refl -> f D bs
 inferSubDimensions (a :* (as :: Dim (as' :: [Nat]))) bs f
                           = case ( unsafeCoerce Refl :: asbs :~: (Head asbs ': Tail asbs)
-                                 , normalSimplifyListNat as
                                  , unsafeCoerce Refl :: (SimplifyList ('Concat (ToList as') (ToList bs)))
                                                     :~: ToList (EvalCons (SimplifyList ('Concat (ToList as') (ToList bs))))
                                  , unsafeCoerce Refl :: EvalCons (SimplifyList ('Concat (ToList as') (ToList bs)))
                                                     :~: Tail asbs
                                  ) of
-    (Refl, Refl, Refl, Refl) -> inferSubDimensions as bs (f . (a :*))
-
---------------------------------------------------------------------------------
--- Polymorphic type-level operations (work on [k] and on List k)
---------------------------------------------------------------------------------
-
-type family ListHead (xs :: List k) :: k where
-    ListHead 'Empty = TypeError ('Text "Empty type-level list!")
-    ListHead ('Take 0 _) = TypeError ('Text "Empty type-level list!")
-    ListHead ('Take _ xs) = ListHead xs
-    ListHead ('Cons h _) = h
-    ListHead xs = ListHead (SimplifyList xs)
-
-type family ListLast (xs :: List k) :: k where
-    ListLast 'Empty = TypeError ('Text "Empty type-level list!")
-    ListLast ('Take 0 _) = TypeError ('Text "Empty type-level list!")
-    ListLast ('Snoc _ x) = x
-    ListLast ('Reverse xs) = ListHead xs
-    ListLast ('Cons x xs) = ListHead ('Reverse ('Cons x xs))
-    ListLast xs = ListLast (SimplifyList xs)
-
-type family ListTail (xs :: List k) :: List k where
-    ListTail 'Empty = TypeError ('Text "Empty type-level list!")
-    ListTail ('Take 0 _) = TypeError ('Text "Empty type-level list!")
-    ListTail ('Cons _ xs) = xs
-    ListTail ('Reverse ('Snoc xs _)) = 'Reverse xs
-    ListTail xs = ListTail (SimplifyList xs)
-
-type family ListInit (xs :: List k) :: List k where
-    ListInit 'Empty = TypeError ('Text "Empty type-level list!")
-    ListInit ('Take 0 _) = TypeError ('Text "Empty type-level list!")
-    ListInit ('Snoc xs _) = xs
-    ListInit ('Reverse ('Cons _ xs)) = 'Reverse xs
-    ListInit ('Cons x xs) = 'Reverse (ListTail ('Reverse ('Cons x xs)))
-    ListInit xs = ListInit (SimplifyList xs)
-
--- x :: Proxy (EvalList ( ToList '[1,7,2,8] ))
--- x :: Proxy (EvalList ( ListInit ('Reverse ('Drop 2 (ToList '[1,7,2,8]))) ))
--- x = _
-
-
-type Cons = 'Cons
-type Snoc = 'Snoc
-type Concat = 'Concat
-type Reverse = 'Reverse
-type Drop = 'Drop
-type Take = 'Take
-type Suffix = 'Suffix
-type Prefix = 'Prefix
-
-
---------------------------------------------------------------------------------
--- Tricks to make some type-level operations injective
---------------------------------------------------------------------------------
-
-
-data SinkList k = SLEmpty | SLSingle k | SLCons k [k]
-
-type family SinkFirst (xs :: [k]) = (ys :: SinkList k) | ys -> xs where
-  SinkFirst ('[] :: [Nat])  = ('SLEmpty :: SinkList Nat)
-  SinkFirst ('[] :: [XNat]) = ('SLEmpty :: SinkList XNat)
-  SinkFirst ('[] :: [k])    = ('SLEmpty :: SinkList k)
-  SinkFirst ('[x] :: [Nat])  = ('SLSingle x :: SinkList Nat)
-  SinkFirst ('[x] :: [XNat]) = ('SLSingle x :: SinkList XNat)
-  SinkFirst ('[x] :: [k])    = ('SLSingle x :: SinkList k)
-  SinkFirst (y ': x ': xs) = 'SLCons x (GetSinkListNat (SinkFirstNat xs y))
-  SinkFirst (y ': x ': xs) = 'SLCons x (GetSinkListXNat (SinkFirstXNat xs y))
-  SinkFirst (y ': x ': xs) = 'SLCons x (GetSinkList (SinkFirstK xs y))
-
-type SinkFirstNat (ns :: [Nat]) (n :: Nat) = SinkFirst (n ': ns)
-type family GetSinkListNat (xs :: SinkList Nat) = (ys :: [Nat]) | ys -> xs where
-  GetSinkListNat 'SLEmpty = '[]
-  GetSinkListNat ('SLSingle x) = '[x]
-  GetSinkListNat ('SLCons y (x ': xs)) = y ': x ': xs
-
-type SinkFirstXNat (ns :: [XNat]) (n :: XNat) = SinkFirst (n ': ns)
-type family GetSinkListXNat (xs :: SinkList XNat) = (ys :: [XNat]) | ys -> xs where
-  GetSinkListXNat 'SLEmpty = '[]
-  GetSinkListXNat ('SLSingle x) = '[x]
-  GetSinkListXNat ('SLCons y (x ': xs)) = y ': x ': xs
-
-type SinkFirstK (ns :: [k]) (n :: k) = SinkFirst (n ': ns)
-type family GetSinkList (xs :: SinkList k) = (ys :: [k]) | ys -> xs where
-  GetSinkList 'SLEmpty = '[]
-  GetSinkList ('SLSingle x) = '[x]
-  GetSinkList ('SLCons y (x ': xs)) = y ': x ': xs
-
-
--- x :: Proxy (('[1,2,3] +: 4) ~ '[1,2,3,4])
--- x = _
-
-
--- | Synonym for (:+) that ignores Nat values 0 and 1
-type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
-  0 :< ns = ns
-  1 :< ns = ns
-  n :< ns = n :+ ns
-infixr 6 :<
-
--- | Synonym for (+:) that ignores Nat values 0 and 1
-type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
-  ns >: 0 = ns
-  ns >: 1 = ns
-  ns >: n = ns +: n
-infixl 6 >:
-
-
-type family Head (xs :: [k]) :: k where
-  Head (x ': xs) = x
-  Head '[]       = TypeError ( 'Text
-    "Head -- empty type-level list."
-   )
-
-type family Tail (xs :: [k]) :: [k] where
-  Tail (x ': xs) = xs
-  Tail '[]       = TypeError ( 'Text
-    "Tail -- empty type-level list."
-   )
-
-type family Length (as :: l) :: Nat where
-  Length '[] = 0
-  Length (a ': as) = 1 + Length as
-  Length (xs :: List k) = Length (EvalList xs)
+    (Refl, Refl, Refl) -> inferSubDimensions as bs (f . (a :*))

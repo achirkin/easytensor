@@ -86,7 +86,7 @@ main = do
   where
     pleaseFire :: Idx i -> DataFrame Float '[3, 2] -> Const (Sum (DataFrame Float '[3, 2])) Scf
     pleaseFire _ = Const . Sum
-    -- ixs :: DataFrame Float '[3,2,4]
+    ixs :: DataFrame Float '[3,2,4]
     ixs = iwgen $ dim @'[3,2,4] `asSpaceOf` (\(i :! j :! k :! Z) -> scalar . realToFrac $ i*100 + j*10 + k)
     matX = mat22 (vec2 0 2) (vec2 1 (0 :: Float))
     printEither :: Either String String -> IO ()
@@ -119,7 +119,7 @@ main = do
     dfX1  = pi
     dfX2  :: DFF '[4,5]
     dfX2  = 1
-    -- dfY :: DFF '[3,2,5]
+    dfY :: DFF '[3,2,5]
     dfY   = dfX1 %* dfX2
 
     -- dfY2  = (runSlice . slice (Get 4 )
