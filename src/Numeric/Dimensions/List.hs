@@ -92,64 +92,89 @@ type family EvalConsNat (xs :: List k) = (ys :: [k]) |  ys -> xs where
 -- x = _
 
 -- | This function must guarantee that result of evaluation is
---   either 'Empty or 'Cons
+--   either 'Empty or 'Cons.
+--   Every use of SimplifyList must be on an expanded constructor (not on a bare variable)
+--    to ensure that the list inside is not expanded into an infinite chain.
 type family SimplifyList (xs :: List k) :: List k where
     SimplifyList 'Empty       = 'Empty
     SimplifyList ('Cons x xs) = 'Cons x (SimplifyList xs)
 
-    SimplifyList ('Snoc 'Empty x)       = 'Cons x 'Empty
-    SimplifyList ('Snoc ('Cons x xs) y) = 'Cons x (SimplifyList ('Snoc xs y))
-    SimplifyList ('Snoc xs y)           = SimplifyList ('Snoc (SimplifyList xs) y)
+    SimplifyList ('Snoc 'Empty x)          = 'Cons x 'Empty
+    SimplifyList ('Snoc ('Cons x xs) y)    = 'Cons x (SimplifyList ('Snoc xs y))
+    SimplifyList ('Snoc ('Snoc xs x) y)    = SimplifyList ('Snoc (SimplifyList ('Snoc xs x)) y)
+    SimplifyList ('Snoc ('Concat xs ys) y) = SimplifyList ('Snoc (SimplifyList ('Concat xs ys)) y)
+    SimplifyList ('Snoc ('Reverse xs) y)   = SimplifyList ('Snoc (SimplifyList ('Reverse xs)) y)
+    SimplifyList ('Snoc ('Drop n xs) y)    = SimplifyList ('Snoc (SimplifyList ('Drop n xs)) y)
+    SimplifyList ('Snoc ('Take n xs) y)    = SimplifyList ('Snoc (SimplifyList ('Take n xs)) y)
+    SimplifyList ('Snoc ('Suffix xs ys) y) = SimplifyList ('Snoc (SimplifyList ('Suffix xs ys)) y)
+    SimplifyList ('Snoc ('Prefix xs ys) y) = SimplifyList ('Snoc (SimplifyList ('Prefix xs ys)) y)
 
     SimplifyList ('Concat ('Take n xs) ('Drop n xs)) = SimplifyList xs
-    SimplifyList ('Concat 'Empty xs)                 = SimplifyList xs
     SimplifyList ('Concat xs 'Empty)                 = SimplifyList xs
-    SimplifyList ('Concat ('Cons x xs) ys)           = 'Cons x (SimplifyList ('Concat xs ys))
     SimplifyList ('Concat ('Prefix bs asbs) ('Suffix ('Prefix bs asbs) asbs)) = SimplifyList asbs
     SimplifyList ('Concat ('Prefix ('Suffix as asbs) asbs) ('Suffix as asbs)) = SimplifyList asbs
-    SimplifyList ('Concat xs ys)                     = SimplifyList ('Concat (SimplifyList xs) ys)
+    SimplifyList ('Concat 'Empty xs)          = SimplifyList xs
+    SimplifyList ('Concat ('Cons x xs) ys)    = 'Cons x (SimplifyList ('Concat xs ys))
+    SimplifyList ('Concat ('Snoc xs x) bs)    = SimplifyList ('Concat (SimplifyList ('Snoc xs x)) bs)
+    SimplifyList ('Concat ('Concat xs ys) bs) = SimplifyList ('Concat (SimplifyList ('Concat xs ys)) bs)
+    SimplifyList ('Concat ('Reverse xs) bs)   = SimplifyList ('Concat (SimplifyList ('Reverse xs)) bs)
+    SimplifyList ('Concat ('Drop n xs) bs)    = SimplifyList ('Concat (SimplifyList ('Drop n xs)) bs)
+    SimplifyList ('Concat ('Take n xs) bs)    = SimplifyList ('Concat (SimplifyList ('Take n xs)) bs)
+    SimplifyList ('Concat ('Suffix xs ys) bs) = SimplifyList ('Concat (SimplifyList ('Suffix xs ys)) bs)
+    SimplifyList ('Concat ('Prefix xs ys) bs) = SimplifyList ('Concat (SimplifyList ('Prefix xs ys)) bs)
+
 
     SimplifyList ('Reverse 'Empty)          = 'Empty
+    SimplifyList ('Reverse ('Cons x xs))    = SimplifyList ('Snoc ('Reverse xs) x)
+    SimplifyList ('Reverse ('Snoc xs x))    = 'Cons x (SimplifyList ('Reverse xs))
     SimplifyList ('Reverse ('Concat xs ys)) = SimplifyList ('Concat ('Reverse ys) ('Reverse xs))
     SimplifyList ('Reverse ('Reverse xs))   = SimplifyList xs
-    SimplifyList ('Reverse ('Snoc xs x))    = 'Cons x (SimplifyList ('Reverse xs))
-    SimplifyList ('Reverse ('Cons x xs))    = SimplifyList ('Snoc ('Reverse xs) x)
-    SimplifyList ('Reverse xs)              = SimplifyList ('Reverse (SimplifyList xs))
-
-    SimplifyList ('Drop 0 xs)           = SimplifyList xs
-    SimplifyList ('Drop n 'Empty)       = 'Empty
-    SimplifyList ('Drop n ('Cons x xs)) = SimplifyList ('Drop (n-1) xs)
-    SimplifyList ('Drop n xs)           = SimplifyList ('Drop n (SimplifyList xs))
-
-    SimplifyList ('Take 0 _)            = 'Empty
-    SimplifyList ('Take n 'Empty)       = 'Empty
-    SimplifyList ('Take n ('Cons x xs)) = 'Cons x (SimplifyList ('Take (n-1) xs))
-    SimplifyList ('Take n xs)           = SimplifyList ('Take n (SimplifyList xs))
+    SimplifyList ('Reverse ('Drop n xs))    = SimplifyList ('Reverse (SimplifyList ('Drop n xs)))
+    SimplifyList ('Reverse ('Take n xs))    = SimplifyList ('Reverse (SimplifyList ('Take n xs)))
+    SimplifyList ('Reverse ('Suffix xs ys)) = SimplifyList ('Reverse (SimplifyList ('Suffix xs ys)))
+    SimplifyList ('Reverse ('Prefix xs ys)) = SimplifyList ('Reverse (SimplifyList ('Prefix xs ys)))
 
 
-    SimplifyList ('Suffix 'Empty xs)
-        = SimplifyList xs
-    SimplifyList ('Suffix xs xs)
-        = 'Empty
+    SimplifyList ('Drop 0 xs)              = SimplifyList xs
+    SimplifyList ('Drop n 'Empty)          = 'Empty
+    SimplifyList ('Drop n ('Cons x xs))    = SimplifyList ('Drop (n-1) xs)
+    SimplifyList ('Drop n ('Snoc xs x))    = SimplifyList ('Drop n (SimplifyList ('Snoc xs x)))
+    SimplifyList ('Drop n ('Concat xs ys)) = SimplifyList ('Drop n (SimplifyList ('Concat xs ys)))
+    SimplifyList ('Drop n ('Reverse xs))   = SimplifyList ('Drop n (SimplifyList ('Reverse xs)))
+    SimplifyList ('Drop n ('Drop m xs))    = SimplifyList ('Drop (n+m) xs)
+    SimplifyList ('Drop n ('Take m xs))    = SimplifyList ('Drop n (SimplifyList ('Take m xs)))
+    SimplifyList ('Drop n ('Suffix xs ys)) = SimplifyList ('Drop n (SimplifyList ('Suffix xs ys)))
+    SimplifyList ('Drop n ('Prefix xs ys)) = SimplifyList ('Drop n (SimplifyList ('Prefix xs ys)))
+
+
+    SimplifyList ('Take 0 _)               = 'Empty
+    SimplifyList ('Take n 'Empty)          = 'Empty
+    SimplifyList ('Take n ('Cons x xs))    = 'Cons x (SimplifyList ('Take (n-1) xs))
+    SimplifyList ('Take n ('Snoc xs x))    = SimplifyList ('Take n (SimplifyList ('Snoc xs x)))
+    SimplifyList ('Take n ('Concat xs ys)) = SimplifyList ('Take n (SimplifyList ('Concat xs ys)))
+    SimplifyList ('Take n ('Reverse xs))   = SimplifyList ('Take n (SimplifyList ('Reverse xs)))
+    SimplifyList ('Take n ('Drop m xs))    = SimplifyList ('Take n (SimplifyList ('Drop m xs)))
+    SimplifyList ('Take n ('Take m xs))    = SimplifyList ('Take (n+m) xs)
+    SimplifyList ('Take n ('Suffix xs ys)) = SimplifyList ('Take n (SimplifyList ('Suffix xs ys)))
+    SimplifyList ('Take n ('Prefix xs ys)) = SimplifyList ('Take n (SimplifyList ('Prefix xs ys)))
+
+
+
+    SimplifyList ('Suffix xs xs) = 'Empty
 
     SimplifyList ('Suffix ('Cons _ _) 'Empty)
         = TypeError ( 'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter" )
-    SimplifyList ('Suffix ('Cons _ as) ('Cons _ asbs))
-        = SimplifyList ('Suffix as asbs)
-    SimplifyList ('Suffix ('Cons _ as) ('Concat _ asbs))
-        = SimplifyList ('Suffix as asbs)
-    SimplifyList ('Suffix ('Cons _ as) ('Reverse ('Snoc asbs _)))
-        = SimplifyList ('Suffix as ('Reverse asbs))
-    SimplifyList ('Suffix ('Cons a as) asbs)
-        = SimplifyList ('Suffix ('Cons a as) (SimplifyList asbs))
+    SimplifyList ('Suffix ('Cons a as) ('Cons a asbs))  = SimplifyList ('Suffix as asbs)
+    SimplifyList ('Suffix ('Cons a as) ('Snoc xs x))    = SimplifyList ('Suffix ('Cons a as) (SimplifyList ('Snoc xs x)))
+    SimplifyList ('Suffix ('Cons a as) ('Concat xs ys)) = SimplifyList ('Suffix ('Cons a as) (SimplifyList ('Concat xs ys)))
+    SimplifyList ('Suffix ('Cons a as) ('Reverse xs))   = SimplifyList ('Suffix ('Cons a as) (SimplifyList ('Reverse xs)))
+    SimplifyList ('Suffix ('Cons a as) ('Drop n xs))    = SimplifyList ('Suffix ('Cons a as) (SimplifyList ('Drop n xs)))
+    SimplifyList ('Suffix ('Cons a as) ('Take n xs))    = SimplifyList ('Suffix ('Cons a as) (SimplifyList ('Take n xs)))
+    SimplifyList ('Suffix ('Cons a as) ('Suffix xs ys)) = SimplifyList ('Suffix ('Cons a as) (SimplifyList ('Suffix xs ys)))
+    SimplifyList ('Suffix ('Cons a as) ('Prefix xs ys)) = SimplifyList ('Suffix ('Cons a as) (SimplifyList ('Prefix xs ys)))
 
     SimplifyList ('Suffix ('Snoc _ _) 'Empty)
         = TypeError ( 'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter" )
-
-    SimplifyList ('Suffix ('Reverse ('Snoc as _)) ('Cons _ asbs))
-        = SimplifyList ('Suffix ('Reverse as) asbs)
-    SimplifyList ('Suffix ('Reverse ('Snoc as _)) ('Reverse ('Snoc asbs _)))
-        = SimplifyList ('Suffix ('Reverse as) ('Reverse asbs))
     SimplifyList ('Suffix ('Take n asbs) asbs)
         = SimplifyList ('Drop n asbs)
     SimplifyList ('Suffix ('Reverse ('Drop n asbs)) ('Reverse asbs))
@@ -158,8 +183,17 @@ type family SimplifyList (xs :: List k) :: List k where
         = SimplifyList bs
     SimplifyList ('Suffix ('Prefix bs asbs) asbs)
         = SimplifyList bs
-    SimplifyList ('Suffix as asbs)
-        = SimplifyList ('Suffix (SimplifyList as) asbs)
+
+    SimplifyList ('Suffix 'Empty xs)          = SimplifyList xs
+    SimplifyList ('Suffix ('Snoc xs x) bs)    = SimplifyList ('Suffix (SimplifyList ('Snoc xs x)) bs)
+    SimplifyList ('Suffix ('Concat xs ys) bs) = SimplifyList ('Suffix (SimplifyList ('Concat xs ys)) bs)
+    SimplifyList ('Suffix ('Reverse xs) bs)   = SimplifyList ('Suffix (SimplifyList ('Reverse xs)) bs)
+    SimplifyList ('Suffix ('Drop n xs) bs)    = SimplifyList ('Suffix (SimplifyList ('Drop n xs)) bs)
+    SimplifyList ('Suffix ('Take n xs) bs)    = SimplifyList ('Suffix (SimplifyList ('Take n xs)) bs)
+    SimplifyList ('Suffix ('Suffix xs ys) bs) = SimplifyList ('Suffix (SimplifyList ('Suffix xs ys)) bs)
+    SimplifyList ('Suffix ('Prefix xs ys) bs) = SimplifyList ('Suffix (SimplifyList ('Prefix xs ys)) bs)
+
+
 
     SimplifyList ('Prefix 'Empty asbs)
         = SimplifyList asbs

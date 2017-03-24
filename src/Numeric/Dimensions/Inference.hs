@@ -28,15 +28,21 @@ import           TcEvidence         (EvTerm (..))
 -- import           TysWiredIn (typeNatKind)
 import           Coercion
 import           Module
+import           Name
+import           NameEnv
 import           OccName
 import           TcPluginM
+import           TcRnMonad
 import           TcRnTypes
 import           TcType
 import           TyCon
 import           TyCoRep
 import           Type
+import           UniqFM
+import           VarSet
+import           FastString
 
-
+import           Debug.Trace
 
 -- | To use the plugin, add
 --
@@ -63,8 +69,29 @@ decideListOps :: Maybe InferenceTypes
               -> [Ct] -- ^ Wanteds
               -> TcPluginM TcPluginResult
 decideListOps Nothing _ _ _         = return (TcPluginOk [] [])
-decideListOps (Just it) _ _ wanteds =
-  uncurry TcPluginOk . second catMaybes . unzip . catMaybes <$> mapM (check it) wanteds
+decideListOps (Just it) givens deriveds wanteds = do
+    -- tcPluginIO . putStrLn . ("SKOLEMS: " ++ ) . show . catMaybes $ onlySkolemOrigin . ctl_origin . ctev_loc . cc_ev <$> givens
+    tcPluginIO . print $  (varSetElems hsListVars, varSetElems listVars)
+    tcPluginIO . putStrLn $ "ToLists: " ++ show (eltsUFM toListRelations)
+    tcPluginIO . putStrLn $ "EvalConses: " ++ show (eltsUFM evalConsRelations)
+    (newGivens, llRels) <- createListListRelations it hsListVars toListRelations evalConsRelations
+    uncurry TcPluginOk . first (newGivens ++) . second catMaybes . unzip . catMaybes <$> mapM (check it) wanteds
+  where
+    allVars = foldMap findAllCtTyVars givens
+           <> foldMap findAllCtTyVars deriveds
+           <> foldMap findAllCtTyVars wanteds
+    hsListVars = filterVarSet isHsListKind allVars
+    listVars = filterVarSet isListKind allVars
+    toListRelations = foldMap (getCtToListRelationMap it) givens
+                   <> foldMap (getCtToListRelationMap it) deriveds
+    evalConsRelations = foldMap (getCtEvalConsRelationMap it) givens
+                     <> foldMap (getCtEvalConsRelationMap it) deriveds
+    onlySkolemOrigin :: CtOrigin -> Maybe SkolemInfo
+    onlySkolemOrigin (GivenOrigin so) = Just so
+    onlySkolemOrigin _                = Nothing
+
+
+
 
 -- | Wrapper function for my type inference
 check :: InferenceTypes -> Ct -> TcPluginM (Maybe ((EvTerm, Ct), Maybe Ct))
@@ -80,11 +107,18 @@ check it ct@(CNonCanonical CtWanted{ctev_pred = t, ctev_loc = myLoc})
         Reduced newLhs newRhs -> do
           let newEqPred = mkPrimEqPredRole Nominal newLhs newRhs
           newWantedEq <- newWanted myLoc newEqPred
+          tcLclEnv <- snd <$> TcPluginM.getEnvs
+          let tyVarsRef = tcl_tyvars tcLclEnv
+          tyVarsSet <- unsafeTcPluginTcM $ readMutVar tyVarsRef
+          tcPluginIO . print $ map (\v -> (v, tyVarKind v, getTyVarKindParam v)). varSetElems $ findAllTyVars lhs <> findAllTyVars rhs <> tyVarsSet
           tcPluginIO . putStrLn $ "WAS: " ++ show t
           tcPluginIO . putStrLn $ "NOW: " ++ show newEqPred
           return $ Just ((EvCoercion (mkUnivCo (PluginProv "numeric-dimensions-inference") Nominal t newEqPred),ct), Just $ CNonCanonical newWantedEq)
     _ -> return Nothing
 check _ _ = return Nothing
+
+
+
 
 
 -- | Given two types, try to infer their equality or simplify them
@@ -142,6 +176,196 @@ simplifyListToList t apps = case apps of
         (iConstr, _) <- getTyConApp innerType
         True <- isToList iConstr
         return $ Simplified innerType
+
+
+findAllTyVars :: Type -> VarSet
+findAllTyVars t = case (splitTyConApp_maybe t, getTyVar_maybe t) of
+    (Nothing, Nothing)        -> emptyVarSet
+    (Nothing, Just v)         -> unitVarSet v
+    (Just (_, apps), Nothing) -> foldMap findAllTyVars apps
+    (Just (_, apps), Just v)  -> extendVarSet (foldMap findAllTyVars apps) v
+
+
+
+findAllPredTreeTyVars :: PredTree -> VarSet
+findAllPredTreeTyVars (ClassPred _ ts) = foldMap findAllTyVars ts
+findAllPredTreeTyVars (EqPred _ lhs rhs) = findAllTyVars lhs <> findAllTyVars rhs
+findAllPredTreeTyVars (IrredPred _) = emptyVarSet
+
+findAllCtTyVars :: Ct -> VarSet
+findAllCtTyVars = findAllPredTreeTyVars . classifyPredType . ctev_pred . cc_ev
+
+
+-- | Checks if this type is "ToList ds"; if so, gives type variable and "ToList ds"
+tcToListMaybe :: InferenceTypes -> Type -> Maybe (TyVar, Type)
+tcToListMaybe InferenceTypes {..} t = case splitTyConApp_maybe t of
+    Nothing -> Nothing
+    Just (constr, apps) ->
+      if constr == tcToListNat || constr == tcToList
+      then case apps of
+        []    -> Nothing
+        [x]   -> getToList x
+        _:x:_ -> getToList x
+      else Nothing
+  where
+    getToList :: Type -> Maybe (TyVar, Type)
+    getToList x = case getTyVar_maybe x of
+      Nothing -> Nothing
+      Just xv -> Just (xv, mkTyConApp tcToList [getTyVarKindParam xv, x])
+
+-- | Checks if this type is "EvalCons dsL"; if so, "EvalCons dsL"
+tcEvalConsMaybe :: InferenceTypes -> Type -> Maybe (TyVar, Type)
+tcEvalConsMaybe InferenceTypes {..} t = case splitTyConApp_maybe t of
+    Nothing -> Nothing
+    Just (constr, apps) ->
+      if constr == tcEvalConsNat || constr == tcEvalCons
+      then case apps of
+        []    -> Nothing
+        [x]   -> getEvalCons x
+        _:x:_ -> getEvalCons x
+      else Nothing
+  where
+    getEvalCons :: Type -> Maybe (TyVar, Type)
+    getEvalCons x = case getTyVar_maybe x of
+      Nothing -> Nothing
+      Just xv -> Just (xv, mkTyConApp tcEvalCons [getTyVarKindParam xv, x])
+
+findAllTyToLists :: InferenceTypes -> Type -> UniqFM (TyVar, Type)
+findAllTyToLists it t = case tcToListMaybe it t of
+  Just (xv, xt) -> unitUFM xv (xv, xt)
+  Nothing -> case splitTyConApp_maybe t of
+    Nothing        -> emptyUFM
+    Just (_, apps) -> foldMap (findAllTyToLists it) apps
+
+findAllTyEvalCons :: InferenceTypes -> Type -> UniqFM (TyVar, Type)
+findAllTyEvalCons it t = case tcEvalConsMaybe it t of
+  Just (xv, xt) -> unitUFM xv (xv, xt)
+  Nothing -> case splitTyConApp_maybe t of
+    Nothing        -> emptyUFM
+    Just (_, apps) -> foldMap (findAllTyEvalCons it) apps
+
+getEvalConsRelationMaybe :: InferenceTypes -> PredTree -> Maybe (TyVar, TyVar)
+getEvalConsRelationMaybe it (EqPred _ lhs rhs)
+  = case ( getTyVar_maybe lhs, tcEvalConsMaybe it lhs
+         , getTyVar_maybe rhs, tcEvalConsMaybe it rhs) of
+      (Nothing, _, Nothing, _)    -> Nothing
+      (_, Nothing, _, Nothing)    -> Nothing
+      (Just v , _, _, Just (w,_)) -> Just (v,w)
+      (_, Just (w,_), Just v , _) -> Just (v,w)
+      (_,_,_,_)                   -> Nothing
+getEvalConsRelationMaybe _ _ = Nothing
+
+getToListRelationMaybe :: InferenceTypes -> PredTree -> Maybe (TyVar, TyVar)
+getToListRelationMaybe it (EqPred _ lhs rhs)
+  = case ( getTyVar_maybe lhs, tcToListMaybe it lhs
+         , getTyVar_maybe rhs, tcToListMaybe it rhs) of
+      (Nothing, _, Nothing, _)    -> Nothing
+      (_, Nothing, _, Nothing)    -> Nothing
+      (Just v , _, _, Just (w,_)) -> Just (v,w)
+      (_, Just (w,_), Just v , _) -> Just (v,w)
+      (_,_,_,_)                   -> Nothing
+getToListRelationMaybe _ _ = Nothing
+
+
+getCtEvalConsRelationMap :: InferenceTypes -> Ct -> UniqFM (TyVar, TyVar)
+getCtEvalConsRelationMap it = fm . getEvalConsRelationMaybe it . classifyPredType . ctev_pred . cc_ev
+  where
+    fm Nothing      = emptyUFM
+    fm (Just (v,w)) = unitUFM v (v,w)
+
+getCtToListRelationMap :: InferenceTypes -> Ct -> UniqFM (TyVar, TyVar)
+getCtToListRelationMap it = fm . getToListRelationMaybe it . classifyPredType . ctev_pred . cc_ev
+  where
+    fm Nothing      = emptyUFM
+    fm (Just (v,w)) = unitUFM v (v,w)
+
+
+-- | Assume equations:
+--     xsL ~ ToList xs
+--     xs  ~ EvalCons xs
+data ListListRelations = ListListRelations
+  { toListRels   :: !(UniqFM TyVar)
+    -- ^  Map xs -> xsL
+  , evalConsRels :: !(UniqFM TyVar)
+    -- ^ Map xsL -> xs
+  }
+
+-- instance Monoid ListListRelations
+
+
+createListListRelations :: InferenceTypes
+                        -> VarSet -- ^ Bare haskell list variables
+                        -> UniqFM (TyVar, TyVar) -- ^ ToLists
+                        -> UniqFM (TyVar, TyVar) -- ^ EvalConses
+                        -> TcPluginM ([(EvTerm, Ct)], ListListRelations)
+createListListRelations InferenceTypes {..} hsListVars toListRels evalConsRels = do
+    -- newListVars <- traverse  $ varSetElems notCoveredHsListVars
+    newToListEvs <- traverse makeToListEvidence $ eltsUFM missingToLists
+    newEvalConsEvs <- traverse makeEvalConsEvidence $ eltsUFM missingEvalConses
+    return ( newToListEvs ++ newEvalConsEvs
+           , ListListRelations (mapUFM fst allExistingEvalConses) (mapUFM fst allExistingToLists)
+           )
+  where
+    allHsListVars :: VarSet
+    allHsListVars = hsListVars
+                 <> mkVarSet (snd <$> eltsUFM toListRels)
+                 <> mkVarSet (fst <$> eltsUFM evalConsRels)
+    allListVars :: VarSet
+    allListVars = mkVarSet (fst <$> eltsUFM toListRels)
+             <> mkVarSet (snd <$> eltsUFM evalConsRels)
+    allExistingToLists :: UniqFM (TyVar, TyVar) -- ^ all List k <-> [k] matchings
+    allExistingToLists = toListRels <> listToUFM (map (\(a,b) -> (b,(b,a))) (eltsUFM evalConsRels))
+    allExistingEvalConses :: UniqFM (TyVar, TyVar) -- ^ all [k] <-> List k matchings
+    allExistingEvalConses = evalConsRels <> listToUFM (map (\(a,b) -> (b,(b,a))) (eltsUFM toListRels))
+    missingToLists    = allExistingToLists `minusUFM` toListRels
+    missingEvalConses = allExistingEvalConses `minusUFM`  evalConsRels
+    notCoveredHsListVars = allHsListVars `minusUFM` allExistingEvalConses
+    -- makeNewListRels :: TyVar -- ^ [] variable
+    --                 -> [((TyVar,))] --^
+    makeToListEvidence :: (TyVar, TyVar) -> TcPluginM (EvTerm, Ct)
+    makeToListEvidence (lhs, rhs)
+      = let lt = mkTyVarTy lhs
+            rt = mkTyConApp tcToList [getTyVarKindParam rhs, mkTyVarTy rhs]
+            eqPredType = mkPrimEqPredRole Nominal lt rt
+            evterm = EvCoercion (mkUnivCo (PluginProv "numeric-dimensions-inference-newToList") Nominal lt rt)
+        in do
+          loc <- mkGivenLoc (TcLevel 1) (RuleSkol $ mkFastString "ToList rule") . snd <$> TcPluginM.getEnvs
+          (,) evterm . CNonCanonical <$> newGiven loc eqPredType evterm
+
+    makeEvalConsEvidence :: (TyVar, TyVar) -> TcPluginM (EvTerm, Ct)
+    makeEvalConsEvidence (lhs, rhs)
+      = let lt = mkTyVarTy lhs
+            rt = mkTyConApp tcEvalCons [getTyVarKindParam rhs, mkTyVarTy rhs]
+            eqPredType = mkPrimEqPredRole Nominal lt rt
+            evterm = EvCoercion (mkUnivCo (PluginProv "numeric-dimensions-inference-newEvalCons") Nominal lt rt)
+        in do
+          loc <- mkGivenLoc (TcLevel 1) (RuleSkol $ mkFastString "EvalCons rule") . snd <$> TcPluginM.getEnvs
+          (,) evterm . CNonCanonical <$> newGiven loc eqPredType evterm
+
+
+    -- mkPrimEqPredRole Nominal newLhs newRhs
+    --  makeListVarAndRels :: TcPluginM TyVar -- ^ [] variable
+    --                     -> ( [(TyVar, TyVar)]
+    --                        , TcTyVar )
+
+
+getTyVarKindParam :: TyVar -> Kind
+getTyVarKindParam v = case splitTyConApp_maybe (tyVarKind v) of
+   Just (_, k:_) -> k
+   _             -> tyVarKind v
+
+
+isListKind :: TyVar -> Bool
+isListKind = isGood . splitTyConApp_maybe . tyVarKind
+  where
+    isGood Nothing            = False
+    isGood (Just (constr, _)) = getOccName constr == mkOccName tcName "List"
+
+isHsListKind :: TyVar -> Bool
+isHsListKind = isGood . splitTyConApp_maybe . tyVarKind
+  where
+    isGood Nothing            = False
+    isGood (Just (constr, _)) = getOccName constr == mkOccName tcName "[]"
 
 
 
@@ -336,4 +560,12 @@ initInferenceTypes = do
 instance Show TcPredType where
   show = showSDocUnsafe . ppr
 instance Show TyCon where
+  show = showSDocUnsafe . ppr
+instance Show Var where
+  show = showSDocUnsafe . ppr
+instance Show TcTyThing where
+  show = showSDocUnsafe . ppr
+instance Show Name where
+  show = showSDocUnsafe . ppr
+instance Show SkolemInfo where
   show = showSDocUnsafe . ppr

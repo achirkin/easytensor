@@ -134,6 +134,7 @@ instance ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
          , Dimensions as
          , Dimensions bs
          , Dimensions asbs
+         , bsL ~ ToList bs
          , NCommons.PrimBytes (DataFrame t as)
          , NCommons.PrimBytes (DataFrame t asbs)
          ) => SubSpace t as bs asbs where
