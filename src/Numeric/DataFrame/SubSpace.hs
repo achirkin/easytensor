@@ -131,10 +131,12 @@ iwfoldMap f = iwfoldl (\i b -> mappend b . f i) mempty
 instance ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
          , ToList bs   ~ SimplifyList ('Suffix (ToList as) (ToList asbs))
          , ToList as   ~ SimplifyList ('Prefix (ToList bs) (ToList asbs))
+         , asbsL ~ ToList asbs
+         , asLLLL ~ ToList as
+         , bsL ~ ToList bs
          , Dimensions as
          , Dimensions bs
          , Dimensions asbs
-         , bsL ~ ToList bs
          , NCommons.PrimBytes (DataFrame t as)
          , NCommons.PrimBytes (DataFrame t asbs)
          ) => SubSpace t as bs asbs where
