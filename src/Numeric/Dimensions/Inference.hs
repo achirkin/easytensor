@@ -15,6 +15,8 @@
 
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# OPTIONS_GHC -fno-warn-unused-imports #-}
+{-# OPTIONS_GHC -fno-warn-unused-binds #-}
 module Numeric.Dimensions.Inference (plugin) where
 
 import           Control.Arrow      (first, second, (***))
@@ -30,21 +32,24 @@ import           TcEvidence         (EvTerm (..))
 import           Coercion
 import           Module
 import           Name
-import           NameEnv
-import           OccName
+-- import           NameEnv
+-- import           OccName
 import           TcPluginM
 import           TcRnMonad
-import           TcRnTypes
+-- import           TcRnTypes
 import           TcType
 import           TyCon
 import           TyCoRep
 import           Type
 import           UniqFM
 import           VarSet
-import           Var
-import           FastString
 
-import           Debug.Trace
+
+import Numeric.Dimensions.Inference.Types
+-- import           Var
+-- import           FastString
+
+-- import           Debug.Trace
 
 -- | To use the plugin, add
 --
@@ -71,7 +76,7 @@ decideListOps :: Maybe InferenceTypes
               -> [Ct] -- ^ Wanteds
               -> TcPluginM TcPluginResult
 decideListOps Nothing _ _ _         = return (TcPluginOk [] [])
-decideListOps (Just it) givens deriveds wanteds = do
+decideListOps (Just it) givens _deriveds wanteds = do
     -- tcPluginIO . putStrLn . ("SKOLEMS: " ++ ) . show . catMaybes $ onlySkolemOrigin . ctl_origin . ctev_loc . cc_ev <$> givens
     -- tcPluginIO . print $  (varSetElems hsListVars, varSetElems listVars)
     -- tcPluginIO . putStrLn $ "ToLists: " ++ show (eltsUFM toListRelations)
@@ -81,20 +86,20 @@ decideListOps (Just it) givens deriveds wanteds = do
              <$> map (\g -> (g, eltsUFM $ findAllCtTyVars g)) givens
     unless (null givensLLL) $
       tcPluginIO . putStrLn . ("SKOLEMS: " ++ ) . show . catMaybes $ onlySkolemOrigin . ctl_origin . ctev_loc . cc_ev . fst <$> givensLLL
-    (newGivens, llRels) <- createListListRelations it hsListVars toListRelations evalConsRelations
+    (_newGivens, llRels) <- createListListRelations it hsListVars toListRelations evalConsRelations
     uncurry TcPluginOk . second catMaybes . unzip . catMaybes <$> mapM (check it llRels) wanteds
   where
     allVars = foldMap findAllCtTyVars givens
-           <> foldMap findAllCtTyVars deriveds
+          --  <> foldMap findAllCtTyVars deriveds
            <> foldMap findAllCtTyVars wanteds
     hsListVars = filterVarSet isHsListKind allVars
     listVars = filterVarSet isListKind allVars
     -- ( List k var, [k] var)
     toListRelations = foldMap (getCtToListRelationMap it) givens
-                   <> foldMap (getCtToListRelationMap it) deriveds
+                  --  <> foldMap (getCtToListRelationMap it) deriveds
     -- ( List k var, [k] var)
     evalConsRelations = foldMap (getCtEvalConsRelationMap it) givens
-                     <> foldMap (getCtEvalConsRelationMap it) deriveds
+                    --  <> foldMap (getCtEvalConsRelationMap it) deriveds
     onlySkolemOrigin :: CtOrigin -> Maybe SkolemInfo
     onlySkolemOrigin (GivenOrigin so) = Just so
     onlySkolemOrigin _                = Nothing
@@ -107,18 +112,18 @@ check :: InferenceTypes -> ListListRelations -> Ct -> TcPluginM (Maybe ((EvTerm,
 check it llRels ct@(CNonCanonical CtWanted{ctev_pred = t, ctev_loc = myLoc})
   = case classifyPredType t of
     EqPred NomEq lhs rhs -> case fromMaybe NotApplicable $ runInference (solve llRels lhs rhs) it of
-        NotApplicable -> do
+        (_ , False) -> do
           tcPluginIO . putStrLn $ "NOT APPLICABLE: " ++ show lhs ++ " ~ " ++ show rhs
           return Nothing
-        Eliminated -> do
+        (Nothing , True) -> do
           tcPluginIO . putStrLn $ "ELIMINATED!: " ++ show lhs ++ " ~ " ++ show rhs
           return $ Just ((EvCoercion (mkUnivCo (PluginProv "numeric-dimensions-inference") Nominal lhs rhs),ct), Nothing)
-        Reduced newLhs newRhs -> do
+        (Just newLhs newRhs, True) -> do
           let newEqPred = mkPrimEqPredRole Nominal newLhs newRhs
           newWantedEq <- newWanted myLoc newEqPred
           tcLclEnv <- snd <$> TcPluginM.getEnvs
           let tyVarsRef = tcl_tyvars tcLclEnv
-          tyVarsSet <- unsafeTcPluginTcM $ readMutVar tyVarsRef
+          _tyVarsSet <- unsafeTcPluginTcM $ readMutVar tyVarsRef
           -- tcPluginIO . print $ map (\v -> (v, tyVarKind v, getTyVarKindParam v)). varSetElems $ findAllTyVars lhs <> findAllTyVars rhs <> tyVarsSet
           tcPluginIO . putStrLn $ "WAS: " ++ show t
           tcPluginIO . putStrLn $ "NOW: " ++ show newEqPred
@@ -131,49 +136,41 @@ check _ _ _ = return Nothing
 
 
 -- | Given two types, try to infer their equality or simplify them
-solve :: ListListRelations -> Type -> Type -> Inference InferenceResult
-solve llRels lhs' rhs' = solve' lhs' rhs' >>= normaliseOutEvalCons' lhs' rhs' >>= \r -> case r of
-        NotApplicable -> solve' lhs' rhs'
-        Reduced lhs rhs -> solve' lhs rhs
-        Eliminated -> return Eliminated
+solve :: InferEq -> Inference InferEq
+solve = solve' >=> normaliseOutEvalCons' >=> solve'
   where
-    solve' lhs rhs = do
-      newLhs <- withDefault (StaysSame lhs) $ simplify llRels lhs
-      newRhs <- withDefault (StaysSame rhs) $ simplify llRels rhs
-      case (newLhs, newRhs) of
-        (StaysSame _, StaysSame _) -> return NotApplicable
-        (_, _) -> return $ case (getSResult newLhs, getSResult newRhs) of
-            (lt, rt) -> if eqType lt rt then Eliminated
-                                        else Reduced lt rt
+    solve' Eliminated = return Eliminated
+    solve' (InferEq lhs rhs) = do
+      newLhs <- simplify lhs
+      newRhs <- simplify rhs
+      simplified <- isModified
+      return $
+        if simplified && eqType newLhs newRhs
+        then Eliminated
+        else InferEq newLhs newRhs
 
 
 
-simplify :: ListListRelations -> Type -> Inference SimplificationResult
-simplify llr t = withDefault (StaysSame t) (simplify0 t)
-  >>= \tt -> withDefault tt (raplaceAllToLists llr (getSResult tt))
+simplify :: Type -> Inference Type
+simplify = simplify0 >=> raplaceAllToLists
 
 -- | Try various simplification rules on a type family contructor
-simplify0 :: Type -> Inference SimplificationResult
-simplify0 t = do
-    (constr, apps) <- getTyConApp t
-    indeedSimplifyList <- isSimplifyList constr
-    if indeedSimplifyList
-    -- If current constructor is SimplifyList, then
-    --  I can try either to remove it (if the next one is ToList)
-    --            or remove all descendant SimplifyLists
-    then do
-        afterSimplifyListToList <- simplifyListToList t apps
-        withDefault afterSimplifyListToList $ case afterSimplifyListToList of
-          -- Remove Current SimplifyList if it is applied directly on ToList
-          Simplified innerType -> withDefault afterSimplifyListToList $ simplify0 innerType
-          -- Only if the next one is not ToList I can lookup for all descendant SimplifyList
-          StaysSame _          -> constructBack t constr
-                                    <$> traverse (\x -> withDefault (StaysSame x)
-                                                       $ removeAllSimplifyList x) apps
-
-    -- go recursively into child types
-    else constructBack t constr
-            <$> traverse (\x -> withDefault (StaysSame x) $ simplify0 x) apps
+simplify0 :: Type -> Inference Type
+simplify0 t = withTypeConstr t f
+  where
+    f (constr, apps) = do
+      InferenceTypes {..} <- getState
+      if constr == tcSimplifyList
+      then do
+          afterSimplifyListToList <- simplifyListToList t apps
+          withDefault afterSimplifyListToList $ case afterSimplifyListToList of
+            -- Remove Current SimplifyList if it is applied directly on ToList
+            innerType -> withDefault afterSimplifyListToList $ simplify0 innerType
+            -- Only if the next one is not ToList I can lookup for all descendant SimplifyList
+            _          -> constructBack t constr
+                                      <$> traverse (\x -> withDefault (StaysSame x)
+                                                         $ removeAllSimplifyList x) apps
+       else mkTyConApp innerConstr <$> traverse simplify0 apps
 
 
 
@@ -181,13 +178,13 @@ simplify0 t = do
 --   Guaranteed to return not Nothing
 simplifyListToList :: Type -- ^ Assumed to be SimplifyList type
                    -> [Type] -- ^ SimplifyList constructor arguments
-                   -> Inference SimplificationResult
+                   -> Inference Type
 simplifyListToList t apps = case apps of
     _ : innerType : _ -> withDefault (StaysSame t) $ checkType innerType
     [innerType]       -> withDefault (StaysSame t) $ checkType innerType
     _                 -> return $ StaysSame t
   where
-    checkType :: Type -> Inference SimplificationResult
+    checkType :: Type -> Inference Type
     checkType innerType = do
         (iConstr, _) <- getTyConApp innerType
         True <- isToList iConstr
@@ -213,7 +210,7 @@ findAllCtTyVars = findAllPredTreeTyVars . classifyPredType . ctev_pred . cc_ev
 
 
 -- | Checks if this type is "ToList ds"; if so, gives type variable and "ToList ds"
-tcToListMaybe :: InferenceTypes -> Type -> Maybe (TyVar, Type)
+tcToListMaybe :: Type -> Inference (Maybe (TyVar, Type))
 tcToListMaybe InferenceTypes {..} t = case splitTyConApp_maybe t of
     Nothing -> Nothing
     Just (constr, apps) ->
@@ -230,8 +227,10 @@ tcToListMaybe InferenceTypes {..} t = case splitTyConApp_maybe t of
       Just xv -> Just (xv, mkTyConApp tcToList [getTyVarKindParam xv, x])
 
 -- | Checks if this type is "EvalCons dsL"; if so, "EvalCons dsL"
-tcEvalConsMaybe :: InferenceTypes -> Type -> Maybe (TyVar, Type)
-tcEvalConsMaybe InferenceTypes {..} t = case splitTyConApp_maybe t of
+tcEvalConsMaybe :: Type -> Inference (Maybe (TyVar, Type))
+tcEvalConsMaybe t = do
+  InferenceTypes {..} <- getState
+  return $ case splitTyConApp_maybe t of
     Nothing -> Nothing
     Just (constr, apps) ->
       if constr == tcEvalConsNat || constr == tcEvalCons
@@ -257,7 +256,7 @@ raplaceAllToLists :: ListListRelations -> Type -> Inference SimplificationResult
 raplaceAllToLists llr t = do
   it <- getIT
   case tcToListMaybe it t of
-    Just (xv, xt) -> case lookupUFM (toListRels llr) xv of
+    Just (xv, _xt) -> case lookupUFM (toListRels llr) xv of
       Nothing -> return $ StaysSame t
       Just yv -> return . Simplified $ mkTyVarTy yv
     Nothing -> case splitTyConApp_maybe t of
@@ -415,7 +414,7 @@ isHsListKind = isGood . splitTyConApp_maybe . tyVarKind
 
 -- | If current type constructor is Numeric.Dimensions.SimplifyList,
 --   then look into all descendants and remove SimplifyList occurrences
-removeAllSimplifyList :: Type -> Inference SimplificationResult
+removeAllSimplifyList :: Type -> Inference Type
 removeAllSimplifyList t = do
     (constr, apps) <- getTyConApp t
     shouldRemove <- isSimplifyList constr
@@ -430,30 +429,23 @@ removeAllSimplifyList t = do
 
 
 
-
-normaliseOutEvalCons' :: Type -> Type -> InferenceResult -> Inference InferenceResult
-normaliseOutEvalCons' _ _ Eliminated = return Eliminated
-normaliseOutEvalCons' t1 t2 NotApplicable = withDefault NotApplicable (normaliseOutEvalCons t1 t2)
-normaliseOutEvalCons' _ _ (Reduced t1 t2) = withDefault (Reduced t1 t2) (normaliseOutEvalCons t1 t2)
-
-
-
-normaliseOutEvalCons :: Type -> Type -> Inference InferenceResult
-normaliseOutEvalCons lhs rhs = do
+normaliseOutEvalCons :: InferEq -> Inference InferEq
+normaliseOutEvalCons Eliminated = return Eliminated
+normaliseOutEvalCons ie@(InferEq lhs rhs) = do
     mlEvalCons <- getTyConAppSafe lhs
     mrEvalCons <- getTyConAppSafe rhs
-    InferenceTypes {..} <- getIT
+    InferenceTypes {..} <- getState
     case (mlEvalCons, mrEvalCons) of
       (Just lApps , Just rApps ) -> Reduced <$> getInner lApps <*> getInner rApps
       (Nothing, Nothing)                   -> return NotApplicable
       (Just lApps , Nothing) -> case lApps of
-          k : t : _ -> return $ Reduced (mkTyConApp tcToList [k, rhs]) t
-          [t]       -> return $ Reduced (mkTyConApp tcToList [typeKind rhs, rhs]) t
-          []        -> return NotApplicable
+          k : t : _ -> modified $ InferEq (mkTyConApp tcToList [k, rhs]) t
+          [t]       -> modified $ InferEq (mkTyConApp tcToList [typeKind rhs, rhs]) t
+          []        -> return ie
       (Nothing, Just rApps ) -> case rApps of
-          k : t : _ -> return $ Reduced (mkTyConApp tcToList [k, lhs]) t
-          [t]       -> return $ Reduced (mkTyConApp tcToList [typeKind lhs, lhs]) t
-          []        -> return NotApplicable
+          k : t : _ -> modified $ InferEq (mkTyConApp tcToList [k, lhs]) t
+          [t]       -> modified $ InferEq (mkTyConApp tcToList [typeKind lhs, lhs]) t
+          []        -> return ie
   where
     getInner :: [Type] -> Inference Type
     getInner (_ : t : _) = return t
@@ -466,10 +458,6 @@ normaliseOutEvalCons lhs rhs = do
 
 
 
--- removeEvalConsToList :: Type -> Inference InferenceResult
--- removeEvalConsToList t = withDefault (StaysSame lhs)
-
-
 
 --------------------------------------------------------------------------------
 
@@ -480,125 +468,19 @@ normaliseOutEvalCons lhs rhs = do
 
 -- | Given a deconstructed type (Constructor + list of types to apply to)
 --   construct it back to a type, preserving information whether it was simplified or not.
-constructBack :: Type -- ^ Original Type
-              -> TyCon -- ^ Constructor to use
-              -> [SimplificationResult] -- ^ inner types to use
-              -> SimplificationResult
-constructBack t constr apps = constructProperly constr $ anyIsModified apps
-  where
-     anyIsModified :: [SimplificationResult] -> ([Type], Bool)
-     anyIsModified (StaysSame x : xs) = first (x:) $ anyIsModified xs
-     anyIsModified (Simplified x: xs) = (x:) *** const True $ anyIsModified xs
-     anyIsModified []                 = ([], False)
-     constructProperly :: TyCon -> ([Type], Bool) -> SimplificationResult
-     constructProperly _ (_, False)      = StaysSame t
-     constructProperly innerConstr (xs, True) = Simplified $ mkTyConApp innerConstr xs
-
-
-
-
-
-
--- | Result of the plugin work
-data InferenceResult
-  = NotApplicable
-  | Reduced !Type !Type
-    -- ^ New equality
-  | Eliminated
-    -- ^ Best result: equality solved (reduced to trivial)
-  deriving Show
-
-instance Monoid InferenceResult where
-  mempty = NotApplicable
-  mappend NotApplicable x = x
-  mappend x NotApplicable = x
-  mappend Eliminated _    = Eliminated
-  mappend _  Eliminated   = Eliminated
-  mappend _ x             = x
-
-instance Semigroup InferenceResult where
-  (<>) = mappend
-
-data SimplificationResult
-  = StaysSame  { getSResult :: !Type }
-  | Simplified { getSResult :: !Type }
-  deriving Show
-
-instance Semigroup SimplificationResult where
-  StaysSame _ <> x = x
-  x <> StaysSame _ = x
-  Simplified _ <> Simplified x = Simplified x
-
-
-newtype Inference a = Inference
-  { runInference :: InferenceTypes -> Maybe a }
-
-instance Functor Inference where
-  fmap f i = Inference $ fmap f . runInference i
-
-instance Applicative Inference where
-  pure = Inference . const . Just
-  mf <*> mx = Inference $ \it -> runInference mf it <*> runInference mx it
-
-instance Monad Inference where
-  return = pure
-  mx >>= fm = Inference $ \it -> runInference mx it
-                            >>= (\x -> runInference (fm x) it)
-  fail = const notApplicable
-  -- ma >> mb = Inference $ \it -> case (runInference ma it, runInference mb it) of
-  --                                  (Left ar, Left br) -> Left $ ar <> br
-  --                                  (_, x) -> x
-
-instance MonadFail Inference where
-  fail = const notApplicable
-
-
-notApplicable :: Inference a
-notApplicable = Inference $ const Nothing
-
-isToList :: TyCon -> Inference Bool
-isToList tc = (\InferenceTypes {..} -> tc == tcToList || tc == tcToListNat) <$> getIT
-
-isEvalCons :: TyCon -> Inference Bool
-isEvalCons tc = (\InferenceTypes {..} -> tc == tcEvalCons || tc == tcEvalConsNat) <$> getIT
-
-isSimplifyList :: TyCon -> Inference Bool
-isSimplifyList tc = (tc ==) .  tcSimplifyList <$> getIT
-
-getTyConApp :: Type -> Inference (TyCon, [Type])
-getTyConApp t = Inference . const $ splitTyConApp_maybe t
-
-getIT :: Inference InferenceTypes
-getIT = Inference Just
-
-withDefault :: Semigroup a => a -> Inference a -> Inference a
-withDefault a i =  Inference $ \it -> Just $ a <> fromMaybe a (runInference i it)
-
-data InferenceTypes = InferenceTypes
-  { tcToList       :: !TyCon
-  , tcList         :: !TyCon
-  , tcToListNat    :: !TyCon
-  , tcEvalCons     :: !TyCon
-  , tcEvalConsNat  :: !TyCon
-  , tcSimplifyList :: !TyCon
-  , mDimensions    :: !Module
-  }
-
--- | Initialize important types from Numeric.Dimensions module
-initInferenceTypes :: TcPluginM (Maybe InferenceTypes)
-initInferenceTypes = do
-  frModule <- findImportedModule (mkModuleName "Numeric.Dimensions.List") Nothing
-  case frModule of
-    Found _ mDimensions -> do
-      tcSimplifyList <- lookupOrig mDimensions (mkOccName tcName "SimplifyList") >>= tcLookupTyCon
-      tcList <- lookupOrig mDimensions (mkOccName tcName "List") >>= tcLookupTyCon
-      tcToList <- lookupOrig mDimensions (mkOccName tcName "ToList") >>= tcLookupTyCon
-      tcToListNat <- lookupOrig mDimensions (mkOccName tcName "ToListNat") >>= tcLookupTyCon
-      tcEvalCons <- lookupOrig mDimensions (mkOccName tcName "EvalCons") >>= tcLookupTyCon
-      tcEvalConsNat <- lookupOrig mDimensions (mkOccName tcName "EvalConsNat") >>= tcLookupTyCon
-      return $ Just InferenceTypes {..}
-    _ -> return Nothing
-
+-- constructBack :: Type -- ^ Original Type
+--               -> TyCon -- ^ Constructor to use
+--               -> [SimplificationResult] -- ^ inner types to use
+--               -> SimplificationResult
+-- constructBack t constr apps = constructProperly constr $ anyIsModified apps
+--   where
+--      anyIsModified :: [SimplificationResult] -> ([Type], Bool)
+--      anyIsModified (StaysSame x : xs) = first (x:) $ anyIsModified xs
+--      anyIsModified (Simplified x: xs) = (x:) *** const True $ anyIsModified xs
+--      anyIsModified []                 = ([], False)
+--      constructProperly :: TyCon -> ([Type], Bool) -> SimplificationResult
+--      constructProperly _ (_, False)      = StaysSame t
+--      constructProperly innerConstr (xs, True) = Simplified $ mkTyConApp innerConstr xs
 
 
 
@@ -616,7 +498,7 @@ instance Show Ct where
 instance Show Name where
   show = showSDocUnsafe . ppr
 instance Show SkolemInfo where
-  show (SigSkol _ b) = "SigSkol UserTypeCtxt ExpType"
+  show (SigSkol _ _) = "SigSkol UserTypeCtxt ExpType"
   show (PatSynSigSkol n) = "PatSynSigSkol " ++ showSDocUnsafe (ppr n)
   show (ClsSkol n) = "ClsSkol " ++ showSDocUnsafe (ppr n)
   show (DerivSkol n) = "DerivSkol " ++ showSDocUnsafe (ppr n)
@@ -624,7 +506,7 @@ instance Show SkolemInfo where
   show (InstSC n) = "InstSC " ++ showSDocUnsafe (ppr n)
   show DataSkol = "DataSkol"
   show FamInstSkol = "FamInstSkol"
-  show (PatSkol a n) = "PatSkol " ++ showSDocUnsafe (ppr a) ++ " HsMatchContext"
+  show (PatSkol a _) = "PatSkol " ++ showSDocUnsafe (ppr a) ++ " HsMatchContext"
   show ArrowSkol = "ArrowSkol"
   show (IPSkol n) = "IPSkol " ++ showSDocUnsafe (ppr n)
   show (RuleSkol n) = "RuleSkol " ++ showSDocUnsafe (ppr n)
