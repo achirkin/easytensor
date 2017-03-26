@@ -55,6 +55,7 @@ library
         Numeric.DataFrame.Contraction
         Numeric.DataFrame.Type
         Numeric.Dimensions.List
+        Numeric.Dimensions.Inference.Types
         -- Numeric.Vector
         -- Numeric.Vector.Base.FloatX2
         -- Numeric.Vector.Base.FloatXN
