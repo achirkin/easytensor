@@ -8,39 +8,42 @@
 --
 --
 -----------------------------------------------------------------------------
-{-# LANGUAGE RecordWildCards      #-}
-{-# LANGUAGE KindSignatures      #-}
-{-# LANGUAGE DataKinds      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving      #-}
-{-# LANGUAGE DeriveTraversable      #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE RecordWildCards            #-}
 module Numeric.Dimensions.Inference.Types
   ( Tagged (..), Map (..)
-  , HsList, ListOp
+  , HsListType, ListOpType, HsListVar, ListOpVar
   , TyVarRelations (..)
   , InferenceTypes (..), initInferenceTypes
-  , InferenceT (), Inference, InferencePlugin, runInference
+  , InferenceT (), Inference, InferencePlugin, runInference, runPrepInference, lift
   , liftToPlugin
   , getState, setState
   , isModified, whenModified, whenNotModified, modified
   , InferEq (..)
   , withTypeConstr, withTypeVar
+  , trySubstituteToList, trySubstituteEvalCons
+  , lookupToList, lookupEvalCons
+  , withListOpType, withHsListType
   ) where
 
-import           GHC.TypeLits
 import           Control.Arrow
-import           Control.Monad ((>=>))
-import           Data.Semigroup
+import           Control.Monad         ((>=>))
 import           Data.Functor.Identity
+import           Data.Semigroup
+import           GHC.TypeLits
 
-import           Outputable         (Outputable ())
 import           Module
 import           Name
+import           Outputable            (Outputable ())
 import           TcPluginM
 import           TcType
 import           TyCon
-import           Var
 import           UniqFM
 import           Unique
+import           Var
 
 
 -- | Tag GHC types with my own annotations
@@ -55,8 +58,11 @@ newtype Uniquable a => Map a b = Map { _getUFM :: UniqFM b }
 -- | Compare two types for equality
 data InferEq = InferEq !Type !Type | Eliminated
 
-type HsList = Tagged "[k]" Type
-type ListOp = Tagged "List k" Type
+type HsListType = Tagged "[k]" Type
+type ListOpType = Tagged "List k" Type
+type HsListVar = Tagged "[k]" TyVar
+type ListOpVar = Tagged "List k" TyVar
+
 
 -- | Assume equations:
 --     xsL ~ ToList xs
@@ -65,12 +71,17 @@ type ListOp = Tagged "List k" Type
 --   This pair of mappings is used to substitute (ToList xs) type families with
 --   type variables. This way, SimplifyList family can do its job better.
 data TyVarRelations = TyVarRelations
-  { toListRels   :: !(Map HsList ListOp)
+  { toListRels   :: !(Map HsListVar ListOpVar)
     -- ^  Map xs -> xsL
-  , evalConsRels :: !(Map ListOp HsList)
+  , evalConsRels :: !(Map ListOpVar HsListVar)
     -- ^ Map xsL -> xs
   }
 
+lookupToList :: TyVarRelations -> HsListVar -> Maybe ListOpVar
+lookupToList tvr (Tagged v) = lookupUFM (_getUFM $ toListRels tvr) v
+
+lookupEvalCons :: TyVarRelations -> ListOpVar -> Maybe HsListVar
+lookupEvalCons tvr (Tagged v) = lookupUFM (_getUFM $ evalConsRels tvr) v
 
 instance Semigroup TyVarRelations where
   TyVarRelations a b <> TyVarRelations x y = TyVarRelations (a <> x) (b <> y)
@@ -92,6 +103,8 @@ data InferenceTypes = InferenceTypes
   , mDimensions    :: !Module
   , tyVarRelations :: !TyVarRelations
   }
+
+
 
 instance Semigroup InferenceTypes where
   itA <> itB = itA { tyVarRelations = tyVarRelations itA <> tyVarRelations itB }
@@ -124,6 +137,20 @@ newtype InferenceT m a = InferenceT
 
 runInference :: Functor m => InferenceT m a -> InferenceTypes -> m (a, Bool)
 runInference i it = second snd <$> _runInference i (it, False)
+
+runPrepInference :: Functor m => InferenceT m a -> InferenceTypes -> m (a, InferenceTypes)
+runPrepInference i it = second fst <$> _runInference i (it, False)
+
+lift :: Functor m => m a -> InferenceT m a
+lift m = InferenceT $ \s -> flip (,) s <$> m
+
+-- | Run inference within inference and check if it modified anything.
+--   Before running inner inference it assumes modified = False,
+--   return modification state of inner inference, and does not change `modified` for outer inference.
+--   If you want to set modified on outer inference, set it manually using function `modified`.
+--   Does modify InferenceTypes state.
+subInference :: Functor m => InferenceT m a -> InferenceT m (a, Bool)
+subInference i = InferenceT $ \(it,b) -> (\(x, (it2,b2)) -> ((x,b2), (it2, b))) <$> _runInference i (it, False)
 
 type Inference = InferenceT Identity
 type InferencePlugin = InferenceT TcPluginM
@@ -167,22 +194,75 @@ whenModified m = InferenceT g
 whenNotModified :: Applicative m => InferenceT m a -> InferenceT m (Maybe a)
 whenNotModified m = InferenceT g
   where
-    g (it, True) = pure (Nothing, (it, True))
+    g (it, True)   = pure (Nothing, (it, True))
     g (it, False ) = first Just <$> _runInference m (it, False)
 
 modified :: Applicative m => a -> InferenceT m a
 modified a = InferenceT $ \(it, _) -> pure (a, (it, True))
 
 
--- | Try deconstruct type into constructor application, and pass result into a function
-withTypeConstr :: Applicative m => Type -> ((TyCon, [Type]) -> InferenceT m Type) -> InferenceT m Type
-withTypeConstr t f = case tcSplitTyConApp_maybe t of
-    Nothing -> pure t
+-- | Try deconstruct type into constructor application, and pass result into a function.
+--   Return default value if not deconstructable.
+withTypeConstr :: Applicative m => Type -> a -> ((TyCon, [Type]) -> InferenceT m a) -> InferenceT m a
+withTypeConstr t y f = case tcSplitTyConApp_maybe t of
+    Nothing -> pure y
     Just x  -> f x
 
 
--- | Try deconstruct type into a type variable, and pass result into a function
-withTypeVar :: Applicative m => Type -> (TyVar -> InferenceT m Type) -> InferenceT m Type
-withTypeVar t f = case tcGetTyVar_maybe t of
-    Nothing -> pure t
+-- | Try deconstruct type into a type variable, and pass result into a function.
+--   Return default value if not deconstructable.
+withTypeVar :: Applicative m => Type -> a -> (TyVar -> InferenceT m a) -> InferenceT m a
+withTypeVar t y f = case tcGetTyVar_maybe t of
+    Nothing -> pure y
     Just x  -> f x
+
+-- | If this type is a `ToList xs` construct, then replace it with (ys :: List k)
+trySubstituteToList :: ListOpType -> Inference (ListOpType, Bool)
+trySubstituteToList t = do
+  InferenceTypes {..} <- getState
+  subInference -- do not change outer `modified` state
+    . withTypeConstr (unTag t) t
+    $ \(constr, subts) ->
+        if constr == tcToList || constr == tcToListNat
+        then case subts of
+          _:innerT:_ -> withTypeVar innerT t (f . lookupToList tyVarRelations . Tagged)
+          [innerT]   -> withTypeVar innerT t (f . lookupToList tyVarRelations . Tagged)
+          []         -> pure t
+        else pure t
+  where
+    f Nothing            = pure t
+    f (Just (Tagged tv)) = modified . Tagged $ mkTyVarTy tv
+
+-- | If this type is a `EvalCons xs` construct, then replace it with (ys :: [k])
+trySubstituteEvalCons :: HsListType -> Inference (HsListType, Bool)
+trySubstituteEvalCons t = do
+  InferenceTypes {..} <- getState
+  subInference -- do not change outer `modified` state
+    . withTypeConstr (unTag t) t
+    $ \(constr, subts) ->
+        if constr == tcEvalCons || constr == tcEvalConsNat
+        then case subts of
+          _:innerT:_ -> withTypeVar innerT t (f . lookupEvalCons tyVarRelations . Tagged)
+          [innerT]   -> withTypeVar innerT t (f . lookupEvalCons tyVarRelations . Tagged)
+          []         -> pure t
+        else pure t
+  where
+    f Nothing            = pure t
+    f (Just (Tagged tv)) = modified . Tagged $ mkTyVarTy tv
+
+-- | Run inference if this is some `List k` kind
+withListOpType ::  Monad m => Type -> a -> (ListOpType -> InferenceT m a) -> InferenceT m a
+withListOpType t y f = case tcSplitTyConApp_maybe (typeKind t) of
+  Nothing -> pure y
+  Just (c,_)  -> do
+    InferenceTypes {..} <- getState
+    if c == tcList then f (Tagged t)
+                   else pure y
+
+-- | Run inference if this is some `[k]` kind
+withHsListType ::  Monad m => Type -> a -> (HsListType -> InferenceT m a) -> InferenceT m a
+withHsListType t y f = case tcSplitTyConApp_maybe (typeKind t) of
+  Nothing -> pure y
+  Just (c,_)  -> if getOccName c == mkOccName tcName "[]"
+                 then f (Tagged t)
+                 else pure y
