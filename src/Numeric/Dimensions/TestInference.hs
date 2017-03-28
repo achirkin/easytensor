@@ -44,7 +44,8 @@ class ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs))
 
 
 instance ( asbs ~ EvalList ('Concat (ToList as) (ToList bs))
-         , asbsL ~ ToList asbs
+        --  , asbsL ~ ToList asbs
+        --  , asbs ~ EvalCons asbsL
         --  , ToList as ~ asL
         --  , bsL ~ ToList bs
          )

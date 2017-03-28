@@ -22,7 +22,7 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE BangPatterns #-}
--- {-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
+{-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.SubSpace
@@ -132,7 +132,7 @@ instance ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
          , ToList bs   ~ SimplifyList ('Suffix (ToList as) (ToList asbs))
          , ToList as   ~ SimplifyList ('Prefix (ToList bs) (ToList asbs))
          , asbsL ~ ToList asbs
-         , asLLLL ~ ToList as
+        --  , asLLLL ~ ToList as
          , bsL ~ ToList bs
          , Dimensions as
          , Dimensions bs
