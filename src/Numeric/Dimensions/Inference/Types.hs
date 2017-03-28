@@ -18,7 +18,7 @@ module Numeric.Dimensions.Inference.Types
   , empty, singleton, (!), insert, keys, elems, mkSet, mkMap, filterMap, difference
   , HsListType, ListOpType, HsListVar, ListOpVar
   , TyVarRelations (..)
-  , InferenceTypes (..), initInferenceTypes
+  , InferenceTypes (..), initInferenceTypes, incrementPhase, resetPhase
   , InferenceT (), Inference, InferencePlugin, runInference, runPrepInference, lift
   , liftToPlugin, subInference
   , getState, setState
@@ -47,6 +47,7 @@ import           TysWiredIn            (listTyCon)
 import           UniqFM
 import           Unique
 import           Var
+import           IOEnv
 
 
 -- | Tag GHC types with my own annotations
@@ -160,6 +161,7 @@ data InferenceTypes = InferenceTypes
   , tcSimplifyList :: !TyCon
   , mDimensions    :: !Module
   , tyVarRelations :: !TyVarRelations
+  , phaseNum       :: !(IORef Int)
   }
 
 
@@ -180,12 +182,20 @@ initInferenceTypes = do
       tcToListNat <- lookupOrig mDimensions (mkOccName tcName "ToListNat") >>= tcLookupTyCon
       tcEvalCons <- lookupOrig mDimensions (mkOccName tcName "EvalCons") >>= tcLookupTyCon
       tcEvalConsNat <- lookupOrig mDimensions (mkOccName tcName "EvalConsNat") >>= tcLookupTyCon
+      phaseNum <- unsafeTcPluginTcM $ newMutVar 0
       let tyVarRelations = mempty
       return $ Just InferenceTypes {..}
     _ -> return Nothing
 
+-- | returns a new phase number
+incrementPhase :: InferenceTypes -> TcPluginM Int
+incrementPhase InferenceTypes{phaseNum = refn} = unsafeTcPluginTcM $ do
+    updMutVar refn (+1)
+    readMutVar refn
 
-
+resetPhase :: InferenceTypes -> TcPluginM ()
+resetPhase InferenceTypes{phaseNum = refn}
+  = unsafeTcPluginTcM $ writeMutVar refn 0
 
 -- | Updates a state in InferenceTypes, and keeps additional Bool value
 --   indicating whether a work has been done or not;

@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeOperators, FlexibleInstances, ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications, FunctionalDependencies     #-}
 {-# LANGUAGE ConstraintKinds      #-}
--- {-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
+{-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions

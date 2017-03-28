@@ -13,6 +13,7 @@
 -----------------------------------------------------------------------------
 {-# LANGUAGE RecordWildCards      #-}
 
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -- {-# OPTIONS_GHC -fno-warn-unused-imports #-}
@@ -26,13 +27,11 @@ import           Data.Coerce
 import           Data.Maybe                         (catMaybes, fromMaybe)
 import           Data.Semigroup
 
-import           Bag                                (bagToList)
 import           Coercion
 import           Name
 import           Outputable                         (Outputable (..),
                                                      showSDocUnsafe)
 import           Plugins                            (Plugin (..), defaultPlugin)
-import           TcEvidence                         (EvTerm (..))
 import           TcEvidence
 import           TcPluginM
 import           TcRnMonad
@@ -70,19 +69,30 @@ decideListOps :: Maybe InferenceTypes
               -> [Ct] -- ^ Wanteds
               -> TcPluginM TcPluginResult
 decideListOps Nothing _ _ _         = return (TcPluginOk [] [])
-decideListOps (Just it0) givens _deriveds wanteds = do
+decideListOps (Just it0) givens _ []         = do
+    resetPhase it0
+    -- tcPluginIO . putStrLn $ "STARTING WITH GIVENS:" ++ show ((\g -> (onlySkolemOrigin . ctl_origin . ctev_loc $ cc_ev g, g)) <$> givens)
+    return (TcPluginOk [] [])
+  where
+    onlySkolemOrigin :: CtOrigin -> Maybe SkolemInfo
+    onlySkolemOrigin (GivenOrigin so) = Just so
+    onlySkolemOrigin _                = Nothing
+decideListOps (Just it0) givens _deriveds wanteds = incrementPhase it0 >>= \i ->
+  if i >= 3
+  then return (TcPluginOk [] [])
+  else do
     -- tcPluginIO . putStrLn . ("SKOLEMS: " ++ ) . show . catMaybes $ onlySkolemOrigin . ctl_origin . ctev_loc . cc_ev <$> givens
     -- tcPluginIO . print $  (varSetElems hsListVars, varSetElems listVars)
     -- tcPluginIO . putStrLn $ "ToLists: " ++ show (eltsUFM toListRelations)
     -- tcPluginIO . putStrLn $ "EvalConses: " ++ show (eltsUFM evalConsRelations)
-    tcPluginIO . putStrLn $ "Found wanteds: " ++ show wanteds
-    tcPluginIO . putStrLn $ "Found givens:" ++ show ((\g -> (onlySkolemOrigin . ctl_origin . ctev_loc $ cc_ev g, g)) <$> givens)
+    -- tcPluginIO . putStrLn $ "Found wanteds: " ++ show wanteds
+    -- tcPluginIO . putStrLn $ "Found givens:" ++ show ((\g -> (onlySkolemOrigin . ctl_origin . ctev_loc $ cc_ev g, g)) <$> givens)
     let givensLLL = filter (not . null . snd)
               $ second (filter (\x -> occNameString (getOccName x) == "asLLLL"))
              <$> map (\g -> (g, elems $ findAllCtTyVars g)) givens
-    unless (null givensLLL) $
-      tcPluginIO . putStrLn . ("SKOLEMS: " ++ ) . show . catMaybes $ onlySkolemOrigin . ctl_origin . ctev_loc . cc_ev . fst <$> givensLLL
-    (_newGivens, it) <- flip runPrepInference it0 $ do
+    -- unless (null givensLLL) $
+      -- tcPluginIO . putStrLn . ("SKOLEMS: " ++ ) . show . catMaybes $ onlySkolemOrigin . ctl_origin . ctev_loc . cc_ev . fst <$> givensLLL
+    (newGivens, it) <- flip runPrepInference it0 $ do
         toListRelations <- foldMapMon getCtToListRelationMap givens
         evalConsRelations <- foldMapMon getCtEvalConsRelationMap givens
         -- lift . tcPluginIO . putStrLn $ "Found given ToList rels:" ++ show (elems toListRelations)
@@ -90,8 +100,8 @@ decideListOps (Just it0) givens _deriveds wanteds = do
         r <- createListListRelations hsListVars listOpVars toListRelations evalConsRelations
         replaceVarsInGivens givens
         return r
-    tcPluginIO . putStrLn $ "New givens: " ++ show _newGivens
-    tcPluginIO . putStrLn $ "Found vars: "  ++ show (map (\v -> (v, tyVarKind v)) $ elems allVars)
+    -- tcPluginIO . putStrLn $ "New givens: " ++ show newGivens
+    -- tcPluginIO . putStrLn $ "Found vars: "  ++ show (map (\v -> (v, tyVarKind v)) $ elems allVars)
     -- tcPluginIO . print $ map (\v -> (v, tyVarKind v, getTyVarKindParam v)). varSetElems $ findAllTyVars lhs <> findAllTyVars rhs <> tyVarsSet
     -- EvBindsVar evBindMapRef _ <- getEvBindsTcPluginM
     -- evBinds <- unsafeTcPluginTcM $ bagToList . evBindMapBinds <$> readMutVar evBindMapRef
@@ -100,7 +110,11 @@ decideListOps (Just it0) givens _deriveds wanteds = do
     -- tcPluginIO . putStrLn $ "Computed ToList rels:" ++ show (elems . toListRels $ tyVarRelations it)
     -- tcPluginIO . putStrLn $ "Computed EvalCons rels:" ++ show (elems . evalConsRels $ tyVarRelations it)
     uncurry TcPluginOk . second catMaybes . unzip . catMaybes <$> mapM (check it) wanteds
+      -- first (fmap newEvidence newGivens ++) .
   where
+    newEvidence :: CtEvidence -> (EvTerm, Ct)
+    newEvidence ctEv = (EvId $ ctev_evar ctEv  , CNonCanonical ctEv)
+
     allVars = foldMap findAllCtTyVars givens
           --  <> foldMap findAllCtTyVars deriveds
            <> foldMap findAllCtTyVars wanteds
@@ -288,11 +302,20 @@ replaceVarsInGivens :: [Ct]
                     -> InferenceT TcPluginM ()
 replaceVarsInGivens = mapM_ (replaceG . cc_ev)
   where
-    replaceG ctEv = do
-      InferenceTypes {..} <- getState
-      (newPred, useful) <- subInference $ replaceAllToLists (ctev_pred ctEv)
-      when useful
-        . void . lift $ newGiven (ctev_loc ctEv) newPred (EvId $ ctev_evar ctEv)
+    replaceG ctEv = case classifyPredType (ctev_pred ctEv) of
+      EqPred NomEq lhs rhs -> do
+        InferenceTypes {..} <- getState
+        (ln, lUseful)<- subInference $ replaceOne lhs
+        (rn, rUseful) <- subInference $ replaceOne rhs
+        when (lUseful || rUseful)
+          . void . lift $ newGiven (ctev_loc ctEv) (mkPrimEqPredRole Nominal ln rn) (EvId $ ctev_evar ctEv)
+      _ -> return ()
+    replaceOne t = withTypeConstr t t $ \(constr, apps) -> do
+        InferenceTypes {..} <- getState
+        if constr == tcToList || constr == tcToListNat
+        then pure t
+        else mkTyConApp constr <$> traverse replaceAllToLists apps
+
 
 
       -- check it ct@(CNonCanonical CtWanted{ctev_pred = t, ctev_loc = myLoc})
@@ -342,7 +365,7 @@ createListListRelations hsListVars listOpVars givenToListRels givenEvalConsRels 
                 eqPredType = mkPrimEqPredRole Nominal (unTag lt) (unTag rt)
                 evterm = EvCoercion (mkUnivCo (PluginProv "numeric-dimensions-inference-newToList") Nominal (unTag lt) (unTag rt))
             in lift $ do
-              loc <- mkGivenLoc topTcLevel InstSkol . snd <$> TcPluginM.getEnvs
+              loc <- mkGivenLoc topTcLevel (SigSkol InstDeclCtxt $ Check eqPredType) . snd <$> TcPluginM.getEnvs
               newGiven loc eqPredType evterm
         -- a function to write in an evidence about EvalCons relation
         makeEvalConsEvidence :: (HsListVar, ListOpVar) -> InferenceT TcPluginM CtEvidence
@@ -352,13 +375,15 @@ createListListRelations hsListVars listOpVars givenToListRels givenEvalConsRels 
                 eqPredType = mkPrimEqPredRole Nominal (unTag lt) (unTag rt)
                 evterm = EvCoercion (mkUnivCo (PluginProv "numeric-dimensions-inference-newEvalCons") Nominal (unTag lt) (unTag rt))
             in lift $ do
-              loc <- mkGivenLoc topTcLevel InstSkol . snd <$> TcPluginM.getEnvs
+              loc <- mkGivenLoc topTcLevel (SigSkol InstDeclCtxt $ Check eqPredType) . snd <$> TcPluginM.getEnvs
                  -- (InferSkol [(tyVarName lhs, lt)])
               newGiven loc eqPredType evterm
 
     -- Add known missing equations to the evidence base
     newToListEvs <- traverse makeToListEvidence . elems $ missingToLists
     newEvalConsEvs <- traverse makeEvalConsEvidence . elems $ missingEvalConses
+    newToListEvs2 <- traverse (\(x,y) -> makeToListEvidence (y,x)) . elems $ missingEvalConses
+    newEvalConsEvs2 <- traverse (\(x,y) -> makeEvalConsEvidence (y,x)) . elems $ missingToLists
 
     -- By this time there are variables that have no pairs in List k <-> [k]
     let notCoveredHsListVars = allHsListVars `difference` allExistingToLists
@@ -369,6 +394,8 @@ createListListRelations hsListVars listOpVars givenToListRels givenEvalConsRels 
 
     createdToListEvs <- traverse makeToListEvidence newHsListVars
     createdEvalConsEvs <- traverse makeEvalConsEvidence newListOpVars
+    createdToListEvs2 <- traverse (\(x,y) -> makeToListEvidence (y,x)) $ newListOpVars
+    createdEvalConsEvs2 <- traverse (\(x,y) -> makeEvalConsEvidence (y,x)) $ newHsListVars
 
     -- let newListVars = mempty
     -- unless (null newListVars) $
@@ -380,10 +407,11 @@ createListListRelations hsListVars listOpVars givenToListRels givenEvalConsRels 
     let createdTyVarRels =
               TyVarRelations (mkMap newListOpVars <> fmap fst allExistingToLists)
                              (mkMap newHsListVars <> fmap fst allExistingEvalConses)
-    lift . tcPluginIO . putStrLn $ "Conxtructed ToList rels: " ++ show (elems $ toListRels createdTyVarRels)
-    lift . tcPluginIO . putStrLn $ "Conxtructed EvalCons rels: " ++ show (elems $ evalConsRels createdTyVarRels)
+    -- lift . tcPluginIO . putStrLn $ "Constructed ToList rels: " ++ show (elems $ toListRels createdTyVarRels)
+    -- lift . tcPluginIO . putStrLn $ "Constructed EvalCons rels: " ++ show (elems $ evalConsRels createdTyVarRels)
     setState it{tyVarRelations = createdTyVarRels}
-    return ( newToListEvs ++ createdToListEvs ++ newEvalConsEvs ++ createdEvalConsEvs)
+    return ( newToListEvs ++ createdToListEvs ++ newEvalConsEvs ++ createdEvalConsEvs ++ newToListEvs2 ++ newEvalConsEvs2
+           ++ createdToListEvs2 ++ createdEvalConsEvs2)
 
     -- mkPrimEqPredRole Nominal newLhs newRhs
     --  makeListVarAndRels :: TcPluginM TyVar -- ^ [] variable
@@ -558,7 +586,7 @@ instance Show EvTerm where
 instance Show CtEvidence where
   show = showSDocUnsafe . ppr
 instance Show SkolemInfo where
-  show (SigSkol _ _) = "SigSkol UserTypeCtxt ExpType"
+  show (SigSkol utc ep) = "SigSkol {" ++ (show utc) ++ "} {"++ (showSDocUnsafe $ ppr ep) ++ "} "
   show (PatSynSigSkol n) = "PatSynSigSkol " ++ showSDocUnsafe (ppr n)
   show (ClsSkol n) = "ClsSkol " ++ showSDocUnsafe (ppr n)
   show (DerivSkol n) = "DerivSkol " ++ showSDocUnsafe (ppr n)
@@ -574,3 +602,6 @@ instance Show SkolemInfo where
   show BracketSkol = "BracketSkol"
   show (UnifyForAllSkol n) = "UnifyForAllSkol " ++ showSDocUnsafe (ppr n)
   show UnkSkol = "UnkSkol"
+
+
+deriving instance Show UserTypeCtxt
