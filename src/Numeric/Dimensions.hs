@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeOperators, FlexibleInstances, ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications, FunctionalDependencies     #-}
 {-# LANGUAGE ConstraintKinds      #-}
-{-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
+-- {-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions
@@ -55,6 +55,7 @@ import Data.Type.Equality
 import Unsafe.Coerce
 
 import Numeric.Dimensions.List
+import Numeric.Dimensions.TestInference
 
 -- | Type-level dimensional indexing with arbitrary Int values inside
 data Idx (ds :: [Nat]) where
