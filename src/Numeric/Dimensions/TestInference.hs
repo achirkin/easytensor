@@ -16,6 +16,7 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 {-# OPTIONS_GHC -dcore-lint #-}
+{-# OPTIONS_GHC -ddump-tc-trace #-}
 {-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
 -----------------------------------------------------------------------------
 -- |
@@ -44,7 +45,8 @@ class ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs))
 
 
 instance ( asbs ~ EvalList ('Concat (ToList as) (ToList bs))
-        --  , asbsL ~ ToList asbs
+        --  , ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs))
+         , asbsL ~ ToList asbs
         --  , asbs ~ EvalCons asbsL
         --  , ToList as ~ asL
         --  , bsL ~ ToList bs

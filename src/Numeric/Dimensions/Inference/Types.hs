@@ -10,6 +10,7 @@
 -----------------------------------------------------------------------------
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -28,15 +29,21 @@ module Numeric.Dimensions.Inference.Types
   , trySubstituteToList, trySubstituteEvalCons
   , lookupToList, lookupEvalCons
   , withListOpType, withHsListType
+  , Mapping (..), AllVarRelations (..), allReachableRelations
+  , ToMapping (..), mappingType, mappingDest
+  , foldMapMon
+  , getTyVarKindParam, isListKind, isHsListKind
   ) where
 
 import           Control.Arrow
-import           Control.Monad         ((>=>))
+import           Control.Monad         (foldM, (>=>))
 import           Data.Functor.Identity
+import           Data.Maybe            (fromMaybe)
 import           Data.Proxy
 import           Data.Semigroup
 import           GHC.TypeLits
 
+import           IOEnv
 import           Module
 import           Name
 import           Outputable            (Outputable ())
@@ -47,7 +54,6 @@ import           TysWiredIn            (listTyCon)
 import           UniqFM
 import           Unique
 import           Var
-import           IOEnv
 
 
 -- | Tag GHC types with my own annotations
@@ -88,6 +94,7 @@ insert m k = Map . addToUFM (_getUFM m) k
 -- | Difference (`minusUFM`)
 difference :: Uniquable a => Map a b -> Map a c -> Map a b
 difference (Map a) (Map b) = Map $ a `minusUFM` b
+
 
 -- | Using `lookupUFM`
 (!) :: Uniquable a => Map a b -> a -> Maybe b
@@ -347,3 +354,102 @@ withHsListType t y f = case tcSplitTyConApp_maybe (typeKind t) of
   Just (c,_)  -> if c == listTyCon
                  then f (Tagged t)
                  else pure y
+
+
+-- | Relation from somewhere to a particular type variable within a given type
+data Mapping
+  = IsToList HsListVar ListOpType
+  | IsEvalCons ListOpVar HsListType
+  | IsSame TyVar Type
+
+mappingDest :: Mapping -> TyVar
+mappingDest (IsToList (Tagged v) _)   = v
+mappingDest (IsEvalCons (Tagged v) _) = v
+mappingDest (IsSame v _)              = v
+
+mappingType :: Mapping -> Type
+mappingType (IsToList _ (Tagged v))   = v
+mappingType (IsEvalCons _ (Tagged v)) = v
+mappingType (IsSame _ v)              = v
+
+newtype AllVarRelations = AVR { _getAVR :: Map TyVar (TyVar, Map TyVar Mapping) }
+
+instance Semigroup AllVarRelations where
+  (AVR (Map a)) <> (AVR (Map b)) = AVR . Map $ plusUFM_C f a b
+    where
+      f (v, m1) (_, m2) = (v, m1 <> m2)
+
+instance Monoid AllVarRelations where
+  mempty = AVR mempty
+  mappend = (<>)
+
+class ToMapping a where
+  toMapping :: a -> Mapping
+
+instance ToMapping (HsListVar, ListOpType) where
+  toMapping (a,b) = IsToList a b
+
+instance ToMapping (ListOpVar, HsListType) where
+  toMapping (a,b) = IsEvalCons a b
+
+instance ToMapping (TyVar, Type) where
+  toMapping (a,b) = IsSame a b
+
+-- | Make each connected component of a graph full.
+--   At this moment, I write here a primitive, slow algorithm
+--   that runs in O(n) for each single relation.
+--   I hope for the assumption that connected components are small (usually, two or four elements each).
+--   So the algorithm is as simple as this:
+--      for each node, go through all relatives and check if they are in the map already.
+allReachableRelations :: Monad m => AllVarRelations -> InferenceT m AllVarRelations
+allReachableRelations (AVR avr) = do
+    InferenceTypes {..} <- getState
+
+    let -- find a connected component.
+        findCC :: Set TyVar  -> TyVar -> Set TyVar
+        findCC done tv = singleton tv tv <> foldMap (findCC (done <> singleton tv tv)) toDo
+          where
+            adj = fromMaybe mempty $ fmap mappingDest . snd <$> avr ! tv
+            toDo = adj `difference` done
+        -- first argument keeps track of all passed nodes
+        go :: (TyVar, Map TyVar Mapping) -> AllVarRelations
+        go (tv, _) = AVR $ singleton tv (tv, foldMap (connect tv) (findCC mempty tv) `difference` singleton tv tv)
+        -- add a relation
+        connect :: TyVar -> TyVar -> Map TyVar Mapping
+        connect lhs rhs = case (isListK lhs, isListK rhs) of
+          (False, False) -> singleton rhs (IsSame rhs $ mkTyVarTy rhs)
+          (True , True ) -> singleton rhs (IsSame rhs $ mkTyVarTy rhs)
+          (False, True ) -> singleton rhs ( IsEvalCons (Tagged rhs)
+                                          . Tagged $ mkTyConApp tcEvalCons [getTyVarKindParam rhs, mkTyVarTy rhs])
+          (True , False) -> singleton rhs ( IsToList (Tagged rhs)
+                                          . Tagged $ mkTyConApp tcToList [getTyVarKindParam rhs, mkTyVarTy rhs])
+        isListK :: TyVar -> Bool
+        isListK v = case tcSplitTyConApp_maybe (tyVarKind v) of
+          Nothing    -> False
+          Just (c,_) -> c == tcList
+
+    pure $ foldMap go avr
+
+
+
+foldMapMon :: (Foldable t, Monad m, Monoid b) => (a -> m b) -> t a -> m b
+foldMapMon f = foldM (\acc x -> mappend acc <$> f x) mempty
+
+
+getTyVarKindParam :: TyVar -> Kind
+getTyVarKindParam v = case tcSplitTyConApp_maybe (tyVarKind v) of
+   Just (_, k:_) -> k
+   _             -> tyVarKind v
+
+
+isListKind :: TyVar -> Bool
+isListKind = isGood . tcSplitTyConApp_maybe . tyVarKind
+  where
+    isGood Nothing            = False
+    isGood (Just (constr, _)) = getOccName constr == mkOccName tcName "List"
+
+isHsListKind :: TyVar -> Bool
+isHsListKind = isGood . tcSplitTyConApp_maybe . tyVarKind
+  where
+    isGood Nothing            = False
+    isGood (Just (constr, _)) = constr == listTyCon
