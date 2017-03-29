@@ -13,13 +13,14 @@
 -----------------------------------------------------------------------------
 {-# LANGUAGE RecordWildCards      #-}
 
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -- {-# OPTIONS_GHC -fno-warn-unused-imports #-}
 -- {-# OPTIONS_GHC -fno-warn-unused-binds #-}
 module Numeric.Dimensions.Inference (plugin) where
 
+import           Control.Applicative                (Alternative (..))
 import           Control.Arrow
 import           Control.Monad                      (foldM, unless, void, when,
                                                      (>=>))
@@ -71,36 +72,38 @@ decideListOps :: Maybe InferenceTypes
 decideListOps Nothing _ _ _         = return (TcPluginOk [] [])
 decideListOps (Just it0) givens _ []         = do
     resetPhase it0
-    -- tcPluginIO . putStrLn $ "STARTING WITH GIVENS:" ++ show ((\g -> (onlySkolemOrigin . ctl_origin . ctev_loc $ cc_ev g, g)) <$> givens)
-    return (TcPluginOk [] [])
-  where
-    onlySkolemOrigin :: CtOrigin -> Maybe SkolemInfo
-    onlySkolemOrigin (GivenOrigin so) = Just so
-    onlySkolemOrigin _                = Nothing
+    (newGivens, it1)<- runPrepInference (makeAllPossibleGivens givens) it0
+    return (TcPluginOk (fmap (first ctEvTerm) newGivens) [])
 decideListOps (Just it0) givens _deriveds wanteds = incrementPhase it0 >>= \i ->
   if i >= 3
   then return (TcPluginOk [] [])
   else do
-    -- tcPluginIO . putStrLn . ("SKOLEMS: " ++ ) . show . catMaybes $ onlySkolemOrigin . ctl_origin . ctev_loc . cc_ev <$> givens
-    -- tcPluginIO . print $  (varSetElems hsListVars, varSetElems listVars)
-    -- tcPluginIO . putStrLn $ "ToLists: " ++ show (eltsUFM toListRelations)
-    -- tcPluginIO . putStrLn $ "EvalConses: " ++ show (eltsUFM evalConsRelations)
-    -- tcPluginIO . putStrLn $ "Found wanteds: " ++ show wanteds
-    -- tcPluginIO . putStrLn $ "Found givens:" ++ show ((\g -> (onlySkolemOrigin . ctl_origin . ctev_loc $ cc_ev g, g)) <$> givens)
+    -- -- tcPluginIO . putStrLn . ("SKOLEMS: " ++ ) . show . catMaybes $ onlySkolemOrigin . ctl_origin . ctev_loc . cc_ev <$> givens
+    -- -- tcPluginIO . print $  (varSetElems hsListVars, varSetElems listVars)
+    -- -- tcPluginIO . putStrLn $ "ToLists: " ++ show (eltsUFM toListRelations)
+    -- -- tcPluginIO . putStrLn $ "EvalConses: " ++ show (eltsUFM evalConsRelations)
+    -- tcPluginIO . putStrLn $ "Found wanteds: "
+    -- tcPluginIO $ mapM_  print wanteds
+    -- tcPluginIO . putStrLn $ "Found givens:"
+    -- tcPluginIO $ mapM_  print ((\g -> (onlySkolemOrigin . ctl_origin . ctev_loc $ cc_ev g, g)) <$> givens)
     let givensLLL = filter (not . null . snd)
               $ second (filter (\x -> occNameString (getOccName x) == "asLLLL"))
              <$> map (\g -> (g, elems $ findAllCtTyVars g)) givens
+    (newGivens, it1)<- runPrepInference (makeAllPossibleGivens givens) it0
+    -- tcPluginIO . putStrLn $ "All possible givens: "
+    -- tcPluginIO $ mapM_ print newGivens
     -- unless (null givensLLL) $
       -- tcPluginIO . putStrLn . ("SKOLEMS: " ++ ) . show . catMaybes $ onlySkolemOrigin . ctl_origin . ctev_loc . cc_ev . fst <$> givensLLL
-    (newGivens, it) <- flip runPrepInference it0 $ do
+    (newGivens_, it) <- flip runPrepInference it1 $ do
         toListRelations <- foldMapMon getCtToListRelationMap givens
         evalConsRelations <- foldMapMon getCtEvalConsRelationMap givens
         -- lift . tcPluginIO . putStrLn $ "Found given ToList rels:" ++ show (elems toListRelations)
         -- lift . tcPluginIO . putStrLn $ "Found given EvalCons rels:" ++ show (elems evalConsRelations)
         r <- createListListRelations hsListVars listOpVars toListRelations evalConsRelations
-        replaceVarsInGivens givens
+        -- replaceVarsInGivens givens
         return r
-    -- tcPluginIO . putStrLn $ "New givens: " ++ show newGivens
+    -- tcPluginIO . putStrLn $ "New givens: "
+    -- tcPluginIO $ mapM_ print newGivens
     -- tcPluginIO . putStrLn $ "Found vars: "  ++ show (map (\v -> (v, tyVarKind v)) $ elems allVars)
     -- tcPluginIO . print $ map (\v -> (v, tyVarKind v, getTyVarKindParam v)). varSetElems $ findAllTyVars lhs <> findAllTyVars rhs <> tyVarsSet
     -- EvBindsVar evBindMapRef _ <- getEvBindsTcPluginM
@@ -110,10 +113,11 @@ decideListOps (Just it0) givens _deriveds wanteds = incrementPhase it0 >>= \i ->
     -- tcPluginIO . putStrLn $ "Computed ToList rels:" ++ show (elems . toListRels $ tyVarRelations it)
     -- tcPluginIO . putStrLn $ "Computed EvalCons rels:" ++ show (elems . evalConsRels $ tyVarRelations it)
     uncurry TcPluginOk . second catMaybes . unzip . catMaybes <$> mapM (check it) wanteds
+      -- . first (fmap (first ctEvTerm) newGivens ++)
       -- first (fmap newEvidence newGivens ++) .
   where
     newEvidence :: CtEvidence -> (EvTerm, Ct)
-    newEvidence ctEv = (EvId $ ctev_evar ctEv  , CNonCanonical ctEv)
+    newEvidence ctEv = (ctEvTerm  ctEv , mkNonCanonical ctEv)
 
     allVars = foldMap findAllCtTyVars givens
           --  <> foldMap findAllCtTyVars deriveds
@@ -298,6 +302,100 @@ getCtToListRelationMap = fmap fm . getToListRelationMaybe . classifyPredType . c
 
 
 
+-- | Get all possible one-to-one relations of variables.
+--   This includes type equalities xs~ys, as well as ToList and EvalCons relations.
+--   `AllVarRelations` type has an overloaded Monoid instance, allowing to combine all relation graphs together.
+getCtVarRelations :: Monad m => Ct -> InferenceT m AllVarRelations
+getCtVarRelations = go . classifyPredType . ctev_pred . cc_ev
+  where
+    go (EqPred _ lhs rhs) = do
+        InferenceTypes {..} <- getState
+        lToList   <- fmap toMapping <$> tcToListMaybe lhs
+        rToList   <- fmap toMapping <$> tcToListMaybe rhs
+        lEvalCons <- fmap toMapping <$> tcEvalConsMaybe lhs
+        rEvalCons <- fmap toMapping <$> tcEvalConsMaybe rhs
+        let lpure = toMapping . (id &&& mkTyVarTy) <$> getTyVar_maybe lhs
+            rpure = toMapping . (id &&& mkTyVarTy) <$> getTyVar_maybe rhs
+            newLhs = lToList <|> lEvalCons <|> lpure
+            newRhs = rToList <|> rEvalCons <|> rpure
+            allDirectRelations = case (,) <$> newLhs <*> newRhs of
+              Nothing -> mempty
+              -- Identity between two variables
+              Just (IsSame lv lt, IsSame rv rt)
+                -> AVR ( mkMap [ (lv, (lv, singleton rv (IsSame rv rt)))
+                               , (rv, (rv, singleton lv (IsSame lv lt)))
+                               ] )
+              Just (IsToList (Tagged lv) _, IsToList (Tagged rv) _)
+                -> AVR ( mkMap [ (lv, (lv, singleton rv (IsSame rv $ mkTyVarTy rv)))
+                               , (rv, (rv, singleton lv (IsSame lv $ mkTyVarTy lv)))
+                               ] )
+              Just (IsEvalCons (Tagged lv) _, IsEvalCons (Tagged rv) _)
+                -> AVR ( mkMap [ (lv, (lv, singleton rv (IsSame rv $ mkTyVarTy rv)))
+                               , (rv, (rv, singleton lv (IsSame lv $ mkTyVarTy lv)))
+                               ] )
+              Just (IsSame lv _, IsToList rv rt)
+                -> AVR ( mkMap [ (lv, (lv, singleton (unTag rv) (IsToList rv rt)))
+                               , (unTag rv, (unTag rv, singleton lv (IsEvalCons (Tagged lv)
+                                                     . Tagged $ mkTyConApp tcEvalCons [getTyVarKindParam lv, mkTyVarTy lv])))
+                               ] )
+              Just (IsToList rv rt, IsSame lv _)
+                -> AVR ( mkMap [ (lv, (lv, singleton (unTag rv) (IsToList rv rt)))
+                               , (unTag rv, (unTag rv, singleton lv (IsEvalCons (Tagged lv)
+                                                     . Tagged $ mkTyConApp tcEvalCons [getTyVarKindParam lv, mkTyVarTy lv])))
+                               ] )
+              Just (IsSame lv _, IsEvalCons rv rt)
+                -> AVR ( mkMap [ (lv, (lv, singleton (unTag rv) (IsEvalCons rv rt)))
+                               , (unTag rv, (unTag rv, singleton lv (IsToList (Tagged lv)
+                                                     . Tagged $ mkTyConApp tcToList [getTyVarKindParam lv, mkTyVarTy lv])))
+                               ] )
+              Just (IsEvalCons rv rt, IsSame lv _)
+                -> AVR ( mkMap [ (lv, (lv, singleton (unTag rv) (IsEvalCons rv rt)))
+                               , (unTag rv, (unTag rv, singleton lv (IsToList (Tagged lv)
+                                                     . Tagged $ mkTyConApp tcToList [getTyVarKindParam lv, mkTyVarTy lv])))
+                               ] )
+              Just (IsEvalCons {}, IsToList {}) -> mempty
+              Just (IsToList {}, IsEvalCons {}) -> mempty
+
+        allReachableRelations allDirectRelations
+    go _ = return mempty
+
+
+-- | Get list of givens and extract all variables from there.
+--   Next, construct relations map and create a given relation for each single possible relation.
+makeAllPossibleGivens :: [Ct] -> InferenceT TcPluginM [(CtEvidence, Ct)]
+makeAllPossibleGivens cts = do
+    -- lift . tcPluginIO . print $ skolems
+    InferenceTypes {..} <- getState
+    relationGraph <- foldMapMon getCtVarRelations cts
+    let makeEvidence :: (TyVar, Mapping) -> InferenceT TcPluginM (CtEvidence, Ct)
+        makeEvidence (lhs, rhs) = lift $ do
+            loc <- mkGivenLoc topTcLevel ( bestDefaultSkolem (Check eqPredType)
+                                           (SigSkol InstDeclCtxt (Check eqPredType))
+                                           skolems
+                                         ) . snd <$> TcPluginM.getEnvs
+            ctEv <- newGiven loc eqPredType evterm
+            pure (ctEv, makeCt lhs rt ctEv)
+          where
+            makeCt :: TyVar -> Type -> CtEvidence -> Ct
+            makeCt lhsv rhsty ctEv = case splitTyConApp_maybe rhsty of
+              Just (c, apps) -> CFunEqCan ctEv c apps lhsv
+              Nothing        -> CTyEqCan ctEv lhsv rhsty NomEq
+            lt = mkTyVarTy lhs
+            rt = mappingType rhs
+            eqPredType = mkPrimEqPredRole Nominal lt rt
+            evterm = EvCoercion (mkUnivCo (PluginProv "numeric-dimensions-inference-mkEqs") Nominal lt rt)
+    fmap concat $ traverse (\(v, m) -> traverse (makeEvidence . (,) v) $ elems m) . elems $ _getAVR relationGraph
+  where
+    skolems = catMaybes $ onlySkolemOrigin . ctl_origin . ctev_loc . cc_ev <$> cts
+    onlySkolemOrigin :: CtOrigin -> Maybe SkolemInfo
+    onlySkolemOrigin (GivenOrigin so) = Just so
+    onlySkolemOrigin _                = Nothing
+    bestDefaultSkolem :: ExpType -> SkolemInfo -> [SkolemInfo] -> SkolemInfo
+    bestDefaultSkolem _ si []               = si
+    bestDefaultSkolem et _ (SigSkol c _: _) = SigSkol c et
+    bestDefaultSkolem et si (_ : xs)        = bestDefaultSkolem et si xs
+
+
 replaceVarsInGivens :: [Ct]
                     -> InferenceT TcPluginM ()
 replaceVarsInGivens = mapM_ (replaceG . cc_ev)
@@ -419,27 +517,6 @@ createListListRelations hsListVars listOpVars givenToListRels givenEvalConsRels 
     --                        , TcTyVar )
 
 
-getTyVarKindParam :: TyVar -> Kind
-getTyVarKindParam v = case splitTyConApp_maybe (tyVarKind v) of
-   Just (_, k:_) -> k
-   _             -> tyVarKind v
-
-
-isListKind :: TyVar -> Bool
-isListKind = isGood . splitTyConApp_maybe . tyVarKind
-  where
-    isGood Nothing            = False
-    isGood (Just (constr, _)) = getOccName constr == mkOccName tcName "List"
-
-isHsListKind :: TyVar -> Bool
-isHsListKind = isGood . splitTyConApp_maybe . tyVarKind
-  where
-    isGood Nothing            = False
-    isGood (Just (constr, _)) = constr == listTyCon
-
-
-
-
 
 
 
@@ -459,6 +536,7 @@ simplify0 :: Type -> Inference Type
 simplify0 t0 = do
     t1 <- withListOpType t0 t0 (fmap unTag . simplifyListToList)
     withTypeConstr t1 t1 removeAllDescSimplifyLists -- TODO: very inefficient, need to refink
+    -- return t1
   where
     removeAllDescSimplifyLists (constr, apps) = do
       InferenceTypes {..} <- getState
@@ -555,8 +633,6 @@ normaliseOutEvalCons ie@(InferEq lhs rhs) = do
 
 
 
-foldMapMon :: (Foldable t, Monad m, Monoid b) => (a -> m b) -> t a -> m b
-foldMapMon f = foldM (\acc x -> mappend acc <$> f x) mempty
 
 
 --------------------------------------------------------------------------------
