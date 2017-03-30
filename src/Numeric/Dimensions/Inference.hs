@@ -18,17 +18,18 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -- {-# OPTIONS_GHC -fno-warn-unused-imports #-}
 -- {-# OPTIONS_GHC -fno-warn-unused-binds #-}
-module Numeric.Dimensions.Inference (plugin) where
+module Numeric.Dimensions.Inference (plugin, inferListOpsPlugin) where
 
 import           Control.Applicative                (Alternative (..))
 import           Control.Arrow
-import           Control.Monad                      (foldM, unless, void, when,
-                                                     (>=>))
+import           Control.Monad                      ((>=>))
 import           Data.Coerce
 import           Data.Maybe                         (catMaybes, fromMaybe)
 import           Data.Semigroup
 
+import           Class                              (Class)
 import           Coercion
+import           FastString
 import           Name
 import           Outputable                         (Outputable (..),
                                                      showSDocUnsafe)
@@ -53,7 +54,48 @@ import           Numeric.Dimensions.Inference.Types
 --
 -- To the header of your file.
 plugin :: Plugin
-plugin = defaultPlugin { tcPlugin = const $ Just inferListOpsPlugin }
+plugin = defaultPlugin { tcPlugin = const $ Just inferNatsPlugin }
+
+
+inferNatsPlugin :: TcPlugin
+inferNatsPlugin = TcPlugin
+  { tcPluginInit  = initInferenceTypes
+  , tcPluginSolve = const decideNatOps
+  , tcPluginStop  = const (return ())
+  }
+
+decideNatOps ::  [Ct] -- ^ Givens
+              -> [Ct] -- ^ Deriveds
+              -> [Ct] -- ^ Wanteds
+              -> TcPluginM TcPluginResult
+decideNatOps _ _ []      = return (TcPluginOk [] [])
+decideNatOps _ _ wanteds =
+  uncurry TcPluginOk . second concat . unzip . catMaybes <$> mapM checkNats wanteds
+
+checkNats :: Ct -> TcPluginM (Maybe ((EvTerm, Ct), [Ct]))
+checkNats ct@(CNonCanonical CtWanted{ctev_pred = t, ctev_loc = myLoc})
+  = case classifyPredType t of
+    ClassPred cl types ->
+      case ( getOccName cl == mkOccName tcClsName "KnownNat"
+           , splitTyConApp_maybe <$> types
+           ) of
+        (True, [Just (constr, apps)])
+          | getOccName constr == mkOccName tcName "Length" ->
+              return $ Just
+                  ( ( EvLit (EvStr $ mkFastString "Length of a list is always known, because we do not allow infinite types." ), ct )
+                  , []
+                  )
+          | any ((getOccName constr ==) . mkOccName tcName ) ["+", "-", "*", "^"] -> do
+              newWanteds <- traverse (fmap CNonCanonical . newWanted myLoc . mkClassPred cl . (:[])) apps
+              return $ Just
+                  ( ( EvLit (EvStr $ mkFastString "Algebraic operations on known nats are known nats." ), ct )
+                  , newWanteds
+                  )
+          | otherwise -> return Nothing
+        _ -> return Nothing
+    _ -> return Nothing
+checkNats _ = return Nothing
+
 
 -- | Initialize with "Numeric.Dimensions" module necessary types
 inferListOpsPlugin :: TcPlugin
@@ -72,7 +114,7 @@ decideListOps :: Maybe InferenceTypes
 decideListOps Nothing _ _ _         = return (TcPluginOk [] [])
 decideListOps (Just it0) givens _ []         = do
     resetPhase it0
-    (newGivens, it1)<- runPrepInference (makeAllPossibleGivens givens) it0
+    (newGivens, _)<- runPrepInference (makeAllPossibleGivens givens) it0
     return (TcPluginOk (fmap (first ctEvTerm) newGivens) [])
 decideListOps (Just it0) givens _deriveds wanteds = incrementPhase it0 >>= \i ->
   if i >= 3
@@ -86,22 +128,22 @@ decideListOps (Just it0) givens _deriveds wanteds = incrementPhase it0 >>= \i ->
     -- tcPluginIO $ mapM_  print wanteds
     -- tcPluginIO . putStrLn $ "Found givens:"
     -- tcPluginIO $ mapM_  print ((\g -> (onlySkolemOrigin . ctl_origin . ctev_loc $ cc_ev g, g)) <$> givens)
-    let givensLLL = filter (not . null . snd)
-              $ second (filter (\x -> occNameString (getOccName x) == "asLLLL"))
-             <$> map (\g -> (g, elems $ findAllCtTyVars g)) givens
-    (newGivens, it1)<- runPrepInference (makeAllPossibleGivens givens) it0
+    -- let givensLLL = filter (not . null . snd)
+    --           $ second (filter (\x -> occNameString (getOccName x) == "asLLLL"))
+    --          <$> map (\g -> (g, elems $ findAllCtTyVars g)) givens
+    (_newGivens0, it1)<- runPrepInference (makeAllPossibleGivens givens) it0
     -- tcPluginIO . putStrLn $ "All possible givens: "
     -- tcPluginIO $ mapM_ print newGivens
     -- unless (null givensLLL) $
       -- tcPluginIO . putStrLn . ("SKOLEMS: " ++ ) . show . catMaybes $ onlySkolemOrigin . ctl_origin . ctev_loc . cc_ev . fst <$> givensLLL
-    (newGivens_, it) <- flip runPrepInference it1 $ do
+    (_newGivens_, it) <- flip runPrepInference it1 $ do
         toListRelations <- foldMapMon getCtToListRelationMap givens
         evalConsRelations <- foldMapMon getCtEvalConsRelationMap givens
         -- lift . tcPluginIO . putStrLn $ "Found given ToList rels:" ++ show (elems toListRelations)
         -- lift . tcPluginIO . putStrLn $ "Found given EvalCons rels:" ++ show (elems evalConsRelations)
-        r <- createListListRelations hsListVars listOpVars toListRelations evalConsRelations
+        createListListRelations hsListVars listOpVars toListRelations evalConsRelations
         -- replaceVarsInGivens givens
-        return r
+        --return r
     -- tcPluginIO . putStrLn $ "New givens: "
     -- tcPluginIO $ mapM_ print newGivens
     -- tcPluginIO . putStrLn $ "Found vars: "  ++ show (map (\v -> (v, tyVarKind v)) $ elems allVars)
@@ -116,17 +158,14 @@ decideListOps (Just it0) givens _deriveds wanteds = incrementPhase it0 >>= \i ->
       -- . first (fmap (first ctEvTerm) newGivens ++)
       -- first (fmap newEvidence newGivens ++) .
   where
-    newEvidence :: CtEvidence -> (EvTerm, Ct)
-    newEvidence ctEv = (ctEvTerm  ctEv , mkNonCanonical ctEv)
-
     allVars = foldMap findAllCtTyVars givens
           --  <> foldMap findAllCtTyVars deriveds
            <> foldMap findAllCtTyVars wanteds
     hsListVars = coerce $ Tagged <$> filterMap isHsListKind allVars :: Set HsListVar
     listOpVars = coerce $ Tagged <$> filterMap isListKind allVars :: Set ListOpVar
-    onlySkolemOrigin :: CtOrigin -> Maybe SkolemInfo
-    onlySkolemOrigin (GivenOrigin so) = Just so
-    onlySkolemOrigin _                = Nothing
+    -- onlySkolemOrigin :: CtOrigin -> Maybe SkolemInfo
+    -- onlySkolemOrigin (GivenOrigin so) = Just so
+    -- onlySkolemOrigin _                = Nothing
 
 
 
@@ -396,23 +435,23 @@ makeAllPossibleGivens cts = do
     bestDefaultSkolem et si (_ : xs)        = bestDefaultSkolem et si xs
 
 
-replaceVarsInGivens :: [Ct]
-                    -> InferenceT TcPluginM ()
-replaceVarsInGivens = mapM_ (replaceG . cc_ev)
-  where
-    replaceG ctEv = case classifyPredType (ctev_pred ctEv) of
-      EqPred NomEq lhs rhs -> do
-        InferenceTypes {..} <- getState
-        (ln, lUseful)<- subInference $ replaceOne lhs
-        (rn, rUseful) <- subInference $ replaceOne rhs
-        when (lUseful || rUseful)
-          . void . lift $ newGiven (ctev_loc ctEv) (mkPrimEqPredRole Nominal ln rn) (EvId $ ctev_evar ctEv)
-      _ -> return ()
-    replaceOne t = withTypeConstr t t $ \(constr, apps) -> do
-        InferenceTypes {..} <- getState
-        if constr == tcToList || constr == tcToListNat
-        then pure t
-        else mkTyConApp constr <$> traverse replaceAllToLists apps
+-- replaceVarsInGivens :: [Ct]
+--                     -> InferenceT TcPluginM ()
+-- replaceVarsInGivens = mapM_ (replaceG . cc_ev)
+--   where
+--     replaceG ctEv = case classifyPredType (ctev_pred ctEv) of
+--       EqPred NomEq lhs rhs -> do
+--         InferenceTypes {..} <- getState
+--         (ln, lUseful)<- subInference $ replaceOne lhs
+--         (rn, rUseful) <- subInference $ replaceOne rhs
+--         when (lUseful || rUseful)
+--           . void . lift $ newGiven (ctev_loc ctEv) (mkPrimEqPredRole Nominal ln rn) (EvId $ ctev_evar ctEv)
+--       _ -> return ()
+--     replaceOne t = withTypeConstr t t $ \(constr, apps) -> do
+--         InferenceTypes {..} <- getState
+--         if constr == tcToList || constr == tcToListNat
+--         then pure t
+--         else mkTyConApp constr <$> traverse replaceAllToLists apps
 
 
 
@@ -492,8 +531,8 @@ createListListRelations hsListVars listOpVars givenToListRels givenEvalConsRels 
 
     createdToListEvs <- traverse makeToListEvidence newHsListVars
     createdEvalConsEvs <- traverse makeEvalConsEvidence newListOpVars
-    createdToListEvs2 <- traverse (\(x,y) -> makeToListEvidence (y,x)) $ newListOpVars
-    createdEvalConsEvs2 <- traverse (\(x,y) -> makeEvalConsEvidence (y,x)) $ newHsListVars
+    createdToListEvs2 <- traverse (\(x,y) -> makeToListEvidence (y,x)) newListOpVars
+    createdEvalConsEvs2 <- traverse (\(x,y) -> makeEvalConsEvidence (y,x)) newHsListVars
 
     -- let newListVars = mempty
     -- unless (null newListVars) $
@@ -661,8 +700,10 @@ instance Show EvTerm where
   show = showSDocUnsafe . ppr
 instance Show CtEvidence where
   show = showSDocUnsafe . ppr
+instance Show Class where
+  show = showSDocUnsafe . ppr
 instance Show SkolemInfo where
-  show (SigSkol utc ep) = "SigSkol {" ++ (show utc) ++ "} {"++ (showSDocUnsafe $ ppr ep) ++ "} "
+  show (SigSkol utc ep) = "SigSkol {" ++ show utc ++ "} {" ++ showSDocUnsafe (ppr ep) ++ "} "
   show (PatSynSigSkol n) = "PatSynSigSkol " ++ showSDocUnsafe (ppr n)
   show (ClsSkol n) = "ClsSkol " ++ showSDocUnsafe (ppr n)
   show (DerivSkol n) = "DerivSkol " ++ showSDocUnsafe (ppr n)

@@ -28,13 +28,13 @@ module Numeric.DataFrame.Contraction
   ( Contraction (..), (%*)
   ) where
 
-import           Data.Proxy             (Proxy (..))
-import           Data.Type.Equality
-import           GHC.TypeLits           (KnownNat, Nat)
-import           GHC.Types              (Type)
+-- import           Data.Proxy             (Proxy (..))
+-- import           Data.Type.Equality
+import           GHC.TypeLits           (Nat)
+-- import           GHC.Types              (Type)
 import           Numeric.Dimensions
 import qualified Numeric.Matrix.Class   as M
-import           Unsafe.Coerce
+-- import           Unsafe.Coerce
 
 import           Numeric.DataFrame.Type
 
@@ -48,9 +48,12 @@ class ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs))
   --   and, thus, concatenate other dimesnions
   contract :: DataFrame t (as +: m) -> DataFrame t (m :+ bs) -> DataFrame t asbs
 
-instance ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs))
-         , ToList as   ~ SimplifyList ('Prefix (ToList bs) (ToList asbs))
-         , ToList bs   ~ SimplifyList ('Suffix (ToList as) (ToList asbs))
+instance ( asbsL ~ SimplifyList ('Concat asL bsL)
+         , asL   ~ SimplifyList ('Prefix bsL asbsL)
+         , bsL   ~ SimplifyList ('Suffix asL asbsL)
+         , asbsL ~ ToList asbs
+         , asL   ~ ToList as
+         , bsL   ~ ToList bs
          , M.MatrixProduct (DataFrame t (as +: m))
                            (DataFrame t (m :+ bs))
                            (DataFrame t asbs)

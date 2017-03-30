@@ -24,7 +24,6 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE BangPatterns #-}
-{-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame
@@ -670,28 +669,31 @@ inferFloating x f = case (dim @as, edtRefl (Proxy @t)) of
 
 
 inferSubSpace :: forall (x :: Type) (t :: Type)
-                       (as :: [Nat]) (bs :: [Nat]) (asbsL :: List Nat) (asbs :: [Nat])
-              . ( asbsL ~ SimplifyList ('Concat (ToList as) (ToList bs))
-                , ToList as ~ SimplifyList ('Prefix (ToList bs) asbsL)
-                , ToList bs ~ SimplifyList ('Suffix (ToList as) asbsL)
-                , asbs  ~ EvalCons asbsL
+                        (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+                        (asL :: List Nat) (bsL :: List Nat) (asbsL :: List Nat)
+              . ( asbsL ~ SimplifyList ('Concat asL bsL)
                 , asbsL ~ ToList asbs
-                , Dimensions (EvalCons asbsL)
-                , Dims.KnownOrders as
+                , asL ~ ToList as
+                , bsL ~ ToList bs
+                , Dimensions asbs
                 , SubSpace t '[] asbs asbs
                 , ElementDataType t
                 )
              => Dim as
              -> Dim bs
              -> DataFrame t asbs
-             -> ( forall (as' :: [Nat]) (bs' :: [Nat]) (asbsL' :: List Nat) (asbs' :: [Nat])
-                       . ( asbsL  ~ SimplifyList ('Concat (ToList as) (ToList bs))
-                         , asbsL' ~ SimplifyList ('Concat (ToList as') (ToList bs'))
+             -> ( forall (as' :: [Nat]) (bs' :: [Nat]) (asbs' :: [Nat])
+                         (asL' :: List Nat) (bsL' :: List Nat) (asbsL' :: List Nat)
+                       . ( asbsL' ~ SimplifyList ('Concat asL' bsL')
+                         , asbsL' ~ ToList asbs'
+                         , asL' ~ ToList as'
+                         , bsL' ~ ToList bs'
                          , as ~ as'
                          , bs ~ bs'
+                         , asbs ~ asbs'
+                         , asL ~ asL'
+                         , bsL ~ bsL'
                          , asbsL ~ asbsL'
-                         , asbs' ~ EvalCons asbsL'
-                         , asbsL' ~ ToList asbs'
                          , Dimensions as
                          , Dimensions bs
                          , SubSpace t as' bs' asbs'

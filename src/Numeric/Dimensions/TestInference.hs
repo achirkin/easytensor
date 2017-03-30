@@ -16,8 +16,8 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 {-# OPTIONS_GHC -dcore-lint #-}
-{-# OPTIONS_GHC -ddump-tc-trace #-}
-{-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
+-- {-# OPTIONS_GHC -ddump-tc-trace #-}
+-- {-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.TestInference
@@ -38,6 +38,7 @@
 
 module Numeric.Dimensions.TestInference where
 
+import           Numeric.Dimensions.Inference
 import           Numeric.Dimensions.List
 
 class ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs))

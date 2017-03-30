@@ -164,7 +164,7 @@ type family SimplifyList (xs :: List k) :: List k where
 
     SimplifyList ('Suffix ('Cons _ _) 'Empty)
         = TypeError ( 'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter" )
-    SimplifyList ('Suffix ('Cons a as) ('Cons a asbs))  = SimplifyList ('Suffix as asbs)
+    SimplifyList ('Suffix ('Cons _ as) ('Cons _ asbs))  = SimplifyList ('Suffix as asbs)
     SimplifyList ('Suffix ('Cons a as) ('Snoc xs x))    = SimplifyList ('Suffix ('Cons a as) (SimplifyList ('Snoc xs x)))
     SimplifyList ('Suffix ('Cons a as) ('Concat xs ys)) = SimplifyList ('Suffix ('Cons a as) (SimplifyList ('Concat xs ys)))
     SimplifyList ('Suffix ('Cons a as) ('Reverse xs))   = SimplifyList ('Suffix ('Cons a as) (SimplifyList ('Reverse xs)))
