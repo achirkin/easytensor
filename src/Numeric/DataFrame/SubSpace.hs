@@ -22,7 +22,7 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE BangPatterns #-}
-{-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
+-- {-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.SubSpace
@@ -57,9 +57,9 @@ import           Numeric.DataFrame.Type
 -- bs is an indexing dimensionality
 -- t is an underlying data type (i.e. Float, Int, Double)
 --
-class ( asbs ~ EvalList ('Concat (ToList as) (ToList bs  ))
-      , bs   ~ EvalList ('Suffix (ToList as) (ToList asbs))
-      , as   ~ EvalList ('Prefix (ToList bs) (ToList asbs))
+class ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
+      , ToList bs   ~ SimplifyList ('Suffix (ToList as) (ToList asbs))
+      , ToList as   ~ SimplifyList ('Prefix (ToList bs) (ToList asbs))
       , Dimensions as
       , Dimensions bs
       , Dimensions asbs
@@ -128,11 +128,11 @@ iwfoldMap f = iwfoldl (\i b -> mappend b . f i) mempty
 {-# INLINE iwfoldMap #-}
 
 
-instance ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
-         , ToList bs   ~ SimplifyList ('Suffix (ToList as) (ToList asbs))
-         , ToList as   ~ SimplifyList ('Prefix (ToList bs) (ToList asbs))
+instance ( asbsL ~ SimplifyList ('Concat asL bsL)
+         , bsL   ~ SimplifyList ('Suffix asL asbsL)
+         , asL   ~ SimplifyList ('Prefix bsL asbsL)
          , asbsL ~ ToList asbs
-        --  , asLLLL ~ ToList as
+         , asL ~ ToList as
          , bsL ~ ToList bs
          , Dimensions as
          , Dimensions bs
