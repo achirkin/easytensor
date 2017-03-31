@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds, KindSignatures #-}
 {-# LANGUAGE GADTs     #-}
 {-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE ScopedTypeVariables      #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
 -- {-# LANGUAGE IncoherentInstances #-}
@@ -83,6 +84,10 @@ main = do
     putStrLn "\n List traversable:\n"
     print $ elementWise (dim @'[4]) (\x -> [x, x+0.375]) ixs
     print ( withRuntimeDim [2,6,3] (\ds -> show (dimMax `inSpaceOf` ds) ) :: Either String String )
+    print $ order (Proxy @'[1,2,3,4,6])
+    print ( withRuntimeDim [2,6,3] (\ds -> show (order ds) ) :: Either String String )
+    print $ dimMin @'[_,_] !. dfY
+    print $ subDimTest dfY Proxy
   where
     pleaseFire :: Idx i -> DataFrame Float '[3, 2] -> Const (Sum (DataFrame Float '[3, 2])) Scf
     pleaseFire _ = Const . Sum
@@ -133,6 +138,19 @@ dfFloat = realToFrac
 
 
 type DFF (ds :: [Nat]) = DataFrame Float ds
+
+
+subDimTest :: forall (as :: [Nat]) (n :: Nat) (m :: Nat)
+           .  ( Dimensions(as +: n +: m :: [Nat])
+              , (as +: n +: m) ~ EvalList ('Concat (ToList as) (ToList [n,m]))
+              , ToList (as +: n +: m) ~ SimplifyList ('Concat (ToList as) (ToList [n,m]))
+              , SubSpace Float '[] (as +: n +: m) (as +: n +: m)
+              , EvalCons (ToList as) ~ as
+              )
+           => DFF (as +: n +: m) -> Proxy [n,m] -> DFF as
+subDimTest bigdff smalldff = inferSubSpace (Proxy @as)
+                                           (Proxy @[n,m]) bigdff
+  $ \_ _ bdff -> (dimMin `inSpaceOf` smalldff) !. bdff
 
 --   print (two + vec2 3 4)
 --   print (two + vec2 3 4 + 5)

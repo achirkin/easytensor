@@ -668,32 +668,28 @@ inferFloating x f = case (dim @as, edtRefl (Proxy @t)) of
 
 
 
-inferSubSpace :: forall (x :: Type) (t :: Type)
+
+inferSubSpace :: forall (x :: Type) (t :: Type) (p :: [Nat] -> Type) (q :: [Nat] -> Type)
                         (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
                         (asL :: List Nat) (bsL :: List Nat) (asbsL :: List Nat)
               . ( asbsL ~ SimplifyList ('Concat asL bsL)
-                , asbsL ~ ToList asbs
-                , asL ~ ToList as
-                , bsL ~ ToList bs
+                , asbsL ~ ToList asbs, asL ~ ToList as, bsL ~ ToList bs
+                , asbs ~ EvalCons asbsL, as ~ EvalCons asL, bs ~ EvalCons bsL
                 , Dimensions asbs
                 , SubSpace t '[] asbs asbs
                 , ElementDataType t
                 )
-             => Dim as
-             -> Dim bs
+             => p as
+             -> q bs
              -> DataFrame t asbs
              -> ( forall (as' :: [Nat]) (bs' :: [Nat]) (asbs' :: [Nat])
                          (asL' :: List Nat) (bsL' :: List Nat) (asbsL' :: List Nat)
                        . ( asbsL' ~ SimplifyList ('Concat asL' bsL')
-                         , asbsL' ~ ToList asbs'
-                         , asL' ~ ToList as'
-                         , bsL' ~ ToList bs'
-                         , as ~ as'
-                         , bs ~ bs'
-                         , asbs ~ asbs'
-                         , asL ~ asL'
-                         , bsL ~ bsL'
-                         , asbsL ~ asbsL'
+                         , asL'   ~ SimplifyList ('Prefix bsL' asbsL')
+                         , bsL'   ~ SimplifyList ('Suffix asL' asbsL')
+                         , asbsL' ~ ToList asbs', asL' ~ ToList as', bsL' ~ ToList bs'
+                         , asbs ~ asbs', as ~ as', bs ~ bs'
+                         , asbsL ~ asbsL', asL ~ asL', bsL ~ bsL'
                          , Dimensions as
                          , Dimensions bs
                          , SubSpace t as' bs' asbs'
@@ -701,10 +697,12 @@ inferSubSpace :: forall (x :: Type) (t :: Type)
                       => Dim as' -> Dim bs' -> DataFrame t asbs' -> x
                 )
              -> x
-inferSubSpace D D x f = f D D x
-inferSubSpace D bs x f = case ( unsafeCoerce Refl :: bs :~: asbs) of Refl -> f D bs x
-inferSubSpace as D x f = case ( unsafeCoerce Refl :: as :~: asbs
-                              ) of Refl -> f as D x
-inferSubSpace as0@(_:*_) bs0@(_:*_) x f = Dims.inferSubDimensions as0 bs0 $ \as bs ->
-    case ( edtRefl (Proxy @t) ) of
-      EDTFloat -> f as bs x
+-- inferSubSpace D D x f = f D D x
+-- inferSubSpace D bs x f = case ( unsafeCoerce Refl :: bs :~: asbs) of Refl -> f D bs x
+-- inferSubSpace as D x f = case ( unsafeCoerce Refl :: as :~: asbs
+--                               ) of Refl -> f as D x
+inferSubSpace as0 bs0 x f = Dims.inferSubDimensions as0 bs0 $ \as1 bs1 ->  case (edtRefl (Proxy @t), as1, bs1) of
+    (_, D, D) -> f D D x
+    (_, D, bs) -> case ( unsafeCoerce Refl :: bs :~: asbs) of Refl -> f D bs x
+    (_, as, D) -> case ( unsafeCoerce Refl :: as :~: asbs) of Refl -> f as D x
+    (EDTFloat, as@(_:*_), bs@(_:*_)) -> f as bs x
