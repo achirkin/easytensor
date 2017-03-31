@@ -210,6 +210,7 @@ order = fromInteger . natVal . f
     f _ = Proxy
 {-# INLINE order #-}
 
+
 class Dimensions' (ds :: [Nat]) where
   -- | Dimensionality of our space
   dim :: Dim ds
@@ -643,10 +644,43 @@ type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
   ns >: n = ns +: n
 infixl 6 >:
 
+-- | Use this strange thing to give various proofs that (as ++ bs ~ asbs)
+data WeirdHelper (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+  = forall (asL :: List Nat) (bsL :: List Nat) (asbsL :: List Nat)
+            . ( asbsL ~ SimplifyList ('Concat asL bsL)
+              , asL   ~ SimplifyList ('Prefix bsL asbsL)
+              , bsL   ~ SimplifyList ('Suffix asL asbsL)
+              , asbsL ~ ToList asbs, asL ~ ToList as, bsL ~ ToList bs
+              , EvalCons asbsL ~ asbs, EvalCons asL ~ as, EvalCons bsL ~ bs
+              , asL   ~ SimplifyList asL
+              , bsL   ~ SimplifyList bsL
+              , asbsL ~ SimplifyList asbsL
+              ) => WeirdHelper
+
+data WeirdCons (as :: [Nat])
+  = forall (x :: Nat) (xs :: [Nat]) (asL :: List Nat) (xsL :: List Nat)
+  . ( as ~ (x ': xs)
+    , xs ~ Tail as
+    , x  ~ Head as
+    , asL ~ 'Cons x xsL
+    , asL ~ SimplifyList asL
+    , xsL ~ SimplifyList xsL
+    , xsL ~ SimplifyList (Drop 1 asL)
+    , as ~ EvalCons asL, asL ~ ToList as
+    , xs ~ EvalCons xsL, xsL ~ ToList xs
+    ) => WeirdCons (Proxy x) (Proxy xs)
+
+data WeirdList (xs :: [Nat])
+ = forall (xsL :: List Nat)
+ . ( xsL ~ ToList xs, xsL ~ ToListNat xs, EvalCons xsL ~ xs, EvalConsNat xsL ~ xs
+   , xsL ~ ToList (EvalCons xsL), xsL ~ ToListNat (EvalCons xsL), xsL ~ ToList (EvalConsNat xsL)
+   , xs  ~ EvalCons (ToList xs), xs  ~ EvalConsNat (ToList xs), xs  ~ EvalCons (ToListNat xs)
+   , xsL ~ SimplifyList xsL
+   ) => WeirdList
 
 -- | If we know (1) Dimensions ds and (2) Size of prefix list,
 --   we can derive Dimensions instances for both, prefix and suffix of the list
-inferSubDimensions :: forall (x :: Type)
+inferSubDimensions :: forall (x :: Type) (p :: [Nat] -> Type) (q :: [Nat] -> Type)
                              (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
                              (asL :: List Nat) (bsL :: List Nat) (asbsL :: List Nat)
                     . ( asbsL ~ SimplifyList ('Concat asL bsL)
@@ -654,51 +688,95 @@ inferSubDimensions :: forall (x :: Type)
                       , asbs ~ EvalCons asbsL, as   ~ EvalCons asL, bs   ~ EvalCons bsL
                       , Dimensions asbs
                       )
-                   => Dim as
-                   -> Dim bs
-                   -> ( forall (as' :: [Nat]) (bs' :: [Nat]) (asbs' :: [Nat])
-                               (asL' :: List Nat) (bsL' :: List Nat) (asbsL' :: List Nat)
-                             . ( asbsL' ~ SimplifyList ('Concat asL' bsL')
-                               , asL'   ~ SimplifyList ('Prefix bsL' asbsL')
-                               , bsL'   ~ SimplifyList ('Suffix asL' asbsL')
-                               , asbsL' ~ ToList asbs'
-                               , asL' ~ ToList as'
-                               , bsL' ~ ToList bs'
-                               , as ~ as'
-                               , bs ~ bs'
-                               , asbs ~ asbs'
-                               , asL ~ asL'
-                               , bsL ~ bsL'
-                               , asbsL ~ asbsL'
-                               , Dimensions as
-                               , Dimensions bs
-                               )
-                            => Dim as' -> Dim bs' -> x
+                   => p as
+                   -> q bs
+                   -> ( ( asbsL ~ SimplifyList ('Concat asL bsL)
+                        , asL   ~ SimplifyList ('Prefix bsL asbsL)
+                        , bsL   ~ SimplifyList ('Suffix asL asbsL)
+                        , Dimensions as
+                        , Dimensions bs
+                        )
+                      => Dim as -> Dim bs -> x
                       )
                    -> x
-inferSubDimensions D D f = f D D
-inferSubDimensions as D f = case ( unsafeCoerce Refl :: as :~: asbs ) of Refl -> f as D
-inferSubDimensions D bs f = case ( unsafeCoerce Refl :: bs :~: asbs
-                                 , unsafeCoerce Refl :: bsL :~: SimplifyList ('Suffix 'Empty bsL)
-                                 , unsafeCoerce Refl :: 'Empty :~: SimplifyList ('Prefix bsL bsL)
-                                 ) of (Refl, Refl, Refl) -> f D bs
-inferSubDimensions (a :* (as :: Dim (ds :: [Nat]))) bs f
-                          = case ( unsafeCoerce Refl :: sbs  :~: Tail asbs
-                                 , unsafeCoerce Refl :: sbsL :~: ToList sbs
-                                 , unsafeCoerce Refl :: a    :~: Head asbs
-                                 , unsafeCoerce Refl :: asbs :~: (a ': sbs)
-                                 , unsafeCoerce Refl :: as   :~: (a ': ds)
-                                 , unsafeCoerce Refl :: ds   :~: EvalCons dsL
-                                 , unsafeCoerce Refl :: dsL  :~: ToList ds
-                                 , unsafeCoerce Refl :: asL  :~: 'Cons a dsL
-                                 , unsafeCoerce Refl :: asbsL :~: 'Cons a sbsL
-                                 , unsafeCoerce Refl :: dsL :~: SimplifyList dsL
-                                 , unsafeCoerce Refl :: sbsL :~: SimplifyList sbsL
-                                --  , unsafeCoerce Refl :: SimplifyList ('Suffix ('Cons (Head asbs) asL) ('Cons (Head asbs) asbsL))
-                                --                     :~: bsL
-                                --  , unsafeCoerce Refl :: asbsL :~: 'Cons (Head asbs) (ToList (Tail asbs))
-                                --  , unsafeCoerce Refl :: (SimplifyList ('Concat (ToList ds) bsL))
-                                --                     :~: ToList (EvalCons (SimplifyList ('Concat (ToList ds) (ToList bs))))
-                                --  , unsafeCoerce Refl :: SimplifyList (ToList ds) :~: ToList as'
-                                 ) of
-    (Refl, Refl, Refl, Refl, Refl, Refl, Refl, Refl, Refl, Refl, Refl) -> inferSubDimensions as bs (f . (a :*))
+inferSubDimensions as bs f
+  = case order (Proxy @as) of
+      0 -> case ( unsafeCoerce Refl :: as :~: '[]
+                , unsafeCoerce (WeirdHelper :: WeirdHelper '[] '[] '[]) :: WeirdHelper '[] bs bs
+                ) of (Refl, WeirdHelper) -> f D (dim `inSpaceOf` bs)
+      n -> case ( unsafeCoerce (WeirdCons (Proxy @(Head as)) (Proxy @'[])) ::  WeirdCons as
+                , unsafeCoerce (WeirdCons (Proxy @(Head as)) (Proxy @'[])) ::  WeirdCons asbs
+                , unsafeCoerce Refl :: Head as :~: Head asbs
+                , unsafeCoerce Refl :: SimplifyList ('Suffix (SimplifyList ('Prefix
+                                                             (SimplifyList ('Suffix ('Cons (Head as) asL) ('Cons (Head as) asbsL)))
+                                                             ('Cons (Head as) asbsL))) ('Cons (Head as) asbsL))
+                                   :~: SimplifyList ('Suffix ('Cons (Head as) asL) ('Cons (Head as) asbsL))
+                , unsafeCoerce (WeirdHelper :: WeirdHelper '[] '[] '[]) :: WeirdHelper (Tail as) bs (Tail asbs)
+                , unsafeCoerce (WeirdHelper :: WeirdHelper '[] '[] '[]) :: WeirdHelper as bs asbs
+                ) of
+        (WeirdCons p ps, WeirdCons _ _, Refl, Refl, WeirdHelper, WeirdHelper) ->
+            ( inferSubDimensions @x @Proxy @q @(Tail as) @bs @(Tail asbs)
+                                    @(SimplifyList (Drop 1 asL))
+                                    @bsL
+                                    @(SimplifyList (Drop 1 asbsL))
+                                    ) ps bs (f . (p :*))
+
+
+-- inferSubDimensions :: forall (x :: Type) (p :: [Nat] -> Type) (q :: [Nat] -> Type)
+--                              (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+--                              (asL :: List Nat) (bsL :: List Nat) (asbsL :: List Nat)
+--                     . ( asbsL ~ SimplifyList ('Concat asL bsL)
+--                       , asbsL ~ ToList asbs, asL ~ ToList as, bsL ~ ToList bs
+--                       , asbs ~ EvalCons asbsL, as   ~ EvalCons asL, bs   ~ EvalCons bsL
+--                       , Dimensions asbs
+--                       )
+--                    => p as
+--                    -> q bs
+--                    -> ( forall (as' :: [Nat]) (bs' :: [Nat]) (asbs' :: [Nat])
+--                                (asL' :: List Nat) (bsL' :: List Nat) (asbsL' :: List Nat)
+--                              . ( asbsL' ~ SimplifyList ('Concat asL' bsL')
+--                                , asL'   ~ SimplifyList ('Prefix bsL' asbsL')
+--                                , bsL'   ~ SimplifyList ('Suffix asL' asbsL')
+--                                , asbsL' ~ ToList asbs', asL' ~ ToList as', bsL' ~ ToList bs'
+--                                , asbs ~ asbs', as ~ as', bs ~ bs'
+--                                , asbsL ~ asbsL', asL ~ asL', bsL ~ bsL'
+--                                , Dimensions as
+--                                , Dimensions bs
+--                                )
+--                             => Dim as -> Dim bs -> x
+--                       )
+--                    -> x
+
+-- inferSubDimensions D D f = f D D
+-- inferSubDimensions as D f = case ( unsafeCoerce Refl :: as :~: asbs ) of Refl -> f as D
+-- inferSubDimensions D bs f = case ( unsafeCoerce Refl :: bs :~: asbs
+--                                  , unsafeCoerce Refl :: bsL :~: SimplifyList ('Suffix 'Empty bsL)
+--                                  , unsafeCoerce Refl :: 'Empty :~: SimplifyList ('Prefix bsL bsL)
+--                                  ) of (Refl, Refl, Refl) -> f D bs
+-- inferSubDimensions as bs f = case ( unsafeCoerce (WeirdHelper :: WeirdHelper '[] '[] '[]) :: WeirdHelper as bs asbs
+--                                   ) of WeirdHelper -> f (dim `inSpaceOf` as) (dim `inSpaceOf` bs)
+
+-- inferSubDimensions (a :* (as :: Dim (ds :: [Nat]))) bs f
+--                           = case ( unsafeCoerce Refl :: sbs  :~: Tail asbs
+--                                  , unsafeCoerce Refl :: sbsL :~: ToList sbs
+--                                  , unsafeCoerce Refl :: sbs  :~: EvalCons sbsL
+--                                  , unsafeCoerce Refl :: a    :~: Head asbs
+--                                  , unsafeCoerce Refl :: asbs :~: (a ': sbs)
+--                                  , unsafeCoerce Refl :: as   :~: (a ': ds)
+--                                  , unsafeCoerce Refl :: ds   :~: EvalCons dsL
+--                                  , unsafeCoerce Refl :: ds   :~: EvalCons (ToList ds)
+--                                  , unsafeCoerce Refl :: dsL  :~: ToList ds
+--                                  , unsafeCoerce Refl :: asL  :~: 'Cons a dsL
+--                                  , unsafeCoerce Refl :: asbsL :~: 'Cons a sbsL
+--                                  , unsafeCoerce Refl :: dsL :~: SimplifyList dsL
+--                                  , unsafeCoerce Refl :: sbsL :~: SimplifyList sbsL
+--                                  , unsafeCoerce Refl :: sbsL :~: SimplifyList ('Concat (ToList ds) bsL)
+--                                  , unsafeCoerce WeirdHelper :: WeirdHelper as bs asbs
+--                                 --  , unsafeCoerce Refl :: SimplifyList ('Suffix ('Cons (Head asbs) asL) ('Cons (Head asbs) asbsL))
+--                                 --                     :~: bsL
+--                                 --  , unsafeCoerce Refl :: asbsL :~: 'Cons (Head asbs) (ToList (Tail asbs))
+--                                 --  , unsafeCoerce Refl :: (SimplifyList ('Concat (ToList ds) bsL))
+--                                 --                     :~: ToList (EvalCons (SimplifyList ('Concat (ToList ds) (ToList bs))))
+--                                 --  , unsafeCoerce Refl :: SimplifyList (ToList ds) :~: ToList as'
+--                                  ) of
+--     (Refl, Refl, Refl, Refl, Refl, Refl, Refl, Refl, Refl, Refl, Refl, Refl, Refl, Refl, WeirdHelper) -> inferSubDimensions as bs (f . (a :*))
