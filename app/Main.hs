@@ -85,7 +85,7 @@ main = do
     print $ elementWise (dim @'[4]) (\x -> [x, x+0.375]) ixs
     print ( withRuntimeDim [2,6,3] (\ds -> show (dimMax `inSpaceOf` ds) ) :: Either String String )
     print $ order (Proxy @'[1,2,3,4,6])
-    print ( withRuntimeDim [2,6,3] (\ds -> show (order ds) ) :: Either String String )
+    print ( withRuntimeDim [2,6,3] (\(ds :: Dim ds) -> show (order (Proxy @(2 ': ds))) ) :: Either String String )
     print $ dimMin @'[_,_] !. dfY
     print $ subDimTest dfY Proxy
   where

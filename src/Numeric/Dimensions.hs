@@ -199,16 +199,32 @@ runDimensional xds d = withDim xds $ _runDimensional d
 --   plus we have all handy functions for `Dim` and `Idx` types.
 type Dimensions xs = ( ToList xs ~ SimplifyList (ToList xs)
                      , KnownDims xs
+                     , FiniteDim xs
                      , Dimensions' xs
                      , Dimensions'' xs)
 
--- | Length of a dimension list
-order :: t xs -> Int
-order = fromInteger . natVal . f
-  where
-    f :: t xs -> Proxy (Length xs)
-    f _ = Proxy
-{-# INLINE order #-}
+class KnownNat (Length xs) => FiniteDim (xs :: l) where
+    -- | Length of a dimension list
+    order :: t xs -> Int
+    order = fromInteger . natVal . f
+      where
+        f :: t xs -> Proxy (Length xs)
+        f _ = Proxy
+    {-# INLINE order #-}
+
+instance FiniteDim ('[] :: [k]) where
+  order _ = 0
+  {-# INLINE order #-}
+
+instance FiniteDim (x ': xs :: [k]) where
+  order = fromInteger . natVal . f
+    where
+      f :: t (x ': xs) -> Proxy (Length (x ': xs))
+      f _ = Proxy
+  {-# INLINE order #-}
+
+instance FiniteDim (EvalCons xs :: [k]) => FiniteDim (xs :: List k) where
+  order _ = order (Proxy @(EvalCons xs))
 
 
 class Dimensions' (ds :: [Nat]) where
@@ -531,7 +547,7 @@ appendIdx jjs@(j :! js) i = case proofCons jjs js of
     proofCons _ _ = unsafeCoerce Refl
 {-# INLINE appendIdx #-}
 
-splitIdx :: Idx (as ++ bs) -> (Idx as, Idx bs)
+splitIdx :: FiniteDim as => Idx (as ++ bs) -> (Idx as, Idx bs)
 splitIdx idx = rez
   where
     getAs :: (Idx as, Idx bs) -> Proxy as
