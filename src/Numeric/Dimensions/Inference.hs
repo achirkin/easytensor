@@ -90,7 +90,15 @@ checkNats ct@(CNonCanonical CtWanted{ctev_pred = t, ctev_loc = myLoc})
           | getOccName constr == mkOccName tcName "Length"
           , [_, innerType] <- apps -> do
               tcPluginIO . putStrLn $ "Inside a list: " ++ show innerType
-              return $ Just
+              case getTyVar_maybe innerType of
+                Just xs -> do
+                  mct <- matchFam constr [innerType]
+                  tcPluginIO . putStrLn $ "matchFam: " ++ show mct
+                  return $ Just
+                    ( ( EvLit (EvNum 111), ct) -- (EvStr $ mkFastString "Length of a list is always known, because we do not allow infinite types." ), ct )
+                    , []
+                    )
+                Nothing -> return $ Just
                   ( ( EvLit (EvNum 23), ct) -- (EvStr $ mkFastString "Length of a list is always known, because we do not allow infinite types." ), ct )
                   , []
                   )
@@ -997,6 +1005,8 @@ instance Show EvTerm where
 instance Show CtEvidence where
   show = showSDocUnsafe . ppr
 instance Show Class where
+  show = showSDocUnsafe . ppr
+instance Show Coercion where
   show = showSDocUnsafe . ppr
 instance Show SkolemInfo where
   show (SigSkol utc ep) = "SigSkol {" ++ show utc ++ "} {" ++ showSDocUnsafe (ppr ep) ++ "} "
