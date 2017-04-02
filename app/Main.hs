@@ -84,10 +84,11 @@ main = do
     putStrLn "\n List traversable:\n"
     print $ elementWise (dim @'[4]) (\x -> [x, x+0.375]) ixs
     print ( withRuntimeDim [2,6,3] (\ds -> show (dimMax `inSpaceOf` ds) ) :: Either String String )
-    print $ order (Proxy @'[1,2,3,4,6])
-    print ( withRuntimeDim [2,6,3] (\(ds :: Dim ds) -> show (order (Proxy @(2 ': ds))) ) :: Either String String )
+    print $ order (Proxy @'[3,2,3,4,6])
+    print ( withRuntimeDim [2,6,3] (\(_ :: Dim ds) -> show (order (Proxy @(2 ': ds))) ) :: Either String String )
     print $ dimMin @'[_,_] !. dfY
     print $ subDimTest dfY Proxy
+    print $ case concatEvidence (Proxy @[3,6,2]) (Proxy @[2,8]) of ConcatEvidence d -> d
   where
     pleaseFire :: Idx i -> DataFrame Float '[3, 2] -> Const (Sum (DataFrame Float '[3, 2])) Scf
     pleaseFire _ = Const . Sum
@@ -141,11 +142,13 @@ type DFF (ds :: [Nat]) = DataFrame Float ds
 
 
 subDimTest :: forall (as :: [Nat]) (n :: Nat) (m :: Nat)
-           .  ( Dimensions(as +: n +: m :: [Nat])
+           .  ( Dimensions (as +: n +: m :: [Nat])
               , (as +: n +: m) ~ EvalList ('Concat (ToList as) (ToList [n,m]))
-              , ToList (as +: n +: m) ~ SimplifyList ('Concat (ToList as) (ToList [n,m]))
               , SubSpace Float '[] (as +: n +: m) (as +: n +: m)
+              , ConcatDim as [n,m] (as +: n +: m)
               , EvalCons (ToList as) ~ as
+              , FiniteDims as
+              , FiniteDim as
               )
            => DFF (as +: n +: m) -> Proxy [n,m] -> DFF as
 subDimTest bigdff smalldff = inferSubSpace (Proxy @as)

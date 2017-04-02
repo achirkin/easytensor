@@ -4,7 +4,6 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UndecidableInstances   #-}
@@ -39,21 +38,14 @@ import qualified Numeric.Matrix.Class   as M
 import           Numeric.DataFrame.Type
 
 -- | Generalization of the matrix product
-class ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs))
-      , ToList as   ~ SimplifyList ('Prefix (ToList bs) (ToList asbs))
-      , ToList bs   ~ SimplifyList ('Suffix (ToList as) (ToList asbs))
+class ( ConcatDim as bs asbs
       ) => Contraction t (m :: Nat) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
                              | as bs -> asbs, asbs as -> bs, asbs bs -> as where
   -- | Generalization of a matrix product: take scalar product over one dimension
   --   and, thus, concatenate other dimesnions
   contract :: DataFrame t (as +: m) -> DataFrame t (m :+ bs) -> DataFrame t asbs
 
-instance ( asbsL ~ SimplifyList ('Concat asL bsL)
-         , asL   ~ SimplifyList ('Prefix bsL asbsL)
-         , bsL   ~ SimplifyList ('Suffix asL asbsL)
-         , asbsL ~ ToList asbs
-         , asL   ~ ToList as
-         , bsL   ~ ToList bs
+instance ( ConcatDim as bs asbs
          , M.MatrixProduct (DataFrame t (as +: m))
                            (DataFrame t (m :+ bs))
                            (DataFrame t asbs)

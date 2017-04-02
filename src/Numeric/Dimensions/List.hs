@@ -22,12 +22,13 @@
 
 module Numeric.Dimensions.List
   ( type (++), Length
-  , type (:+), type (+:), SnocI, Head, Tail
+  , type (:+), type (+:), SnocI, Head, Tail, Init, Last
   , List (..), Cons, Snoc, Reverse, Take, Drop, Concat, Suffix, Prefix
   , EvalList, EvalCons, ToList, SimplifyList
   , ListHead, ListTail, ListLast, ListInit
   , idempSimplifyList, normalSimplifyList
   , ToListNat, EvalConsNat
+  , IsPrefix, IsSuffix
   ) where
 
 import GHC.TypeLits
@@ -67,7 +68,7 @@ type family ToList (xs :: [k]) = (ys :: List k) | ys -> xs where
 
 type family ToListNat (xs :: [Nat]) = (ys :: List Nat) | ys -> xs where
     ToListNat ('[] :: [Nat]) = ('Empty :: List Nat)
-    ToListNat (x ': xs :: [Nat]) = ('Cons x (ToListNat xs) :: List Nat)
+    ToListNat (x ': xs :: [Nat]) = ('Cons x (ToList xs) :: List Nat)
 
 
 
@@ -99,6 +100,9 @@ type family SimplifyList (xs :: List k) :: List k where
     SimplifyList 'Empty       = 'Empty
     SimplifyList ('Cons x xs) = 'Cons x (SimplifyList xs)
 
+    SimplifyList ('Prefix bs ('Concat ('Cons a 'Empty) bs)) = 'Cons a 'Empty
+--    SimplifyList ('Prefix xs ('Cons a xs)) = 'Cons a 'Empty
+
     SimplifyList ('Snoc 'Empty x)          = 'Cons x 'Empty
     SimplifyList ('Snoc ('Cons x xs) y)    = 'Cons x (SimplifyList ('Snoc xs y))
     SimplifyList ('Snoc ('Snoc xs x) y)    = SimplifyList ('Snoc (SimplifyList ('Snoc xs x)) y)
@@ -109,12 +113,12 @@ type family SimplifyList (xs :: List k) :: List k where
     SimplifyList ('Snoc ('Suffix xs ys) y) = SimplifyList ('Snoc (SimplifyList ('Suffix xs ys)) y)
     SimplifyList ('Snoc ('Prefix xs ys) y) = SimplifyList ('Snoc (SimplifyList ('Prefix xs ys)) y)
 
+    SimplifyList ('Concat ('Cons x xs) ys)    = 'Cons x (SimplifyList ('Concat xs ys))
+    SimplifyList ('Concat 'Empty xs)          = SimplifyList xs
     SimplifyList ('Concat ('Take n xs) ('Drop n xs)) = SimplifyList xs
     SimplifyList ('Concat xs 'Empty)                 = SimplifyList xs
     SimplifyList ('Concat ('Prefix bs asbs) ('Suffix ('Prefix bs asbs) asbs)) = SimplifyList asbs
     SimplifyList ('Concat ('Prefix ('Suffix as asbs) asbs) ('Suffix as asbs)) = SimplifyList asbs
-    SimplifyList ('Concat 'Empty xs)          = SimplifyList xs
-    SimplifyList ('Concat ('Cons x xs) ys)    = 'Cons x (SimplifyList ('Concat xs ys))
     SimplifyList ('Concat ('Snoc xs x) bs)    = SimplifyList ('Concat (SimplifyList ('Snoc xs x)) bs)
     SimplifyList ('Concat ('Concat xs ys) bs) = SimplifyList ('Concat (SimplifyList ('Concat xs ys)) bs)
     SimplifyList ('Concat ('Reverse xs) bs)   = SimplifyList ('Concat (SimplifyList ('Reverse xs)) bs)
@@ -125,8 +129,8 @@ type family SimplifyList (xs :: List k) :: List k where
 
 
     SimplifyList ('Reverse 'Empty)          = 'Empty
-    SimplifyList ('Reverse ('Cons x xs))    = SimplifyList ('Snoc ('Reverse xs) x)
     SimplifyList ('Reverse ('Snoc xs x))    = 'Cons x (SimplifyList ('Reverse xs))
+    SimplifyList ('Reverse ('Cons x xs))    = SimplifyList ('Snoc ('Reverse xs) x)
     SimplifyList ('Reverse ('Concat xs ys)) = SimplifyList ('Concat ('Reverse ys) ('Reverse xs))
     SimplifyList ('Reverse ('Reverse xs))   = SimplifyList xs
     SimplifyList ('Reverse ('Drop n xs))    = SimplifyList ('Reverse (SimplifyList ('Drop n xs)))
@@ -194,11 +198,11 @@ type family SimplifyList (xs :: List k) :: List k where
     SimplifyList ('Suffix ('Prefix xs ys) bs) = SimplifyList ('Suffix (SimplifyList ('Prefix xs ys)) bs)
 
 
+    SimplifyList ('Prefix 'Empty asbs)            = SimplifyList asbs
+    SimplifyList ('Prefix xs xs)                  = 'Empty
+    SimplifyList ('Prefix bs ('Concat as bs))     = SimplifyList as
+    SimplifyList ('Prefix ('Suffix as asbs) asbs) = SimplifyList as
 
-    SimplifyList ('Prefix 'Empty asbs)
-        = SimplifyList asbs
-    SimplifyList ('Prefix xs xs)
-        = 'Empty
     SimplifyList ('Prefix ('Cons _ _) 'Empty)
         = TypeError ( 'Text "Lhs Suffix/Prefix parameter cannot have more elements than its rhs parameter" )
     SimplifyList ('Prefix ('Snoc _ _) 'Empty)
@@ -215,10 +219,6 @@ type family SimplifyList (xs :: List k) :: List k where
         = SimplifyList ('Take n asbs)
     SimplifyList ('Prefix ('Reverse ('Take n asbs)) ('Reverse asbs))
         = SimplifyList ('Reverse ('Drop n asbs))
-    SimplifyList ('Prefix bs ('Concat as bs))
-        = SimplifyList as
-    SimplifyList ('Prefix ('Suffix as asbs) asbs)
-        = SimplifyList as
     SimplifyList ('Prefix bs asbs)
         = SimplifyList ('Reverse ('Suffix ('Reverse bs) ('Reverse asbs)))
 
@@ -276,6 +276,20 @@ type Drop = 'Drop
 type Take = 'Take
 type Suffix = 'Suffix
 type Prefix = 'Prefix
+
+type family IsPrefix (as :: [k]) (asbs :: [k]) where
+  IsPrefix '[] _ = 'True
+  IsPrefix (a':as) (a':asbs) = IsPrefix as asbs
+  IsPrefix _ _ = 'False
+
+type family IsSuffix (as :: [k]) (asbs :: [k]) where
+  IsSuffix '[] '[] = 'True
+  IsSuffix as asbs = IsSuffixN (Length as) as asbs
+
+type family IsSuffixN (n :: Nat) (as :: [k]) (asbs :: [k]) where
+  IsSuffixN 0 as as = 'True
+  IsSuffixN n as (_ ': asbs) = IsSuffixN (n-1) as asbs
+  IsSuffixN _ _ _ = 'False
 
 
 --------------------------------------------------------------------------------
@@ -335,6 +349,19 @@ type family Tail (xs :: [k]) :: [k] where
     "Tail -- empty type-level list."
    )
 
+type family Init (xs :: [k]) :: [k] where
+  Init '[x] = '[]
+  Init (x ': xs) = x ': Init xs
+  Init '[]       = TypeError ( 'Text
+    "Init -- empty type-level list."
+   )
+
+type family Last (xs :: [k]) :: k where
+  Last '[x] = x
+  Last (x ': xs) = Last xs
+  Last '[]       = TypeError ( 'Text
+    "Last -- empty type-level list."
+   )
 
 type family Length (as :: l) :: Nat where
   Length '[] = 0
