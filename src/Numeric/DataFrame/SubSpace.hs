@@ -22,7 +22,6 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE BangPatterns #-}
--- {-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.SubSpace
@@ -57,9 +56,7 @@ import           Numeric.DataFrame.Type
 -- bs is an indexing dimensionality
 -- t is an underlying data type (i.e. Float, Int, Double)
 --
-class ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs  ))
-      , ToList bs   ~ SimplifyList ('Suffix (ToList as) (ToList asbs))
-      , ToList as   ~ SimplifyList ('Prefix (ToList bs) (ToList asbs))
+class ( ConcatDim as bs asbs
       , Dimensions as
       , Dimensions bs
       , Dimensions asbs
@@ -128,12 +125,7 @@ iwfoldMap f = iwfoldl (\i b -> mappend b . f i) mempty
 {-# INLINE iwfoldMap #-}
 
 
-instance ( asbsL ~ SimplifyList ('Concat asL bsL)
-         , bsL   ~ SimplifyList ('Suffix asL asbsL)
-         , asL   ~ SimplifyList ('Prefix bsL asbsL)
-         , asbsL ~ ToList asbs
-         , asL ~ ToList as
-         , bsL ~ ToList bs
+instance ( ConcatDim as bs asbs
          , Dimensions as
          , Dimensions bs
          , Dimensions asbs
