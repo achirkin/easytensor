@@ -10,24 +10,24 @@
 -- Num, Ord, Fractional, Floating, etc
 --
 -----------------------------------------------------------------------------
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE KindSignatures       #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE TemplateHaskell      #-}
-{-# LANGUAGE Rank2Types           #-}
 {-# LANGUAGE ConstraintKinds      #-}
-{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE GADTs                #-}
+{-# LANGUAGE KindSignatures       #-}
+{-# LANGUAGE Rank2Types           #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Numeric.DataFrame.BasicTest (runTests) where
 
 import           Test.QuickCheck
 
 
-import Numeric.DataFrame.Arbitraries
+import           Numeric.DataFrame.Arbitraries
 
 
 
@@ -60,21 +60,22 @@ prop_Numeric (SSDFP (SDF x) (SDF y))
   = and
     [ x + x == 2 * x
     , x + y == y + x
+    , x + y == max x y + min x y
+    , abs x * signum x == x
     , x / 2 + x / 2 == x
     , x * y == y * x
     , x * 0 + y == y
-    , abs (sin x * sin x + cos x * cos x - 1) <= 0.0001
     ]
 
 
 prop_Floating :: SomeSimpleDFPair -> Bool
 prop_Floating (SSDFP (SDF x) (SDF y))
-  = and
-    [ abs (sin x * sin x + cos x * cos x - 1) <= eps
-    , abs (exp lx * exp ly  / exp (lx + ly) - 1) <= eps
-    , abs (exp (log $ 1 + abs x) / (1 + abs x) - 1) <= eps
-    , abs (sin (asin (sin y)) - sin y) <= eps
-    , abs (cos (acos (cos x)) - cos x) <= eps
+  = all ((eps >=) . abs)
+    [ sin x * sin x + cos x * cos x - 1
+    , exp lx * exp ly  / exp (lx + ly) - 1
+    , exp (log $ 1 + abs x) / (1 + abs x) - 1
+    , sin (asin (sin y)) - sin y
+    , cos (acos (cos x)) - cos x
     ]
   where
     lx = log (0.001 + abs x)
