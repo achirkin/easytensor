@@ -38,14 +38,14 @@ import qualified Numeric.Matrix.Class   as M
 import           Numeric.DataFrame.Type
 
 -- | Generalization of the matrix product
-class ( ConcatDim as bs asbs
+class ( ConcatList as bs asbs
       ) => Contraction t (m :: Nat) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
                              | as bs -> asbs, asbs as -> bs, asbs bs -> as where
   -- | Generalization of a matrix product: take scalar product over one dimension
   --   and, thus, concatenate other dimesnions
   contract :: DataFrame t (as +: m) -> DataFrame t (m :+ bs) -> DataFrame t asbs
 
-instance ( ConcatDim as bs asbs
+instance ( ConcatList as bs asbs
          , M.MatrixProduct (DataFrame t (as +: m))
                            (DataFrame t (m :+ bs))
                            (DataFrame t asbs)
@@ -65,6 +65,17 @@ instance ( ConcatDim as bs asbs
 infixl 7 %*
 
 
+x :: DataFrame Float ('[4] :: [Nat])
+x = undefined
+
+y :: DataFrame Float '[5,7,6]
+y = undefined
+
+z :: DataFrame Float '[7,6]
+z = x `contract` y
+
+t :: String
+t = _ z
 
 -- contract' :: forall (t :: Type) (m :: Nat) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
 --            . ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs))

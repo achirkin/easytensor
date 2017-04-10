@@ -43,29 +43,28 @@ import           GHC.Types
 import           Numeric.Array
 -- import qualified Numeric.Array.Family as AFam (Scalar (..))
 import qualified Numeric.Commons as NCommons
-import qualified Numeric.Dimensions as Dims
-import           Numeric.Dimensions (List (..), EvalList, ToList, SnocI)
+import           Numeric.Dimensions
 import qualified Numeric.Matrix.Class as M
 import           Unsafe.Coerce
 
 -- | Keep data in a primitive data frame
---    and maintain information about Dims.Dimensions in the type-system
+--    and maintain information about Dimensions in the type-system
 data family DataFrame (t :: Type) (xs :: [k])
 
 -- | Completely fixed at compile time
-newtype instance Dims.Dimensions ns => DataFrame t (ns :: [Nat])
+newtype instance Dimensions ns => DataFrame t (ns :: [Nat])
   = KnownDataFrame { _getDF :: Array t ns }
 
 -- | Partially known at compile time
-data instance DataFrame t (xns :: [Dims.XNat])
+data instance DataFrame t (xns :: [XNat])
   = forall (ns :: [Nat])
-  . ( Dims.Dimensions ns
-    , Dims.FixedDim xns ns ~ ns
-    , Dims.FixedXDim xns ns ~ xns
+  . ( Dimensions ns
+    , FixedDim xns ns ~ ns
+    , FixedXDim xns ns ~ xns
     , Show (Array t ns)
     , Eq (Array t ns)
     )
-  => SomeDataFrame (Dims.Dim xns) (Array t ns)
+  => SomeDataFrame (Dim xns) (Array t ns)
 
 
 -- | This class is used to pattern match against available data types
@@ -86,23 +85,23 @@ instance ElementDataType Float where
 
 -- | Do something with
 withShape :: DataFrame t xns
-          -> (forall ns . ( Dims.Dimensions ns
-                          , Dims.FixedDim xns ns ~ ns
-                          , Dims.FixedXDim xns ns ~ xns
+          -> (forall ns . ( Dimensions ns
+                          , FixedDim xns ns ~ ns
+                          , FixedXDim xns ns ~ xns
                           ) => DataFrame t ns -> b)
           -> b
 withShape (SomeDataFrame _ a) f = f (KnownDataFrame a)
 
--- | Put some of Dims.Dimensions into existential data type
-unboundShape :: ( Dims.FixedXDim xns ns ~ xns
-                , Dims.FixedDim xns ns ~ ns
-                , Dims.XDimensions ns xns
-                , Dims.Dimensions ns
+-- | Put some of Dimensions into existential data type
+unboundShape :: ( FixedXDim xns ns ~ xns
+                , FixedDim xns ns ~ ns
+                , XDimensions ns xns
+                , Dimensions ns
                 , Show (Array t ns)
                 , Eq (Array t ns)
                 ) => DataFrame t ns -> DataFrame t xns
 unboundShape (KnownDataFrame a)
-    = SomeDataFrame (Dims.xdim $ Dims.dim `Dims.inSpaceOf` a) a
+    = SomeDataFrame (xdim $ dim `inSpaceOf` a) a
 
 
 
@@ -110,15 +109,15 @@ unboundShape (KnownDataFrame a)
 
 
 instance ( Show (Array t ds)
-         , Dims.Dimensions ds
+         , Dimensions ds
          ) => Show (DataFrame t ds) where
   show (KnownDataFrame arr) = unlines
-                            [ "DF [" ++ drop 4 (show $ Dims.dim `Dims.inSpaceOf` arr) ++ "]:"
+                            [ "DF [" ++ drop 4 (show $ dim `inSpaceOf` arr) ++ "]:"
                             , show arr
                             ]
 
-instance Show (Dims.Dim ds)
-      => Show (DataFrame t (ds :: [Dims.XNat])) where
+instance Show (Dim ds)
+      => Show (DataFrame t (ds :: [XNat])) where
   show (SomeDataFrame d arr) = unlines
                             [ "DF [" ++ drop 4 (show d) ++ "]:"
                             , show arr
@@ -138,7 +137,7 @@ deriving instance Floating (Array t ds)
                => Floating (DataFrame t ds)
 deriving instance Ord (Array t ds)
                => Ord (DataFrame t ds)
-deriving instance ( Read (Array t ds), Dims.Dimensions ds )
+deriving instance ( Read (Array t ds), Dimensions ds )
                => Read (DataFrame t ds)
 deriving instance Real (Array t ds)
                => Real (DataFrame t ds)
@@ -156,9 +155,9 @@ deriving instance NCommons.IntBytes (Array t ds)
                => NCommons.IntBytes (DataFrame t ds)
 deriving instance NCommons.WordBytes (Array t ds)
                => NCommons.WordBytes (DataFrame t ds)
-instance ( Dims.Dimensions ds
-         , NCommons.ElementWise (Dims.Idx ds) t (Array Float ds)
-         ) => NCommons.ElementWise (Dims.Idx ds) t (DataFrame Float ds) where
+instance ( Dimensions ds
+         , NCommons.ElementWise (Idx ds) t (Array Float ds)
+         ) => NCommons.ElementWise (Idx ds) t (DataFrame Float ds) where
   (!) = (NCommons.!) . _getDF
   {-# INLINE (!) #-}
   ewmap f = KnownDataFrame . NCommons.ewmap f . _getDF
@@ -176,13 +175,13 @@ instance ( Dims.Dimensions ds
 
 
 
-instance Eq (DataFrame t (ds :: [Dims.XNat])) where
+instance Eq (DataFrame t (ds :: [XNat])) where
   SomeDataFrame d1 a1 == SomeDataFrame d2 a2
       = case check d1 d2 a1 a2 of
           Just Refl -> a1 == a2
           Nothing   -> False
     where
-      check :: Dims.Dim ds -> Dims.Dim ds
+      check :: Dim ds -> Dim ds
             -> p ns1 -> q ns2
             -> Maybe (ns1 :~: ns2)
       check a b _ _ | a == b  = Just (unsafeCoerce Refl)
@@ -190,16 +189,16 @@ instance Eq (DataFrame t (ds :: [Dims.XNat])) where
 
 
 
-instance ( as' ~ SnocI as m
-         , cs  ~ EvalList ('Concat (ToList as) (ToList bs))
-         , Dims.Dimensions as'
-         , Dims.Dimensions (m ': bs)
-         , Dims.Dimensions cs
-         , M.MatrixProduct (Array t (SnocI as m)) (Array t (m ': bs)) (Array t cs)
+instance ( ConcatList as bs asbs
+         , Dimensions asm
+         , Dimensions (m ': bs)
+         , asm ~ (as +: m)
+         , Dimensions asbs
+         , M.MatrixProduct (Array t (as +: m)) (Array t (m :+ bs)) (Array t asbs)
          )
-       => M.MatrixProduct (DataFrame t as')
+       => M.MatrixProduct (DataFrame t asm)
                           (DataFrame t (m ': bs))
-                          (DataFrame t cs) where
+                          (DataFrame t asbs) where
   prod x y = KnownDataFrame $ M.prod (_getDF x) (_getDF y)
 
 
