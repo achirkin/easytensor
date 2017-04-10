@@ -56,7 +56,7 @@ import           Numeric.DataFrame.Type
 -- bs is an indexing dimensionality
 -- t is an underlying data type (i.e. Float, Int, Double)
 --
-class ( ConcatDim as bs asbs
+class ( ConcatList as bs asbs
       , Dimensions as
       , Dimensions bs
       , Dimensions asbs
@@ -125,7 +125,7 @@ iwfoldMap f = iwfoldl (\i b -> mappend b . f i) mempty
 {-# INLINE iwfoldMap #-}
 
 
-instance ( ConcatDim as bs asbs
+instance ( ConcatList as bs asbs
          , Dimensions as
          , Dimensions bs
          , Dimensions asbs

@@ -1,0 +1,16 @@
+resolver: lts-8.0
+compiler: ghc-8.2.0.20170404
+compiler-check: match-exact
+setup-info:
+ ghc:
+  linux64:
+   8.2.0.20170404:
+    url: /home/achirkin/Downloads/ghc-8.2.0.20170404-x86_64-unknown-linux.tar.xz
+
+packages:
+  - "."
+
+extra-deps: []
+# system-ghc: true
+allow-newer: true
+flags: {}

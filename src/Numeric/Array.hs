@@ -183,20 +183,12 @@ deriving instance KnownNat n
                => MatrixInverse (Array Float '[n,n])
 
 
-instance ( SimplifyList asbsL ~ ToList asbs
-         , asL ~ ToList as
-         , bsL ~ ToList bs
-         , asbsL ~ 'Concat asL bsL
-         , asL ~ SimplifyList ('Prefix bsL asbsL)
-         , bsL ~ SimplifyList ('Suffix asL asbsL)
-         , asm ~ (a ': asm')
-         , asmL ~ ToList asm
-         , asL ~ SimplifyList (ListInit asmL)
-         , as ~ EvalCons asL
-         , m ~ ListLast asmL
+instance ( ConcatList as bs asbs
          , Dimensions as
          , Dimensions bs
          , Dimensions asbs
+         , asm' ~ (as' +: m)
+         , as ~ (a ': as')
          , KnownNat m
          , PrimBytes (Array Float asbs)
          )

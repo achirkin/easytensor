@@ -21,6 +21,7 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE PolyKinds #-}
 
 module Numeric.DataFrame.Arbitraries where
 
@@ -28,9 +29,12 @@ import           GHC.TypeLits
 import           Test.QuickCheck
 import           Data.Type.Equality
 import           Data.Proxy
+import           Unsafe.Coerce
+
 
 import           Numeric.DataFrame
 import           Numeric.Dimensions
+
 
 
 maxDims :: Int
@@ -38,6 +42,12 @@ maxDims = 5
 
 maxDimSize :: Int
 maxDimSize = 7
+
+-- | Fool typechecker by saying that a ~ b
+unsafeEqProof :: forall (a :: k) (b :: k) . a :~: b
+unsafeEqProof = unsafeCoerce Refl
+
+
 
 -- | Generating random DataFrames
 newtype SimpleDF (ds :: [Nat] ) = SDF { getDF :: DataFrame Float ds}
@@ -49,9 +59,7 @@ data SomeSimpleDFNonScalar
     . ( Dimensions ds
       , FPDataFrame Float ds
       , ds ~ (a :+ as), ds ~ (zs +: z)
-      , ToList ds ~ ToListNat ds
-      , ToList as ~ ToListNat as
-      , ToList zs ~ ToListNat zs)
+      )
    => SSDFN !(SimpleDF ds)
 data SomeSimpleDFPair = forall (ds :: [Nat])
                       . ( Dimensions ds
@@ -95,10 +103,8 @@ instance Arbitrary SomeSimpleDFNonScalar where
           \(_ :: Dim ds) -> inferFloating (undefined :: DataFrame Float ds) $
             \_ -> case ( unsafeEqProof :: ds :~: (Head ds :+ Tail ds)
                        , unsafeEqProof :: ds :~: (Init ds +: Last ds)
-                       , unsafeEqProof :: ToList (Tail ds) :~: ToListNat (Tail ds)
-                       , unsafeEqProof :: ToList (Init ds) :~: ToListNat (Init ds)
                        ) of
-              (Refl, Refl, Refl, Refl) -> SSDFN <$> (arbitrary :: Gen (SimpleDF ds))
+              (Refl, Refl) -> SSDFN <$> (arbitrary :: Gen (SimpleDF ds))
     case eGen of
       Left s -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
       Right v -> v

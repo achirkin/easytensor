@@ -78,6 +78,8 @@ dist/
 #*.lkshw
 *.lkshf
 *.lkshs
+*.local
+dist-newstyle
 
 # from ghcjs
 dist

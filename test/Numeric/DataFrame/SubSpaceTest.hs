@@ -11,7 +11,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds, PolyKinds #-}
 {-# LANGUAGE GADTs #-}
 
 module Numeric.DataFrame.SubSpaceTest (runTests) where
@@ -20,7 +20,7 @@ module Numeric.DataFrame.SubSpaceTest (runTests) where
 import           Test.QuickCheck
 import           Data.Type.Equality
 import           Numeric.DataFrame.Arbitraries
-import           Data.Proxy
+--import           Data.Proxy
 
 import           Numeric.DataFrame
 import           Numeric.Dimensions
@@ -37,13 +37,13 @@ prop_Dims (SSDF (SDF x)) (SSDF (SDF y))
 
 prop_Eye :: SomeSimpleDFNonScalar -> Bool
 prop_Eye (SSDFN (SDF (x :: DataFrame Float (d ': ds))))
-  = case ( unsafeEqProof :: SimplifyList ('Prefix (ToList ds) ('Cons d (ToList ds)))
-                        :~: 'Cons d 'Empty
-         , unsafeEqProof :: SimplifyList ('Suffix ('Cons d 'Empty) ('Cons d (ToList ds)))
-                        :~: ToList ds
-         , listProof Proxy :: ListProof ds
+  = case ( unsafeEqProof :: Prefix ds (d ': ds) :~: '[d]
+         , unsafeEqProof :: IsSuffix ds (d ': ds) :~: 'True
+         , unsafeEqProof :: IsPrefix '[d] (d ': ds) :~: 'True
+         , unsafeEqProof :: Suffix '[d] (d ': ds) :~: ds
+         , unsafeEqProof :: Concat '[d] ds :~: d ': ds
          ) of
-    (Refl, Refl, ListProof _) ->  eye %* x == x
+    (Refl, Refl, Refl, Refl, Refl) -> eye %* x == x
 
 -- prop_Gen :: SomeSimpleDF -> SomeSimpleDF -> Bool
 -- prop_Gen (SSDF (SDF x)) (SSDF (SDF y))
