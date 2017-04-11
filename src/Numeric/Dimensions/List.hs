@@ -47,7 +47,7 @@ type Cons (n :: k) (ns :: [k]) = n ': ns
 type (ns :: [k]) +: (n :: k) = Snoc ns n
 infixl 5 +:
 -- | Prefix-style synonym for snoc
-type Snoc (ns :: [k]) (n :: k) = GetSinkList (SinkFirst (n ': ns))
+type Snoc (ns :: [k]) (n :: k) = GetSnoc (DoSnoc ns n)
 
 
 -- | List concatenation
@@ -91,13 +91,13 @@ type family Prefix (bs :: [k]) (asbs :: [k]) :: [k] where
     Prefix bs asbs = Take (Length asbs - Length bs) asbs
 
 
-type family IsPrefix (as :: [k]) (asbs :: [k]) where
+type family IsPrefix (as :: [k]) (asbs :: [k]) :: Bool where
     IsPrefix '[] _ = 'True
+    IsPrefix (a ': as) (a ': asbs) = IsPrefix as asbs
     IsPrefix as as = 'True
-    IsPrefix (a':as) (a':asbs) = IsPrefix as asbs
     IsPrefix _ _= 'False
 
-type family IsSuffix (as :: [k]) (asbs :: [k]) where
+type family IsSuffix (as :: [k]) (asbs :: [k]) :: Bool where
     IsSuffix '[] _ = 'True
     IsSuffix bs bs = 'True
     IsSuffix bs (_ ': sbs) = IsSuffix bs sbs
@@ -205,18 +205,20 @@ instance KnownList xs => KnownList (x ': xs :: [k]) where
 ----------------------------------------------------------------------------------
 
 
-data SinkList k = SLEmpty | SLSingle k | SLCons k [k]
+-- | A special data type that can have either a single element,
+--   or more than two.
+--   This feature is not enforced in the type system - this is just a way to make injective Snoc.
+data Snocing k = SSingle k | Snocing [k]
 
-type family SinkFirst (xs :: [k]) = (ys :: SinkList k) | ys -> xs where
-    SinkFirst ('[] :: [k])    = ('SLEmpty :: SinkList k)
-    SinkFirst ('[x] :: [k])    = ('SLSingle x :: SinkList k)
-    SinkFirst (y ': x ': xs) = 'SLCons x (GetSinkList (SinkFirst (y ': xs)))
+type family DoSnoc (xs :: [k]) (z::k) = (ys :: Snocing k) | ys -> xs z where
+    DoSnoc '[]       x = 'SSingle x
+    DoSnoc (x ': xs) y = 'Snocing (x ': (GetSnoc (DoSnoc xs y)))
 
-type family GetSinkList (xs :: SinkList k) = (ys :: [k]) | ys -> xs where
-    GetSinkList ('SLEmpty :: SinkList k) = ('[] :: [k])
-    GetSinkList ('SLSingle x) = '[x]
-    GetSinkList ('SLCons y (x ': xs)) = y ': x ': xs
+type family GetSnoc (xs :: Snocing k) = (ys :: [k]) | ys -> xs where
+    GetSnoc ('SSingle x) = '[x]
+    GetSnoc ('Snocing (y ': x ': xs)) = y ': x ': xs
 
+-- | Another data type to make Reverse injective.
 data Reversing k = REmpty | Reversing [k]
 
 type family Reversed (ts :: Reversing k) = (rs :: [k]) | rs -> ts where

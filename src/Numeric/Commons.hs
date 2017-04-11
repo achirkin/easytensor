@@ -7,6 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE BangPatterns               #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -----------------------------------------------------------------------------
 -- |
@@ -130,7 +131,7 @@ instance PrimBytes a => Storable (Store a) where
                                               bsize s0 of
        s2 -> (# s2, () #)
     where
-      (# elOff, elNum, xbytes #) = toBytes x
+      !(# elOff, elNum, xbytes #) = toBytes x
       bsize = elementByteSize x *# elNum
       xboff  = elementByteSize x *# elOff
   peek ptr = peekByteOff ptr 0

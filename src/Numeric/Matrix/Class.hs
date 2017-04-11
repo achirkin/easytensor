@@ -81,11 +81,9 @@ class SquareMatrixCalculus t (n :: Nat) v | v -> t, v -> n where
 --   -- | matrix-matrix or matrix-vector product
 --   prod :: t (as +: m) -> t (m :+ bs) -> t asbs
 
-
 class MatrixProduct a b c | a b -> c, a c -> b, b c -> a where
   -- | matrix-matrix or matrix-vector product
   prod :: a -> b -> c
-
 
 class MatrixInverse a where
   inverse :: a -> a

@@ -28,7 +28,7 @@ module Numeric.DataFrame.Arbitraries where
 import           GHC.TypeLits
 import           Test.QuickCheck
 import           Data.Type.Equality
-import           Data.Proxy
+--import           Data.Proxy
 import           Unsafe.Coerce
 
 

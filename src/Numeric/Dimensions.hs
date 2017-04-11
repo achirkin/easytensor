@@ -699,6 +699,11 @@ data ConcatProofs (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
 unsafeConcatProofs :: ConcatProofs (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
 unsafeConcatProofs = unsafeCoerce (ConcatProofs @'[] @'[] @'[])
 
+---- | Help to do contraction of two lists
+--contractEvidence :: p (as +: m) -> q (m :+ bs) -> ConcatProofs as bs (as ++ bs)
+--contractEvidence _ _ = unsafeConcatProofs
+
+
 
 data (Dimensions as, Dimensions bs)
   => ConcatEvidence (as :: [Nat]) (bs :: [Nat])

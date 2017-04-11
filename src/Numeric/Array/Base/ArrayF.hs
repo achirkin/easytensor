@@ -11,6 +11,7 @@
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 {-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE BangPatterns  #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -----------------------------------------------------------------------------
 -- |
@@ -408,12 +409,12 @@ instance Dimensions '[n,n]
          (# s2, vec #) ->
             let f i x s | isTrue# (i >=# n) = (# s, x #)
                         | otherwise =
-                            let (# s' , j  #) = maxInRowRem# n n i mat s
-                                (# s'', x' #) = if isTrue# (i /=# j)
+                            let !(# s' , j  #) = maxInRowRem# n n i mat s
+                                !(# s'', x' #) = if isTrue# (i /=# j)
                                                 then (# swapCols# n i j vec mat s'
                                                                , negateFloat# x #)
                                                 else (# s', x #)
-                                (# s''', y #) = clearRowEnd# n n i mat s''
+                                !(# s''', y #) = clearRowEnd# n n i mat s''
                             in if isTrue# (eqFloat# 0.0# y)
                                then (# s''', 0.0# #)
                                else f (i +# 1#) (timesFloat# x' y) s'''
@@ -456,10 +457,10 @@ instance KnownNat n => MatrixInverse (ArrayF '[n,n]) where
            (# s2, vec #) ->
               let f i s | isTrue# (i >=# n) = s
                         | otherwise =
-                            let (# s' , j  #) = maxInRowRem# nn n i mat s
+                            let !(# s' , j  #) = maxInRowRem# nn n i mat s
                                 s''           = if isTrue# (i /=# j) then swapCols# nn i j vec mat s'
                                                                      else s'
-                                (# s''', _ #) = clearRowAll# nn n i mat s''
+                                !(# s''', _ #) = clearRowAll# nn n i mat s''
                             in f (i +# 1#) s'''
               in unsafeFreezeByteArray# mat
                   ( shrinkMutableByteArray# mat bs
@@ -589,13 +590,13 @@ clearRowEnd# :: Int# -- n
 clearRowEnd# n m i mat s0 = (# loop' (i +# 1#) s1, y' #)
   where
     y0 = (n +# 1#) *# i +# 1# -- first element in source column
-    (# s1, y' #) = readFloatArray# mat ((n +# 1#) *# i) s0 -- diagonal element, must be non-zero
+    !(# s1, y' #) = readFloatArray# mat ((n +# 1#) *# i) s0 -- diagonal element, must be non-zero
     yrc = 1.0# `divideFloat#` y'
     n' = n -# i -# 1#
     loop' k s | isTrue# (k >=# m) = s
               | otherwise = loop' (k +# 1#)
        ( let x0 = k *# n +# i
-             (# s', a' #) = readFloatArray# mat x0 s
+             !(# s', a' #) = readFloatArray# mat x0 s
              s'' = writeFloatArray# mat x0 0.0# s'
              a  = a' `timesFloat#` yrc
          in multNRem# n' (x0 +# 1#) y0 a mat s''
@@ -616,13 +617,13 @@ clearRowAll# n m i mat s0 = (# divLoop (i +# 1#)
             (loop' 0# i (loop' (i +# 1#) m s1))), y' #)
   where
     y0 = (n +# 1#) *# i +# 1# -- first element in source column
-    (# s1, y' #) = readFloatArray# mat ((n +# 1#) *# i) s0 -- diagonal element, must be non-zero
+    !(# s1, y' #) = readFloatArray# mat ((n +# 1#) *# i) s0 -- diagonal element, must be non-zero
     yrc = 1.0# `divideFloat#` y'
     n' = n -# i -# 1#
     loop' k km s | isTrue# (k >=# km) = s
                  | otherwise = loop' (k +# 1#) km
        ( let x0 = k *# n +# i
-             (# s', a' #) = readFloatArray# mat x0 s
+             !(# s', a' #) = readFloatArray# mat x0 s
              s'' = writeFloatArray# mat x0 0.0# s'
              a  = a' `timesFloat#` yrc
          in multNRem# n' (x0 +# 1#) y0 a mat s''
@@ -630,7 +631,7 @@ clearRowAll# n m i mat s0 = (# divLoop (i +# 1#)
     divLoop k s | isTrue# (k >=# n) = s
                 | otherwise = divLoop (k +# 1#)
        ( let x0 = n *# i +# k
-             (# s', x #) = readFloatArray# mat x0 s
+             !(# s', x #) = readFloatArray# mat x0 s
          in writeFloatArray# mat x0 (timesFloat# x yrc) s'
        )
 
@@ -663,7 +664,7 @@ maxInRowRem# :: Int# -- n
              -> (# State# s, Int# #) -- next state
 maxInRowRem# n m i mat s0 = loop' i (abs# v) i s1
   where
-    (# s1, v #) = readFloatArray# mat ((n +# 1#) *# i) s0
+    !(# s1, v #) = readFloatArray# mat ((n +# 1#) *# i) s0
     abs# x = if isTrue# (x `geFloat#` 0.0#) then x else negateFloat# x
     loop' ok ov k s | isTrue# (k >=# m) = (# s, ok #)
                     | otherwise = case readFloatArray# mat (n *# k +# i) s of

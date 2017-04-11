@@ -187,56 +187,25 @@ instance ( ConcatList as bs asbs
          , Dimensions as
          , Dimensions bs
          , Dimensions asbs
-         , asm' ~ (as' +: m)
-         , as ~ (a ': as')
+         , asm ~ (a ': asm')
+         , asm ~ (as +: m)
+         , asbs ~ (Head asbs ': Tail asbs)
          , KnownNat m
          , PrimBytes (Array Float asbs)
          )
        => MatrixProduct (Array Float (a ': asm' :: [Nat])) (Array Float (m ': bs :: [Nat])) (Array Float (asbs :: [Nat])) where
-  prod = prodF n m k
+    prod = prodF n m k
       where
         m = case fromInteger $ natVal (Proxy @m) of I# mm -> mm
         n = case totalDim (Proxy @as) of I# nn -> nn
         k = case totalDim (Proxy @bs) of I# kk -> kk
 
 
--- instance ( KnownNat m )
---        => MatrixProduct (Array Float '[m]) (Array Float '[m]) (Array Float '[]) where
---   prod = prodF 1# m 1#
---       where
---         m = case fromInteger $ natVal (Proxy @m) of I# mm -> mm
---
--- instance ( asL ~ SimplifyList (ListInit (ToList asm))
---          , bsL ~ ToList bs
---          , asbs ~ (a ': sbs)
---          , asbsL ~ ToList asbs
---          , asbsL ~ SimplifyList ('Concat asL bsL)
---          , as ~ (a ': a1 ': as')
---          , as ~ EvalCons asL
---          , asm ~ (as +: m)
---          , Dimensions as
---          , Dimensions bs
---          , Dimensions asbs
---          , KnownNat m
---          , asm ~ (Head asm ': Tail asm)
---          )
---        => MatrixProduct (Array Float (a ': a1 ': as')) (Array Float (m ': bs)) (Array Float (a ': sbs)) where
---   prod = prodF n m k
---       where
---         m = case fromInteger $ natVal (Proxy @m) of I# mm -> mm
---         n = case totalDim (Proxy @as) of I# nn -> nn
---         k = case totalDim (Proxy @bs) of I# kk -> kk
---
--- instance ( bs  ~ (b ': bs')
---          , Dimensions bs
---          , KnownNat m
---          )
---        => MatrixProduct (Array Float '[m]) (Array Float (m ': b ': bs')) (Array Float (b ': bs')) where
---   prod = prodF n m k
---       where
---         m = case fromInteger $ natVal (Proxy @m) of I# mm -> mm
---         n = case totalDim (Proxy @'[m]) of I# nn -> nn
---         k = case totalDim (Proxy @bs) of I# kk -> kk
+instance KnownNat m
+      => MatrixProduct (Array Float '[m]) (Array Float '[m]) (Array Float '[]) where
+    prod = prodF 1# m 1#
+       where
+         m = case fromInteger $ natVal (Proxy @m) of I# mm -> mm
 
 
 

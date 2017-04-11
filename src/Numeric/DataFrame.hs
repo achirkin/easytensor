@@ -16,11 +16,8 @@
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE UndecidableInstances   #-}
-{-# LANGUAGE StandaloneDeriving   #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving   #-}
 {-# LANGUAGE UnboxedTuples, MagicHash #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE BangPatterns #-}
@@ -228,7 +225,7 @@ slice s f remIds oldDF
     writeOne (x : xs) mr pos s' = case NCommons.toBytes x of
       (# off, l, a #) ->  writeOne xs mr (pos +# l)
         (copyByteArray# a (off *# elSizeS) mr (pos *# elSizeS) (l *# elSizeS) s')
-    (# offOld, _, arrOld #) = NCommons.toBytes oldDF
+    !(# offOld, _, arrOld #) = NCommons.toBytes oldDF
     elSizeS = NCommons.elementByteSize (undefined :: DataFrame s nds)
     lengthOld' = case totalDim (Proxy @ods) of I# lo -> lo
     lengthNew  = case totalDim (Proxy @(nds >: n)) of I# ln -> ln
@@ -265,7 +262,7 @@ sliceF s f remIds oldDF
                                        , arrOld #))
                          ) (zip (slice2list s) [1..])
   where
-    (# offOld, _, arrOld #) = NCommons.toBytes oldDF
+    !(# offOld, _, arrOld #) = NCommons.toBytes oldDF
     lengthOld' = case totalDim (Proxy @ods) of I# lo -> lo
 
 subSpaceF :: forall (t :: Type) (acc :: Type) (n :: Nat)
@@ -318,7 +315,7 @@ index :: forall (t :: Type) (f :: Type -> Type) (n :: Nat) (ds :: [Nat])
           -> f (DataFrame t (ds +: n))
 index (I# i) f d = write <$> f x
   where
-    (# offD, lengthD, arrD #) = NCommons.toBytes d
+    !(# offD, lengthD, arrD #) = NCommons.toBytes d
     elSize = NCommons.elementByteSize d
     x = NCommons.fromBytes (# offD +# tds *# (i -# 1#), tds , arrD #)
     tds = case totalDim (Proxy @ds) of I# q -> q
@@ -359,7 +356,7 @@ indexC :: forall (a :: Type) (t :: Type) (n :: Nat) (ds :: [Nat])
           -> Const a (DataFrame t (ds +: n))
 indexC (I# i) f d = Const . getConst $ f x
   where
-    (# offD, _, arrD #) = NCommons.toBytes d
+    !(# offD, _, arrD #) = NCommons.toBytes d
     x = NCommons.fromBytes (# offD +# tds *# (i -# 1#), tds , arrD #)
     tds = case totalDim (Proxy @ds) of I# q -> q
 
