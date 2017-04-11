@@ -65,17 +65,6 @@ instance ( ConcatList as bs asbs
 infixl 7 %*
 
 
-x :: DataFrame Float ('[4] :: [Nat])
-x = undefined
-
-y :: DataFrame Float '[5,7,6]
-y = undefined
-
-z :: DataFrame Float '[7,6]
-z = x `contract` y
-
-t :: String
-t = _ z
 
 -- contract' :: forall (t :: Type) (m :: Nat) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
 --            . ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs))

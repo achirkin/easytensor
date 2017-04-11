@@ -10,7 +10,7 @@
 -----------------------------------------------------------------------------
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeOperators, TypeApplications #-}
 {-# LANGUAGE DataKinds, PolyKinds #-}
 {-# LANGUAGE GADTs #-}
 
@@ -39,16 +39,22 @@ prop_Eye :: SomeSimpleDFNonScalar -> Bool
 prop_Eye (SSDFN (SDF (x :: DataFrame Float (d ': ds))))
   = case ( unsafeEqProof :: Prefix ds (d ': ds) :~: '[d]
          , unsafeEqProof :: IsSuffix ds (d ': ds) :~: 'True
-         , unsafeEqProof :: IsPrefix '[d] (d ': ds) :~: 'True
          , unsafeEqProof :: Suffix '[d] (d ': ds) :~: ds
          , unsafeEqProof :: Concat '[d] ds :~: d ': ds
          ) of
-    (Refl, Refl, Refl, Refl, Refl) -> eye %* x == x
+    (Refl, Refl, Refl, Refl) -> eye %* x == x
 
--- prop_Gen :: SomeSimpleDF -> SomeSimpleDF -> Bool
--- prop_Gen (SSDF (SDF x)) (SSDF (SDF y))
---   | ConcatEvidence dimXY <- concatEvidence x y
---   = ((dimMax `inSpaceOf` y) !. ewgen y x) == x
+
+prop_VariousFixed :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
+prop_VariousFixed (SDF x) (SDF y) = and
+   [ ((dimMax `inSpaceOf` y) !. z) == x
+   , (1:!3 !. z) == x
+   , (2:!2 !. z) %* eye == x
+   , ewfoldl y (+) 10 z == ewfoldr y (+) 0 z + 10
+   , y * 2 == ewmap (dim @'[7]) (*2) y
+   ]
+  where
+    z = ewgen y x :: DataFrame Float '[2,5,4,3,7]
 
 
 
