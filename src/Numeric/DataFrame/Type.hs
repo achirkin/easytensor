@@ -143,7 +143,7 @@ instance ( xns ~ (x ': xns')
   --                    s2 = go s1 0# xs
   --                in unsafeFreezeByteArray# marr s2
   --       ) of (# _, r #) -> NCommons.fromBytes (# 0#, n#, r #)
-  fromListN n = error $ "DataFrame fromList: not a proper list length: " ++ show n
+  fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
   toList (SomeDataFrame _ df) = go offset
     where
       !(I# step) = totalDim (Proxy @ns)
