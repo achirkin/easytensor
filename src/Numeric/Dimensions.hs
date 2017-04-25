@@ -38,7 +38,7 @@ module Numeric.Dimensions
   , inSpaceOf, asSpaceOf, appendIdx, splitIdx
     -- * Type-level programming
   , FixedDim, FixedXDim, KnownOrder, ValidDims
-  , FiniteDims
+  , FiniteDims, WrapDims, WrapHead, UnwrapDims
   , type (:<), type (>:)
 --  , inferSubDimensions
   , module Numeric.Dimensions.List
@@ -161,7 +161,7 @@ withSuccKnown n p g = case someNatVal (fromIntegral n) of
     Just (SomeNat m) -> g (evidence p m)
     Nothing          -> error "Something is terribly wrong. Is the length negative?"
   where
-    evidence:: KnownNat m => p xs -> q m -> (1 + Length xs) :~: m
+    evidence:: p xs -> q m -> (1 + Length xs) :~: m
     evidence _ _ = unsafeCoerce Refl
 
 
@@ -250,13 +250,13 @@ class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
   --      (a `diffIdx` b) = a - b
   diffIdx   :: Idx ds -> Idx ds -> Int
   -- | Get various evidence that `as ++ bs ~ asbs` given as and bs
-  concatEvidence :: (Dimensions ds, Dimensions bs)
+  concatEvidence :: (Dimensions bs)
                  => p (ds :: [Nat]) -> q (bs :: [Nat])   -> ConcatEvidence (ds :: [Nat]) (bs :: [Nat])
   -- | Get various evidence that `as ++ bs ~ asbs` given bs and asbs
-  prefixEvidence :: (Dimensions bs, Dimensions ds, IsSuffix bs ds ~ 'True)
+  prefixEvidence :: (Dimensions bs, IsSuffix bs ds ~ 'True)
                  => p (bs :: [Nat]) -> q (ds :: [Nat]) -> PrefixEvidence (bs :: [Nat]) (ds :: [Nat])
   -- | Get various evidence that `as ++ bs ~ asbs` given as and asbs
-  suffixEvidence :: (Dimensions as, Dimensions ds, IsPrefix as ds ~ 'True)
+  suffixEvidence :: (Dimensions as, FiniteDims ds, IsPrefix as ds ~ 'True)
                  => p (as :: [Nat]) -> q (ds :: [Nat]) -> SuffixEvidence (as :: [Nat]) (ds :: [Nat])
 
 -- | Similar to `const` or `asProxyTypeOf`;
@@ -659,6 +659,14 @@ type family KnownDim (x::k) :: Nat where
   KnownDim n = n
   KnownDim (N n) = n
 
+type family WrapDims (x::[k]) :: [XNat] where
+  WrapDims ('[] :: [Nat])     = '[]
+  WrapDims (n ': ns :: [Nat]) = N n ': WrapDims ns
+  WrapDims (xns :: [XNat])    = xns
+
+type family UnwrapDims (xns::[XNat]) = (ns :: [Nat]) | ns -> xns where
+  UnwrapDims '[] = '[]
+  UnwrapDims (N x ': xs) = x ': UnwrapDims xs
 
 -- | FixedDim puts very tight constraints on what list of naturals can be.
 --   This allows establishing strong relations between [XNat] and [Nat].
