@@ -75,7 +75,7 @@ dist/
 .settings/
 
 # leksah
-#*.lkshw
+*.lkshw
 *.lkshf
 *.lkshs
 *.local
