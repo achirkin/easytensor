@@ -84,7 +84,6 @@ import           Numeric.DataFrame.Contraction
 
 
 
-
 -- | Append one DataFrame to another, adding up their last dimensionality
 (<:>) :: forall (n :: Nat) (m :: Nat) (npm :: Nat) (ds :: [Nat])
                 (t :: Type)

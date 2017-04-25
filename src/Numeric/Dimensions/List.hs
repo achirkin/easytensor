@@ -154,7 +154,7 @@ class ( asbs ~ Concat as bs
       , bs   ~ Suffix as asbs
       , IsSuffix bs asbs ~ 'True
       , IsPrefix as asbs ~ 'True
-      ) => ConcatList (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+      ) => ConcatList (as :: [k]) (bs :: [k]) (asbs :: [k])
         | as bs -> asbs
         , as asbs -> bs
         , bs asbs -> as where
@@ -167,7 +167,7 @@ instance ( asbs ~ Concat as bs
          , bs   ~ Suffix as asbs
          , IsSuffix bs asbs ~ 'True
          , IsPrefix as asbs ~ 'True
-         ) => ConcatList (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) where
+         ) => ConcatList (as :: [k]) (bs :: [k]) (asbs :: [k]) where
     tlPrefix _ _ = Proxy
     {-# INLINE tlPrefix #-}
     tlSuffix _ _ = Proxy
@@ -228,6 +228,3 @@ type family Reversed (ts :: Reversing k) = (rs :: [k]) | rs -> ts where
 type family DoReverse (as :: [k]) = (rs :: Reversing k) | rs -> as where
     DoReverse '[]  = 'REmpty
     DoReverse (a ': as) = 'Reversing ((Reversed (DoReverse as)) +: a)
-
-
-
