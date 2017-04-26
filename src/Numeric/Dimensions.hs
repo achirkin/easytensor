@@ -34,7 +34,7 @@ module Numeric.Dimensions
   , Dimensional (..), runDimensional, withDim, withRuntimeDim
     -- * Operations
   , Dimensions, Dimensions' (..), Dimensions'' (..)
-  , XDimensions (..)
+  , XDimensions (), xdim
   , inSpaceOf, asSpaceOf, appendIdx, splitIdx
     -- * Type-level programming
   , FixedDim, FixedXDim, KnownOrder, ValidDims
@@ -212,9 +212,17 @@ class Dimensions' (ds :: [Nat]) where
   -- | Dimensionality of our space
   dim :: Dim ds
 
-class XDimensions (ds :: [Nat]) (xds :: [XNat]) where
-  -- | Loose compile-time information about dimensionalities
-  xdim :: FixedXDim xds ds ~ xds => p ds -> Dim xds
+class XDimensions (xds :: [XNat]) where
+  wrapDim :: ( Dimensions ds
+             , FixedXDim xds ds ~ xds) => Dim ds -> Dim xds
+
+-- | Loose compile-time information about dimensionalities
+xdim :: forall (ds :: [Nat]) (xds :: [XNat]) (p :: [Nat] -> Type)
+      . ( Dimensions ds
+        , XDimensions xds
+        , FixedXDim xds ds ~ xds) => p ds -> Dim xds
+xdim p = wrapDim (dim `inSpaceOf` p)
+{-# INLINE xdim #-}
 
 -- | Support for Idx GADT
 class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
@@ -399,6 +407,7 @@ headDim :: t (d ': ds :: [k]) -> Proxy d
 headDim _ = Proxy
 
 
+
 instance Dimensions' ('[] :: [Nat]) where
   dim = D
   {-# INLINE dim #-}
@@ -409,23 +418,22 @@ instance ( KnownDims (d ': ds)
   dim = Proxy :* dim
   {-# INLINE dim #-}
 
-instance XDimensions ns '[] where
-  xdim _ = D
-  {-# INLINE xdim #-}
+instance XDimensions '[] where
+  wrapDim _ = D
+  {-# INLINE wrapDim #-}
 
-instance ( XDimensions ns xs
-         , KnownNat n
-         ) => XDimensions (n ': ns) (XN ': xs) where
-  xdim _ = case someNatVal (natVal $ Proxy @n) of
-    Just sv -> sv :? xdim (Proxy @ns)
-    Nothing -> error "Impossible happend: someNatVal (natVal n) == Nothing!"
-  {-# INLINE xdim #-}
+instance ( XDimensions xs
+         ) => XDimensions (XN ': xs) where
+  wrapDim (n :* ns)
+          | Just sv <- someNatVal (natVal n) = sv :? wrapDim ns
+          | otherwise = error "Impossible happend: someNatVal (natVal n) == Nothing!"
+  {-# INLINE wrapDim #-}
 
-instance ( XDimensions ns xs
+instance ( XDimensions xs
          , KnownNat n
-         ) => XDimensions (n ': ns) (N n ': xs) where
-  xdim _ = Proxy @n :* xdim (Proxy @ns)
-  {-# INLINE xdim #-}
+         ) => XDimensions (N n ': xs) where
+  wrapDim (n :* ns) = n :* wrapDim ns
+  {-# INLINE wrapDim #-}
 
 
 instance Dimensions'' ('[] :: [Nat]) where

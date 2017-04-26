@@ -1,29 +1,30 @@
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE Rank2Types             #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE TypeInType             #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE InstanceSigs           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE InstanceSigs               #-}
+{-# LANGUAGE Rank2Types                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeFamilyDependencies     #-}
+{-# LANGUAGE TypeInType                 #-}
+{-# LANGUAGE TypeOperators              #-}
 
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE RankNTypes             #-}
-{-# LANGUAGE UndecidableInstances   #-}
-{-# LANGUAGE StandaloneDeriving   #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving   #-}
-{-# LANGUAGE UnboxedTuples, MagicHash #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE UndecidableSuperClasses #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE BangPatterns               #-}
+{-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE ExistentialQuantification  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE MagicHash                  #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE NoMonomorphismRestriction  #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE UnboxedTuples              #-}
+{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE UndecidableSuperClasses    #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Type
@@ -40,19 +41,21 @@ module Numeric.DataFrame.Type
   , ElementDataType (..), EDTRefl (..)
   ) where
 
+import           Data.Proxy
 import           Data.Type.Equality
-import           GHC.TypeLits       (Nat, SomeNat (..), someNatVal, KnownNat, natVal)
-import           GHC.Types
-import           GHC.Base (runRW#)
+import           Data.Type.Equality
+import           GHC.Base             (runRW#)
+import           GHC.Exts             (IsList (..))
 import           GHC.Prim
-import           GHC.Exts (IsList (..))
+import           GHC.TypeLits         (KnownNat, Nat, SomeNat (..), natVal,
+                                       someNatVal)
+import           GHC.Types
 import           Numeric.Array
 import qualified Numeric.Array.Family as AFam (Scalar (..))
-import qualified Numeric.Commons as NCommons
+import qualified Numeric.Commons      as NCommons
 import           Numeric.Dimensions
 import qualified Numeric.Matrix.Class as M
 import           Unsafe.Coerce
-import           Data.Proxy
 
 -- | Keep data in a primitive data frame
 --    and maintain information about Dimensions in the type-system
@@ -119,38 +122,58 @@ data instance DataFrame t (xns :: [XNat])
 --     = NCommons.ewfold @(Idx '[Head ns])
 --       (\_ x a -> KnownDataFrame (Array $ AFam.Scalar x) : a) [] df
 
-instance ( xns ~ (x ': xns')
-         , Last xns ~ XN
-         , ns ~ UnwrapDims (Init xns)
-         , NCommons.PrimBytes (Array t ns)
-         , Dimensions ns
-         )
-      => IsList (DataFrame t ((x ': xns') :: [XNat])) where
-  type Item (DataFrame t (x ': xns')) = DataFrame t (UnwrapDims (Init (x ': xns')))
-  fromList xs = fromListN (length xs) xs
-  fromListN _ []  = error "DataFrame fromList: the list must have at least two elements"
-  fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
-  -- fromListN n@(I# n#) xs  | Just d1@(SomeNat (pn :: Proxy n)) <- someNatVal (fromIntegral n)
-  --                 = SomeDataFrame (d1 :? D) (df pn)
-  --   where
-  --     elSize# = NCommons.byteSize (0 :: Float)
-  --     df :: KnownNat n => Proxy n -> Array Float '[n]
-  --     df _ = case runRW#
-  --       ( \s0 -> let !(# s1, marr #) = newByteArray# (n# *# elSize#) s0
-  --                    go s _ [] = s
-  --                    go s pos (KnownDataFrame (Array (AFam.Scalar (F# a))) : as)
-  --                                = go (writeFloatArray# marr pos a s) (pos +# 1#) as
-  --                    s2 = go s1 0# xs
-  --                in unsafeFreezeByteArray# marr s2
-  --       ) of (# _, r #) -> NCommons.fromBytes (# 0#, n#, r #)
-  fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
-  toList (SomeDataFrame _ df) = go offset
-    where
-      !(I# step) = totalDim (Proxy @ns)
-      !(# offset, lenN, arr #) = NCommons.toBytes df
-      lim = offset +# lenN
-      go pos | isTrue# (pos >=# lim)  = []
-             | otherwise = NCommons.fromBytes (# pos, step , arr #) : go (pos +# step)
+-- instance ( xnsm ~ (x ': xns')
+--          , xns ~ Init xnsm
+--          , Last xnsm ~ XN
+--          , ns ~ UnwrapDims xns
+--          , NCommons.PrimBytes (Array t ns)
+--          , Dimensions ns
+--          , Show t
+--          , Eq t
+--          , NCommons.PrimBytes t
+--          )
+--       => IsList (DataFrame t ((x ': xns') :: [XNat])) where
+--   type Item (DataFrame t (x ': xns')) = DataFrame t (UnwrapDims (Init (x ': xns')))
+--   fromList xs = fromListN (length xs) xs
+--   fromListN _ []  = error "DataFrame fromList: the list must have at least two elements"
+--   fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
+--   fromListN n@(I# n#) xs  | Just dLast@(SomeNat (pm :: Proxy m)) <- someNatVal (fromIntegral n)
+--                           , (pnsm :: Proxy nsm, Refl, Refl, Refl) <- makeEvs pm
+--                           , I# len# <- totalDim (Proxy @ns)
+--                           , xd <- xdim @nsm @xnsm Proxy
+--                   = unsafeCoerce ( SomeDataFrame
+--                                    (unsafeCoerce xd)
+--                                    (unsafeCoerce (df pnsm len# :: Array t nsm)
+--                                  ) :: DataFrame t '[])
+--     where
+--       elSize# = NCommons.byteSize (head xs)
+--       df :: NCommons.PrimBytes (Array t nsm) => Proxy nsm -> Int# -> Array t nsm
+--       df _ len# = case runRW#
+--         ( \s0 -> let !(# s1, marr #) = newByteArray# (n# *# elSize# *# len#) s0
+--                      go s _ [] = s
+--                      go s pos (KnownDataFrame earr : as) = case NCommons.toBytes earr of
+--                        (# eoff#, _, ea #) -> go
+--                          (copyByteArray# ea (eoff# *# elSize#) marr (pos *# elSize#) (elSize# *# len#) s)
+--                          (pos +# len#)
+--                          as
+--                      s2 = go s1 0# xs
+--                  in unsafeFreezeByteArray# marr s2
+--         ) of (# _, r #) -> NCommons.fromBytes (# 0#, n# *# len#, r #)
+--       makeEvs :: Proxy m
+--               -> ( Proxy nsm
+--                  , nsm :~: (ns +: m)
+--                  , FixedDim  xnsm (ns +: m) :~: (ns +: m)
+--                  , FixedXDim xnsm (ns +: m) :~: xnsm
+--                  )
+--       makeEvs _ = (Proxy, unsafeCoerce Refl, unsafeCoerce Refl, unsafeCoerce Refl)
+--   fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
+--   toList (SomeDataFrame _ df) = go offset
+--     where
+--       !(I# step) = totalDim (Proxy @ns)
+--       !(# offset, lenN, arr #) = NCommons.toBytes df
+--       lim = offset +# lenN
+--       go pos | isTrue# (pos >=# lim)  = []
+--              | otherwise = NCommons.fromBytes (# pos, step , arr #) : go (pos +# step)
 
 
   -- toList (SomeDataFrame (SomeNat (pn :: Proxy n) :? D) (df :: Array Float ns))
@@ -161,6 +184,53 @@ instance ( xns ~ (x ': xns')
   --   , Refl <- (unsafeCoerce Refl :: n :~: Head ns) = NCommons.ewfold @(Idx '[n])
   --     (\_ x a -> KnownDataFrame (Array $ AFam.Scalar x) : a) [] df
 
+instance ( xnsm ~ (x ': xns')
+         , xns ~ Init xnsm
+         , Last xnsm ~ XN
+         , ns ~ UnwrapDims xns
+         , NCommons.PrimBytes (Array Float ns)
+         , Dimensions ns
+         , XDimensions xns
+         )
+      => IsList (DataFrame Float ((x ': xns') :: [XNat])) where
+  type Item (DataFrame Float (x ': xns')) = DataFrame Float (UnwrapDims (Init (x ': xns')))
+  fromList xs = fromListN (length xs) xs
+  fromListN _ []  = error "DataFrame fromList: the list must have at least two elements"
+  fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
+  fromListN n@(I# n#) xs  | Just dLast@(SomeNat (pm :: Proxy m)) <- someNatVal (fromIntegral n)
+                          , (pnsm :: Proxy nsm, Refl, Refl, Refl) <- makeEvs pm
+                          , I# len# <- totalDim (Proxy @ns)
+                          , xd <- xdim @nsm @xnsm Proxy
+                  = SomeDataFrame xd (df pnsm len#)
+    where
+      elSize# = NCommons.byteSize (head xs)
+      df :: NCommons.PrimBytes (Array Float nsm) => Proxy nsm -> Int# -> Array Float nsm
+      df _ len# = case runRW#
+        ( \s0 -> let !(# s1, marr #) = newByteArray# (n# *# elSize# *# len#) s0
+                     go s _ [] = s
+                     go s pos (KnownDataFrame earr : as) = case NCommons.toBytes earr of
+                       (# eoff#, _, ea #) -> go
+                         (copyByteArray# ea (eoff# *# elSize#) marr (pos *# elSize#) (elSize# *# len#) s)
+                         (pos +# len#)
+                         as
+                     s2 = go s1 0# xs
+                 in unsafeFreezeByteArray# marr s2
+        ) of (# _, r #) -> NCommons.fromBytes (# 0#, n# *# len#, r #)
+      makeEvs :: Proxy m
+              -> ( Proxy nsm
+                 , nsm :~: (ns +: m)
+                 , FixedDim  xnsm (ns +: m) :~: (ns +: m)
+                 , FixedXDim xnsm (ns +: m) :~: xnsm
+                 )
+      makeEvs _ = (Proxy, unsafeCoerce Refl, unsafeCoerce Refl, unsafeCoerce Refl)
+  fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
+  toList (SomeDataFrame _ df) = go offset
+    where
+      !(I# step) = totalDim (Proxy @ns)
+      !(# offset, lenN, arr #) = NCommons.toBytes df
+      lim = offset +# lenN
+      go pos | isTrue# (pos >=# lim)  = []
+             | otherwise = NCommons.fromBytes (# pos, step , arr #) : go (pos +# step)
 
 
 -- | This class is used to pattern match against available data types
@@ -191,7 +261,7 @@ withShape (SomeDataFrame _ a) f = f (KnownDataFrame a)
 -- | Put some of Dimensions into existential data type
 unboundShape :: ( FixedXDim xns ns ~ xns
                 , FixedDim xns ns ~ ns
-                , XDimensions ns xns
+                , XDimensions xns
                 , Dimensions ns
                 , NCommons.PrimBytes (Array t ns)
                 , Show (Array t ns)
