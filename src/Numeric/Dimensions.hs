@@ -43,7 +43,7 @@ module Numeric.Dimensions
 --  , inferSubDimensions
   , module Numeric.Dimensions.List
     -- * Type evidence
-  , ConcatEvidence (..), SuffixEvidence (..), PrefixEvidence (..)
+  , ConcatEvidence (..), SuffixEvidence (..), PrefixEvidence (..), SnocEvidence (..)
 --  , unsafeEqProof, unsafeConcatProofs, unsafeConsProof, listProof
 --  , ListProof (..), ConcatProofs (..), ConsProof (..)
   ) where
@@ -266,6 +266,9 @@ class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
   -- | Get various evidence that `as ++ bs ~ asbs` given as and asbs
   suffixEvidence :: (Dimensions as, FiniteDims ds, IsPrefix as ds ~ 'True)
                  => p (as :: [Nat]) -> q (ds :: [Nat]) -> SuffixEvidence (as :: [Nat]) (ds :: [Nat])
+  -- | Get various evidence that `xs +: z ~ xsz` given xs and z
+  snocEvidence :: (FiniteDims ds, KnownNat z)
+                 => p (ds :: [Nat]) -> q (z :: Nat) -> SnocEvidence ds z
 
 -- | Similar to `const` or `asProxyTypeOf`;
 --   to be used on such implicit functions as `dim`, `dimMax`, etc.
@@ -475,6 +478,8 @@ instance Dimensions'' ('[] :: [Nat]) where
   suffixEvidence (_ :: q as) _ = case (unsafeEqProof :: as :~: '[]) of
     Refl -> SuffixEvidence D
   {-# INLINE suffixEvidence #-}
+  snocEvidence _ (_ :: q n) = SnocEvidence (Proxy @n :* D)
+  {-# INLINE snocEvidence #-}
 
 instance ( Dimensions'' ds
          , KnownList ds
@@ -564,6 +569,10 @@ instance ( Dimensions'' ds
     TLCons _ (as :: TypeList as) -> case ( unsafeEqProof :: IsPrefix as ds :~: 'True ) of
       Refl -> unsafeCoerce (suffixEvidence as (Proxy @ds))
   {-# INLINE suffixEvidence #-}
+  snocEvidence _ (p :: q z) | Refl <- unsafeCoerce Refl :: ((d :+ ds) +: z) :~: (d :+ (ds +: z))
+                            , SnocEvidence dimds <- snocEvidence (Proxy @ds) p
+                            = SnocEvidence (Proxy @d :* dimds)
+  {-# INLINE snocEvidence #-}
 
 
 
@@ -741,6 +750,10 @@ data (Dimensions as, Dimensions asbs)
   . ( ConcatList as bs asbs
     , Dimensions bs
     ) => SuffixEvidence (Dim (bs :: [Nat]))
+
+data (Dimensions xs, KnownNat z)
+  => SnocEvidence (xs :: [Nat]) (z::Nat)
+  = Dimensions (xs +: z) => SnocEvidence (Dim (xs +: z))
 
 ---- | Fool typechecker by saying that list `xs` has Cons constructor
 --unsafeConsProof :: ConsProof (as :: [Nat])

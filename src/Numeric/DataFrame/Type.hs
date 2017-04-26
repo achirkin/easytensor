@@ -184,7 +184,7 @@ data instance DataFrame t (xns :: [XNat])
   --   , Refl <- (unsafeCoerce Refl :: n :~: Head ns) = NCommons.ewfold @(Idx '[n])
   --     (\_ x a -> KnownDataFrame (Array $ AFam.Scalar x) : a) [] df
 
-instance ( xnsm ~ (x ': xns')
+instance ( xnsm ~ (N n ': xns')
          , xns ~ Init xnsm
          , Last xnsm ~ XN
          , ns ~ UnwrapDims xns
@@ -192,13 +192,13 @@ instance ( xnsm ~ (x ': xns')
          , Dimensions ns
          , XDimensions xns
          )
-      => IsList (DataFrame Float ((x ': xns') :: [XNat])) where
-  type Item (DataFrame Float (x ': xns')) = DataFrame Float (UnwrapDims (Init (x ': xns')))
+      => IsList (DataFrame Float ((N n ': xns') :: [XNat])) where
+  type Item (DataFrame Float (N n ': xns')) = DataFrame Float (UnwrapDims (Init (N n ': xns')))
   fromList xs = fromListN (length xs) xs
   fromListN _ []  = error "DataFrame fromList: the list must have at least two elements"
   fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
   fromListN n@(I# n#) xs  | Just dLast@(SomeNat (pm :: Proxy m)) <- someNatVal (fromIntegral n)
-                          , (pnsm :: Proxy nsm, Refl, Refl, Refl) <- makeEvs pm
+                          , (pnsm :: Proxy nsm, SnocEvidence dnsm, Refl, Refl, Refl) <- makeEvs pm
                           , I# len# <- totalDim (Proxy @ns)
                           , xd <- xdim @nsm @xnsm Proxy
                   = SomeDataFrame xd (df pnsm len#)
@@ -216,13 +216,15 @@ instance ( xnsm ~ (x ': xns')
                      s2 = go s1 0# xs
                  in unsafeFreezeByteArray# marr s2
         ) of (# _, r #) -> NCommons.fromBytes (# 0#, n# *# len#, r #)
-      makeEvs :: Proxy m
+      makeEvs :: KnownNat m
+              => Proxy m
               -> ( Proxy nsm
+                 , SnocEvidence ns m
                  , nsm :~: (ns +: m)
                  , FixedDim  xnsm (ns +: m) :~: (ns +: m)
                  , FixedXDim xnsm (ns +: m) :~: xnsm
                  )
-      makeEvs _ = (Proxy, unsafeCoerce Refl, unsafeCoerce Refl, unsafeCoerce Refl)
+      makeEvs p = (Proxy, snocEvidence (Proxy @ns) p, unsafeCoerce Refl, unsafeCoerce Refl, unsafeCoerce Refl)
   fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
   toList (SomeDataFrame _ df) = go offset
     where
