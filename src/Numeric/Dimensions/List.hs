@@ -1,9 +1,11 @@
+{-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 -- The following extensions are needed for ConcatDim typeclass
@@ -12,7 +14,7 @@
 -- The following extensions are needed for KnownList typeclass
 {-# LANGUAGE ScopedTypeVariables, GADTs #-}
 
------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.List
 -- Copyright   :  (c) Artem Chirkin
@@ -22,7 +24,7 @@
 --
 -- Provides type-level operations on lists.
 --
------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 
 module Numeric.Dimensions.List
   ( type (++), Length
@@ -31,10 +33,14 @@ module Numeric.Dimensions.List
   , Tail, Init, Last, Concat, Reverse, Take, Drop, Suffix, Prefix
   , IsPrefix, IsSuffix
   , ConcatList (..), KnownList (..), TypeList (..)
+  , inferConcat, inferSuffix, inferPrefix, ConcatEvidence, KnownListEvidence
   ) where
 
 import GHC.TypeLits
+import GHC.Types (Type)
 import Data.Proxy (Proxy (..))
+import Unsafe.Coerce (unsafeCoerce)
+import Data.Type.Equality
 
 -- | Synonym for a type-level cons
 --     (injective, since this is just a synonym for the list constructor)
@@ -158,9 +164,9 @@ class ( asbs ~ Concat as bs
         | as bs -> asbs
         , as asbs -> bs
         , bs asbs -> as where
-    tlPrefix :: p bs -> q asbs -> Proxy as
-    tlSuffix :: p as -> q asbs -> Proxy bs
-    tlConcat :: p as -> q bs   -> Proxy asbs
+    tlPrefix :: ConcatEvidence as bs asbs -> Proxy as
+    tlSuffix :: ConcatEvidence as bs asbs -> Proxy bs
+    tlConcat :: ConcatEvidence as bs asbs -> Proxy asbs
 
 instance ( asbs ~ Concat as bs
          , as   ~ Prefix bs asbs
@@ -168,41 +174,165 @@ instance ( asbs ~ Concat as bs
          , IsSuffix bs asbs ~ 'True
          , IsPrefix as asbs ~ 'True
          ) => ConcatList (as :: [k]) (bs :: [k]) (asbs :: [k]) where
-    tlPrefix _ _ = Proxy
+    tlPrefix _ = Proxy
     {-# INLINE tlPrefix #-}
-    tlSuffix _ _ = Proxy
+    tlSuffix _ = Proxy
     {-# INLINE tlSuffix #-}
-    tlConcat _ _ = Proxy
+    tlConcat _ = Proxy
     {-# INLINE tlConcat #-}
 
 
 -- | Type level list, used together with KnownList typeclass
 data TypeList (xs :: [k]) where
     TLEmpty :: TypeList '[]
-    TLCons :: Proxy x -> TypeList xs -> TypeList (x ': xs)
+    TLCons :: KnownList xs => Proxy x -> TypeList xs -> TypeList (x ': xs)
 
 class KnownList (xs :: [k]) where
     -- | Length of a type-leve list
     order :: t xs -> Int
     -- | Get type-level constructed list
     tList :: t xs -> TypeList xs
+    -- | Infer that concatenation is also finite
+    inferConcatKnownList :: forall (bs :: [k]) (p :: [k] -> Type) (q :: [k] -> Type)
+                          . KnownList bs
+                         => p xs
+                         -> q bs
+                         -> KnownListEvidence (xs ++ bs)
+    -- | Infer that prefix is also finite
+    inferPrefixKnownList :: (IsSuffix bs xs ~ 'True, KnownList bs)
+                         => p bs
+                         -> q xs
+                         -> KnownListEvidence (Prefix bs xs)
+    -- | Infer that suffix is also finite
+    inferSuffixKnownList :: (IsPrefix as xs ~ 'True, KnownList as)
+                         => p as
+                         -> q xs
+                         -> KnownListEvidence (Suffix as xs)
+    -- | Make snoc almost as good as cons
+    inferSnocKnownList :: p xs -> q z -> KnownListEvidence (xs +: z)
+    -- | Init of the list is also known list
+    inferInitKnownList :: p (x ': xs) -> KnownListEvidence (Init (x ': xs))
+    -- | Tail of the list is also known list
+    inferTailKnownList :: p xs -> KnownListEvidence (Tail xs)
+    inferTakeNKnownList :: KnownNat n => p n -> q xs -> KnownListEvidence (Take n xs)
+
+
 
 instance KnownList ('[] :: [k]) where
   order _ = 0
   {-# INLINE order #-}
   tList _ = TLEmpty
   {-# INLINE tList #-}
+  inferConcatKnownList _ (_ :: q bs) = KnownListEvidence :: KnownListEvidence bs
+  {-# INLINE inferConcatKnownList #-}
+  inferPrefixKnownList (_ :: p bs) _
+    | Refl <- unsafeCoerce Refl :: bs :~: '[] = KnownListEvidence
+  {-# INLINE inferPrefixKnownList #-}
+  inferSuffixKnownList (_ :: p as) _
+    | Refl <- unsafeCoerce Refl :: as :~: '[] = KnownListEvidence
+  {-# INLINE inferSuffixKnownList #-}
+  inferSnocKnownList _ _ = KnownListEvidence
+  {-# INLINE inferSnocKnownList #-}
+  inferInitKnownList _ = KnownListEvidence
+  {-# INLINE inferInitKnownList #-}
+  inferTailKnownList _ = error "Tail -- empty type-level list"
+  {-# INLINE inferTailKnownList #-}
+  inferTakeNKnownList _ _ = KnownListEvidence
+  {-# INLINE inferTakeNKnownList #-}
 
 instance KnownList xs => KnownList (x ': xs :: [k]) where
   order _ = order (Proxy :: Proxy xs) + 1
   {-# INLINE order #-}
   tList _ = TLCons Proxy (tList (Proxy :: Proxy xs))
   {-# INLINE tList #-}
+  inferConcatKnownList _ (pbs :: p bs)
+    | KnownListEvidence  <- inferConcatKnownList (Proxy @xs) pbs
+    , Refl <- unsafeCoerce Refl :: (x ': (xs ++ bs)) :~: ((x ': xs) ++ bs)
+    = KnownListEvidence :: KnownListEvidence (x ': (xs ++ bs))
+  {-# INLINE inferConcatKnownList #-}
+  -- inferPrefixKnownList (pbs :: p bs) _
+  --   | TLEmpty <- tList pbs
+  --   = KnownListEvidence :: KnownListEvidence (x ': (xs ++ bs))
+  -- {-# INLINE inferPrefixKnownList #-}
+  inferSuffixKnownList (pas :: p as) _
+    | TLEmpty <- tList pas
+      = KnownListEvidence
+    | TLCons _ (pas' :: TypeList as') <- tList pas
+    , Refl <- unsafeCoerce Refl :: IsPrefix as' xs :~: 'True
+    , Refl <- unsafeCoerce Refl :: Suffix as' xs :~: Suffix as (x ': xs)
+    , KnownListEvidence <- inferSuffixKnownList pas' (Proxy @xs)
+      = KnownListEvidence :: KnownListEvidence (Suffix as' xs)
+    | otherwise = error "inferSuffixKnownList: TypeList failed to pattern match"
+  {-# INLINE inferSuffixKnownList #-}
+  inferSnocKnownList _ (q :: q z)
+    | KnownListEvidence <- inferSnocKnownList (Proxy @xs) q
+    , Refl <- unsafeCoerce Refl :: (x ': (xs +: z)) :~: ((x ': xs) +: z)
+    = KnownListEvidence :: KnownListEvidence (x ': (xs +: z))
+  {-# INLINE inferSnocKnownList #-}
+  inferInitKnownList (_ :: p (x0 ': x ': xs))
+    | KnownListEvidence <- inferInitKnownList (Proxy @(x ': xs))
+    = KnownListEvidence :: KnownListEvidence (x0 ': Init (x ': xs))
+  {-# INLINE inferInitKnownList #-}
+  inferTailKnownList _ = KnownListEvidence
+  {-# INLINE inferTailKnownList #-}
+  inferTakeNKnownList (pn :: p n) _
+    | 0 <- natVal pn
+    , Refl <- unsafeCoerce Refl :: Take n (x ': xs) :~: (x ': xs)
+      = KnownListEvidence :: KnownListEvidence (x ': xs)
+    | otherwise
+    , Refl <- unsafeCoerce Refl :: Take n (x ': xs) :~: (x ': Take (n-1) xs)
+    , KnownListEvidence <- inferTakeNKnownList (Proxy @(n-1)) (Proxy @xs)
+      = KnownListEvidence :: KnownListEvidence (x ': Take (n-1) xs)
+  {-# INLINE inferTakeNKnownList #-}
 
 
-----------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+---- Constructing evidence for our constraints
+--------------------------------------------------------------------------------
+
+-- | Pattern-matching on the constructor of this type
+--   brings an evidence that `as ++ bs ~ asbs`
+data ConcatEvidence (as :: [k]) (bs :: [k]) (asbs :: [k])
+  = ( asbs ~ Concat as bs
+    , as   ~ Prefix bs asbs
+    , bs   ~ Suffix as asbs
+    , IsSuffix bs asbs ~ 'True
+    , IsPrefix as asbs ~ 'True
+    ) => ConcatEvidence
+
+-- | Pattern-matching on the constructor of this type
+--   brings an evidence that the type-level parameter list is finite
+data KnownListEvidence (xs :: [k])
+  = KnownList xs => KnownListEvidence
+
+
+-- | Any two type-level lists can be concatenated,
+--   so we just fool the compiler by unsafeCoercing proxy-like data type.
+inferConcat :: p as -> q bs -> ConcatEvidence as bs (as ++ bs)
+inferConcat _ _ = unsafeCoerce (ConcatEvidence :: ConcatEvidence ('[] :: [()]) ('[] :: [()]) ('[] :: [()]))
+{-# INLINE inferConcat #-}
+
+
+-- | `as` being prefix of `asbs` is enough to infer some concatenation relations
+--   so we just fool the compiler by unsafeCoercing proxy-like data type.
+inferSuffix :: IsPrefix as asbs ~ 'True
+            => p as -> q asbs -> ConcatEvidence as (Suffix as asbs) asbs
+inferSuffix _ _ = unsafeCoerce (ConcatEvidence :: ConcatEvidence ('[] :: [()]) ('[] :: [()]) ('[] :: [()]))
+{-# INLINE inferSuffix #-}
+
+
+-- | `bs` being suffix of `asbs` is enough to infer some concatenation relations
+--   so we just fool the compiler by unsafeCoercing proxy-like data type.
+inferPrefix :: IsSuffix bs asbs ~ 'True
+            => p bs -> q asbs -> ConcatEvidence (Prefix bs asbs) bs asbs
+inferPrefix _ _ = unsafeCoerce (ConcatEvidence :: ConcatEvidence ('[] :: [()]) ('[] :: [()]) ('[] :: [()]))
+{-# INLINE inferPrefix #-}
+
+
+--------------------------------------------------------------------------------
 ---- Tricks to make some type-level operations injective
-----------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 
 
 -- | A special data type that can have either a single element,
