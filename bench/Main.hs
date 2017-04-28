@@ -90,7 +90,16 @@ main = do
     print ( withRuntimeDim [2,6,3] (\(_ :: Dim ds) -> show (order (Proxy @(2 ': ds))) ) :: Either String String )
     print $ dimMin @'[_,_] !. dfY
 --    print $ subDimTest dfY Proxy
-    print $ case concatEvidence (Proxy @[3,6,2]) (Proxy @[2,8]) of ConcatEvidence d -> d
+    print $ case someNatVal 5 of
+              Nothing -> -1
+              Just (SomeNat p) -> case inferTakeNKnownList p (Proxy @[2,8,1,7,34,8,12,7,12,2,7,9,0,12]) of
+                                    kle@KnownListEvidence -> order kle
+    print $ case inferTakeNKnownList (Proxy @6) (Proxy @[2,8,1,7,34,8,12,7,12,2,7,9,0,12]) of
+                                    kle@KnownListEvidence -> order kle
+    -- case (,) <$> someNatVal 5 <*> someNatVal 7 of
+    --   Nothing -> print "Failed to do Test1"
+    --   Just (SomeNat p, SomeNat q) -> print
+    --     [funTest1v p q, funTest1v (Proxy @3) q, funTest1v p (Proxy @4), funTest1v (Proxy @1) (Proxy @2)]
   where
     pleaseFire :: Idx i -> DataFrame Float '[3, 2] -> Const (Sum (DataFrame Float '[3, 2])) Scf
     pleaseFire _ = Const . Sum
@@ -141,5 +150,3 @@ dfFloat = realToFrac
 
 
 type DFF (ds :: [Nat]) = DataFrame Float ds
-
-

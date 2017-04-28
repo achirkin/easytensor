@@ -6,15 +6,17 @@
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
--- This is a supplementary module that provides a GHC type-checker plugin.
--- The plugin infers some equalities that overwise would be impossible to infer
---  using GHC typechecker only.
+--
+-- This module has copied some chunks of code from Christiaan Baaij's
+--   ghc-typelits-knownnat-0.2.4
+--   https://hackage.haskell.org/package/ghc-typelits-knownnat-0.2.4/docs/src/GHC-TypeLits-KnownNat-Solver.html
+--   Module     :  GHC.TypeLits.KnownNat.Solver
+--   Copyright  :  (C) 2016, University of Twente
+--   License    :  BSD2 (see the file LICENSE)
+--   Maintainer :  Christiaan Baaij <christiaan.baaij@gmail.com>
 --
 -----------------------------------------------------------------------------
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE RecordWildCards      #-}
-{-# LANGUAGE TupleSections        #-}
 
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -32,9 +34,9 @@ import           Data.Maybe     --      (catMaybes, fromMaybe, mapMaybe)
 
 import           Class
 import           Coercion
---import           FamInst
+import           FamInst (tcInstNewTyCon_maybe)
 --import           FastString
---import           Id
+import Id         (idType)
 --import           InstEnv             (DFunId)
 import           Name
 import           Outputable          (Outputable (..), showSDocUnsafe)
@@ -46,11 +48,14 @@ import           TcType
 import           TyCon
 --import           TyCoRep
 import           Type
-import Var
+import           Var (DFunId)
 import           UniqFM (UniqFM)
 import qualified UniqFM
-import qualified Unique
---import           TysWiredIn          (listTyCon)
+-- import qualified Unique
+import PrelNames
+import Module
+import           TysWiredIn
+import Numeric.Dimensions.Inference.KnownNatFuns ()
 
 -- import           Numeric.Dimensions.Inference.Types
 
@@ -68,68 +73,202 @@ plugin = defaultPlugin { tcPlugin = const $ Just inferNatsPlugin }
 
 inferNatsPlugin :: TcPlugin
 inferNatsPlugin = TcPlugin
-  { tcPluginInit  = return ()
-  , tcPluginSolve = const decideNatOps
+  { tcPluginInit  = initInferenceTypes
+  , tcPluginSolve = decideNatOps
   , tcPluginStop  = const (return ())
   }
 
-decideNatOps ::  [Ct] -- ^ Givens
-              -> [Ct] -- ^ Deriveds
-              -> [Ct] -- ^ Wanteds
-              -> TcPluginM TcPluginResult
-decideNatOps _ _ []      = return (TcPluginOk [] [])
-decideNatOps givens _ wanteds = do
-  tcPluginIO . print . catMaybes $ map getKnownNatMaybe givens
-  uncurry TcPluginOk . second concat . unzip . catMaybes <$> mapM checkNats wanteds
-
-getKnownNatMaybe :: Ct -> Maybe (TyVar, EvVar)
-getKnownNatMaybe CDictCan{ cc_ev = CtGiven {ctev_evar = v, ctev_pred = t} } =
-  case classifyPredType t of
-    ClassPred cl (t0:_) -> if getOccName cl == mkOccName tcClsName "KnownNat"
-                          then flip (,) v <$> tcGetTyVar_maybe t0
-                          else Nothing
-    _ -> Nothing
-getKnownNatMaybe _ = Nothing
+decideNatOps :: Maybe InferenceTypes
+             -> [Ct] -- ^ Givens
+             -> [Ct] -- ^ Deriveds
+             -> [Ct] -- ^ Wanteds
+             -> TcPluginM TcPluginResult
+decideNatOps _ _ _ []      = return (TcPluginOk [] [])
+decideNatOps (Just it) givens _ wanteds
+  = fmap (uncurry TcPluginOk) -- wrap a list of solved constraints and a list of new Wanteds
+  . runInference it givens -- runInference looks up a list of known KnownNat Constraints
+                           -- and passes it in the checkNats thing;
+                           -- it also manages a list of new constraints
+  $ catMaybes <$> mapM checkNats wanteds
+decideNatOps _ _ _ _ = return (TcPluginOk [] [])
 
 
-type KnownNatMap = UniqFM EvVar
-
-lookupKnownNatEvVar :: KnownNatMap -> TyVar -> Maybe EvVar
-lookupKnownNatEvVar = UniqFM.lookupUFM
-
--- | Map: TyVar -> EvVar
-getKnownNats :: [Ct] -> UniqFM EvVar
-getKnownNats = UniqFM.listToUFM . mapMaybe getKnownNatMaybe
-
-
-checkNats :: Ct -> TcPluginM (Maybe ((EvTerm, Ct), [Ct]))
-checkNats ct@CDictCan{ cc_ev = CtWanted{ctev_pred = t, ctev_loc = myLoc}} = do
-  tcPluginIO . putStrLn $ "Checking!! " ++ show t
-  case classifyPredType t of
-    ClassPred cl types ->
-      case ( getOccName cl == mkOccName tcClsName "KnownNat"
-           , splitTyConApp_maybe <$> types
-           ) of
-        (True, [Just (constr, apps)])
-          | Just natOp <- getNatOpMaybe constr -> do
-              tcPluginIO . putStrLn $ "Checking... " ++ show apps
-              newWanteds <- traverse (fmap CNonCanonical . newWanted myLoc . mkClassPred cl . (:[])) apps
-              return $ Just
-                  ( ( EvLit (EvNum 17), ct)  -- (EvStr $ mkFastString "It does not work this way :("), ct )
-                  , newWanteds
-                  )
-          | otherwise -> return Nothing
-        _ -> return Nothing
-    _ -> return Nothing
+checkNats :: Ct -> InferenceM (Maybe (EvTerm, Ct))
+checkNats ct@CDictCan{ cc_ev = CtWanted{ctev_pred = t, ctev_loc = myLoc}}
+  | ClassPred cl [opType] <- classifyPredType t
+  , "KnownNat" <- occNameString (getOccName cl)
+  , Just (constr, apps) <- splitTyConApp_maybe opType = do
+      -- make an evidence term for each type argument of our operation
+      argEvTerms <- traverse (getKnownNatEvTerm myLoc) apps
+      -- Construct evidence
+      it <- getITypes
+      return $ flip (,) ct
+            <$> produceEvidenceTerm it opType constr apps argEvTerms
 checkNats _ = return Nothing
 
-getNatOpMaybe :: TcTyCon -> Maybe (Integer -> Integer -> Integer)
-getNatOpMaybe c = case occNameString (getOccName c) of
-  "+" -> Just (+)
-  "-" -> Just (-)
-  "*" -> Just (*)
-  "^" -> Just (^)
-  _   -> Nothing
+-- | Lookup existing or create new evidence term for a given type.
+--   Make sure to call it on kind Nat!!!
+getKnownNatEvTerm :: CtLoc -- current location is needed to crate a new wanted in case we need it
+                  -> Type -- lookup evidence for this type or create a new one
+                  -> InferenceM EvTerm
+getKnownNatEvTerm loc x
+    -- Evidence for a numeric literal is obvious
+  | Just i <- isNumLitTy x = return $ EvLit (EvNum i)
+    -- Lookup or create evidence for a variable
+  | Just v <- getTyVar_maybe x = getKnownNatVarEvTerm loc v
+    -- Create a new variable for other types of expressions
+  | otherwise = inTcPluginM (newFlexiTyVar typeNatKind) >>= newWantedKnownNat loc
+
+
+--------------------------------------------------------------------------------
+-- Actual conversion happens here
+--------------------------------------------------------------------------------
+
+-- | Generate evidence that Nat operation is KnownNat
+produceEvidenceTerm :: InferenceTypes  -- ^ Pre-loaded definitions for types and classes
+                    -> Type            -- ^ Nat operation type (i.e. rezT = constr + argTypes)
+                    -> TyCon           -- ^ Nat operation type constructor
+                    -> [Type]          -- ^ List of arguments
+                    -> [EvTerm]        -- ^ List of corresponding evidences being of KnownNat
+                    -> Maybe EvTerm
+produceEvidenceTerm InferenceTypes{..} rezT constr argTypes argEvTerms
+  | -- Get id of a function used to get evidence at the term level
+    Just natOpFunId <- natOpMaybe constr
+    -- TcCoercion for transform: SNat' (f x y) ~ Integer
+  , Just (_, coerceSNat'Integer) <- tcInstNewTyCon_maybe sNatTyCon [rezT]
+    -- Evidence produced by using function application
+  , funEv <- EvDFunApp natOpFunId argTypes argEvTerms
+  , Just (_, coerceKnownNatSNat) <- tcInstNewTyCon_maybe (classTyCon knownNatClass) [rezT] -- KnownNat n ~ SNat n
+  , [ kn_meth ] <- classMethods knownNatClass
+  , Just kn_tcRep <- tyConAppTyCon_maybe -- SNat
+                      $ funResultTy      -- SNat n
+                      $ dropForAlls      -- KnownNat n => SNat n
+                      $ idType kn_meth   -- forall n. KnownNat n => SNat n
+  , Just (_, coerceSNatInteger) <- tcInstNewTyCon_maybe kn_tcRep [rezT]  -- SNat n ~ Integer
+  , op_to_kn <-  coerceSNat'Integer `mkTcTransCo` mkTcSymCo (coerceKnownNatSNat `mkTcTransCo` coerceSNatInteger)
+    = Just $ mkEvCast funEv op_to_kn
+  | otherwise = Nothing
+
+
+--------------------------------------------------------------------------------
+-- Custom plugin environment definition
+--------------------------------------------------------------------------------
+
+-- | Keep useful inference information here
+data InferenceTypes = InferenceTypes
+  { knownNatClass :: !Class
+    -- ^ Used to create KnownNat constraints
+  , natOpMaybe :: TyCon -> Maybe DFunId
+    -- ^ Get substitute function id by type constructor
+  , sNatTyCon  :: TyCon
+    -- ^ Type constructor for our SNat' substitute
+  }
+
+initInferenceTypes :: TcPluginM (Maybe InferenceTypes)
+initInferenceTypes = do
+    knownNatClass <- tcLookupClass knownNatClassName
+    frModule <- findImportedModule (mkModuleName "Numeric.Dimensions.Inference.KnownNatFuns") Nothing
+    case frModule of
+      Found _ thisModule -> do
+        sNatTyCon <- lookupOrig thisModule (mkOccName tcName "SNat'") >>= tcLookupTyCon
+        funAddId  <- lookupOrig thisModule (mkOccName varName "funAdd") >>= tcLookupId
+        funRemId  <- lookupOrig thisModule (mkOccName varName "funRem") >>= tcLookupId
+        funMulId  <- lookupOrig thisModule (mkOccName varName "funMul") >>= tcLookupId
+        funPowId  <- lookupOrig thisModule (mkOccName varName "funPow") >>= tcLookupId
+        let natOpMaybe c = case occNameString (getOccName c) of
+              "+" -> Just funAddId
+              "-" -> Just funRemId
+              "*" -> Just funMulId
+              "^" -> Just funPowId
+              _   -> Nothing
+        return $ Just InferenceTypes {..}
+      _ -> return Nothing
+
+type KnownNatMap = UniqFM EvTerm
+
+-- | State monad to keep list of KnownNat devinitions,
+--   Reader monad for InferenceTypes,
+--   and Writer monad for a list of new Wanted constraints
+newtype InferenceM a = InferenceM
+  { runInferenceM :: (KnownNatMap, InferenceTypes) -> TcPluginM (a, (KnownNatMap, [Ct])) }
+
+-- | Get InferenceTypes from Reader environment
+getITypes :: InferenceM InferenceTypes
+getITypes = InferenceM $ \(x,it) -> return (it, (x,[]))
+
+-- | Run a child monad within Inference
+inTcPluginM :: TcPluginM a -> InferenceM a
+inTcPluginM m = InferenceM $ \(s, _) -> flip (,) (s, []) <$> m
+
+
+
+instance Functor InferenceM where
+  fmap f x = InferenceM $ fmap (first f) . runInferenceM x
+
+instance Applicative InferenceM where
+  pure x = InferenceM $ pure . (,) x . second (const [])
+  af <*> ax = InferenceM $ \(s0, it) -> do
+      (x, (s1, ws1)) <- runInferenceM ax (s0, it)
+      (f, (s2, ws2)) <- runInferenceM af (s1, it)
+      return (f x, (s2,ws1 ++ ws2))
+
+instance Monad InferenceM where
+  return = pure
+  mx >>= f = InferenceM $ \(s0, it) -> do
+      (x, (s1, ws1)) <- runInferenceM mx (s0, it)
+      (y, (s2, ws2)) <- runInferenceM (f x) (s1, it)
+      return (y, (s2, ws1 ++ ws2))
+
+-- | Run inference with the list of givens
+--   And return a list of wanteds
+runInference :: InferenceTypes
+             -> [Ct] -- ^ list of givens
+             -> InferenceM a  -- ^ the whole inference stuff
+             -> TcPluginM (a, [Ct]) -- ^ computation result plus a list of new wanteds
+runInference it givens inf = second snd <$> runInferenceM inf (getKnownNats givens, it)
+  where
+    -- | Extract evidence about given KnownNat var from given Ct
+    getKnownNatMaybe :: Ct -> Maybe (TyVar, EvTerm)
+    getKnownNatMaybe CDictCan{ cc_ev = ev@CtGiven { ctev_pred = t } }
+      | ClassPred cl (t0:_) <- classifyPredType t
+      , "KnownNat" <- occNameString (getOccName cl)
+      = flip (,) (ctEvTerm ev) <$> tcGetTyVar_maybe t0
+    getKnownNatMaybe _ = Nothing
+    -- | Map: TyVar -> EvVar
+    getKnownNats :: [Ct] -> KnownNatMap
+    getKnownNats = UniqFM.listToUFM . mapMaybe getKnownNatMaybe
+
+
+-- | Create a new evidence term for KnownNat constraint by making a new Wanted
+newWantedKnownNat :: CtLoc -- ^ current location (of wanted constraint we trying to solve now)
+                  -> TyVar -- ^ type variable we want to have a new wanted
+                  -> InferenceM  EvTerm
+newWantedKnownNat loc tv = InferenceM $ \(knownNatMap, it) -> do
+    let predType = mkClassPred (knownNatClass it) [t]
+    -- Create a new wanted constraint
+    wantedCtEv <- newWanted loc predType
+    let ev      = ctEvTerm wantedCtEv
+        wanted  = mkNonCanonical wantedCtEv
+    -- Set the source-location of the new wanted constraint to the source
+    -- location of the [W]anted constraint we are currently trying to solve
+    let ct_ls   = ctLocSpan loc
+        ctl     = ctEvLoc  wantedCtEv
+        wanted' = setCtLoc wanted (setCtLocSpan ctl ct_ls)
+    return (ev, (UniqFM.addToUFM knownNatMap tv ev, [wanted']))
+  where
+    t = mkTyVarTy tv
+
+-- | Lookup existing or create new evidence term for a given type variable
+getKnownNatVarEvTerm :: CtLoc -- current location is needed to crate a new wanted in case we need it
+                     -> TyVar -- lookup evidence for this type variable or create a new one
+                     -> InferenceM EvTerm
+getKnownNatVarEvTerm l tv = InferenceM
+    (\(knownNatMap, _) -> return (UniqFM.lookupUFM knownNatMap tv, (knownNatMap,[]))) >>= m
+  where
+    m (Just ev) = return ev
+    m Nothing   = newWantedKnownNat l tv
+
+
 
 
 

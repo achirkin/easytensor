@@ -184,55 +184,55 @@ data instance DataFrame t (xns :: [XNat])
   --   , Refl <- (unsafeCoerce Refl :: n :~: Head ns) = NCommons.ewfold @(Idx '[n])
   --     (\_ x a -> KnownDataFrame (Array $ AFam.Scalar x) : a) [] df
 
-instance ( xnsm ~ (N n ': xns')
-         , xns ~ Init xnsm
-         , Last xnsm ~ XN
-         , ns ~ UnwrapDims xns
-         , NCommons.PrimBytes (Array Float ns)
-         , Dimensions ns
-         , XDimensions xns
-         )
-      => IsList (DataFrame Float ((N n ': xns') :: [XNat])) where
-  type Item (DataFrame Float (N n ': xns')) = DataFrame Float (UnwrapDims (Init (N n ': xns')))
-  fromList xs = fromListN (length xs) xs
-  fromListN _ []  = error "DataFrame fromList: the list must have at least two elements"
-  fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
-  fromListN n@(I# n#) xs  | Just dLast@(SomeNat (pm :: Proxy m)) <- someNatVal (fromIntegral n)
-                          , (pnsm :: Proxy nsm, SnocEvidence dnsm, Refl, Refl, Refl) <- makeEvs pm
-                          , I# len# <- totalDim (Proxy @ns)
-                          , xd <- xdim @nsm @xnsm Proxy
-                  = SomeDataFrame xd (df pnsm len#)
-    where
-      elSize# = NCommons.byteSize (head xs)
-      df :: NCommons.PrimBytes (Array Float nsm) => Proxy nsm -> Int# -> Array Float nsm
-      df _ len# = case runRW#
-        ( \s0 -> let !(# s1, marr #) = newByteArray# (n# *# elSize# *# len#) s0
-                     go s _ [] = s
-                     go s pos (KnownDataFrame earr : as) = case NCommons.toBytes earr of
-                       (# eoff#, _, ea #) -> go
-                         (copyByteArray# ea (eoff# *# elSize#) marr (pos *# elSize#) (elSize# *# len#) s)
-                         (pos +# len#)
-                         as
-                     s2 = go s1 0# xs
-                 in unsafeFreezeByteArray# marr s2
-        ) of (# _, r #) -> NCommons.fromBytes (# 0#, n# *# len#, r #)
-      makeEvs :: KnownNat m
-              => Proxy m
-              -> ( Proxy nsm
-                 , SnocEvidence ns m
-                 , nsm :~: (ns +: m)
-                 , FixedDim  xnsm (ns +: m) :~: (ns +: m)
-                 , FixedXDim xnsm (ns +: m) :~: xnsm
-                 )
-      makeEvs p = (Proxy, snocEvidence (Proxy @ns) p, unsafeCoerce Refl, unsafeCoerce Refl, unsafeCoerce Refl)
-  fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
-  toList (SomeDataFrame _ df) = go offset
-    where
-      !(I# step) = totalDim (Proxy @ns)
-      !(# offset, lenN, arr #) = NCommons.toBytes df
-      lim = offset +# lenN
-      go pos | isTrue# (pos >=# lim)  = []
-             | otherwise = NCommons.fromBytes (# pos, step , arr #) : go (pos +# step)
+-- instance ( xnsm ~ (N n ': xns')
+--          , xns ~ Init xnsm
+--          , Last xnsm ~ XN
+--          , ns ~ UnwrapDims xns
+--          , NCommons.PrimBytes (Array Float ns)
+--          , Dimensions ns
+--          , XDimensions xns
+--          )
+--       => IsList (DataFrame Float ((N n ': xns') :: [XNat])) where
+--   type Item (DataFrame Float (N n ': xns')) = DataFrame Float (UnwrapDims (Init (N n ': xns')))
+--   fromList xs = fromListN (length xs) xs
+--   fromListN _ []  = error "DataFrame fromList: the list must have at least two elements"
+--   fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
+--   fromListN n@(I# n#) xs  | Just dLast@(SomeNat (pm :: Proxy m)) <- someNatVal (fromIntegral n)
+--                           , (pnsm :: Proxy nsm, SnocEvidence dnsm, Refl, Refl, Refl) <- makeEvs pm
+--                           , I# len# <- totalDim (Proxy @ns)
+--                           , xd <- xdim @nsm @xnsm Proxy
+--                   = SomeDataFrame xd (df pnsm len#)
+--     where
+--       elSize# = NCommons.byteSize (head xs)
+--       df :: NCommons.PrimBytes (Array Float nsm) => Proxy nsm -> Int# -> Array Float nsm
+--       df _ len# = case runRW#
+--         ( \s0 -> let !(# s1, marr #) = newByteArray# (n# *# elSize# *# len#) s0
+--                      go s _ [] = s
+--                      go s pos (KnownDataFrame earr : as) = case NCommons.toBytes earr of
+--                        (# eoff#, _, ea #) -> go
+--                          (copyByteArray# ea (eoff# *# elSize#) marr (pos *# elSize#) (elSize# *# len#) s)
+--                          (pos +# len#)
+--                          as
+--                      s2 = go s1 0# xs
+--                  in unsafeFreezeByteArray# marr s2
+--         ) of (# _, r #) -> NCommons.fromBytes (# 0#, n# *# len#, r #)
+--       makeEvs :: KnownNat m
+--               => Proxy m
+--               -> ( Proxy nsm
+--                  , SnocEvidence ns m
+--                  , nsm :~: (ns +: m)
+--                  , FixedDim  xnsm (ns +: m) :~: (ns +: m)
+--                  , FixedXDim xnsm (ns +: m) :~: xnsm
+--                  )
+--       makeEvs p = (Proxy, snocEvidence (Proxy @ns) p, unsafeCoerce Refl, unsafeCoerce Refl, unsafeCoerce Refl)
+--   fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
+--   toList (SomeDataFrame _ df) = go offset
+--     where
+--       !(I# step) = totalDim (Proxy @ns)
+--       !(# offset, lenN, arr #) = NCommons.toBytes df
+--       lim = offset +# lenN
+--       go pos | isTrue# (pos >=# lim)  = []
+--              | otherwise = NCommons.fromBytes (# pos, step , arr #) : go (pos +# step)
 
 
 -- | This class is used to pattern match against available data types
