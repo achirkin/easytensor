@@ -33,7 +33,7 @@ module Numeric.Dimensions.List
   , Tail, Init, Last, Concat, Reverse, Take, Drop, Suffix, Prefix
   , IsPrefix, IsSuffix
   , ConcatList (..), KnownList (..), TypeList (..)
-  , inferConcat, inferSuffix, inferPrefix, ConcatEvidence, KnownListEvidence
+  , inferConcat, inferSuffix, inferPrefix, ConcatEvidence (..), KnownListEvidence (..)
   ) where
 
 import GHC.TypeLits
@@ -214,7 +214,12 @@ class KnownList (xs :: [k]) where
     inferInitKnownList :: p (x ': xs) -> KnownListEvidence (Init (x ': xs))
     -- | Tail of the list is also known list
     inferTailKnownList :: p xs -> KnownListEvidence (Tail xs)
+    -- | Take KnownNat of the list is also known list
     inferTakeNKnownList :: KnownNat n => p n -> q xs -> KnownListEvidence (Take n xs)
+    -- | Drop KnownNat of the list is also known list
+    inferDropNKnownList :: KnownNat n => p n -> q xs -> KnownListEvidence (Drop n xs)
+    -- | Reverse of the list is also known list
+    inferReverseKnownList :: KnownNat n => p n -> q xs -> KnownListEvidence (Reverse xs)
 
 
 
@@ -239,6 +244,10 @@ instance KnownList ('[] :: [k]) where
   {-# INLINE inferTailKnownList #-}
   inferTakeNKnownList _ _ = KnownListEvidence
   {-# INLINE inferTakeNKnownList #-}
+  inferDropNKnownList _ _ = KnownListEvidence
+  {-# INLINE inferDropNKnownList #-}
+  inferReverseKnownList _ _ = KnownListEvidence
+  {-# INLINE inferReverseKnownList #-}
 
 instance KnownList xs => KnownList (x ': xs :: [k]) where
   order _ = order (Proxy :: Proxy xs) + 1
@@ -250,10 +259,10 @@ instance KnownList xs => KnownList (x ': xs :: [k]) where
     , Refl <- unsafeCoerce Refl :: (x ': (xs ++ bs)) :~: ((x ': xs) ++ bs)
     = KnownListEvidence :: KnownListEvidence (x ': (xs ++ bs))
   {-# INLINE inferConcatKnownList #-}
-  -- inferPrefixKnownList (pbs :: p bs) _
-  --   | TLEmpty <- tList pbs
-  --   = KnownListEvidence :: KnownListEvidence (x ': (xs ++ bs))
-  -- {-# INLINE inferPrefixKnownList #-}
+  inferPrefixKnownList (pbs :: p bs) xs
+    | Refl <- unsafeCoerce Refl :: Prefix bs (x ': xs) :~: Take (Length (x ': xs) - Length bs) (x ': xs)
+    = inferTakeNKnownList (Proxy @(Length (x ': xs) - Length bs)) xs
+  {-# INLINE inferPrefixKnownList #-}
   inferSuffixKnownList (pas :: p as) _
     | TLEmpty <- tList pas
       = KnownListEvidence
@@ -275,16 +284,15 @@ instance KnownList xs => KnownList (x ': xs :: [k]) where
   {-# INLINE inferInitKnownList #-}
   inferTailKnownList _ = KnownListEvidence
   {-# INLINE inferTailKnownList #-}
-  inferTakeNKnownList (pn :: p n) _
-    | 0 <- natVal pn
-    , Refl <- unsafeCoerce Refl :: Take n (x ': xs) :~: (x ': xs)
-      = KnownListEvidence :: KnownListEvidence (x ': xs)
-    | otherwise
-    , Refl <- unsafeCoerce Refl :: Take n (x ': xs) :~: (x ': Take (n-1) xs)
-    , KnownListEvidence <- inferTakeNKnownList (Proxy @(n-1)) (Proxy @xs)
-      = KnownListEvidence :: KnownListEvidence (x ': Take (n-1) xs)
-  {-# INLINE inferTakeNKnownList #-}
-
+  -- inferTakeNKnownList (pn :: p n) _
+  --   | 0 <- natVal pn
+  --   , Refl <- unsafeCoerce Refl :: Take n (x ': xs) :~: '[]
+  --     = KnownListEvidence :: KnownListEvidence '[]
+  --   | otherwise
+  --   , Refl <- unsafeCoerce Refl :: Take n (x ': xs) :~: (x ': Take (n-1) xs)
+  --   , KnownListEvidence <- inferTakeNKnownList (Proxy @(n-1)) (Proxy @xs)
+  --     = KnownListEvidence :: KnownListEvidence (x ': Take (n-1) xs)
+  -- {-# INLINE inferTakeNKnownList #-}
 
 
 --------------------------------------------------------------------------------

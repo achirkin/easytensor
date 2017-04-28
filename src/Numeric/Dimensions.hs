@@ -43,7 +43,7 @@ module Numeric.Dimensions
 --  , inferSubDimensions
   , module Numeric.Dimensions.List
     -- * Type evidence
-  , ConcatEvidence (..), SuffixEvidence (..), PrefixEvidence (..), SnocEvidence (..)
+  -- , ConcatEvidence (..), SuffixEvidence (..), PrefixEvidence (..), SnocEvidence (..)
 --  , unsafeEqProof, unsafeConcatProofs, unsafeConsProof, listProof
 --  , ListProof (..), ConcatProofs (..), ConsProof (..)
   ) where
@@ -257,18 +257,18 @@ class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
   -- | For Enum -- difference in offsets between two Indices
   --      (a `diffIdx` b) = a - b
   diffIdx   :: Idx ds -> Idx ds -> Int
-  -- | Get various evidence that `as ++ bs ~ asbs` given as and bs
-  concatEvidence :: (Dimensions bs)
-                 => p (ds :: [Nat]) -> q (bs :: [Nat])   -> ConcatEvidence (ds :: [Nat]) (bs :: [Nat])
-  -- | Get various evidence that `as ++ bs ~ asbs` given bs and asbs
-  prefixEvidence :: (Dimensions bs, IsSuffix bs ds ~ 'True)
-                 => p (bs :: [Nat]) -> q (ds :: [Nat]) -> PrefixEvidence (bs :: [Nat]) (ds :: [Nat])
-  -- | Get various evidence that `as ++ bs ~ asbs` given as and asbs
-  suffixEvidence :: (Dimensions as, FiniteDims ds, IsPrefix as ds ~ 'True)
-                 => p (as :: [Nat]) -> q (ds :: [Nat]) -> SuffixEvidence (as :: [Nat]) (ds :: [Nat])
-  -- | Get various evidence that `xs +: z ~ xsz` given xs and z
-  snocEvidence :: (FiniteDims ds, KnownNat z)
-                 => p (ds :: [Nat]) -> q (z :: Nat) -> SnocEvidence ds z
+  -- -- | Get various evidence that `as ++ bs ~ asbs` given as and bs
+  -- concatEvidence :: (Dimensions bs)
+  --                => p (ds :: [Nat]) -> q (bs :: [Nat])   -> ConcatEvidence (ds :: [Nat]) (bs :: [Nat])
+  -- -- | Get various evidence that `as ++ bs ~ asbs` given bs and asbs
+  -- prefixEvidence :: (Dimensions bs, IsSuffix bs ds ~ 'True)
+  --                => p (bs :: [Nat]) -> q (ds :: [Nat]) -> PrefixEvidence (bs :: [Nat]) (ds :: [Nat])
+  -- -- | Get various evidence that `as ++ bs ~ asbs` given as and asbs
+  -- suffixEvidence :: (Dimensions as, FiniteDims ds, IsPrefix as ds ~ 'True)
+  --                => p (as :: [Nat]) -> q (ds :: [Nat]) -> SuffixEvidence (as :: [Nat]) (ds :: [Nat])
+  -- -- | Get various evidence that `xs +: z ~ xsz` given xs and z
+  -- snocEvidence :: (FiniteDims ds, KnownNat z)
+  --                => p (ds :: [Nat]) -> q (z :: Nat) -> SnocEvidence ds z
 
 -- | Similar to `const` or `asProxyTypeOf`;
 --   to be used on such implicit functions as `dim`, `dimMax`, etc.
@@ -470,16 +470,16 @@ instance Dimensions'' ('[] :: [Nat]) where
   {-# INLINE stepIdx #-}
   diffIdx _ _ = 0
   {-# INLINE diffIdx #-}
-  concatEvidence _ bs = ConcatEvidence (dim `inSpaceOf` bs)
-  {-# INLINE concatEvidence #-}
-  prefixEvidence (_ :: q bs) _ = case (unsafeEqProof :: bs :~: '[]) of
-    Refl -> PrefixEvidence D
-  {-# INLINE prefixEvidence #-}
-  suffixEvidence (_ :: q as) _ = case (unsafeEqProof :: as :~: '[]) of
-    Refl -> SuffixEvidence D
-  {-# INLINE suffixEvidence #-}
-  snocEvidence _ (_ :: q n) = SnocEvidence (Proxy @n :* D)
-  {-# INLINE snocEvidence #-}
+  -- concatEvidence _ bs = ConcatEvidence (dim `inSpaceOf` bs)
+  -- {-# INLINE concatEvidence #-}
+  -- prefixEvidence (_ :: q bs) _ = case (unsafeEqProof :: bs :~: '[]) of
+  --   Refl -> PrefixEvidence D
+  -- {-# INLINE prefixEvidence #-}
+  -- suffixEvidence (_ :: q as) _ = case (unsafeEqProof :: as :~: '[]) of
+  --   Refl -> SuffixEvidence D
+  -- {-# INLINE suffixEvidence #-}
+  -- snocEvidence _ (_ :: q n) = SnocEvidence (Proxy @n :* D)
+  -- {-# INLINE snocEvidence #-}
 
 instance ( Dimensions'' ds
          , KnownList ds
@@ -548,31 +548,31 @@ instance ( Dimensions'' ds
   diffIdx ds@(i1:!is1) (i2:!is2) = i1 - i2
         + fromInteger (natVal' (headDim# ds)) * diffIdx is1 is2
   {-# INLINE diffIdx #-}
-  concatEvidence _ (bs :: q bs) = case concatEvidence (Proxy @ds) bs of
-    ConcatEvidence (asbs :: Dim asbs) -> case unsafeConcatProofs @(d ': ds) @bs @(d ': asbs) of
-      ConcatProofs -> ConcatEvidence (Proxy @d :* asbs)
-  {-# INLINE concatEvidence #-}
-  prefixEvidence (bs :: q bs) dds =
-    if (order dds - order bs) > 0
-    then case (unsafeEqProof :: IsSuffix bs ds :~: 'True) of
-      Refl -> case prefixEvidence bs (Proxy @ds) of
-        PrefixEvidence (as :: Dim as) -> case ( unsafeConcatProofs @(d ': as) @bs @(d ': ds) ) of
-          ConcatProofs -> PrefixEvidence (unsafeCoerce $ (Proxy @d) :* as)
-    else case (# unsafeEqProof :: (d ': ds) :~: bs
-               , unsafeConcatProofs @'[] @(d ': ds) @(d ': ds)
-               #) of
-      (# Refl, ConcatProofs #) -> PrefixEvidence D
-  {-# INLINE prefixEvidence #-}
-  suffixEvidence (das :: q das) _ = case tList das of
-    TLEmpty -> case ( unsafeConcatProofs @'[] @(d ': ds) @(d ': ds) ) of
-      ConcatProofs -> SuffixEvidence (dim @(d ': ds))
-    TLCons _ (as :: TypeList as) -> case ( unsafeEqProof :: IsPrefix as ds :~: 'True ) of
-      Refl -> unsafeCoerce (suffixEvidence as (Proxy @ds))
-  {-# INLINE suffixEvidence #-}
-  snocEvidence _ (p :: q z) | Refl <- unsafeCoerce Refl :: ((d :+ ds) +: z) :~: (d :+ (ds +: z))
-                            , SnocEvidence dimds <- snocEvidence (Proxy @ds) p
-                            = SnocEvidence (Proxy @d :* dimds)
-  {-# INLINE snocEvidence #-}
+  -- concatEvidence _ (bs :: q bs) = case concatEvidence (Proxy @ds) bs of
+  --   ConcatEvidence (asbs :: Dim asbs) -> case unsafeConcatProofs @(d ': ds) @bs @(d ': asbs) of
+  --     ConcatProofs -> ConcatEvidence (Proxy @d :* asbs)
+  -- {-# INLINE concatEvidence #-}
+  -- prefixEvidence (bs :: q bs) dds =
+  --   if (order dds - order bs) > 0
+  --   then case (unsafeEqProof :: IsSuffix bs ds :~: 'True) of
+  --     Refl -> case prefixEvidence bs (Proxy @ds) of
+  --       PrefixEvidence (as :: Dim as) -> case ( unsafeConcatProofs @(d ': as) @bs @(d ': ds) ) of
+  --         ConcatProofs -> PrefixEvidence (unsafeCoerce $ (Proxy @d) :* as)
+  --   else case (# unsafeEqProof :: (d ': ds) :~: bs
+  --              , unsafeConcatProofs @'[] @(d ': ds) @(d ': ds)
+  --              #) of
+  --     (# Refl, ConcatProofs #) -> PrefixEvidence D
+  -- {-# INLINE prefixEvidence #-}
+  -- suffixEvidence (das :: q das) _ = case tList das of
+  --   TLEmpty -> case ( unsafeConcatProofs @'[] @(d ': ds) @(d ': ds) ) of
+  --     ConcatProofs -> SuffixEvidence (dim @(d ': ds))
+  --   TLCons _ (as :: TypeList as) -> case ( unsafeEqProof :: IsPrefix as ds :~: 'True ) of
+  --     Refl -> unsafeCoerce (suffixEvidence as (Proxy @ds))
+  -- {-# INLINE suffixEvidence #-}
+  -- snocEvidence _ (p :: q z) | Refl <- unsafeCoerce Refl :: ((d :+ ds) +: z) :~: (d :+ (ds +: z))
+  --                           , SnocEvidence dimds <- snocEvidence (Proxy @ds) p
+  --                           = SnocEvidence (Proxy @d :* dimds)
+  -- {-# INLINE snocEvidence #-}
 
 
 
@@ -729,31 +729,31 @@ unsafeConcatProofs = unsafeCoerce (ConcatProofs @'[] @'[] @'[])
 --contractEvidence _ _ = unsafeConcatProofs
 
 
-
-data (Dimensions as, Dimensions bs)
-  => ConcatEvidence (as :: [Nat]) (bs :: [Nat])
-  = forall (asbs :: [Nat])
-  . ( ConcatList as bs asbs
-    , Dimensions asbs
-    ) => ConcatEvidence (Dim (asbs :: [Nat]))
-
-data (Dimensions bs, Dimensions asbs)
-  => PrefixEvidence (bs :: [Nat]) (asbs :: [Nat])
-  = forall (as :: [Nat])
-  . ( ConcatList as bs asbs
-    , Dimensions as
-    ) => PrefixEvidence (Dim (as :: [Nat]))
-
-data (Dimensions as, Dimensions asbs)
-  => SuffixEvidence (as :: [Nat]) (asbs :: [Nat])
-  = forall (bs :: [Nat])
-  . ( ConcatList as bs asbs
-    , Dimensions bs
-    ) => SuffixEvidence (Dim (bs :: [Nat]))
-
-data (Dimensions xs, KnownNat z)
-  => SnocEvidence (xs :: [Nat]) (z::Nat)
-  = Dimensions (xs +: z) => SnocEvidence (Dim (xs +: z))
+--
+-- data (Dimensions as, Dimensions bs)
+--   => ConcatEvidence (as :: [Nat]) (bs :: [Nat])
+--   = forall (asbs :: [Nat])
+--   . ( ConcatList as bs asbs
+--     , Dimensions asbs
+--     ) => ConcatEvidence (Dim (asbs :: [Nat]))
+--
+-- data (Dimensions bs, Dimensions asbs)
+--   => PrefixEvidence (bs :: [Nat]) (asbs :: [Nat])
+--   = forall (as :: [Nat])
+--   . ( ConcatList as bs asbs
+--     , Dimensions as
+--     ) => PrefixEvidence (Dim (as :: [Nat]))
+--
+-- data (Dimensions as, Dimensions asbs)
+--   => SuffixEvidence (as :: [Nat]) (asbs :: [Nat])
+--   = forall (bs :: [Nat])
+--   . ( ConcatList as bs asbs
+--     , Dimensions bs
+--     ) => SuffixEvidence (Dim (bs :: [Nat]))
+--
+-- data (Dimensions xs, KnownNat z)
+--   => SnocEvidence (xs :: [Nat]) (z::Nat)
+--   = Dimensions (xs +: z) => SnocEvidence (Dim (xs +: z))
 
 ---- | Fool typechecker by saying that list `xs` has Cons constructor
 --unsafeConsProof :: ConsProof (as :: [Nat])
