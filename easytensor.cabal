@@ -55,7 +55,6 @@ library
         Numeric.DataFrame.Contraction
         Numeric.DataFrame.Type
         Numeric.Dimensions.List
-        Numeric.Dimensions.Inference.KnownNatFuns
         -- Numeric.Vector
         -- Numeric.Vector.Base.FloatX2
         -- Numeric.Vector.Base.FloatXN
@@ -80,10 +79,11 @@ test-suite easytensor-test
         Numeric.DataFrame.Arbitraries
         Numeric.DataFrame.SubSpaceTest
         Numeric.DataFrame.BasicTest
+        Numeric.Dimensions.ListTest
     build-depends:
         base -any,
         QuickCheck -any,
         easytensor -any
     default-language: Haskell2010
     hs-source-dirs: test
-    ghc-options: -Wall -fwarn-tabs -threaded -rtsopts -with-rtsopts=-N
+    ghc-options: -Wall -fwarn-tabs -threaded -rtsopts -with-rtsopts=-N -package easytensor -fplugin Numeric.Dimensions.Inference

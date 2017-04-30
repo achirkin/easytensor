@@ -201,7 +201,7 @@ runDimensional xds d = withDim xds $ _runDimensional d
 --   plus we have all handy functions for `Dim` and `Idx` types.
 type Dimensions xs = ( KnownDims xs
                      , FiniteDims xs
-                     , KnownList xs
+                     , FiniteList xs
                      , Dimensions' xs
                      , Dimensions'' xs)
 
@@ -482,7 +482,7 @@ instance Dimensions'' ('[] :: [Nat]) where
   -- {-# INLINE snocEvidence #-}
 
 instance ( Dimensions'' ds
-         , KnownList ds
+         , FiniteList ds
          , KnownDims (d ': ds)
          )
           => Dimensions'' (d ': ds) where
@@ -585,7 +585,7 @@ appendIdx jjs@(j :! js) i = case proofCons jjs js of
     proofCons _ _ = unsafeCoerce Refl
 {-# INLINE appendIdx #-}
 
-splitIdx :: KnownList as => Idx (as ++ bs) -> (Idx as, Idx bs)
+splitIdx :: FiniteList as => Idx (as ++ bs) -> (Idx as, Idx bs)
 splitIdx idx = rez
   where
     getAs :: (Idx as, Idx bs) -> Proxy as
@@ -658,8 +658,8 @@ type family KnownDims (ns :: [Nat]) :: Constraint where
 
 type family FiniteDims (ns :: [Nat]) :: Constraint where
   FiniteDims '[] = ()
-  FiniteDims (x ': xs) = ( KnownList xs, FiniteDims xs)
-  FiniteDims xs = KnownList xs
+  FiniteDims (x ': xs) = ( FiniteList xs, FiniteDims xs)
+  FiniteDims xs = FiniteList xs
 
 
 
@@ -779,7 +779,7 @@ unsafeEqProof = unsafeCoerce Refl
 --                    . ( ConcatList as bs asbs
 --                      , Dimensions asbs
 --                      , FiniteDims as
---                      , KnownList as
+--                      , FiniteList as
 --                      )
 --                   => p as
 --                   -> q bs

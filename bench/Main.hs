@@ -92,10 +92,10 @@ main = do
 --    print $ subDimTest dfY Proxy
     print $ case someNatVal 5 of
               Nothing -> -1
-              Just (SomeNat p) -> case inferTakeNKnownList p (Proxy @[2,8,1,7,34,8,12,7,12,2,7,9,0,12]) of
-                                    kle@KnownListEvidence -> order kle
-    print $ case inferTakeNKnownList (Proxy @6) (Proxy @[2,8,1,7,34,8,12,7,12,2,7,9,0,12]) of
-                                    kle@KnownListEvidence -> order kle
+              Just (SomeNat p) -> case inferTakeNFiniteList p (Proxy @[2,8,1,7,34,8,12,7,12,2,7,9,0,12]) of
+                                    kle@FiniteListEvidence -> order kle
+    print $ case inferTakeNFiniteList (Proxy @6) (Proxy @[2,8,1,7,34,8,12,7,12,2,7,9,0,12]) of
+                                    kle@FiniteListEvidence -> order kle
     -- case (,) <$> someNatVal 5 <*> someNatVal 7 of
     --   Nothing -> print "Failed to do Test1"
     --   Just (SomeNat p, SomeNat q) -> print
