@@ -42,6 +42,7 @@ import GHC.Types (Type)
 import Data.Proxy (Proxy (..))
 import Unsafe.Coerce (unsafeCoerce)
 import Data.Type.Equality
+import Numeric.Dimensions.Inference
 
 -- | Synonym for a type-level cons
 --     (injective, since this is just a synonym for the list constructor)

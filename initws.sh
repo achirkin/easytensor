@@ -6,6 +6,7 @@ cabal update
 cabal sandbox init
 pushd .cabal-sandbox
 git clone --recursive https://github.com/achirkin/ghc-mod.git
+touch ghc-mod/ChangeLog
 popd
 cabal sandbox add-source .cabal-sandbox/ghc-mod
 cabal sandbox add-source .cabal-sandbox/ghc-mod/vendor/ghc-syb/utils
