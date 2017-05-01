@@ -6,8 +6,11 @@
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
+-- This is a plugin module to make possible better inference of KnownNat constraints
+-- for results of Nat operations and calculation of type-level lists length.
 --
--- This module has copied some chunks of code from Christiaan Baaij's
+--
+-- This module has some chunks of code copied from Christiaan Baaij's
 --   ghc-typelits-knownnat-0.2.4
 --   https://hackage.haskell.org/package/ghc-typelits-knownnat-0.2.4/docs/src/GHC-TypeLits-KnownNat-Solver.html
 --   Module     :  GHC.TypeLits.KnownNat.Solver
@@ -16,68 +19,59 @@
 --   Maintainer :  Christiaan Baaij <christiaan.baaij@gmail.com>
 --
 -----------------------------------------------------------------------------
-{-# LANGUAGE RecordWildCards      #-}
-
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE KindSignatures       #-}
-{-# LANGUAGE Rank2Types           #-}
-{-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE AllowAmbiguousTypes  #-}
-{-# LANGUAGE TypeApplications     #-}
-
-
-{-# LANGUAGE StandaloneDeriving   #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
--- {-# OPTIONS_GHC -fno-warn-unused-imports #-}
--- {-# OPTIONS_GHC -fno-warn-unused-binds #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE KindSignatures      #-}
+{-# LANGUAGE Rank2Types          #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeOperators       #-}
 module Numeric.Dimensions.Inference
   ( -- | Plugin is required by GHC to use Module as a typechecker plugin
     plugin
-    -- * Need to export everything from Inference.KnownNatFuns module
-    --   to make it able to lookup helper evidence functions
+    -- * Term-level evidence
+    -- `SNat'` type serves as a substitute for real SNat type hidden in `GHC.TypeLits`.
+    -- We also need to export term-level evidence funtions:
+    --  they do simple Integer arithmetics to support type-level Nat operations.
   , SNat' (..), funAdd, funRem, funMul, funPow, funSucc, funPred
   ) where
 
---import           Control.Applicative (Alternative (..))
-import           Control.Arrow
---import           Control.Monad       ((>=>))
---import           Data.Coerce
-import           Data.Maybe     --      (catMaybes, fromMaybe, mapMaybe)
---import           Data.Semigroup
-import Data.List (find)
+import           Control.Arrow (first, second)
+import           Data.List     (find)
+import           Data.Maybe    (catMaybes, mapMaybe)
+import           Data.Proxy    (Proxy (..))
+import           GHC.TypeLits
 
-import           Class
-import           Coercion
-import           FamInst (tcInstNewTyCon_maybe)
---import           FastString
-import Id         (idType)
---import           InstEnv             (DFunId)
-import           Name
-import           Outputable          (Outputable (..), showSDocUnsafe)
-import           Plugins             (Plugin (..), defaultPlugin)
-import           TcEvidence
-import           TcPluginM
-import           TcRnMonad
-import           TcType
-import           TyCon
---import           TyCoRep
-import           Type
-import           Var (DFunId)
-import           UniqFM (UniqFM)
-import qualified UniqFM
--- import qualified Unique
-import PrelNames
-import Module
-import Packages
-import TysWiredIn
-
-
-import GHC.TypeLits
-import Data.Proxy (Proxy (..))
-
--- import           Numeric.Dimensions.Inference.Types
+import           Class         (Class, classMethods, classTyCon)
+import           FamInst       (tcInstNewTyCon_maybe)
+import           Id            (idType)
+import           Module        (mkModuleName)
+import           Name          (getOccName, mkOccName, occNameString, tcName,
+                                varName)
+import           Plugins       (Plugin (..), defaultPlugin)
+import           PrelNames     (knownNatClassName)
+import           TcEvidence    (EvLit (EvNum),
+                                EvTerm (EvDFunApp, EvLit, EvSuperClass),
+                                mkEvCast, mkTcSymCo, mkTcTransCo)
+import           TcPluginM     (FindResult (Found), TcPluginM,
+                                findImportedModule, lookupOrig, newWanted,
+                                tcLookupClass, tcLookupId, tcLookupTyCon)
+import           TcRnMonad     (Ct (..), CtEvidence (..), CtLoc, TcPlugin (..),
+                                TcPluginResult (..), ctEvLoc, ctEvTerm,
+                                ctLocSpan, mkNonCanonical, setCtLoc,
+                                setCtLocSpan)
+import           TcType        (tcEqKind, tcGetTyVar_maybe)
+import           TyCon         (TyCon)
+import           Type          (PredTree (..), TyVar, Type, classifyPredType,
+                                dropForAlls, eqType, funResultTy,
+                                getTyVar_maybe, isNumLitTy, mkClassPred,
+                                mkNumLitTy, mkTyVarTy, splitTyConApp_maybe,
+                                tyConAppTyCon_maybe, typeKind)
+import           TysWiredIn    (promotedConsDataCon, typeNatKind)
+import           UniqFM        (UniqFM)
+import qualified UniqFM        (addToUFM, listToUFM, lookupUFM)
+import           Var           (DFunId)
 
 
 -- | To use the plugin, add
@@ -103,20 +97,14 @@ decideNatOps :: Maybe InferenceTypes
              -> [Ct] -- ^ Deriveds
              -> [Ct] -- ^ Wanteds
              -> TcPluginM TcPluginResult
-decideNatOps _ _ dd []      = do
-  tcPluginIO . print $ "No wanteds! " ++ show dd
-  return (TcPluginOk [] [])
-decideNatOps (Just it) givens _ wanteds
-  = do
- tcPluginIO . print $ wanteds
- fmap (uncurry TcPluginOk) -- wrap a list of solved constraints and a list of new Wanteds
-  . runInference it givens -- runInference looks up a list of known KnownNat Constraints
-                           -- and passes it in the checkNats thing;
-                           -- it also manages a list of new constraints
-  $ catMaybes <$> mapM checkNats wanteds
-decideNatOps _ _ _ wanteds = do
-  tcPluginIO . print $ "Failed to init " ++ show wanteds
-  return (TcPluginOk [] [])
+decideNatOps _ _ _ [] = return (TcPluginOk [] [])
+decideNatOps (Just it) givens _ wanteds =
+    fmap (uncurry TcPluginOk)  -- wrap a list of solved constraints and a list of new Wanteds
+      . runInference it givens -- runInference looks up a list of known KnownNat Constraints
+                               -- and passes it in the checkNats thing;
+                               -- it also manages a list of new constraints
+      $ catMaybes <$> mapM checkNats wanteds
+decideNatOps _ _ _ _ = return (TcPluginOk [] [])
 
 
 checkNats :: Ct -> InferenceM (Maybe (EvTerm, Ct))
@@ -130,7 +118,9 @@ checkNats ct@CDictCan{ cc_ev = CtWanted{ctev_pred = t, ctev_loc = myLoc}}
       return $ if length argEvTerms == length apps
                -- Construct evidence
                then flip (,) ct
-                      <$> produceEvidenceTerm it opType (occNameString $ getOccName constr) apps argEvTerms
+                      <$> produceEvidenceTerm it opType
+                                              (occNameString $ getOccName constr)
+                                              apps argEvTerms
                else Nothing
 checkNats _ = return Nothing
 
@@ -154,18 +144,20 @@ getKnownNatEvTerm myLoc x
       (_, Just (_,shift2,ev)) ->
         return $ case compare shift shift2 of
           EQ -> Just ev
-          LT -> produceEvidenceTerm it x "-" [ys, mkNumLitTy (shift2 - shift)] [ev, EvLit (EvNum (shift2 - shift))]
-          GT -> produceEvidenceTerm it x "+" [ys, mkNumLitTy (shift - shift2)] [ev, EvLit (EvNum (shift - shift2))]
+          LT -> produceEvidenceTerm it x "-" [ys, mkNumLitTy (shift2 - shift)]
+                                             [ev, EvLit (EvNum (shift2 - shift))]
+          GT -> produceEvidenceTerm it x "+" [ys, mkNumLitTy (shift - shift2)]
+                                             [ev, EvLit (EvNum (shift - shift2))]
       (_, Nothing) -> do
         ev <- mkWantedKnownNat myLoc ys
         return $
           produceEvidenceTerm it x "+" [ys, mkNumLitTy shift] [ev, EvLit (EvNum shift)]
     -- go deeper recursively
   | Just (constr, apps) <- splitTyConApp_maybe x = do
-      inTcPluginM . tcPluginIO . putStrLn $ show constr ++ " - " ++ show apps
       -- make an evidence term for each type argument of our operation
       -- we also check all arguments for being of kind Nat -- this is required for our recursion assumption
-      argEvTerms <- catMaybes <$> traverse (getKnownNatEvTerm myLoc) (filter (tcEqKind typeNatKind . typeKind) apps)
+      argEvTerms <- catMaybes <$> traverse (getKnownNatEvTerm myLoc)
+                                           (filter (tcEqKind typeNatKind . typeKind) apps)
       it <- getITypes
       return $ if length argEvTerms == length apps
                -- Construct evidence
@@ -213,11 +205,11 @@ produceEvidenceTerm InferenceTypes{..} rezT constr argTypes argEvTerms
 
 -- | Keep useful inference information here
 data InferenceTypes = InferenceTypes
-  { knownNatClass :: !Class
+  { knownNatClass   :: !Class
     -- ^ Used to create KnownNat constraints
-  , natOpMaybe :: String -> Maybe DFunId
+  , natOpMaybe      :: String -> Maybe DFunId
     -- ^ Get substitute function id by type constructor
-  , sNatTyCon  :: TyCon
+  , sNatTyCon       :: TyCon
     -- ^ Type constructor for our SNat' substitute
   , lengthKnownNats :: [(Type, Integer, EvTerm)]
     -- ^ List of available KnownNat (Length xs)
@@ -242,9 +234,7 @@ initInferenceTypes = do
               _   -> Nothing
             lengthKnownNats = []
         return $ Just InferenceTypes {..}
-      x -> do
-        tcPluginIO . print $ x
-        return Nothing
+      _ -> return Nothing
 
 -- | TyVar -> EvTerm map
 type KnownNatMap = UniqFM EvTerm
@@ -259,9 +249,9 @@ newtype InferenceM a = InferenceM
 getITypes :: InferenceM InferenceTypes
 getITypes = InferenceM $ \(x,it) -> return (it, (x,[]))
 
--- | Run a child monad within Inference
-inTcPluginM :: TcPluginM a -> InferenceM a
-inTcPluginM m = InferenceM $ \(s, _) -> flip (,) (s, []) <$> m
+-- -- | Run a child monad within Inference
+-- inTcPluginM :: TcPluginM a -> InferenceM a
+-- inTcPluginM m = InferenceM $ \(s, _) -> flip (,) (s, []) <$> m
 
 
 
@@ -288,13 +278,10 @@ runInference :: InferenceTypes
              -> [Ct] -- ^ list of givens
              -> InferenceM a  -- ^ the whole inference stuff
              -> TcPluginM (a, [Ct]) -- ^ computation result plus a list of new wanteds
-runInference it givens inf = do
-    r <- second snd
+runInference it givens inf = second snd
                           <$> runInferenceM inf ( knownNats
                                                 , it{ lengthKnownNats = knownLNats }
                                                 )
-    tcPluginIO . print $ knownLNats
-    return r
   where
     -- | Extract evidence about given KnownNat var from given Ct
     getKnownNatMaybe :: Ct -> Maybe (TyVar, EvTerm)
@@ -339,6 +326,10 @@ unwrapConsType xs
   | otherwise                      = (xs, 0)
 
 
+--------------------------------------------------------------------------------
+-- Getting EvTerms and creating new wanteds if necessary
+--------------------------------------------------------------------------------
+
 -- | Create a new evidence term for KnownNat constraint by making a new Wanted
 newWantedKnownNat :: CtLoc -- ^ current location (of wanted constraint we trying to solve now)
                   -> TyVar -- ^ type variable we want to have a new wanted
@@ -376,7 +367,9 @@ getKnownNatVarEvTerm l tv = InferenceM
     m Nothing   = newWantedKnownNat l tv
 
 
-
+--------------------------------------------------------------------------------
+-- Evidence construction
+--------------------------------------------------------------------------------
 
 
 -- | This newtype declaration has the same representation
@@ -384,16 +377,16 @@ getKnownNatVarEvTerm l tv = InferenceM
 newtype SNat' (n :: Nat) = SNat' Integer
 
 
-funAdd :: forall (a :: Nat) (b :: Nat) . (KnownNat a, KnownNat b) => SNat' (a + b)
+funAdd :: forall (a :: Nat) (b :: Nat) . (KnownNat a, KnownNat b) => SNat' ((+) a b)
 funAdd = SNat' (natVal (Proxy @a) + natVal (Proxy @b))
 
-funRem :: forall (a :: Nat) (b :: Nat) . (KnownNat a, KnownNat b) => SNat' (a - b)
+funRem :: forall (a :: Nat) (b :: Nat) . (KnownNat a, KnownNat b) => SNat' ((-) a b)
 funRem = SNat' (natVal (Proxy @a) - natVal (Proxy @b))
 
-funMul :: forall (a :: Nat) (b :: Nat) . (KnownNat a, KnownNat b) => SNat' (a * b)
+funMul :: forall (a :: Nat) (b :: Nat) . (KnownNat a, KnownNat b) => SNat' ((*) a b)
 funMul = SNat' (natVal (Proxy @a) * natVal (Proxy @b))
 
-funPow :: forall (a :: Nat) (b :: Nat) . (KnownNat a, KnownNat b) => SNat' (a ^ b)
+funPow :: forall (a :: Nat) (b :: Nat) . (KnownNat a, KnownNat b) => SNat' ((^) a b)
 funPow = SNat' (natVal (Proxy @a) ^ natVal (Proxy @b))
 
 funSucc :: forall (x :: Nat) . KnownNat x => SNat' (x + 1)
@@ -401,65 +394,3 @@ funSucc = SNat' (natVal (Proxy @x) + 1)
 
 funPred :: forall (x :: Nat) . KnownNat x => SNat' (x - 1)
 funPred = SNat' (natVal (Proxy @x) - 1)
-
-
-
-
-
-
-
-
-deriving instance Show FindResult
-deriving instance Show ModuleSuggestion
-
-instance Show ModuleName where
-  show = showSDocUnsafe . ppr
-instance Show ModuleOrigin where
-  show = showSDocUnsafe . ppr
-instance Show Module where
-  show = showSDocUnsafe . ppr
-instance Show TcPredType where
-  show = showSDocUnsafe . ppr
-instance Show TyCon where
-  show = showSDocUnsafe . ppr
-instance Show Var where
-  show = showSDocUnsafe . ppr
-instance Show TcTyThing where
-  show = showSDocUnsafe . ppr
-instance Show Ct where
-  show = showSDocUnsafe . ppr
-instance Show Name where
-  show = showSDocUnsafe . ppr
-instance Show EvBind where
-  show = showSDocUnsafe . ppr
-instance Show EvTerm where
-  show = showSDocUnsafe . ppr
-instance Show CtEvidence where
-  show = showSDocUnsafe . ppr
-instance Show Class where
-  show = showSDocUnsafe . ppr
-instance Show Coercion where
-  show = showSDocUnsafe . ppr
-instance Show CtLoc where
-  show = ("CtLoc " ++) . showSDocUnsafe . ppr . ctl_origin
-instance Show SkolemInfo where
-  show (SigSkol utc ep x) = "SigSkol {" ++ show utc ++ "} {" ++ showSDocUnsafe (ppr ep) ++
-                  "} {" ++ showSDocUnsafe (ppr x) ++ "} "
-  -- show (PatSynSigSkol n) = "PatSynSigSkol " ++ showSDocUnsafe (ppr n)
-  show (ClsSkol n) = "ClsSkol " ++ showSDocUnsafe (ppr n)
-  show (DerivSkol n) = "DerivSkol " ++ showSDocUnsafe (ppr n)
-  show InstSkol = "InstSkol"
-  show (InstSC n) = "InstSC " ++ showSDocUnsafe (ppr n)
-  show DataSkol = "DataSkol"
-  show FamInstSkol = "FamInstSkol"
-  show (PatSkol a _) = "PatSkol " ++ showSDocUnsafe (ppr a) ++ " HsMatchContext"
-  show ArrowSkol = "ArrowSkol"
-  show (IPSkol n) = "IPSkol " ++ showSDocUnsafe (ppr n)
-  show (RuleSkol n) = "RuleSkol " ++ showSDocUnsafe (ppr n)
-  show (InferSkol n) = "InferSkol " ++ showSDocUnsafe (ppr n)
-  show BracketSkol = "BracketSkol"
-  show (UnifyForAllSkol n) = "UnifyForAllSkol " ++ showSDocUnsafe (ppr n)
-  show UnkSkol = "UnkSkol"
-
-
-deriving instance Show UserTypeCtxt

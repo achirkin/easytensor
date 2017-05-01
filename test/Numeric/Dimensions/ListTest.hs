@@ -25,6 +25,7 @@
 
 module Numeric.Dimensions.ListTest (runTests) where
 
+import Control.Monad (join)
 import Data.Proxy
 import GHC.TypeLits
 import Test.QuickCheck
@@ -32,14 +33,15 @@ import Test.QuickCheck
 import Numeric.Dimensions
 
 
+-- * Test simple binary nat ops
 
-natSum :: (KnownNat a, KnownNat b) => Proxy a -> Proxy b -> Proxy (a+b)
+natSum :: Proxy a -> Proxy b -> Proxy (a+b)
 natSum _ _ = Proxy
-natMul :: (KnownNat a, KnownNat b) => Proxy a -> Proxy b -> Proxy (a*b)
+natMul :: Proxy a -> Proxy b -> Proxy (a*b)
 natMul _ _ = Proxy
-natPow :: (KnownNat a, KnownNat b) => Proxy a -> Proxy b -> Proxy (a^b)
+natPow :: Proxy a -> Proxy b -> Proxy (a^b)
 natPow _ _ = Proxy
-natRem :: (KnownNat a, KnownNat b) => Proxy a -> Proxy b -> Proxy (a-b)
+natRem :: Proxy a -> Proxy b -> Proxy (a-b)
 natRem _ _ = Proxy
 natSucc :: Proxy a -> Proxy (a + 1)
 natSucc _ = Proxy
@@ -65,8 +67,35 @@ prop_KnownNats a b
     ]
 prop_KnownNats _ _ = True
 
-prop_KnownList :: Integer -> [Int] -> Bool
-prop_KnownList a xs'
+-- * Test composite nat binary ops
+
+natF31 :: Proxy a -> Proxy b -> Proxy c -> Proxy (a + b*c)
+natF31 _ _ _ = Proxy
+natF32 :: Proxy a -> Proxy b -> Proxy c -> Proxy ((a + b^2)*c + 5)
+natF32 _ _ _ = Proxy
+natF33 :: Proxy a -> Proxy b -> Proxy c -> Proxy ((a*a^2 + b)*(c+1) - a^3)
+natF33 _ _ _ = Proxy
+
+prop_3KnownNats :: Integer -> Integer -> Integer -> Bool
+prop_3KnownNats x y z
+  | a <- abs x, b <- abs y, c <- abs z
+  , Just (SomeNat pa) <- someNatVal a
+  , Just (SomeNat pb) <- someNatVal b
+  , Just (SomeNat pc) <- someNatVal c
+  = and
+    [ a + b*c                       == natVal (natF31 pa pb pc)
+    , (a + b^sq)*c + 5              == natVal (natF32 pa pb pc)
+    , (a*a^sq + b)*(c+1) - a^(sq+1) == natVal (natF33 pa pb pc)
+    ]
+  where
+    sq = 2 :: Integer
+prop_3KnownNats _ _ _ = True
+
+
+-- * Test props on a single type-level list
+
+prop_FiniteList :: Integer -> [Int] -> Bool
+prop_FiniteList a xs'
   | n <- (abs a)
   , xs <- (2+) . abs <$> xs'
   , Just (SomeNat pn) <- someNatVal n
@@ -75,13 +104,94 @@ prop_KnownList a xs'
           , case inferTakeNFiniteList pn pxs of
               fle@FiniteListEvidence ->
                 order fle == length (take (fromInteger n) xs)
+          , case inferDropNFiniteList pn pxs of
+              fle@FiniteListEvidence ->
+                order fle == length (drop (fromInteger n) xs)
+          , case inferReverseFiniteList pxs of
+              fle@FiniteListEvidence ->
+                order fle == length (reverse xs)
           ]
          ) of
       Left _ -> True
       Right b -> b
-prop_KnownList _ _ = True
+prop_FiniteList _ _ = True
+
+-- * Test KnownNat propagation for lists of different length
+
+listShift1 :: FiniteList (x1 ': x2 ': x3 ': xs :: [Nat])
+           => Proxy (x1 ': x2 ': x3 ': xs)
+           -> Proxy '[y1,y2,y3]
+           -> Proxy (Length (y1 ': y2 ': y3 ': xs))
+listShift1 _ _ = Proxy
+listShift2 :: FiniteList (x1 ': x2 ': x3 ': xs :: [Nat])
+           => Proxy (x1 ': x2 ': x3 ': xs)
+           -> Proxy '[y1,y2,y3,y4,y5]
+           -> Proxy (Length (y1 ': y2 ': y3 ': y4 ': y5 ': xs))
+listShift2 _ _ = Proxy
+listShift3 :: FiniteList (x1 ': x2 ': x3 ': x4 ': x5 ': xs :: [Nat])
+           => Proxy (x1 ': x2 ': x3 ': x4 ': x5 ': xs)
+           -> Proxy '[y1,y2]
+           -> Proxy (Length (y1 ': y2 ': xs) * 2 - 1)
+listShift3 _ _ = Proxy
+-- | result is of the same length
+listShiftApp1 :: FiniteList (x1 ': x2 ': x3 ': xs :: [Nat])
+              => Proxy (x1 ': x2 ': x3 ': xs)
+              -> Integer
+listShiftApp1 pxs = natVal (listShift1 pxs (Proxy @'[1,2,3]))
+-- | result is longer by 2
+listShiftApp2 :: FiniteList (x1 ': x2 ': x3 ': xs :: [Nat])
+              => Proxy (x1 ': x2 ': x3 ': xs)
+              -> Integer
+listShiftApp2 pxs = natVal (listShift2 pxs (Proxy @'[1,2,3,4,5]))
+-- | result is shorter by 3, but multiplied by 2 and -1
+listShiftApp3 :: FiniteList (x1 ': x2 ': x3 ': x4 ': x5 ': xs :: [Nat])
+              => Proxy (x1 ': x2 ': x3 ': x4 ': x5 ': xs)
+              -> Integer
+listShiftApp3 pxs = natVal (listShift3 pxs (Proxy @'[1,2]))
 
 
+prop_ListShift :: [Int] -> Bool
+prop_ListShift xs'
+  | xs <- (2+) . abs <$> xs'
+  , n0 <- fromIntegral (length xs) :: Integer
+  = case ( withRuntimeDim xs $ \(_ :: Dim xs) ->
+          let ys = Proxy @(1 ': 2 ': 3 ': 4 ': 5 ': 6 ': 7 ': xs)
+          in and
+              [ listShiftApp1 ys == n0 + 7
+              , listShiftApp2 ys == n0 + 7 + 2
+              , listShiftApp3 ys == (n0 + 7 - 3)*2 - 1
+              ]
+         ) of
+      Left _ -> True
+      Right b -> b
+
+-- * Inference properties
+
+prop_ListInference :: [Int] -> [Int] -> Bool
+prop_ListInference xs' ys'
+  | xs <- (2+) . abs <$> xs'
+  , ys <- (2+) . abs <$> ys'
+  = case join
+         ( withRuntimeDim xs $ \(dxs :: Dim xs) ->
+             withRuntimeDim ys $ \(dys :: Dim ys) ->
+              and
+                [ case inferConcatFiniteList dxs dys of
+                    fle@FiniteListEvidence ->
+                      order fle == length xs + length ys
+                , case (inferConcat dxs dys, inferConcatFiniteList dxs dys) of
+                    (ConcatEvidence, FiniteListEvidence) ->
+                      case inferPrefixFiniteList dys (Proxy @(xs ++ ys)) of
+                        fle@FiniteListEvidence ->
+                          order fle == length xs
+                , case (inferConcat dxs dys, inferConcatFiniteList dxs dys) of
+                    (ConcatEvidence, FiniteListEvidence) ->
+                      case inferSuffixFiniteList dxs (Proxy @(xs ++ ys)) of
+                        fle@FiniteListEvidence ->
+                          order fle == length ys
+                ]
+         ) of
+      Left _ -> True
+      Right b -> b
 
 return []
 runTests :: IO Bool
