@@ -10,13 +10,8 @@
 -- for results of Nat operations and calculation of type-level lists length.
 --
 --
--- This module has some chunks of code copied from Christiaan Baaij's
---   ghc-typelits-knownnat-0.2.4
+-- This module is made following Christiaan Baaij's example `ghc-typelits-knownnat-0.2.4`
 --   https://hackage.haskell.org/package/ghc-typelits-knownnat-0.2.4/docs/src/GHC-TypeLits-KnownNat-Solver.html
---   Module     :  GHC.TypeLits.KnownNat.Solver
---   Copyright  :  (C) 2016, University of Twente
---   License    :  BSD2 (see the file LICENSE)
---   Maintainer :  Christiaan Baaij <christiaan.baaij@gmail.com>
 --
 -----------------------------------------------------------------------------
 {-# LANGUAGE AllowAmbiguousTypes #-}
@@ -187,15 +182,16 @@ produceEvidenceTerm InferenceTypes{..} rezT constr argTypes argEvTerms
   , Just (_, coerceSNat'Integer) <- tcInstNewTyCon_maybe sNatTyCon [rezT]
     -- Evidence produced by using function application
   , funEv <- EvDFunApp natOpFunId argTypes argEvTerms
-  , Just (_, coerceKnownNatSNat) <- tcInstNewTyCon_maybe (classTyCon knownNatClass) [rezT] -- KnownNat n ~ SNat n
-  , [ kn_meth ] <- classMethods knownNatClass
-  , Just kn_tcRep <- tyConAppTyCon_maybe -- SNat
-                      $ funResultTy      -- SNat n
-                      $ dropForAlls      -- KnownNat n => SNat n
-                      $ idType kn_meth   -- forall n. KnownNat n => SNat n
-  , Just (_, coerceSNatInteger) <- tcInstNewTyCon_maybe kn_tcRep [rezT]  -- SNat n ~ Integer
-  , op_to_kn <-  coerceSNat'Integer `mkTcTransCo` mkTcSymCo (coerceKnownNatSNat `mkTcTransCo` coerceSNatInteger)
-    = Just $ mkEvCast funEv op_to_kn
+  , Just (_, coerceKnownNatSNat) <- tcInstNewTyCon_maybe (classTyCon knownNatClass) [rezT]
+  , [ natSingFun ] <- classMethods knownNatClass
+  , Just sNatOrigTyCon <- tyConAppTyCon_maybe
+                       . funResultTy $ dropForAlls (idType natSingFun)
+    -- TcCoercion for transform: SNat (f x y) ~ Integer
+  , Just (_, coerceSNatInteger) <- tcInstNewTyCon_maybe sNatOrigTyCon [rezT]
+  , fullCoercion <- coerceSNat'Integer
+                    `mkTcTransCo`
+                    mkTcSymCo (coerceKnownNatSNat `mkTcTransCo` coerceSNatInteger)
+    = Just $ mkEvCast funEv fullCoercion
   | otherwise = Nothing
 
 
@@ -349,11 +345,7 @@ mkWantedKnownNat loc t = InferenceM $ \(knownNatMap, it) -> do
     wantedCtEv <- newWanted loc predType
     let ev      = ctEvTerm wantedCtEv
         wanted  = mkNonCanonical wantedCtEv
-    -- Set the source-location of the new wanted constraint to the source
-    -- location of the [W]anted constraint we are currently trying to solve
-    let ct_ls   = ctLocSpan loc
-        ctl     = ctEvLoc  wantedCtEv
-        wanted' = setCtLoc wanted (setCtLocSpan ctl ct_ls)
+        wanted' = setCtLoc wanted (setCtLocSpan (ctEvLoc wantedCtEv) (ctLocSpan loc))
     return (ev, (knownNatMap, [wanted']))
 
 -- | Lookup existing or create new evidence term for a given type variable

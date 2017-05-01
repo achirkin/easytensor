@@ -1,20 +1,20 @@
 {-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
-
--- The following extensions are needed for ConcatDim typeclass
-{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances #-}
-
--- The following extensions are needed for FiniteList typeclass
-{-# LANGUAGE ScopedTypeVariables, GADTs #-}
-
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ExplicitNamespaces        #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE FunctionalDependencies    #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE TypeFamilies              #-}
+{-# LANGUAGE TypeFamilyDependencies    #-}
+{-# LANGUAGE TypeOperators             #-}
+{-# LANGUAGE UndecidableInstances      #-}
 --------------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.List
@@ -28,8 +28,7 @@
 --------------------------------------------------------------------------------
 
 module Numeric.Dimensions.List
-  ( type (++)
-  , type (:+), type (+:)
+  ( type (++), type (:+), type (+:)
   , Empty, Cons, Snoc, Head
   , Tail, Init, Last, Concat, Reverse, Take, Drop, Suffix, Prefix
   , IsPrefix, IsSuffix
@@ -37,19 +36,18 @@ module Numeric.Dimensions.List
   , inferConcat, inferSuffix, inferPrefix, ConcatEvidence (..), FiniteListEvidence (..)
   ) where
 
-import GHC.TypeLits
-import GHC.Types (Type)
-import Data.Proxy (Proxy (..))
-import Unsafe.Coerce (unsafeCoerce)
-import Data.Type.Equality
-import Numeric.Dimensions.Inference
+import           Data.Proxy         (Proxy (..))
+import           Data.Type.Equality
+import           GHC.TypeLits
+import           GHC.Types          (Type)
+import           Unsafe.Coerce      (unsafeCoerce)
 
 -- | Synonym for a type-level cons
 --     (injective, since this is just a synonym for the list constructor)
 type (a :: k) :+ (as :: [k]) = a ': as
 infixr 5 :+
 -- | Prefix-style synonym for cons
-type Cons (n :: k) (ns :: [k]) = n ': ns
+type Cons (n :: k) (ns :: [k]) = n :+ ns
 
 -- | Synonym for a type-level snoc (injective!)
 type (ns :: [k]) +: (n :: k) = Snoc ns n
@@ -62,7 +60,7 @@ type Snoc (ns :: [k]) (n :: k) = GetSnoc (DoSnoc ns n)
 type family (as :: [k]) ++ (bs :: [k]) :: [k] where
     (++) '[] bs = bs
     (++) as '[] = as
-    (++) (a ': as) bs = a ': (as ++ bs)
+    (++) (a :+ as) bs = a :+ (as ++ bs)
 infixr 5 ++
 
 -- | Prefix-style synonym for concatenation
@@ -80,18 +78,18 @@ type Empty = '[]
 type family Take (n::Nat) (xs :: [k]) :: [k] where
     Take _ '[] = '[]
     Take 0 xs = '[]
-    Take n (x ': xs) = x ': Take (n-1) xs
+    Take n (x :+ xs) = x :+ Take (n-1) xs
 
 
 type family Drop (n::Nat) (xs :: [k]) :: [k] where
     Drop _ '[] = '[]
     Drop 0 xs = xs
-    Drop n (x ': xs) = Drop (n-1) xs
+    Drop n (x :+ xs) = Drop (n-1) xs
 
 type family Suffix (as :: [k]) (asbs :: [k]) :: [k] where
     Suffix '[] bs = bs
     Suffix as as = '[]
-    Suffix (_ ': as) (_' : asbs) = Suffix as asbs
+    Suffix (_ :+ as) (_' : asbs) = Suffix as asbs
 
 type family Prefix (bs :: [k]) (asbs :: [k]) :: [k] where
     Prefix '[] as = as
@@ -101,39 +99,39 @@ type family Prefix (bs :: [k]) (asbs :: [k]) :: [k] where
 
 type family IsPrefix (as :: [k]) (asbs :: [k]) :: Bool where
     IsPrefix '[] _ = 'True
-    IsPrefix (a ': as) (a ': asbs) = IsPrefix as asbs
+    IsPrefix (a :+ as) (a :+ asbs) = IsPrefix as asbs
     IsPrefix as as = 'True
     IsPrefix _ _= 'False
 
 type family IsSuffix (as :: [k]) (asbs :: [k]) :: Bool where
     IsSuffix '[] _ = 'True
     IsSuffix bs bs = 'True
-    IsSuffix bs (_ ': sbs) = IsSuffix bs sbs
+    IsSuffix bs (_ :+ sbs) = IsSuffix bs sbs
     IsSuffix _ _ = 'False
 
 
 type family Head (xs :: [k]) :: k where
-    Head (x ': xs) = x
+    Head (x :+ xs) = x
     Head '[]       = TypeError ( 'Text
       "Head -- empty type-level list."
      )
 
 type family Tail (xs :: [k]) :: [k] where
-    Tail (x ': xs) = xs
+    Tail (x :+ xs) = xs
     Tail '[]       = TypeError ( 'Text
       "Tail -- empty type-level list."
      )
 
 type family Init (xs :: [k]) :: [k] where
     Init '[x] = '[]
-    Init (x ': xs) = x ': Init xs
+    Init (x :+ xs) = x :+ Init xs
     Init '[]       = TypeError ( 'Text
       "Init -- empty type-level list."
      )
 
 type family Last (xs :: [k]) :: k where
     Last '[x] = x
-    Last (x ': xs) = Last xs
+    Last (x :+ xs) = Last xs
     Last '[]       = TypeError ( 'Text
       "Last -- empty type-level list."
      )
@@ -169,7 +167,7 @@ instance ( asbs ~ Concat as bs
 -- | Type level list, used together with FiniteList typeclass
 data TypeList (xs :: [k]) where
     TLEmpty :: TypeList '[]
-    TLCons :: FiniteList xs => Proxy x -> TypeList xs -> TypeList (x ': xs)
+    TLCons :: FiniteList xs => Proxy x -> TypeList xs -> TypeList (x :+ xs)
 
 -- | Type-level list that is known to be finite.
 --   Basically, provides means to get its length and term-level rep (via TypeList)
@@ -199,7 +197,7 @@ class KnownNat (Length xs) => FiniteList (xs :: [k]) where
     -- | Make snoc almost as good as cons
     inferSnocFiniteList :: p xs -> q z -> FiniteListEvidence (xs +: z)
     -- | Init of the list is also known list
-    inferInitFiniteList :: p (x ': xs) -> FiniteListEvidence (Init (x ': xs))
+    inferInitFiniteList :: p (x :+ xs) -> FiniteListEvidence (Init (x :+ xs))
     -- | Tail of the list is also known list
     inferTailFiniteList :: p xs -> FiniteListEvidence (Tail xs)
     -- | Take KnownNat of the list is also known list
@@ -238,64 +236,64 @@ instance FiniteList ('[] :: [k]) where
   inferReverseFiniteList _ = FiniteListEvidence
   {-# INLINE inferReverseFiniteList #-}
 
-instance FiniteList xs => FiniteList (x ': xs :: [k]) where
-  type Length (x ': xs) = Length xs + 1
-  order _ = fromInteger (natVal (Proxy @(Length (x ': xs))))
+instance FiniteList xs => FiniteList (x :+ xs :: [k]) where
+  type Length (x :+ xs) = Length xs + 1
+  order _ = fromInteger (natVal (Proxy @(Length (x :+ xs))))
   {-# INLINE order #-}
   tList _ = TLCons Proxy (tList (Proxy :: Proxy xs))
   {-# INLINE tList #-}
   inferConcatFiniteList _ (pbs :: p bs)
     | FiniteListEvidence  <- inferConcatFiniteList (Proxy @xs) pbs
-    , Refl <- unsafeCoerce Refl :: (x ': (xs ++ bs)) :~: ((x ': xs) ++ bs)
-    = FiniteListEvidence :: FiniteListEvidence (x ': (xs ++ bs))
+    , Refl <- unsafeCoerce Refl :: x :+ (xs ++ bs) :~: ((x :+ xs) ++ bs)
+    = FiniteListEvidence :: FiniteListEvidence (x :+ (xs ++ bs))
   {-# INLINE inferConcatFiniteList #-}
   inferPrefixFiniteList (_ :: p bs) xs
-    | Refl <- unsafeCoerce Refl :: Prefix bs (x ': xs) :~: Take (Length (x ': xs) - Length bs) (x ': xs)
-    = inferTakeNFiniteList (Proxy @(Length (x ': xs) - Length bs)) xs
+    | Refl <- unsafeCoerce Refl :: Prefix bs (x :+ xs) :~: Take (Length (x :+ xs) - Length bs) (x :+ xs)
+    = inferTakeNFiniteList (Proxy @(Length (x :+ xs) - Length bs)) xs
   {-# INLINE inferPrefixFiniteList #-}
   inferSuffixFiniteList (pas :: p as) _
     | TLEmpty <- tList pas
       = FiniteListEvidence
     | TLCons _ (pas' :: TypeList as') <- tList pas
     , Refl <- unsafeCoerce Refl :: IsPrefix as' xs :~: 'True
-    , Refl <- unsafeCoerce Refl :: Suffix as' xs :~: Suffix as (x ': xs)
+    , Refl <- unsafeCoerce Refl :: Suffix as' xs :~: Suffix as (x :+ xs)
     , FiniteListEvidence <- inferSuffixFiniteList pas' (Proxy @xs)
       = FiniteListEvidence :: FiniteListEvidence (Suffix as' xs)
     | otherwise = error "inferSuffixFiniteList: TypeList failed to pattern match"
   {-# INLINE inferSuffixFiniteList #-}
   inferSnocFiniteList _ (q :: q z)
     | FiniteListEvidence <- inferSnocFiniteList (Proxy @xs) q
-    , Refl <- unsafeCoerce Refl :: (x ': (xs +: z)) :~: ((x ': xs) +: z)
-    = FiniteListEvidence :: FiniteListEvidence (x ': (xs +: z))
+    , Refl <- unsafeCoerce Refl :: (x :+ (xs +: z)) :~: ((x :+ xs) +: z)
+    = FiniteListEvidence :: FiniteListEvidence (x :+ (xs +: z))
   {-# INLINE inferSnocFiniteList #-}
-  inferInitFiniteList (_ :: p (x0 ': x ': xs))
-    | FiniteListEvidence <- inferInitFiniteList (Proxy @(x ': xs))
-    = FiniteListEvidence :: FiniteListEvidence (x0 ': Init (x ': xs))
+  inferInitFiniteList (_ :: p (x0 :+ x :+ xs))
+    | FiniteListEvidence <- inferInitFiniteList (Proxy @(x :+ xs))
+    = FiniteListEvidence :: FiniteListEvidence (x0 :+ Init (x :+ xs))
   {-# INLINE inferInitFiniteList #-}
   inferTailFiniteList _ = FiniteListEvidence
   {-# INLINE inferTailFiniteList #-}
   inferTakeNFiniteList (pn :: p n) _
     | 0 <- natVal pn
-    , Refl <- unsafeCoerce Refl :: Take n (x ': xs) :~: '[]
+    , Refl <- unsafeCoerce Refl :: Take n (x :+ xs) :~: '[]
       = FiniteListEvidence :: FiniteListEvidence '[]
     | otherwise
-    , Refl <- unsafeCoerce Refl :: Take n (x ': xs) :~: (x ': Take (n-1) xs)
+    , Refl <- unsafeCoerce Refl :: Take n (x :+ xs) :~: (x :+ Take (n-1) xs)
     , FiniteListEvidence <- inferTakeNFiniteList (Proxy @(n-1)) (Proxy @xs)
-      = FiniteListEvidence :: FiniteListEvidence (x ': Take (n-1) xs)
+      = FiniteListEvidence :: FiniteListEvidence (x :+ Take (n-1) xs)
   {-# INLINE inferTakeNFiniteList #-}
   inferDropNFiniteList (pn :: p n) _
     | 0 <- natVal pn
-    , Refl <- unsafeCoerce Refl :: Drop n (x ': xs) :~: (x ': xs)
-      = FiniteListEvidence :: FiniteListEvidence (x ': xs)
+    , Refl <- unsafeCoerce Refl :: Drop n (x :+ xs) :~: (x :+ xs)
+      = FiniteListEvidence :: FiniteListEvidence (x :+ xs)
     | otherwise
-    , Refl <- unsafeCoerce Refl :: Drop n (x ': xs) :~: Drop (n-1) xs
+    , Refl <- unsafeCoerce Refl :: Drop n (x :+ xs) :~: Drop (n-1) xs
     , FiniteListEvidence <- inferDropNFiniteList (Proxy @(n-1)) (Proxy @xs)
       = FiniteListEvidence :: FiniteListEvidence (Drop (n-1) xs)
   {-# INLINE inferDropNFiniteList #-}
   inferReverseFiniteList _
     | FiniteListEvidence <- inferReverseFiniteList (Proxy @xs)
     , FiniteListEvidence <- inferSnocFiniteList (Proxy @(Reverse xs)) (Proxy @x)
-    , Refl <- unsafeCoerce Refl :: Reverse (x ': xs) :~: (Reverse xs +: x)
+    , Refl <- unsafeCoerce Refl :: Reverse (x :+ xs) :~: (Reverse xs +: x)
      = FiniteListEvidence :: FiniteListEvidence (Reverse xs +: x)
   {-# INLINE inferReverseFiniteList #-}
 
@@ -355,19 +353,19 @@ data Snocing k = SSingle k | Snocing [k]
 
 type family DoSnoc (xs :: [k]) (z::k) = (ys :: Snocing k) | ys -> xs z where
     DoSnoc '[]       x = 'SSingle x
-    DoSnoc (x ': xs) y = 'Snocing (x ': (GetSnoc (DoSnoc xs y)))
+    DoSnoc (x :+ xs) y = 'Snocing (x :+ GetSnoc (DoSnoc xs y))
 
 type family GetSnoc (xs :: Snocing k) = (ys :: [k]) | ys -> xs where
     GetSnoc ('SSingle x) = '[x]
-    GetSnoc ('Snocing (y ': x ': xs)) = y ': x ': xs
+    GetSnoc ('Snocing (y :+ x :+ xs)) = y :+ x :+ xs
 
 -- | Another data type to make Reverse injective.
 data Reversing k = REmpty | Reversing [k]
 
 type family Reversed (ts :: Reversing k) = (rs :: [k]) | rs -> ts where
     Reversed 'REmpty = '[]
-    Reversed ('Reversing (x ': xs)) = x ': xs
+    Reversed ('Reversing (x :+ xs)) = x :+ xs
 
 type family DoReverse (as :: [k]) = (rs :: Reversing k) | rs -> as where
     DoReverse '[]  = 'REmpty
-    DoReverse (a ': as) = 'Reversing ((Reversed (DoReverse as)) +: a)
+    DoReverse (a :+ as) = 'Reversing (Reversed (DoReverse as) +: a)
