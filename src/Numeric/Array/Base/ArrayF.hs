@@ -44,13 +44,14 @@ import           Numeric.Matrix.Class
 
 instance Show (ArrayF '[]) where
   show x = "{ " ++ show (x ! Z) ++ " }"
-instance KnownNat n => Show (ArrayF '[n]) where
+instance (KnownNat n, 2 <= n) => Show (ArrayF '[n]) where
   show x = ('{' :) . drop 1 $
                 foldr (\i s -> ", " ++ show (x ! i) ++ s) " }"
                         [minBound .. maxBound]
 instance Dimensions (n :+ m :+ ds)
       => Show (ArrayF (n :+ m :+ ds)) where
-  show x = drop 1 $ foldr loopOuter "" [minBound..maxBound]
+  show x
+      | DimensionsEvidence <- inferDropNDimensions (Proxy @2) x = drop 1 $ foldr loopOuter "" [minBound..maxBound]
     where
       loopInner :: Idx ds -> Idx '[n,m] -> String
       loopInner ods (n:!m:!_) = ('{' :) . drop 2 $

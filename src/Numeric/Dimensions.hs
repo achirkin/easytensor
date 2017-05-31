@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE Rank2Types, FlexibleContexts #-}
 {-# LANGUAGE GADTs, PolyKinds #-}
@@ -34,11 +35,12 @@ module Numeric.Dimensions
   , Dimensional (..), runDimensional, withDim, withRuntimeDim
     -- * Operations
   , Dimensions, Dimensions' (..), Dimensions'' (..)
+  , DimensionsEvidence (..)
   , XDimensions (), xdim
   , inSpaceOf, asSpaceOf, appendIdx, splitIdx
     -- * Type-level programming
   , FixedDim, FixedXDim, KnownOrder, ValidDims
-  , FiniteDims, WrapDims, WrapHead, UnwrapDims
+  , WrapDims, WrapHead, UnwrapDims
   , type (:<), type (>:)
 --  , inferSubDimensions
   , module Numeric.Dimensions.List
@@ -99,10 +101,15 @@ type N (n::Nat) = 'N n
 -- | Similar to SomeNat, hide some dimensions under an existential constructor.
 data SomeDim (xns :: [XNat])
   = forall ns . ( Dimensions ns
-                , ValidDims ns
                 , FixedDim xns ns ~ ns
                 , FixedXDim xns ns ~ xns
                 ) => SomeDim (Dim ns)
+
+-- | A singleton type used to prove that the given type-level list
+--   is indeed a correct list of Dimensions
+data DimensionsEvidence (ns :: [Nat])
+  = Dimensions ns => DimensionsEvidence
+
 
 -- | Construct dimensionality at runtime
 someDimVal :: Dim (xns :: [XNat]) -> Maybe (SomeDim xns)
@@ -138,7 +145,7 @@ isGoodDim p = if 2 <= natVal p then unsafeCoerce (Just Refl)
 
 -- | Run a function on a dimensionality that is known only at runtime
 withRuntimeDim :: [Int]
-               -> (forall ns . ( Dimensions ns ) => Dim ns -> a)
+               -> (forall ns . Dimensions ns => Dim ns -> a)
                -> Either String a
 withRuntimeDim xns f | any (< 2) xns = Left "All dimensions must be at least of size 2."
                      | otherwise     = case someNatVal p of
@@ -200,12 +207,10 @@ runDimensional xds d = withDim xds $ _runDimensional d
 --   With this we are sure that all dimension values are known at compile time,
 --   plus we have all handy functions for `Dim` and `Idx` types.
 type Dimensions xs = ( KnownDims xs
-                     , FiniteDims xs
                      , FiniteList xs
+                     , ValidDims xs
                      , Dimensions' xs
                      , Dimensions'' xs)
-
-
 
 
 class Dimensions' (ds :: [Nat]) where
@@ -226,49 +231,65 @@ xdim p = wrapDim (dim `inSpaceOf` p)
 
 -- | Support for Idx GADT
 class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
-  -- | Total number of elements - product of all dimension sizes (unboxed)
-  totalDim :: t ds -> Int
-  -- | Run a primitive loop over all dimensions (1..n)
-  loopS  :: Idx  ds -> (Idx  ds -> State# s -> State# s) -> State# s -> State# s
-  -- | Run a loop over all dimensions keeping a boxed accumulator (1..n)
-  loopA  :: Idx  ds -> (Idx  ds -> a -> a) -> a -> a
-  -- | Run a loop in a reverse order n..1
-  loopReverse :: Idx ds -> (Idx  ds -> a -> a) -> a -> a
-  -- | Get index offset: i1 + i2*n1 + i3*n1*n2 + ...
-  ioffset   :: Idx ds -> Int
-  -- | Drop a number of dimensions
-  dropDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (Drop n ds)
-  -- | Take a number of dimensions
-  takeDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (Take n ds)
-  -- | Maximum values of all dimensions
-  dimMax    :: Idx ds
-  -- | Minimum values -- ones
-  dimMin    :: Idx ds
-  -- | For Enum
-  succIdx   :: Idx ds -> Idx ds
-  -- | For Enum
-  predIdx   :: Idx ds -> Idx ds
-  -- | For Enum
-  fromIdx   :: Idx ds -> Int
-  -- | For Enum
-  toIdx     :: Int -> Idx ds
-  -- | For Enum -- step dimension index by an Integer offset
-  stepIdx   :: Int -> Idx ds -> Idx ds
-  -- | For Enum -- difference in offsets between two Indices
-  --      (a `diffIdx` b) = a - b
-  diffIdx   :: Idx ds -> Idx ds -> Int
-  -- -- | Get various evidence that `as ++ bs ~ asbs` given as and bs
-  -- concatEvidence :: (Dimensions bs)
-  --                => p (ds :: [Nat]) -> q (bs :: [Nat])   -> ConcatEvidence (ds :: [Nat]) (bs :: [Nat])
-  -- -- | Get various evidence that `as ++ bs ~ asbs` given bs and asbs
-  -- prefixEvidence :: (Dimensions bs, IsSuffix bs ds ~ 'True)
-  --                => p (bs :: [Nat]) -> q (ds :: [Nat]) -> PrefixEvidence (bs :: [Nat]) (ds :: [Nat])
-  -- -- | Get various evidence that `as ++ bs ~ asbs` given as and asbs
-  -- suffixEvidence :: (Dimensions as, FiniteDims ds, IsPrefix as ds ~ 'True)
-  --                => p (as :: [Nat]) -> q (ds :: [Nat]) -> SuffixEvidence (as :: [Nat]) (ds :: [Nat])
-  -- -- | Get various evidence that `xs +: z ~ xsz` given xs and z
-  -- snocEvidence :: (FiniteDims ds, KnownNat z)
-  --                => p (ds :: [Nat]) -> q (z :: Nat) -> SnocEvidence ds z
+    -- | Total number of elements - product of all dimension sizes (unboxed)
+    totalDim :: t ds -> Int
+    -- | Run a primitive loop over all dimensions (1..n)
+    loopS  :: Idx  ds -> (Idx  ds -> State# s -> State# s) -> State# s -> State# s
+    -- | Run a loop over all dimensions keeping a boxed accumulator (1..n)
+    loopA  :: Idx  ds -> (Idx  ds -> a -> a) -> a -> a
+    -- | Run a loop in a reverse order n..1
+    loopReverse :: Idx ds -> (Idx  ds -> a -> a) -> a -> a
+    -- | Get index offset: i1 + i2*n1 + i3*n1*n2 + ...
+    ioffset   :: Idx ds -> Int
+    -- | Drop a number of dimensions
+    dropDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (Drop n ds)
+    -- | Take a number of dimensions
+    takeDims  :: KnownNat n => Proxy n -> Idx ds -> Idx (Take n ds)
+    -- | Maximum values of all dimensions
+    dimMax    :: Idx ds
+    -- | Minimum values -- ones
+    dimMin    :: Idx ds
+    -- | For Enum
+    succIdx   :: Idx ds -> Idx ds
+    -- | For Enum
+    predIdx   :: Idx ds -> Idx ds
+    -- | For Enum
+    fromIdx   :: Idx ds -> Int
+    -- | For Enum
+    toIdx     :: Int -> Idx ds
+    -- | For Enum -- step dimension index by an Integer offset
+    stepIdx   :: Int -> Idx ds -> Idx ds
+    -- | For Enum -- difference in offsets between two Indices
+    --      (a `diffIdx` b) = a - b
+    diffIdx   :: Idx ds -> Idx ds -> Int
+    -- | Infer that concatenation is also Dimensions
+    inferConcatDimensions :: forall (bs :: [Nat]) (p :: [Nat] -> Type) (q :: [Nat] -> Type)
+                           . Dimensions bs
+                          => p ds
+                          -> q bs
+                          -> DimensionsEvidence (ds ++ bs)
+    -- | Infer that prefix is also Dimensions
+    inferPrefixDimensions :: (IsSuffix bs ds ~ 'True, FiniteList bs, Dimensions ds)
+                        => p bs
+                        -> q ds
+                        -> DimensionsEvidence (Prefix bs ds)
+    -- | Infer that suffix is also Dimensions
+    inferSuffixDimensions :: (IsPrefix as ds ~ 'True, FiniteList as, Dimensions ds)
+                        => p as
+                        -> q ds
+                        -> DimensionsEvidence (Suffix as ds)
+    -- | Make snoc almost as good as cons
+    inferSnocDimensions :: (KnownNat z, 2 <= z) => p ds -> q z -> DimensionsEvidence (ds +: z)
+    -- | Init of the list is also Dimensions
+    inferInitDimensions :: Dimensions (d :+ ds) => p (d :+ ds) -> DimensionsEvidence (Init (d :+ ds))
+    -- | Tail of the list is also Dimensions
+    inferTailDimensions :: Dimensions ds => p ds -> DimensionsEvidence (Tail ds)
+    -- | Take KnownNat of the list is also Dimensions
+    inferTakeNDimensions :: (KnownNat n, Dimensions ds) => p n -> q ds -> DimensionsEvidence (Take n ds)
+    -- | Drop KnownNat of the list is also Dimensions
+    inferDropNDimensions :: (KnownNat n, Dimensions ds) => p n -> q ds -> DimensionsEvidence (Drop n ds)
+    -- | Reverse of the list is also Dimensions
+    inferReverseDimensions :: Dimensions ds => q ds -> DimensionsEvidence (Reverse ds)
 
 -- | Similar to `const` or `asProxyTypeOf`;
 --   to be used on such implicit functions as `dim`, `dimMax`, etc.
@@ -427,153 +448,194 @@ instance XDimensions '[] where
 
 instance ( XDimensions xs
          ) => XDimensions (XN ': xs) where
-  wrapDim (n :* ns)
-          | Just sv <- someNatVal (natVal n) = sv :? wrapDim ns
+  wrapDim nns@(n :* ns)
+          | Just sv <- someNatVal (natVal n)
+          , DimensionsEvidence <- inferTailDimensions nns = sv :? wrapDim ns
           | otherwise = error "Impossible happend: someNatVal (natVal n) == Nothing!"
   {-# INLINE wrapDim #-}
 
 instance ( XDimensions xs
          , KnownNat n
          ) => XDimensions (N n ': xs) where
-  wrapDim (n :* ns) = n :* wrapDim ns
+  wrapDim nns@(n :* ns)
+    | DimensionsEvidence <- inferTailDimensions nns = n :* wrapDim ns
   {-# INLINE wrapDim #-}
 
 
 instance Dimensions'' ('[] :: [Nat]) where
-  totalDim _ = 1
-  {-# INLINE totalDim #-}
-  loopS _ f = f Z
-  {-# INLINE loopS #-}
-  loopA _ f = f Z
-  {-# INLINE loopA #-}
-  loopReverse _ f = f Z
-  {-# INLINE loopReverse #-}
-  ioffset _ = 0
-  {-# INLINE ioffset #-}
-  dropDims _ Z = unsafeCoerce Z
-  {-# INLINE dropDims #-}
-  takeDims _ Z = unsafeCoerce Z
-  {-# INLINE takeDims #-}
-  dimMax = Z
-  {-# INLINE dimMax #-}
-  dimMin = Z
-  {-# INLINE dimMin #-}
-  succIdx = id
-  {-# INLINE succIdx #-}
-  predIdx = id
-  {-# INLINE predIdx #-}
-  fromIdx _ = 0
-  {-# INLINE fromIdx #-}
-  toIdx _ = Z
-  {-# INLINE toIdx #-}
-  stepIdx _ = id
-  {-# INLINE stepIdx #-}
-  diffIdx _ _ = 0
-  {-# INLINE diffIdx #-}
-  -- concatEvidence _ bs = ConcatEvidence (dim `inSpaceOf` bs)
-  -- {-# INLINE concatEvidence #-}
-  -- prefixEvidence (_ :: q bs) _ = case (unsafeEqProof :: bs :~: '[]) of
-  --   Refl -> PrefixEvidence D
-  -- {-# INLINE prefixEvidence #-}
-  -- suffixEvidence (_ :: q as) _ = case (unsafeEqProof :: as :~: '[]) of
-  --   Refl -> SuffixEvidence D
-  -- {-# INLINE suffixEvidence #-}
-  -- snocEvidence _ (_ :: q n) = SnocEvidence (Proxy @n :* D)
-  -- {-# INLINE snocEvidence #-}
+    totalDim _ = 1
+    {-# INLINE totalDim #-}
+    loopS _ f = f Z
+    {-# INLINE loopS #-}
+    loopA _ f = f Z
+    {-# INLINE loopA #-}
+    loopReverse _ f = f Z
+    {-# INLINE loopReverse #-}
+    ioffset _ = 0
+    {-# INLINE ioffset #-}
+    dropDims _ Z = unsafeCoerce Z
+    {-# INLINE dropDims #-}
+    takeDims _ Z = unsafeCoerce Z
+    {-# INLINE takeDims #-}
+    dimMax = Z
+    {-# INLINE dimMax #-}
+    dimMin = Z
+    {-# INLINE dimMin #-}
+    succIdx = id
+    {-# INLINE succIdx #-}
+    predIdx = id
+    {-# INLINE predIdx #-}
+    fromIdx _ = 0
+    {-# INLINE fromIdx #-}
+    toIdx _ = Z
+    {-# INLINE toIdx #-}
+    stepIdx _ = id
+    {-# INLINE stepIdx #-}
+    diffIdx _ _ = 0
+    {-# INLINE diffIdx #-}
+    inferConcatDimensions _ (_ :: q bs) = DimensionsEvidence :: DimensionsEvidence bs
+    {-# INLINE inferConcatDimensions #-}
+    inferPrefixDimensions (_ :: p bs) _
+      | Refl <- unsafeCoerce Refl :: bs :~: '[] = DimensionsEvidence
+    {-# INLINE inferPrefixDimensions #-}
+    inferSuffixDimensions (_ :: p as) _
+      | Refl <- unsafeCoerce Refl :: as :~: '[] = DimensionsEvidence
+    {-# INLINE inferSuffixDimensions #-}
+    inferSnocDimensions _ _ = DimensionsEvidence
+    {-# INLINE inferSnocDimensions #-}
+    inferInitDimensions _ = DimensionsEvidence
+    {-# INLINE inferInitDimensions #-}
+    inferTailDimensions _ = error "Tail -- empty type-level list"
+    {-# INLINE inferTailDimensions #-}
+    inferTakeNDimensions _ _ = DimensionsEvidence
+    {-# INLINE inferTakeNDimensions #-}
+    inferDropNDimensions _ _ = DimensionsEvidence
+    {-# INLINE inferDropNDimensions #-}
+    inferReverseDimensions _ = DimensionsEvidence
+    {-# INLINE inferReverseDimensions #-}
 
 instance ( Dimensions'' ds
          , FiniteList ds
          , KnownDims (d ': ds)
+         , 2 <= d
          )
           => Dimensions'' (d ': ds) where
-  totalDim _ = fromIntegral (natVal (Proxy @d))
-             * totalDim (Proxy @ds)
-  {-# INLINE totalDim #-}
-  loopS (n:!Z) f = loop1 n (\i -> f (i:!Z))
-  loopS (n:!ns) f = loopS ns (\js -> loop1 n (\i -> f (i:!js)))
-  {-# INLINE loopS #-}
-  loopA (n:!Z) f = loopA1 n (f . (:!Z))
-  loopA (n:!ns) f = loopA ns (\js -> loopA1 n (f . (:!js)))
-  {-# INLINE loopA #-}
-  loopReverse (n:!Z) f = loopReverse1 n (f . (:!Z))
-  loopReverse (n:!ns) f = loopReverse ns (\js -> loopReverse1 n (f . (:!js)))
-  {-# INLINE loopReverse #-}
-  ioffset (i:!Z) = i
-  ioffset iis@(i:!is) = i + fromIntegral (natVal' (headDim# iis)) * ioffset is
-  {-# INLINE ioffset #-}
-  dropDims p ds = case (fromInteger (natVal p), order ds) of
-          (0, _) -> unsafeCoerce ds
-          (n, k) -> if n >= k then unsafeCoerce Z
-                              else f n ds
-    where
-      f 0 ds' = unsafeCoerce ds'
-      f i (_:!ds') = unsafeCoerce (f (i-1) $ unsafeCoerce ds')
-      f _ Z = unsafeCoerce Z
-  {-# INLINE dropDims #-}
-  takeDims p ds = case (fromInteger (natVal p), order ds) of
-          (0, _) -> unsafeCoerce Z
-          (n, k) -> if n >= k then unsafeCoerce ds
-                              else f n ds
-    where
-      f 0 _ = unsafeCoerce Z
-      f i (d:!ds') = unsafeCoerce $ d :! unsafeCoerce (f (i-1) $ unsafeCoerce ds')
-      f _ Z = unsafeCoerce Z
-  {-# INLINE takeDims #-}
-  dimMax = ds
-    where
-      ds = fromInteger (natVal $ headDim ds) :! dimMax
-  {-# INLINE dimMax #-}
-  dimMin = 1 :! dimMin
-  {-# INLINE dimMin #-}
-  succIdx ds@(i:!is) = case fromInteger (natVal' (headDim# ds)) of
-                         n -> if i == n then 1 :! succIdx is
-                                        else i+1 :! is
-  {-# INLINE succIdx #-}
-  predIdx ds@(i:!is) = if i == 1
-                       then fromInteger (natVal' (headDim# ds)) :! predIdx is
-                       else i-1 :! is
-  {-# INLINE predIdx #-}
-  fromIdx ds@(i:!is) = i-1 + fromInteger (natVal' (headDim# ds)) * fromIdx is
-  {-# INLINE fromIdx #-}
-  toIdx j = r
-    where
-      r = case divMod j $ fromInteger (natVal' (headDim# r)) of
-            (j', i) -> i+1 :! toIdx j'
-  {-# INLINE toIdx #-}
-  stepIdx di ds@(i:!is)
-        = case divMod (di + i - 1) $ fromInteger (natVal' (headDim# ds)) of
-           (0  , i') -> i'+1 :! is
-           (di', i') -> i'+1 :! stepIdx di' is
-  {-# INLINE stepIdx #-}
-  diffIdx ds@(i1:!is1) (i2:!is2) = i1 - i2
-        + fromInteger (natVal' (headDim# ds)) * diffIdx is1 is2
-  {-# INLINE diffIdx #-}
-  -- concatEvidence _ (bs :: q bs) = case concatEvidence (Proxy @ds) bs of
-  --   ConcatEvidence (asbs :: Dim asbs) -> case unsafeConcatProofs @(d ': ds) @bs @(d ': asbs) of
-  --     ConcatProofs -> ConcatEvidence (Proxy @d :* asbs)
-  -- {-# INLINE concatEvidence #-}
-  -- prefixEvidence (bs :: q bs) dds =
-  --   if (order dds - order bs) > 0
-  --   then case (unsafeEqProof :: IsSuffix bs ds :~: 'True) of
-  --     Refl -> case prefixEvidence bs (Proxy @ds) of
-  --       PrefixEvidence (as :: Dim as) -> case ( unsafeConcatProofs @(d ': as) @bs @(d ': ds) ) of
-  --         ConcatProofs -> PrefixEvidence (unsafeCoerce $ (Proxy @d) :* as)
-  --   else case (# unsafeEqProof :: (d ': ds) :~: bs
-  --              , unsafeConcatProofs @'[] @(d ': ds) @(d ': ds)
-  --              #) of
-  --     (# Refl, ConcatProofs #) -> PrefixEvidence D
-  -- {-# INLINE prefixEvidence #-}
-  -- suffixEvidence (das :: q das) _ = case tList das of
-  --   TLEmpty -> case ( unsafeConcatProofs @'[] @(d ': ds) @(d ': ds) ) of
-  --     ConcatProofs -> SuffixEvidence (dim @(d ': ds))
-  --   TLCons _ (as :: TypeList as) -> case ( unsafeEqProof :: IsPrefix as ds :~: 'True ) of
-  --     Refl -> unsafeCoerce (suffixEvidence as (Proxy @ds))
-  -- {-# INLINE suffixEvidence #-}
-  -- snocEvidence _ (p :: q z) | Refl <- unsafeCoerce Refl :: ((d :+ ds) +: z) :~: (d :+ (ds +: z))
-  --                           , SnocEvidence dimds <- snocEvidence (Proxy @ds) p
-  --                           = SnocEvidence (Proxy @d :* dimds)
-  -- {-# INLINE snocEvidence #-}
-
+    totalDim _ = fromIntegral (natVal (Proxy @d))
+               * totalDim (Proxy @ds)
+    {-# INLINE totalDim #-}
+    loopS (n:!Z) f = loop1 n (\i -> f (i:!Z))
+    loopS (n:!ns) f = loopS ns (\js -> loop1 n (\i -> f (i:!js)))
+    {-# INLINE loopS #-}
+    loopA (n:!Z) f = loopA1 n (f . (:!Z))
+    loopA (n:!ns) f = loopA ns (\js -> loopA1 n (f . (:!js)))
+    {-# INLINE loopA #-}
+    loopReverse (n:!Z) f = loopReverse1 n (f . (:!Z))
+    loopReverse (n:!ns) f = loopReverse ns (\js -> loopReverse1 n (f . (:!js)))
+    {-# INLINE loopReverse #-}
+    ioffset (i:!Z) = i
+    ioffset iis@(i:!is) = i + fromIntegral (natVal' (headDim# iis)) * ioffset is
+    {-# INLINE ioffset #-}
+    dropDims p ds = case (fromInteger (natVal p), order ds) of
+            (0, _) -> unsafeCoerce ds
+            (n, k) -> if n >= k then unsafeCoerce Z
+                                else f n ds
+      where
+        f 0 ds' = unsafeCoerce ds'
+        f i (_:!ds') = unsafeCoerce (f (i-1) $ unsafeCoerce ds')
+        f _ Z = unsafeCoerce Z
+    {-# INLINE dropDims #-}
+    takeDims p ds = case (fromInteger (natVal p), order ds) of
+            (0, _) -> unsafeCoerce Z
+            (n, k) -> if n >= k then unsafeCoerce ds
+                                else f n ds
+      where
+        f 0 _ = unsafeCoerce Z
+        f i (d:!ds') = unsafeCoerce $ d :! unsafeCoerce (f (i-1) $ unsafeCoerce ds')
+        f _ Z = unsafeCoerce Z
+    {-# INLINE takeDims #-}
+    dimMax = ds
+      where
+        ds = fromInteger (natVal $ headDim ds) :! dimMax
+    {-# INLINE dimMax #-}
+    dimMin = 1 :! dimMin
+    {-# INLINE dimMin #-}
+    succIdx ds@(i:!is) = case fromInteger (natVal' (headDim# ds)) of
+                           n -> if i == n then 1 :! succIdx is
+                                          else i+1 :! is
+    {-# INLINE succIdx #-}
+    predIdx ds@(i:!is) = if i == 1
+                         then fromInteger (natVal' (headDim# ds)) :! predIdx is
+                         else i-1 :! is
+    {-# INLINE predIdx #-}
+    fromIdx ds@(i:!is) = i-1 + fromInteger (natVal' (headDim# ds)) * fromIdx is
+    {-# INLINE fromIdx #-}
+    toIdx j = r
+      where
+        r = case divMod j $ fromInteger (natVal' (headDim# r)) of
+              (j', i) -> i+1 :! toIdx j'
+    {-# INLINE toIdx #-}
+    stepIdx di ds@(i:!is)
+          = case divMod (di + i - 1) $ fromInteger (natVal' (headDim# ds)) of
+             (0  , i') -> i'+1 :! is
+             (di', i') -> i'+1 :! stepIdx di' is
+    {-# INLINE stepIdx #-}
+    diffIdx ds@(i1:!is1) (i2:!is2) = i1 - i2
+          + fromInteger (natVal' (headDim# ds)) * diffIdx is1 is2
+    {-# INLINE diffIdx #-}
+    inferConcatDimensions _ (pbs :: p bs)
+      | DimensionsEvidence  <- inferConcatDimensions (Proxy @ds) pbs
+      , Refl <- unsafeCoerce Refl :: d :+ (ds ++ bs) :~: ((d :+ ds) ++ bs)
+      = DimensionsEvidence :: DimensionsEvidence (d :+ (ds ++ bs))
+    {-# INLINE inferConcatDimensions #-}
+    inferPrefixDimensions (_ :: p bs) ds
+      | Refl <- unsafeCoerce Refl :: Prefix bs (d :+ ds) :~: Take (Length (d :+ ds) - Length bs) (d :+ ds)
+      = inferTakeNDimensions (Proxy @(Length (d :+ ds) - Length bs)) ds
+    {-# INLINE inferPrefixDimensions #-}
+    inferSuffixDimensions (pas :: p as) _
+      | TLEmpty <- tList pas
+        = DimensionsEvidence
+      | TLCons _ (pas' :: TypeList as') <- tList pas
+      , Refl <- unsafeCoerce Refl :: IsPrefix as' ds :~: 'True
+      , Refl <- unsafeCoerce Refl :: Suffix as' ds :~: Suffix as (d :+ ds)
+      , DimensionsEvidence <- inferSuffixDimensions pas' (Proxy @ds)
+        = DimensionsEvidence :: DimensionsEvidence (Suffix as' ds)
+      | otherwise = error "inferSuffixFiniteList: TypeList failed to pattern match"
+    {-# INLINE inferSuffixDimensions #-}
+    inferSnocDimensions _ (q :: q z)
+      | DimensionsEvidence <- inferSnocDimensions (Proxy @ds) q
+      , Refl <- unsafeCoerce Refl :: (d :+ (ds +: z)) :~: ((d :+ ds) +: z)
+      = DimensionsEvidence :: DimensionsEvidence (d :+ (ds +: z))
+    {-# INLINE inferSnocDimensions #-}
+    inferInitDimensions (_ :: p (d0 :+ d :+ ds))
+      | DimensionsEvidence <- inferInitDimensions (Proxy @(d :+ ds))
+      = DimensionsEvidence :: DimensionsEvidence (d0 :+ Init (d :+ ds))
+    {-# INLINE inferInitDimensions #-}
+    inferTailDimensions _ = DimensionsEvidence
+    {-# INLINE inferTailDimensions #-}
+    inferTakeNDimensions (pn :: p n) _
+      | 0 <- natVal pn
+      , Refl <- unsafeCoerce Refl :: Take n (d :+ ds) :~: '[]
+        = DimensionsEvidence :: DimensionsEvidence '[]
+      | otherwise
+      , Refl <- unsafeCoerce Refl :: Take n (d :+ ds) :~: (d :+ Take (n-1) ds)
+      , DimensionsEvidence <- inferTakeNDimensions (Proxy @(n-1)) (Proxy @ds)
+        = DimensionsEvidence :: DimensionsEvidence (d :+ Take (n-1) ds)
+    {-# INLINE inferTakeNDimensions #-}
+    inferDropNDimensions (pn :: p n) _
+      | 0 <- natVal pn
+      , Refl <- unsafeCoerce Refl :: Drop n (d :+ ds) :~: (d :+ ds)
+        = DimensionsEvidence :: DimensionsEvidence (d :+ ds)
+      | otherwise
+      , Refl <- unsafeCoerce Refl :: Drop n (d :+ ds) :~: Drop (n-1) ds
+      , DimensionsEvidence <- inferDropNDimensions (Proxy @(n-1)) (Proxy @ds)
+        = DimensionsEvidence :: DimensionsEvidence (Drop (n-1) ds)
+    {-# INLINE inferDropNDimensions #-}
+    inferReverseDimensions _
+      | DimensionsEvidence <- inferReverseDimensions (Proxy @ds)
+      , DimensionsEvidence <- inferSnocDimensions (Proxy @(Reverse ds)) (Proxy @d)
+      , Refl <- unsafeCoerce Refl :: Reverse (d :+ ds) :~: (Reverse ds +: d)
+       = DimensionsEvidence :: DimensionsEvidence (Reverse ds +: d)
+    {-# INLINE inferReverseDimensions #-}
 
 
 appendIdx :: Idx as -> Int -> Idx (as +: b)
@@ -639,28 +701,11 @@ loopReverse1 n f = loop' n
 -- | It is better to know the length of a dimension list and avoid infinite types.
 type KnownOrder (ns :: [k]) = KnownNat (Length ns)
 
--- type family KnownOrders (ns :: [k]) :: Constraint where
---   KnownOrders '[] = ()
---   KnownOrders (x ': xs) = ( KnownOrder (x ': xs)
---                           , KnownOrders xs
---                           )
 
 -- | A constraint family that makes sure all subdimensions are known.
 type family KnownDims (ns :: [Nat]) :: Constraint where
   KnownDims '[] = ()
-  KnownDims (x ': xs) = ( KnownNat x
-                        , Dimensions' xs
-                        , Dimensions'' xs
-                        , KnownDims xs)
-  KnownDims xs = ( Dimensions' xs
-                 , Dimensions'' xs
-                 )
-
-type family FiniteDims (ns :: [Nat]) :: Constraint where
-  FiniteDims '[] = ()
-  FiniteDims (x ': xs) = ( FiniteList xs, FiniteDims xs)
-  FiniteDims xs = FiniteList xs
-
+  KnownDims (x ': xs) = ( KnownNat x, KnownDims xs )
 
 
 -- | Make sure all dimensions are not degenerate
@@ -715,61 +760,8 @@ type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
   ns >: n = ns +: n
 infixl 6 >:
 
--- | Use this strange thing to give various proofs that (as ++ bs ~ asbs)
-data ConcatProofs (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-  = ConcatList as bs asbs => ConcatProofs
 
 
--- | Fool typechecker by saying that `as ++ bs ~ asbs`
-unsafeConcatProofs :: ConcatProofs (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-unsafeConcatProofs = unsafeCoerce (ConcatProofs @'[] @'[] @'[])
-
----- | Help to do contraction of two lists
---contractEvidence :: p (as +: m) -> q (m :+ bs) -> ConcatProofs as bs (as ++ bs)
---contractEvidence _ _ = unsafeConcatProofs
-
-
---
--- data (Dimensions as, Dimensions bs)
---   => ConcatEvidence (as :: [Nat]) (bs :: [Nat])
---   = forall (asbs :: [Nat])
---   . ( ConcatList as bs asbs
---     , Dimensions asbs
---     ) => ConcatEvidence (Dim (asbs :: [Nat]))
---
--- data (Dimensions bs, Dimensions asbs)
---   => PrefixEvidence (bs :: [Nat]) (asbs :: [Nat])
---   = forall (as :: [Nat])
---   . ( ConcatList as bs asbs
---     , Dimensions as
---     ) => PrefixEvidence (Dim (as :: [Nat]))
---
--- data (Dimensions as, Dimensions asbs)
---   => SuffixEvidence (as :: [Nat]) (asbs :: [Nat])
---   = forall (bs :: [Nat])
---   . ( ConcatList as bs asbs
---     , Dimensions bs
---     ) => SuffixEvidence (Dim (bs :: [Nat]))
---
--- data (Dimensions xs, KnownNat z)
---   => SnocEvidence (xs :: [Nat]) (z::Nat)
---   = Dimensions (xs +: z) => SnocEvidence (Dim (xs +: z))
-
----- | Fool typechecker by saying that list `xs` has Cons constructor
---unsafeConsProof :: ConsProof (as :: [Nat])
---unsafeConsProof = unsafeCoerce (ConsProof (Proxy @1) (Proxy @'[]))
---
--- | Fool typechecker by saying that a ~ b
-unsafeEqProof :: a :~: b
-unsafeEqProof = unsafeCoerce Refl
-
-
-
-
----- | Get evidence about various relations between haskell list type [Nat]
-----   and its list op counterpart List Nat.
---listProof :: p (xs :: [Nat]) -> ListProof xs
---listProof _ = unsafeCoerce $ ListProof (Proxy @'Empty)
 
 --
 ---- | If we know (1) Dimensions ds and (2) Size of prefix list,
