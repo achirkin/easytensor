@@ -36,6 +36,7 @@ import           Numeric.Dimensions
 
 prop_Eye :: SomeSimpleDFNonScalar -> Bool
 prop_Eye (SSDFN (SDF (x :: DataFrame Float (d ': ds))))
+  | DimensionsEvidence <- inferTailDimensions x
   = case ( unsafeEqProof :: Prefix ds (d ': ds) :~: '[d]
          , unsafeEqProof :: IsSuffix ds (d ': ds) :~: 'True
          , unsafeEqProof :: Suffix '[d] (d ': ds) :~: ds

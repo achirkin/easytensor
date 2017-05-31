@@ -62,7 +62,7 @@ import           Data.Proxy
 import           Data.Type.Equality
 import           GHC.Base (runRW#)
 import           GHC.Prim
-import           GHC.TypeLits       (Nat, natVal, type (+), type (-), KnownNat)
+import           GHC.TypeLits       (Nat, natVal, type (+), type (-), KnownNat, type (<=))
 import           GHC.Types
 import           Numeric.Array
 import qualified Numeric.Array.Family as AFam (Scalar (..))
@@ -574,6 +574,8 @@ mat44 a b c d = (a <::>) b <:> (c <::> d)
 -- | Matrix transpose
 transpose :: ( KnownNat n
              , KnownNat m
+             , 2 <= m
+             , 2 <= n
              , M.MatrixCalculus t n m (Array t '[n,m])
              , M.MatrixCalculus t m n (Array t '[m,n])
              , NCommons.PrimBytes (Array t '[m,n])
@@ -583,24 +585,28 @@ transpose = KnownDataFrame . M.transpose . _getDF
 
 -- | One on a diagonal, zero everywhere else
 eye :: ( KnownNat n
+       , 2 <= n
        , M.SquareMatrixCalculus t n (Array t '[n,n])
        ) => Matrix t n n
 eye = KnownDataFrame M.eye
 
 -- | Single element on a diagonal, zero everywhere else
 diag :: ( KnownNat n
+        , 2 <= n
         , M.SquareMatrixCalculus t n (Array t '[n,n])
         ) => Scalar t -> Matrix t n n
 diag = KnownDataFrame . M.diag . unScalar
 
 -- | Determinant of  Mat
 det :: ( KnownNat n
+       , 2 <= n
        , M.SquareMatrixCalculus t n (Array t '[n,n])
        ) => Matrix t n n -> Scalar t
 det = scalar . M.det . _getDF
 
 -- | Sum of diagonal elements
 trace :: ( KnownNat n
+         , 2 <= n
          , M.SquareMatrixCalculus t n (Array t '[n,n])
          ) => Matrix t n n -> Scalar t
 trace = scalar . M.trace . _getDF
@@ -608,6 +614,7 @@ trace = scalar . M.trace . _getDF
 
 -- | Sum of diagonal elements
 inverse :: ( KnownNat n
+           , 2 <= n
            , M.MatrixInverse (Array t '[n,n])
            ) => Matrix t n n -> Matrix t n n
 inverse = KnownDataFrame . M.inverse . _getDF
