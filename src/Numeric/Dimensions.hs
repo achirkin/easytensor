@@ -306,35 +306,35 @@ asSpaceOf _ = id
 --------------------------------------------------------------------------------
 
 instance Show (Idx ds) where
-  show Z = "Idx Ø"
-  show xs = "Idx" ++ foldr (\i s -> " " ++ show i ++ s) "" (idxToList xs)
+    show Z = "Idx Ø"
+    show xs = "Idx" ++ foldr (\i s -> " " ++ show i ++ s) "" (idxToList xs)
 
 instance Dimensions'' ds => Show (Dim ds) where
-  show D = "Dim Ø"
-  show xs = "Dim" ++ foldr (\i s -> " " ++ show i ++ s) ""
-    (idxToList $ dimMax `inSpaceOf` xs)
+    show D = "Dim Ø"
+    show xs = "Dim" ++ foldr (\i s -> " " ++ show i ++ s) ""
+      (idxToList $ dimMax `inSpaceOf` xs)
 
 instance Show (SomeDim xns) where
-  show (SomeDim p) = show p
+    show (SomeDim p) = show p
 
 instance Show (Dim (xds :: [XNat])) where
-  show d = case someDimVal d of
-    Nothing -> "Unknown dim"
-    Just sd -> show sd
+    show d = case someDimVal d of
+      Nothing -> "Unknown dim"
+      Just sd -> show sd
 
 instance Functor (Dimensional xns) where
-  fmap f d = Dimensional (f . _runDimensional d)
-  {-# INLINE fmap #-}
+    fmap f d = Dimensional (f . _runDimensional d)
+    {-# INLINE fmap #-}
 instance Applicative (Dimensional xns) where
-  pure x = Dimensional $ const x
-  {-# INLINE pure #-}
-  f <*> v = Dimensional $ \d -> _runDimensional f d (_runDimensional v d)
-  {-# INLINE (<*>) #-}
+    pure x = Dimensional $ const x
+    {-# INLINE pure #-}
+    f <*> v = Dimensional $ \d -> _runDimensional f d (_runDimensional v d)
+    {-# INLINE (<*>) #-}
 instance Monad (Dimensional xns) where
-  return  = pure
-  {-# INLINE return #-}
-  m >>= k = Dimensional $ \d -> _runDimensional (k $ _runDimensional m d) d
-  {-# INLINE (>>=) #-}
+    return  = pure
+    {-# INLINE return #-}
+    m >>= k = Dimensional $ \d -> _runDimensional (k $ _runDimensional m d) d
+    {-# INLINE (>>=) #-}
 
 
 idxToList :: Idx ds -> [Int]
@@ -346,85 +346,85 @@ idxFromList [] = unsafeCoerce Z
 idxFromList (x:xs) = unsafeCoerce $ x :! unsafeCoerce (idxFromList xs)
 
 instance Eq (Idx ds) where
-  Z == Z = True
-  (a:!as) == (b:!bs) = a == b && as == bs
-  Z /= Z = False
-  (a:!as) /= (b:!bs) = a /= b || as /= bs
+    Z == Z = True
+    (a:!as) == (b:!bs) = a == b && as == bs
+    Z /= Z = False
+    (a:!as) /= (b:!bs) = a /= b || as /= bs
 
 instance Eq (Dim ds) where
-  D == D = True
-  (_:*as) == (_:*bs) = as == bs
-  (a:?as) == (b:?bs) = a == b && as == bs
-  (a:*as) == (b:?bs) = SomeNat a == b && as == bs
-  (a:?as) == (b:*bs) = a == SomeNat b && as == bs
+    D == D = True
+    (_:*as) == (_:*bs) = as == bs
+    (a:?as) == (b:?bs) = a == b && as == bs
+    (a:*as) == (b:?bs) = SomeNat a == b && as == bs
+    (a:?as) == (b:*bs) = a == SomeNat b && as == bs
 
 -- | With this instance we can slightly reduce indexing expressions
 --   e.g. x ! (1 :! 2 :! 4) == x ! (1 :! 2 :! 4 :! Z)
 instance Num (Idx '[n]) where
-  (a:!Z) + (b:!Z) = (a+b) :! Z
-  (a:!Z) - (b:!Z) = (a-b) :! Z
-  (a:!Z) * (b:!Z) = (a*b) :! Z
-  signum (a:!Z)   = signum a :! Z
-  abs (a:!Z)      = abs a :! Z
-  fromInteger i   = fromInteger i :! Z
+    (a:!Z) + (b:!Z) = (a+b) :! Z
+    (a:!Z) - (b:!Z) = (a-b) :! Z
+    (a:!Z) * (b:!Z) = (a*b) :! Z
+    signum (a:!Z)   = signum a :! Z
+    abs (a:!Z)      = abs a :! Z
+    fromInteger i   = fromInteger i :! Z
 
 
 instance Ord (Idx ds) where
-  compare Z Z = EQ
-  compare (a:!as) (b:!bs) = compare as bs `mappend` compare a b
+    compare Z Z = EQ
+    compare (a:!as) (b:!bs) = compare as bs `mappend` compare a b
 
 instance Ord (Dim ds) where
-  compare D D = EQ
-  compare (_:*as) (_:*bs) = compare as bs
-  compare (a:?as) (b:?bs) = compare as bs `mappend` compare a b
-  compare (a:?as) (b:*bs) = compare as bs `mappend` compare a (SomeNat b)
-  compare (a:*as) (b:?bs) = compare as bs `mappend` compare (SomeNat a) b
+    compare D D = EQ
+    compare (_:*as) (_:*bs) = compare as bs
+    compare (a:?as) (b:?bs) = compare as bs `mappend` compare a b
+    compare (a:?as) (b:*bs) = compare as bs `mappend` compare a (SomeNat b)
+    compare (a:*as) (b:?bs) = compare as bs `mappend` compare (SomeNat a) b
 
 instance Dimensions' ds => Bounded (Dim ds) where
-  maxBound = dim
-  {-# INLINE maxBound #-}
-  minBound = dim
-  {-# INLINE minBound #-}
+    maxBound = dim
+    {-# INLINE maxBound #-}
+    minBound = dim
+    {-# INLINE minBound #-}
 
 instance Dimensions'' ds => Bounded (Idx ds) where
-  maxBound = dimMax
-  {-# INLINE maxBound #-}
-  minBound = dimMin
-  {-# INLINE minBound #-}
+    maxBound = dimMax
+    {-# INLINE maxBound #-}
+    minBound = dimMin
+    {-# INLINE minBound #-}
 
 instance Dimensions'' ds => Enum (Idx ds) where
-  succ = succIdx
-  {-# INLINE succ #-}
-  pred = predIdx
-  {-# INLINE pred #-}
-  toEnum = toIdx
-  {-# INLINE toEnum #-}
-  fromEnum = fromIdx
-  {-# INLINE fromEnum #-}
-  enumFrom x = take (diffIdx maxBound x + 1) $ iterate succ x
-  {-# INLINE enumFrom #-}
-  enumFromTo x y | x >= y    = take (diffIdx x y + 1) $ iterate pred x
-                 | otherwise = take (diffIdx y x + 1) $ iterate succ x
-  {-# INLINE enumFromTo #-}
-  enumFromThen x x' = take n $ iterate (stepIdx dn) x
-    where
-      dn = diffIdx x' x
-      n  = 1 + if dn == 0 then 0
-                          else if dn > 0 then diffIdx maxBound x `div` dn
-                                         else diffIdx x minBound `div` negate dn
-  {-# INLINE enumFromThen #-}
-  enumFromThenTo x x' y = take n $ iterate (stepIdx dn) x
-    where
-      dn = diffIdx x' x
-      n  = 1 + if dn == 0 then 0
-                          else diffIdx y x `div` dn
-  {-# INLINE enumFromThenTo #-}
+    succ = succIdx
+    {-# INLINE succ #-}
+    pred = predIdx
+    {-# INLINE pred #-}
+    toEnum = toIdx
+    {-# INLINE toEnum #-}
+    fromEnum = fromIdx
+    {-# INLINE fromEnum #-}
+    enumFrom x = take (diffIdx maxBound x + 1) $ iterate succ x
+    {-# INLINE enumFrom #-}
+    enumFromTo x y | x >= y    = take (diffIdx x y + 1) $ iterate pred x
+                   | otherwise = take (diffIdx y x + 1) $ iterate succ x
+    {-# INLINE enumFromTo #-}
+    enumFromThen x x' = take n $ iterate (stepIdx dn) x
+      where
+        dn = diffIdx x' x
+        n  = 1 + if dn == 0 then 0
+                            else if dn > 0 then diffIdx maxBound x `div` dn
+                                           else diffIdx x minBound `div` negate dn
+    {-# INLINE enumFromThen #-}
+    enumFromThenTo x x' y = take n $ iterate (stepIdx dn) x
+      where
+        dn = diffIdx x' x
+        n  = 1 + if dn == 0 then 0
+                            else diffIdx y x `div` dn
+    {-# INLINE enumFromThenTo #-}
 
 
 instance IsList (Idx ds) where
-  type Item (Idx ds) = Int
-  fromList = idxFromList
-  toList = idxToList
+    type Item (Idx ds) = Int
+    fromList = idxFromList
+    toList = idxToList
 
 -- | Get the first dimension
 headDim :: t (d ': ds :: [k]) -> Proxy d
@@ -433,33 +433,33 @@ headDim _ = Proxy
 
 
 instance Dimensions' ('[] :: [Nat]) where
-  dim = D
-  {-# INLINE dim #-}
+    dim = D
+    {-# INLINE dim #-}
 
 instance ( KnownDims (d ': ds)
          , Dimensions' ds
          )  => Dimensions' ((d ': ds) :: [Nat]) where
-  dim = Proxy :* dim
-  {-# INLINE dim #-}
+    dim = Proxy :* dim
+    {-# INLINE dim #-}
 
 instance XDimensions '[] where
-  wrapDim _ = D
-  {-# INLINE wrapDim #-}
+    wrapDim _ = D
+    {-# INLINE wrapDim #-}
 
 instance ( XDimensions xs
          ) => XDimensions (XN ': xs) where
-  wrapDim nns@(n :* ns)
-          | Just sv <- someNatVal (natVal n)
-          , DimensionsEvidence <- inferTailDimensions nns = sv :? wrapDim ns
-          | otherwise = error "Impossible happend: someNatVal (natVal n) == Nothing!"
-  {-# INLINE wrapDim #-}
+    wrapDim nns@(n :* ns)
+            | Just sv <- someNatVal (natVal n)
+            , DimensionsEvidence <- inferTailDimensions nns = sv :? wrapDim ns
+            | otherwise = error "Impossible happend: someNatVal (natVal n) == Nothing!"
+    {-# INLINE wrapDim #-}
 
 instance ( XDimensions xs
          , KnownNat n
          ) => XDimensions (N n ': xs) where
-  wrapDim nns@(n :* ns)
-    | DimensionsEvidence <- inferTailDimensions nns = n :* wrapDim ns
-  {-# INLINE wrapDim #-}
+    wrapDim nns@(n :* ns)
+      | DimensionsEvidence <- inferTailDimensions nns = n :* wrapDim ns
+    {-# INLINE wrapDim #-}
 
 
 instance Dimensions'' ('[] :: [Nat]) where
@@ -704,100 +704,58 @@ type KnownOrder (ns :: [k]) = KnownNat (Length ns)
 
 -- | A constraint family that makes sure all subdimensions are known.
 type family KnownDims (ns :: [Nat]) :: Constraint where
-  KnownDims '[] = ()
-  KnownDims (x ': xs) = ( KnownNat x, KnownDims xs )
+    KnownDims '[] = ()
+    KnownDims (x ': xs) = ( KnownNat x, KnownDims xs )
 
 
 -- | Make sure all dimensions are not degenerate
 type family ValidDims (ns :: [Nat]) :: Constraint where
-  ValidDims '[] = ()
-  ValidDims (x ': xs) = (2 <= x, ValidDims xs)
+    ValidDims '[] = ()
+    ValidDims (x ': xs) = (2 <= x, ValidDims xs)
 
 
 -- | Unify usage of XNat and Nat.
 --   This is useful in function and type definitions.
 --   Assumes a given XNat to be known at type-level (N n constructor).
 type family KnownDim (x::k) :: Nat where
-  KnownDim n = n
-  KnownDim (N n) = n
+    KnownDim n = n
+    KnownDim (N n) = n
 
 type family WrapDims (x::[k]) :: [XNat] where
-  WrapDims ('[] :: [Nat])     = '[]
-  WrapDims (n ': ns :: [Nat]) = N n ': WrapDims ns
-  WrapDims (xns :: [XNat])    = xns
+    WrapDims ('[] :: [Nat])     = '[]
+    WrapDims (n ': ns :: [Nat]) = N n ': WrapDims ns
+    WrapDims (xns :: [XNat])    = xns
 
 type family UnwrapDims (xns::[XNat]) = (ns :: [Nat]) | ns -> xns where
-  UnwrapDims '[] = '[]
-  UnwrapDims (N x ': xs) = x ': UnwrapDims xs
+    UnwrapDims '[] = '[]
+    UnwrapDims (N x ': xs) = x ': UnwrapDims xs
 
 -- | FixedDim puts very tight constraints on what list of naturals can be.
 --   This allows establishing strong relations between [XNat] and [Nat].
 type family FixedDim (xns :: [XNat]) (ns :: [Nat]) :: [Nat] where
-  FixedDim '[] ns = '[]
-  FixedDim (N n ': xs) ns = n ': FixedDim xs (Tail ns)
-  FixedDim (XN  ': xs) ns = Head ns ': FixedDim xs (Tail ns)
+    FixedDim '[] ns = '[]
+    FixedDim (N n ': xs) ns = n ': FixedDim xs (Tail ns)
+    FixedDim (XN  ': xs) ns = Head ns ': FixedDim xs (Tail ns)
 
 type family FixedXDim (xns :: [XNat]) (ns :: [Nat]) :: [XNat] where
-  FixedXDim xs '[] = '[]
-  FixedXDim xs (n ': ns) = WrapHead n xs ': FixedXDim (Tail xs) ns
+    FixedXDim xs '[] = '[]
+    FixedXDim xs (n ': ns) = WrapHead n xs ': FixedXDim (Tail xs) ns
 
 type family WrapHead (n :: Nat) (xs :: [XNat]) :: XNat where
-  WrapHead x (N _ ': _) = N x
-  WrapHead _ (XN  ': _) = XN
-  WrapHead x '[]         = N x
+    WrapHead x (N _ ': _) = N x
+    WrapHead _ (XN  ': _) = XN
+    WrapHead x '[]         = N x
 
 -- | Synonym for (:+) that ignores Nat values 0 and 1
 type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
-  0 :< ns = ns
-  1 :< ns = ns
-  n :< ns = n :+ ns
+    0 :< ns = ns
+    1 :< ns = ns
+    n :< ns = n :+ ns
 infixr 6 :<
 
 -- | Synonym for (+:) that ignores Nat values 0 and 1
 type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
-  ns >: 0 = ns
-  ns >: 1 = ns
-  ns >: n = ns +: n
+    ns >: 0 = ns
+    ns >: 1 = ns
+    ns >: n = ns +: n
 infixl 6 >:
-
-
-
-
---
----- | If we know (1) Dimensions ds and (2) Size of prefix list,
-----   we can derive Dimensions instances for both, prefix and suffix of the list
---inferSubDimensions :: forall (x :: Type) (p :: [Nat] -> Type) (q :: [Nat] -> Type)
---                             (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
---                    . ( ConcatList as bs asbs
---                      , Dimensions asbs
---                      , FiniteDims as
---                      , FiniteList as
---                      )
---                   => p as
---                   -> q bs
---                   -> ( ( Dimensions as
---                        , Dimensions bs
---                        ) => Dim as -> Dim bs -> x
---                      )
---                   -> x
---inferSubDimensions aas bs f
---  = case tList aas of
---      TLEmpty -> case (# unsafeConcatProofs :: ConcatProofs '[] bs bs
---                       , unsafeEqProof :: bs :~: asbs
---                       #) of
---        (# ConcatProofs, Refl #) -> f D (dim `inSpaceOf` bs)
---      TLCons (p :: Proxy a) ps ->
---                 case (# unsafeConcatProofs :: ConcatProofs (Tail as) bs (Tail asbs)
---                       , unsafeConcatProofs :: ConcatProofs as bs asbs
---                       , unsafeEqProof :: a :~: Head asbs
---                       #) of
---        (# ConcatProofs, ConcatProofs, Refl #) ->
---            ( inferSubDimensions @x @Proxy @q @(Tail as) @bs @(Tail asbs) ) (Proxy @(Tail as)) bs (f . (p :*))
-----      Nothing -> case ( unsafeConsProof ::  ConsProof as
-----                      , unsafeConsProof ::  ConsProof asbs
-----                      , unsafeEqProof :: Head as :~: Head asbs
-----                      , unsafeConcatProofs :: ConcatProofs (Tail as) bs (Tail asbs)
-----                      , unsafeConcatProofs :: ConcatProofs as bs asbs
-----                      ) of
-----        (ConsProof p ps, ConsProof _ _, Refl, ConcatProofs _ _ _, ConcatProofs _ _ _) ->
-----            ( inferSubDimensions @x @Proxy @q @(Tail as) @bs @(Tail asbs) ) ps bs (f . (p :*))
