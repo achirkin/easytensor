@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeOperators #-}
 -- {-# LANGUAGE IncoherentInstances #-}
 
-module Main where
+module Main (main) where
 
 import Data.Proxy
 import GHC.TypeLits
@@ -36,19 +36,18 @@ main :: IO ()
 main = do
     putStrLn "Hello world!"
     print (Proxy @3 :* Proxy @2 :* (D :: Dim ('[] :: [Nat])))
-    print $ case (,,,) <$> someNatVal 3
-                                    <*> someNatVal 6
-                                    <*> someNatVal 8
-                                    <*> someNatVal 4
-                                    of
+    print $ case (,,,)  <$> someNatVal 3
+                        <*> someNatVal 6
+                        <*> someNatVal 8
+                        <*> someNatVal 4
+                        of
       Nothing -> Nothing
-      Just (a,b,c,d) -> someDimVal $ a :? b :? c :? d :? D
-    printEither s
-    printEither s2
+      Just (a,b,c,d) -> xDimVal $ a :? b :? c :? d :? D
+    putStrLn s
+    putStrLn s2
     -- look at this hole: amazing type inference!
     -- putStrLn $ _ x3
-    printEither s3
-    print x3
+    putStrLn x3
     print dfY
 --    putStrLn $ _ %* mat22 (vec2 1 0) (vec2 0 2)
 --    putStrLn $ vec2 2 (3 :: Float) %* _
@@ -85,9 +84,13 @@ main = do
     print ixs
     putStrLn "\n List traversable:\n"
     print $ elementWise (dim @'[4]) (\x -> [x, x+0.375]) ixs
-    print ( withRuntimeDim [2,6,3] (\ds -> show (dimMax `inSpaceOf` ds) ) :: Either String String )
+    print $ case someDimVal [2,6,3] of
+      Just (SomeDim ds) -> show (dimMax `inSpaceOf` ds)
+      Nothing -> "Failed to get dim [2,6,3]"
     print $ order (Proxy @'[3,2,3,4,6])
-    print ( withRuntimeDim [2,6,3] (\(_ :: Dim ds) -> show (order (Proxy @(2 ': ds))) ) :: Either String String )
+    print $ case someDimVal [2,6,3] of
+      Just (SomeDim (_ :: Dim ds)) -> show (order (Proxy @(2 ': ds)))
+      Nothing -> "Failed to get dim [2,6,3]"
     print $ dimMin @'[_,_] !. dfY
 --    print $ subDimTest dfY Proxy
     print $ case someNatVal 5 of
@@ -106,28 +109,25 @@ main = do
     ixs :: DataFrame Float '[3,2,4]
     ixs = iwgen $ dim @'[3,2,4] `asSpaceOf` (\(i :! j :! k :! Z) -> scalar . realToFrac $ i*100 + j*10 + k)
     matX = mat22 (vec2 0 2) (vec2 1 (0 :: Float))
-    printEither :: Either String String -> IO ()
-    printEither (Left a) = putStrLn a
-    printEither (Right a) = putStrLn a
     Just d2 = someNatVal 2
     Just d3 = someNatVal 5
     dimX :: Dim '[N 3, XN, XN, N 2]
     dimX = Proxy :* d2 :? d3 :? Proxy :* D
     dimVec2 :: Dim '[XN]
     dimVec2 = d2 :? D
-    sVec2 = withDim dimVec2 (\ds -> show (dfFloat 3.11 `inSpaceOf` ds)
-                            )
-    s2 = withDim dimX (\ds -> show (dfFloat (exp 3) `inSpaceOf` ds)
-                      )
-    x3 = case withDim dimX (\ds -> unboundShape $ dfFloat 42.0001 `inSpaceOf` ds
-                      ) of
-        Right x -> Right $ x `inSpaceOf` Proxy @'[XN,XN,XN,N _]
-        Left a -> Left a
-    s = withDim dimX (\ds -> let pix = 2 * dfFloat pi `inSpaceOf` ds
-                             in show pix ++ show (pix ! (1 :! 2 :! 1 :! 2 :! Z) :: Scf)
-                     )
-      :: Either String String
-    s3 = (`withShape` show) <$> x3
+    sVec2 = case xDimVal dimVec2 of
+        Just (XDim ds) -> show (dfFloat 3.11 `inSpaceOf` ds)
+        Nothing -> "Failed to get xDimVal dimVec2"
+    s2 = case xDimVal dimVec2 of
+        Just (XDim ds) -> show (dfFloat (exp 3) `inSpaceOf` ds)
+        Nothing -> "Failed to get xDimVal dimVec2"
+    x3 = case xDimVal dimX of
+        Just (XDim ds) -> show $ unboundShape (dfFloat 42.0001 `inSpaceOf` ds) `inSpaceOf` Proxy @'[XN,XN,XN,N _]
+        Nothing -> "Failed to get xDimVal dimX"
+    s = case xDimVal dimX of
+        Just (XDim ds) -> let pix = 2 * dfFloat pi `inSpaceOf` ds
+                          in show pix ++ show (pix ! (1 :! 2 :! 1 :! 2 :! Z) :: Scf)
+        Nothing -> "Failed to get xDimVal dimX"
     -- dimX1 :: Dim '[3,2,4]
     -- dimX1 = dim
     -- dimX2 :: Dim '[4,5,2]

@@ -25,7 +25,6 @@
 
 module Numeric.Dimensions.ListTest (runTests) where
 
-import Control.Monad (join)
 import Data.Proxy
 import GHC.TypeLits
 import Test.QuickCheck
@@ -99,22 +98,19 @@ prop_FiniteList a xs'
   | n <- (abs a)
   , xs <- (2+) . abs <$> xs'
   , Just (SomeNat pn) <- someNatVal n
-  = case ( withRuntimeDim xs $ \pxs -> and
-          [ order pxs == length xs
-          , case inferTakeNFiniteList pn pxs of
-              fle@FiniteListEvidence ->
-                order fle == length (take (fromInteger n) xs)
-          , case inferDropNFiniteList pn pxs of
-              fle@FiniteListEvidence ->
-                order fle == length (drop (fromInteger n) xs)
-          , case inferReverseFiniteList pxs of
-              fle@FiniteListEvidence ->
-                order fle == length (reverse xs)
-          ]
-         ) of
-      Left _ -> True
-      Right b -> b
-prop_FiniteList _ _ = True
+  , Just (SomeDim pxs) <- someDimVal xs
+  = and [ order pxs == length xs
+        , case inferTakeNFiniteList pn pxs of
+            fle@FiniteListEvidence ->
+              order fle == length (take (fromInteger n) xs)
+        , case inferDropNFiniteList pn pxs of
+            fle@FiniteListEvidence ->
+              order fle == length (drop (fromInteger n) xs)
+        , case inferReverseFiniteList pxs of
+            fle@FiniteListEvidence ->
+              order fle == length (reverse xs)
+        ]
+prop_FiniteList _ _ = False
 
 -- * Test KnownNat propagation for lists of different length
 
@@ -154,16 +150,13 @@ prop_ListShift :: [Int] -> Bool
 prop_ListShift xs'
   | xs <- (2+) . abs <$> xs'
   , n0 <- fromIntegral (length xs) :: Integer
-  = case ( withRuntimeDim xs $ \(_ :: Dim xs) ->
-          let ys = Proxy @(1 ': 2 ': 3 ': 4 ': 5 ': 6 ': 7 ': xs)
-          in and
-              [ listShiftApp1 ys == n0 + 7
-              , listShiftApp2 ys == n0 + 7 + 2
-              , listShiftApp3 ys == (n0 + 7 - 3)*2 - 1
-              ]
-         ) of
-      Left _ -> True
-      Right b -> b
+  , Just (SomeDim (_ :: Dim xs)) <- someDimVal xs
+  , ys <- Proxy @(1 ': 2 ': 3 ': 4 ': 5 ': 6 ': 7 ': xs)
+  = and [ listShiftApp1 ys == n0 + 7
+        , listShiftApp2 ys == n0 + 7 + 2
+        , listShiftApp3 ys == (n0 + 7 - 3)*2 - 1
+        ]
+prop_ListShift _ = False
 
 -- * Inference properties
 
@@ -171,27 +164,23 @@ prop_ListInference :: [Int] -> [Int] -> Bool
 prop_ListInference xs' ys'
   | xs <- (2+) . abs <$> xs'
   , ys <- (2+) . abs <$> ys'
-  = case join
-         ( withRuntimeDim xs $ \(dxs :: Dim xs) ->
-             withRuntimeDim ys $ \(dys :: Dim ys) ->
-              and
-                [ case inferConcatFiniteList dxs dys of
-                    fle@FiniteListEvidence ->
-                      order fle == length xs + length ys
-                , case (inferConcat dxs dys, inferConcatFiniteList dxs dys) of
-                    (ConcatEvidence, FiniteListEvidence) ->
-                      case inferPrefixFiniteList dys (Proxy @(xs ++ ys)) of
-                        fle@FiniteListEvidence ->
-                          order fle == length xs
-                , case (inferConcat dxs dys, inferConcatFiniteList dxs dys) of
-                    (ConcatEvidence, FiniteListEvidence) ->
-                      case inferSuffixFiniteList dxs (Proxy @(xs ++ ys)) of
-                        fle@FiniteListEvidence ->
-                          order fle == length ys
-                ]
-         ) of
-      Left _ -> True
-      Right b -> b
+  , Just (SomeDim (dxs :: Dim xs)) <- someDimVal xs
+  , Just (SomeDim (dys :: Dim ys)) <- someDimVal ys
+  = and [ case inferConcatFiniteList dxs dys of
+            fle@FiniteListEvidence ->
+              order fle == length xs + length ys
+        , case (inferConcat dxs dys, inferConcatFiniteList dxs dys) of
+            (ConcatEvidence, FiniteListEvidence) ->
+              case inferPrefixFiniteList dys (Proxy @(xs ++ ys)) of
+                fle@FiniteListEvidence ->
+                  order fle == length xs
+        , case (inferConcat dxs dys, inferConcatFiniteList dxs dys) of
+            (ConcatEvidence, FiniteListEvidence) ->
+              case inferSuffixFiniteList dxs (Proxy @(xs ++ ys)) of
+                fle@FiniteListEvidence ->
+                  order fle == length ys
+        ]
+prop_ListInference _ _ = False
 
 return []
 runTests :: IO Bool

@@ -30,24 +30,19 @@
 module Numeric.Dimensions
   ( -- * Data types
     Idx (..), Dim (..), XNat, XN, N
-  , SomeDim (..), someDimVal
+  , XDim (..), SomeDim (..), xDimVal, someDimVal, sameDim, compareDim
   , Slice (..)
-  , Dimensional (..), runDimensional, withDim, withRuntimeDim
     -- * Operations
   , Dimensions, Dimensions' (..), Dimensions'' (..)
   , DimensionsEvidence (..)
   , XDimensions (), xdim
   , inSpaceOf, asSpaceOf, appendIdx, splitIdx
-    -- * Type-level programming
-  , FixedDim, FixedXDim, KnownOrder, ValidDims
+    -- * Type families for Dim-XDim manipulations
+  , FixedDim, FixedXDim, ValidDims
   , WrapDims, WrapHead, UnwrapDims
   , type (:<), type (>:)
---  , inferSubDimensions
+    -- * Generic type-level list operations
   , module Numeric.Dimensions.List
-    -- * Type evidence
-  -- , ConcatEvidence (..), SuffixEvidence (..), PrefixEvidence (..), SnocEvidence (..)
---  , unsafeEqProof, unsafeConcatProofs, unsafeConsProof, listProof
---  , ListProof (..), ConcatProofs (..), ConsProof (..)
   ) where
 
 
@@ -56,6 +51,7 @@ import GHC.TypeLits
 import GHC.Prim
 import GHC.Types
 import GHC.Exts
+import Data.Maybe (isJust)
 import Data.Proxy
 import Data.Type.Equality
 
@@ -90,7 +86,6 @@ data Slice (n::Nat) (m::Nat) where
    Every :: Slice n n
 infixl 9 :&
 
-
 -- | Either known or unknown at compile-time natural number
 data XNat = XN | N Nat
 -- | Unknown natural number
@@ -99,11 +94,18 @@ type XN = 'XN
 type N (n::Nat) = 'N n
 
 -- | Similar to SomeNat, hide some dimensions under an existential constructor.
-data SomeDim (xns :: [XNat])
+--   In contrast to SomeDim, it preserves the order of dimensions,
+--   and it can keep some of the dimensions in the list static
+--   while making other dimensions known only at runtime.
+data XDim (xns :: [XNat])
   = forall ns . ( Dimensions ns
                 , FixedDim xns ns ~ ns
                 , FixedXDim xns ns ~ xns
-                ) => SomeDim (Dim ns)
+                ) => XDim (Dim ns)
+
+-- | Same as SomeNat, but for Dimensions:
+--   Hide all information about Dimensions inside
+data SomeDim = forall ns . Dimensions ns => SomeDim (Dim ns)
 
 -- | A singleton type used to prove that the given type-level list
 --   is indeed a correct list of Dimensions
@@ -112,18 +114,14 @@ data DimensionsEvidence (ns :: [Nat])
 
 
 -- | Construct dimensionality at runtime
-someDimVal :: Dim (xns :: [XNat]) -> Maybe (SomeDim xns)
-someDimVal D = Just $ SomeDim D
-someDimVal xxs@(p :* xs) = do
-    Refl <- isGoodDim p
-    SomeDim (ps :: Dim ds) <- someDimVal xs
-    return $ withSuccKnown (order ps) ps
-          ( \Refl -> let pps = p :* ps
-                     in case ( isFixed xxs pps
-                             , isXFixed xxs pps
-                             ) of
-                          (Refl, Refl) -> SomeDim pps
-          )
+xDimVal :: Dim (xns :: [XNat]) -> Maybe (XDim xns)
+xDimVal D = Just $ XDim D
+xDimVal xxs@(p :* xs) = do
+    Refl <- isValidDim p
+    XDim (ps :: Dim ds) <- xDimVal xs
+    let pps = p :* ps
+    case ( isFixed xxs pps, isXFixed xxs pps ) of
+      (Refl, Refl) -> return $ XDim pps
   where
     -- I know for sure that the constraint (FixedDim xns ns ~ ns) holds,
     --   but I need to convince the compiler that this is the case
@@ -131,73 +129,47 @@ someDimVal xxs@(p :* xs) = do
     isFixed _ _ = unsafeCoerce Refl
     isXFixed :: Dim xns -> Dim ns -> FixedXDim xns ns :~: xns
     isXFixed _ _ = unsafeCoerce Refl
-someDimVal (SomeNat p :? xs) = do
-  Refl <- isGoodDim p
+xDimVal (SomeNat p :? xs) = do
+  Refl <- isValidDim p
+  XDim ps <- xDimVal xs
+  return $ XDim (p :* ps)
+
+
+-- | Convert a list of ints into unknown type-level Dimensions list
+someDimVal :: [Int] -> Maybe SomeDim
+someDimVal [] = Just $ SomeDim D
+someDimVal (x:xs) = do
+  SomeNat p <- someNatVal (fromIntegral x)
+  Refl <- isValidDim p
   SomeDim ps <- someDimVal xs
-  return $ withSuccKnown (order ps) ps
-            (\Refl -> SomeDim (p :* ps)
-            )
+  return $ SomeDim (p :* ps)
 
-
-isGoodDim :: KnownNat d => p d -> Maybe ((2 <=? d) :~: 'True)
-isGoodDim p = if 2 <= natVal p then unsafeCoerce (Just Refl)
+-- | Check if the dimension size is not less than 2
+isValidDim :: KnownNat d => p d -> Maybe ((2 <=? d) :~: 'True)
+isValidDim p = if 2 <= natVal p then unsafeCoerce (Just Refl)
                                else unsafeCoerce Nothing
 
--- | Run a function on a dimensionality that is known only at runtime
-withRuntimeDim :: [Int]
-               -> (forall ns . Dimensions ns => Dim ns -> a)
-               -> Either String a
-withRuntimeDim xns f | any (< 2) xns = Left "All dimensions must be at least of size 2."
-                     | otherwise     = case someNatVal p of
-    Just (SomeNat _) -> withDim (constructXDims p xns) f
-    Nothing          -> Left "Cannot get length of a dimension list."
-  where
-    p = fromIntegral $ length xns
-    constructXDims :: Integer -> [Int] -> Dim (xns :: [XNat])
-    constructXDims 0 _  = unsafeCoerce D
-    constructXDims _ [] = unsafeCoerce D
-    constructXDims i (x:xs) = case someNatVal (fromIntegral x) of
-      Nothing -> constructXDims i xs
-      Just n  -> unsafeCoerce (n :? constructXDims (i+1) xs)
+-- | We either get evidence that this function was instantiated with the
+-- same type-level Dimensions, or 'Nothing'.
+sameDim :: Dim as -> Dim bs -> Maybe (as :~: bs)
+sameDim D D = Just (unsafeCoerce Refl)
+sameDim (a :* as) (b :* bs) = sameNat a b >> unsafeCoerce <$> sameDim as bs
+sameDim (a :? as) (b :? bs) | a == b = unsafeCoerce <$> sameDim as bs
+sameDim (a :* as) (b :? bs) | SomeNat a == b = unsafeCoerce <$> sameDim as bs
+sameDim (a :? as) (b :* bs) | a == SomeNat b = unsafeCoerce <$> sameDim as bs
+sameDim _ _ = Nothing
 
-withSuccKnown :: Int
-              -> p xs
-              -> ( forall n . KnownNat n => (1 + Length xs) :~: n -> a)
-              -> a
-withSuccKnown n p g = case someNatVal (fromIntegral n) of
-    Just (SomeNat m) -> g (evidence p m)
-    Nothing          -> error "Something is terribly wrong. Is the length negative?"
-  where
-    evidence:: p xs -> q m -> (1 + Length xs) :~: m
-    evidence _ _ = unsafeCoerce Refl
+-- | Compare dimensions by their size in reversed lexicorgaphic order
+--   (the biggest dimension is the last one).
+compareDim :: Dim as -> Dim bs -> Ordering
+compareDim D D = EQ
+compareDim _ D = GT
+compareDim D _ = LT
+compareDim (a :* as) (b :* bs) = compareDim as bs `mappend` compare (SomeNat a) (SomeNat b)
+compareDim (a :? as) (b :? bs) = compareDim as bs `mappend` compare a b
+compareDim (a :* as) (b :? bs) = compareDim as bs `mappend` compare (SomeNat a) b
+compareDim (a :? as) (b :* bs) = compareDim as bs `mappend` compare a (SomeNat b)
 
-
--- | Fix runtime-obtained dimensions for use in some function
-withDim :: Dim (xns :: [XNat])
-        -> (forall ns . ( Dimensions ns
-                        , FixedDim xns ns ~ ns
-                        , FixedXDim xns ns ~ xns
-                        )  => Dim ns -> a)
-        -> Either String a
-withDim xds f = case someDimVal xds of
-  Just (SomeDim ds) -> Right $ f ds
-  Nothing -> Left "Could not extract runtime naturals to construct dimensions."
-
--- | Provide runtime-known dimensions and execute inside functions
---   that require compile-time-known dimensions.
-newtype Dimensional (xns :: [XNat]) a = Dimensional
-  { _runDimensional ::
-      forall ns . ( Dimensions ns
-                  , FixedDim xns ns ~ ns
-                  , FixedXDim xns ns ~ xns
-                  ) => Dim ns -> a
-  }
-
--- | Run Dimension-enabled computation with dimensionality known at runtime
-runDimensional :: Dim xns
-               -> Dimensional xns a
-               -> Either String a
-runDimensional xds d = withDim xds $ _runDimensional d
 
 --------------------------------------------------------------------------------
 -- * Dimension-enabled operations
@@ -314,27 +286,16 @@ instance Dimensions'' ds => Show (Dim ds) where
     show xs = "Dim" ++ foldr (\i s -> " " ++ show i ++ s) ""
       (idxToList $ dimMax `inSpaceOf` xs)
 
-instance Show (SomeDim xns) where
-    show (SomeDim p) = show p
-
 instance Show (Dim (xds :: [XNat])) where
-    show d = case someDimVal d of
+    show d = case xDimVal d of
       Nothing -> "Unknown dim"
       Just sd -> show sd
 
-instance Functor (Dimensional xns) where
-    fmap f d = Dimensional (f . _runDimensional d)
-    {-# INLINE fmap #-}
-instance Applicative (Dimensional xns) where
-    pure x = Dimensional $ const x
-    {-# INLINE pure #-}
-    f <*> v = Dimensional $ \d -> _runDimensional f d (_runDimensional v d)
-    {-# INLINE (<*>) #-}
-instance Monad (Dimensional xns) where
-    return  = pure
-    {-# INLINE return #-}
-    m >>= k = Dimensional $ \d -> _runDimensional (k $ _runDimensional m d) d
-    {-# INLINE (>>=) #-}
+instance Show (XDim xns) where
+    show (XDim p) = 'X' : show p
+
+instance Show SomeDim where
+    show (SomeDim p) = "Some" ++ show p
 
 
 idxToList :: Idx ds -> [Int]
@@ -352,11 +313,13 @@ instance Eq (Idx ds) where
     (a:!as) /= (b:!bs) = a /= b || as /= bs
 
 instance Eq (Dim ds) where
-    D == D = True
-    (_:*as) == (_:*bs) = as == bs
-    (a:?as) == (b:?bs) = a == b && as == bs
-    (a:*as) == (b:?bs) = SomeNat a == b && as == bs
-    (a:?as) == (b:*bs) = a == SomeNat b && as == bs
+    a == b = isJust $ sameDim a b
+
+instance Eq (XDim xds) where
+    XDim as == XDim bs = isJust $ sameDim as bs
+
+instance Eq SomeDim where
+    SomeDim as == SomeDim bs = isJust $ sameDim as bs
 
 -- | With this instance we can slightly reduce indexing expressions
 --   e.g. x ! (1 :! 2 :! 4) == x ! (1 :! 2 :! 4 :! Z)
@@ -374,11 +337,13 @@ instance Ord (Idx ds) where
     compare (a:!as) (b:!bs) = compare as bs `mappend` compare a b
 
 instance Ord (Dim ds) where
-    compare D D = EQ
-    compare (_:*as) (_:*bs) = compare as bs
-    compare (a:?as) (b:?bs) = compare as bs `mappend` compare a b
-    compare (a:?as) (b:*bs) = compare as bs `mappend` compare a (SomeNat b)
-    compare (a:*as) (b:?bs) = compare as bs `mappend` compare (SomeNat a) b
+    compare = compareDim
+
+instance Ord (XDim xds) where
+    compare (XDim as) (XDim bs) = compareDim as bs
+
+instance Ord SomeDim where
+    compare (SomeDim as) (SomeDim bs) = compareDim as bs
 
 instance Dimensions' ds => Bounded (Dim ds) where
     maxBound = dim
@@ -425,10 +390,6 @@ instance IsList (Idx ds) where
     type Item (Idx ds) = Int
     fromList = idxFromList
     toList = idxToList
-
--- | Get the first dimension
-headDim :: t (d ': ds :: [k]) -> Proxy d
-headDim _ = Proxy
 
 
 
@@ -661,6 +622,9 @@ splitIdx idx = rez
 {-# INLINE splitIdx #-}
 
 
+-- | Get the first dimension
+headDim :: t (d ': ds :: [k]) -> Proxy d
+headDim _ = Proxy
 
 -- | Primitive proxy for taking head dimension
 headDim# :: t (d ': ds :: [k]) -> Proxy# d
@@ -693,13 +657,9 @@ loopReverse1 n f = loop' n
 {-# INLINE loopReverse1 #-}
 
 
-
 --------------------------------------------------------------------------------
 -- * Type-level programming
 --------------------------------------------------------------------------------
-
--- | It is better to know the length of a dimension list and avoid infinite types.
-type KnownOrder (ns :: [k]) = KnownNat (Length ns)
 
 
 -- | A constraint family that makes sure all subdimensions are known.
