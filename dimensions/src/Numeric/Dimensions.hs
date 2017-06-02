@@ -708,14 +708,14 @@ type family WrapHead (n :: Nat) (xs :: [XNat]) :: XNat where
 
 -- | Synonym for (:+) that ignores Nat values 0 and 1
 type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
-    0 :< ns = ns
+    0 :< _  = '[]
     1 :< ns = ns
     n :< ns = n :+ ns
 infixr 6 :<
 
 -- | Synonym for (+:) that ignores Nat values 0 and 1
 type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
-    ns >: 0 = ns
+    _  >: 0 = '[]
     ns >: 1 = ns
     ns >: n = ns +: n
 infixl 6 >:

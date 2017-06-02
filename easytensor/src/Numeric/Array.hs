@@ -113,9 +113,10 @@ deriving instance {-# OVERLAPPING #-} RealFloat t => RealFloat (Array t '[])
 
 -- deriving instance {-# OVERLAPPABLE #-} PrimBytes (ArrayType t ds)
 --                                     => PrimBytes (Array t ds)
-deriving instance {-# OVERLAPPING #-} PrimBytes t => PrimBytes (Array t '[])
-deriving instance {-# OVERLAPPING #-} Dimensions (d ': ds)
-                                    => PrimBytes (Array Float (d ': ds))
+-- TODO FIXME derive instance properly
+-- deriving instance {-# OVERLAPPING #-} PrimBytes t => PrimBytes (Array t '[])
+-- deriving instance {-# OVERLAPPING #-} Dimensions (d ': ds)
+--                                     => PrimBytes (Array Float (d ': ds))
 
 
 -- deriving instance {-# OVERLAPPABLE #-} FloatBytes (ArrayType t ds)
@@ -200,12 +201,12 @@ instance ( ConcatList as bs asbs
         n = case totalDim (Proxy @as) of I# nn -> nn
         k = case totalDim (Proxy @bs) of I# kk -> kk
 
-
-instance KnownNat m
-      => MatrixProduct (Array Float '[m]) (Array Float '[m]) (Array Float '[]) where
-    prod = prodF 1# m 1#
-       where
-         m = case fromInteger $ natVal (Proxy @m) of I# mm -> mm
+-- 
+-- instance KnownNat m
+--       => MatrixProduct (Array Float '[m]) (Array Float '[m]) (Array Float '[]) where
+--     prod = prodF 1# m 1#
+--        where
+--          m = case fromInteger $ natVal (Proxy @m) of I# mm -> mm
 
 
 

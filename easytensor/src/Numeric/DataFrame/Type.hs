@@ -78,25 +78,28 @@ data instance DataFrame t (xns :: [XNat])
   => SomeDataFrame (Dim xns) (Array t ns)
 
 
--- fromFoldableN :: forall (t :: Type) (f :: Type -> Type)
---                        (as :: [k]) (xas :: [XNat])
---               . ( xas ~ WrapDims as
---                 , Foldable f
---                 )
+-- fromFoldableN :: forall (t :: Type)
+--                         (as :: [Nat]) (xas :: [XNat])
+--               . ( xas ~ WrapDims as )
 --              => Int
---              -> f (DataFrame t as)
---              -> DataFrame t (xas +: XN)
--- fromFoldableN n xs = case runRW#
---        ( \s0 -> case newByteArray# (len# *# elS) s0 of
---            (# s1, marr #) -> case go 0# len# tobytesX marr s1 of
+--              -> [DataFrame t as]
+--              -> Maybe (DataFrame t (xas +: XN))
+-- fromFoldableN n@(I# n#) xs | n < 2 = Nothing
+--                            | otherwise = Just $ case runRW#
+--        ( \s0 -> case newByteArray# (totalLen# *# elS#) s0 of
+--            (# s1, marr #) -> case go 0# totalLen# xs marr s1 of
 --                s2 -> unsafeFreezeByteArray# marr s2
---        ) of (# _, r #) -> NCommons.fromBytes (# 0#, len#, r #)
+--        ) of (# _, r #) -> NCommons.fromBytes (# 0#, totalLen#, r #)
 --   where
---     elS = NCommons.elementByteSize (undefined :: DataFrame t as)
---     go pos lim tobytesX@(# offX, step, arrX #) marr s
+--     I# len#   = totalDim (undefined :: DataFrame t as)
+--     elS#      = NCommons.elementByteSize (undefined :: DataFrame t as)
+--     totalLen# = len# *# n#
+--     go pos lim (a:as) marr s
 --       | isTrue# (pos >=# lim) = s
---       | otherwise = go (pos +# step) lim tobytesX marr
---            (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
+--       | otherwise
+--       , (# offX, step, arrX #) <- NCommons.toBytes a
+--       = go (pos +# step) lim as marr
+--            (copyByteArray# arrX (offX *# elS#) marr (pos *# elS#) (step *# elS#) s)
 
 
 -- instance IsList (DataFrame Float ('[XN] :: [XNat])) where
@@ -314,8 +317,8 @@ deriving instance RealFrac (Array t ds)
                => RealFrac (DataFrame t ds)
 deriving instance RealFloat (Array t ds)
                => RealFloat (DataFrame t ds)
-deriving instance NCommons.PrimBytes (Array t ds)
-               => NCommons.PrimBytes (DataFrame t ds)
+-- deriving instance NCommons.PrimBytes (Array t ds)
+--                => NCommons.PrimBytes (DataFrame t ds)
 deriving instance NCommons.FloatBytes (Array t ds)
                => NCommons.FloatBytes (DataFrame t ds)
 deriving instance NCommons.DoubleBytes (Array t ds)
