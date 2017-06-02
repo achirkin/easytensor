@@ -49,6 +49,7 @@ newtype Scalar t = Scalar { _unScalar :: t }
            , PrimBytes, FloatBytes, DoubleBytes, IntBytes, WordBytes)
 instance Show t => Show (Scalar t) where
   show (Scalar t) = "{ " ++ show t ++ " }"
+type instance ElemRep (Scalar t) = ElemRep t
 
 -- | Indexing over scalars is trivial...
 instance ElementWise (Idx ('[] :: [Nat])) t (Scalar t) where

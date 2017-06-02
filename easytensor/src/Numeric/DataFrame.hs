@@ -51,7 +51,7 @@ module Numeric.DataFrame
   , M.MatrixCalculus (), M.SquareMatrixCalculus ()
   , M.MatrixInverse ()
   , NumericFrame, FPDataFrame, ElementDataType (..), EDTRefl (..)
-  , inferNumeric, inferFloating -- , inferSubSpace
+  -- , inferNumeric, inferFloating -- , inferSubSpace
    -- * Modules for DataFrame operations
   , module Numeric.DataFrame.SubSpace
   , module Numeric.DataFrame.Contraction
@@ -641,32 +641,32 @@ type FPDataFrame (t :: Type) (ds :: [Nat]) =
   )
 
 
--- | Lookup a proper instance for our typeclasses at runtime
-inferNumeric :: forall (x :: Type) (t :: Type) (as :: [Nat])
-              . ( Dimensions as
-                , NumericFrame t '[]
-                )
-             => DataFrame t as
-             -> ( forall (bs :: [Nat]) . (NumericFrame t bs, as ~ bs) => DataFrame t bs -> x )
-             -> x
-inferNumeric x f = case (dim @as, edtRefl (Proxy @t)) of
-    (D, _) -> f x
-    (_ :* D, EDTFloat) -> f x
-    (_ :* _ :* _, EDTFloat) -> f x
-
-
--- | Lookup a proper instance for our typeclasses at runtime
-inferFloating :: forall (x :: Type) (t :: Type) (as :: [Nat])
-              . ( Dimensions as
-                , FPDataFrame t '[]
-                )
-              => DataFrame t as
-              -> ( forall (bs :: [Nat]) . (FPDataFrame t bs, as ~ bs) => DataFrame t bs -> x )
-              -> x
-inferFloating x f = case (dim @as, edtRefl (Proxy @t)) of
-    (D, _) -> f x
-    (_ :* D, EDTFloat) -> f x
-    (_ :* _ :* _, EDTFloat) -> f x
+-- -- | Lookup a proper instance for our typeclasses at runtime
+-- inferNumeric :: forall (x :: Type) (t :: Type) (as :: [Nat])
+--               . ( Dimensions as
+--                 , NumericFrame t '[]
+--                 )
+--              => DataFrame t as
+--              -> ( forall (bs :: [Nat]) . (NumericFrame t bs, as ~ bs) => DataFrame t bs -> x )
+--              -> x
+-- inferNumeric x f = case (dim @as, edtRefl (Proxy @t)) of
+--     (D, _) -> f x
+--     (_ :* D, EDTFloat) -> f x
+--     (_ :* _ :* _, EDTFloat) -> f x
+--
+--
+-- -- | Lookup a proper instance for our typeclasses at runtime
+-- inferFloating :: forall (x :: Type) (t :: Type) (as :: [Nat])
+--               . ( Dimensions as
+--                 , FPDataFrame t '[]
+--                 )
+--               => DataFrame t as
+--               -> ( forall (bs :: [Nat]) . (FPDataFrame t bs, as ~ bs) => DataFrame t bs -> x )
+--               -> x
+-- inferFloating x f = case (dim @as, edtRefl (Proxy @t)) of
+--     (D, _) -> f x
+--     (_ :* D, EDTFloat) -> f x
+--     (_ :* _ :* _, EDTFloat) -> f x
 
 
 
