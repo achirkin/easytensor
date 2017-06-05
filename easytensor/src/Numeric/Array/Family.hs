@@ -5,6 +5,8 @@
 {-# LANGUAGE TypeOperators    #-}
 {-# LANGUAGE UnboxedTuples, MagicHash #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ExistentialQuantification  #-}
+-- {-# LANGUAGE TypeApplications  #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.Family
@@ -22,6 +24,7 @@ module Numeric.Array.Family
   -- , MatrixType
   , ArrayF (..)
   , Scalar (..)
+  , ArrayInstanceInference (..)
   ) where
 
 import GHC.TypeLits (Nat)
@@ -77,6 +80,30 @@ instance ElementWise (Idx ('[] :: [Nat])) t (Scalar t) where
 -- | N-Dimensional arrays based on Float# type
 data ArrayF (ds :: [Nat]) = ArrayF# Int# Int# ByteArray#
                           | FromScalarF# Float#
+
+
+-- | Keep information about the instance behind ArrayType family
+data ArrayInstance t (ds :: [Nat])
+  = ArrayType t ds ~ Scalar t => AIScalar
+  | ArrayType t ds ~ ArrayF ds => AIArrayF
+
+-- | Use this typeclass constraint in libraries functions if there is a need
+--   to select an instance of ArrayType famility at runtime.
+class ArrayInstanceInference t ds where
+  -- | Get the actual instance of an array behind the type family.
+  --   Use TypeApplications extension:
+  --   e.g. pattern matching on `inferArrayInstance @Int @'[]` produces evidence
+  --        that `ArrayType Int '[] ~ Scalar Int`
+  inferArrayInstance :: ArrayInstance t ds
+
+
+instance ArrayInstanceInference t '[] where
+  inferArrayInstance = AIScalar
+
+instance ArrayInstanceInference Float (d ': ds) where
+  inferArrayInstance = AIArrayF
+
+
 
 
 _suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)
