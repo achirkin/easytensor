@@ -38,11 +38,11 @@ module Numeric.Commons
 #include "MachDeps.h"
 #include "HsBaseConfig.h"
 
-import           Foreign.Storable
+--import           Foreign.Storable
 import           GHC.Base         (runRW#)
 import           GHC.Int
 import           GHC.Prim
-import           GHC.Ptr
+--import           GHC.Ptr
 import           GHC.Types
 import           GHC.Word
 
