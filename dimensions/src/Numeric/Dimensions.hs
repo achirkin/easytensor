@@ -39,7 +39,7 @@ module Numeric.Dimensions
   , inSpaceOf, asSpaceOf, appendIdx, splitIdx
     -- * Type families for Dim-XDim manipulations
   , FixedDim, FixedXDim, ValidDims
-  , WrapDims, WrapHead, UnwrapDims
+  , WrapDims, WrapHead, UnwrapDims, ConsDim
   , type (:<), type (>:)
     -- * Generic type-level list operations
   , module Numeric.Dimensions.List
@@ -72,8 +72,8 @@ data Dim (ds :: k) where
   -- | Zero-rank dimensionality - scalar
   D   :: Dim '[]
   -- | List-like concatenation of known dimensionality
-  (:*) :: KnownNat (KnownDim d)
-       => !(Proxy (KnownDim d)) -> !(Dim ds) -> Dim (d ': ds)
+  (:*) :: KnownNat d
+       => !(Proxy d) -> !(Dim ds) -> Dim (ConsDim d ds)
   -- | List-like concatenation of unknown dimensionality
   (:?) :: !SomeNat -> !(Dim ds) -> Dim (XN ': ds)
 infixr 5 :*
@@ -667,24 +667,22 @@ type family KnownDims (ns :: [Nat]) :: Constraint where
     KnownDims '[] = ()
     KnownDims (x ': xs) = ( KnownNat x, KnownDims xs )
 
-
 -- | Make sure all dimensions are not degenerate
 type family ValidDims (ns :: [Nat]) :: Constraint where
     ValidDims '[] = ()
     ValidDims (x ': xs) = (2 <= x, ValidDims xs)
 
-
--- | Unify usage of XNat and Nat.
---   This is useful in function and type definitions.
---   Assumes a given XNat to be known at type-level (N n constructor).
-type family KnownDim (x::k) :: Nat where
-    KnownDim n = n
-    KnownDim (N n) = n
-
 type family WrapDims (x::[k]) :: [XNat] where
     WrapDims ('[] :: [Nat])     = '[]
     WrapDims (n ': ns :: [Nat]) = N n ': WrapDims ns
     WrapDims (xns :: [XNat])    = xns
+
+-- | Unify usage of XNat and Nat.
+--   This is useful in function and type definitions.
+--   Mainly used in the definition of Dim.
+type family ConsDim (x :: Nat) (xs :: [k]) = (ys :: [k]) | ys -> x xs where
+    ConsDim x (xs :: [Nat]) = x ': xs
+    ConsDim x (xs :: [XNat]) = N x ': xs
 
 type family UnwrapDims (xns::[XNat]) = (ns :: [Nat]) | ns -> xns where
     UnwrapDims '[] = '[]

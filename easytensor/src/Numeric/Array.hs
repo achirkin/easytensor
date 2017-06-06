@@ -34,6 +34,8 @@ import           GHC.TypeLits              (KnownNat, Nat, natVal, type (<=))
 import           GHC.Types
 import           Data.Proxy
 import           Numeric.Array.Base.ArrayF ()
+import           Numeric.Array.Base.ArrayD ()
+import           Numeric.Array.Base.ArrayI ()
 import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.Dimensions
@@ -42,7 +44,6 @@ import           Numeric.Matrix.Class
 -- | A wrapper on top of ArrayType type family
 --   to eliminate any possible ambiguity.
 newtype Array t (ds :: [Nat]) = Array {_unArray :: ArrayType t ds }
-
 
 
 instance Show t => Show (Array t '[]) where
@@ -201,7 +202,7 @@ instance ( ConcatList as bs asbs
         n = case totalDim (Proxy @as) of I# nn -> nn
         k = case totalDim (Proxy @bs) of I# kk -> kk
 
--- 
+--
 -- instance KnownNat m
 --       => MatrixProduct (Array Float '[m]) (Array Float '[m]) (Array Float '[]) where
 --     prod = prodF 1# m 1#
