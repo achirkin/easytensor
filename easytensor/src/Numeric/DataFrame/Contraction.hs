@@ -12,7 +12,7 @@
 -- |
 -- Module      :  Numeric.DataFrame.Contraction
 -- Copyright   :  (c) Artem Chirkin
--- License     :  MIT
+-- License     :  BSD3
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
@@ -32,7 +32,7 @@ module Numeric.DataFrame.Contraction
 import           GHC.TypeLits           (Nat)
 -- import           GHC.Types              (Type)
 import           Numeric.Dimensions
-import qualified Numeric.Matrix.Class   as M
+import qualified Numeric.Matrix   as M
 -- import           Unsafe.Coerce
 
 import           Numeric.DataFrame.Type
