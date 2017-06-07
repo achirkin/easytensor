@@ -13,24 +13,21 @@
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE BangPatterns  #-}
-{-# LANGUAGE TemplateHaskell  #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Numeric.NDArray.Base.ArrayF
+-- Module      :  Numeric.Array.Family.ArrayF
 -- Copyright   :  (c) Artem Chirkin
--- License     :  BSD
+-- License     :  BSD3
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
 --
 -----------------------------------------------------------------------------
 
-module Numeric.Array.Base.ArrayF () where
+module Numeric.Array.Family.ArrayF () where
 
 
-#include "MachDeps.h"
-#include "HsBaseConfig.h"
 
 import           GHC.Base             (runRW#)
 import           GHC.Prim
@@ -42,32 +39,34 @@ import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.Dimensions
 
-import           Numeric.Matrix.Class
-import           Numeric.Array.Base.ArrayTH
+import           Numeric.Matrix
 
-$(broadcastArrayDec arrayFDef)
-
-$(mapVDec arrayFDef)
-
-$(zipVDec arrayFDef)
-
-$(accumV2Dec arrayFDef)
-
-
--- * Instances
-
-$(instanceElementWiseDec arrayFDef)
-
-$(instanceShowDec arrayFDef)
-
-$(instanceEqDec arrayFDef)
-
-$(instanceOrdDec arrayFDef)
-
-$(instanceNumDec arrayFDef)
-
-type instance ElemRep (ArrayF ds) = 'FloatRep
-$(instancePrimBytesDec arrayFDef)
+#include "MachDeps.h"
+#define ARR_TYPE                 ArrayF
+#define ARR_FROMSCALAR           FromScalarF#
+#define ARR_CONSTR               ArrayF#
+#define EL_TYPE_BOXED            Float
+#define EL_TYPE_PRIM             Float#
+#define EL_RUNTIME_REP           'FloatRep
+#define EL_CONSTR                F#
+#define EL_SIZE                  SIZEOF_HSFLOAT#
+#define EL_ALIGNMENT             ALIGNMENT_HSFLOAT#
+#define EL_ZERO                  0.0#
+#define EL_ONE                   1.0#
+#define EL_MINUS_ONE             -1.0#
+#define INDEX_ARRAY              indexFloatArray#
+#define WRITE_ARRAY              writeFloatArray#
+#define OP_EQ                    eqFloat#
+#define OP_NE                    neFloat#
+#define OP_GT                    gtFloat#
+#define OP_GE                    geFloat#
+#define OP_LT                    ltFloat#
+#define OP_LE                    leFloat#
+#define OP_PLUS                  plusFloat#
+#define OP_MINUS                 minusFloat#
+#define OP_TIMES                 timesFloat#
+#define OP_NEGATE                negateFloat#
+#include "Array.h"
 
 
 instance Fractional (ArrayF ds) where
@@ -124,14 +123,6 @@ instance Floating (ArrayF ds) where
   atanh = mapV (\x -> 0.5# `timesFloat#`
                 logFloat# (plusFloat# 1.0# x `divideFloat#` minusFloat# 1.0# x))
   {-# INLINE atanh #-}
-
-
-
-
-instance FloatBytes (ArrayF ds) where
-  ixF i (ArrayF# off _ a) = indexFloatArray# a (off +# i)
-  ixF _ (FromScalarF# x)  = x
-  {-# INLINE ixF #-}
 
 
 

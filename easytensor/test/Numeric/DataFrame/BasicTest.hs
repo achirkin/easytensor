@@ -2,7 +2,7 @@
 -- |
 -- Module      :  Numeric.DataFrame.BasicTest
 -- Copyright   :  (c) Artem Chirkin
--- License     :  MIT
+-- License     :  BSD3
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --

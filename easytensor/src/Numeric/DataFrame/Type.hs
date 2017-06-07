@@ -29,7 +29,7 @@
 -- |
 -- Module      :  Numeric.DataFrame.Type
 -- Copyright   :  (c) Artem Chirkin
--- License     :  MIT
+-- License     :  BSD3
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
@@ -38,23 +38,21 @@
 
 module Numeric.DataFrame.Type
   ( DataFrame (..), withShape, unboundShape
-  , ElementDataType (..), EDTRefl (..)
+--  , ElementDataType (..), EDTRefl (..)
   ) where
 
 import           Data.Proxy
 import           Data.Type.Equality
-import           Data.Type.Equality
 import           GHC.Base             (runRW#)
 import           GHC.Exts             (IsList (..))
 import           GHC.Prim
-import           GHC.TypeLits         (KnownNat, Nat, SomeNat (..), natVal,
-                                       someNatVal)
+import           GHC.TypeLits         (Nat, SomeNat (..), someNatVal)
 import           GHC.Types
-import           Numeric.Array
-import qualified Numeric.Array.Family as AFam (Scalar (..))
+-- import           Numeric.Array
+import           Numeric.Array.Family
 import qualified Numeric.Commons      as NCommons
 import           Numeric.Dimensions
-import qualified Numeric.Matrix.Class as M
+import qualified Numeric.Matrix as M
 import           Unsafe.Coerce
 
 -- | Keep data in a primitive data frame
@@ -75,182 +73,62 @@ data instance DataFrame t (xns :: [XNat])
     , Eq (Array t ns)
     , NCommons.PrimBytes (Array t ns)
     )
-  => SomeDataFrame (Dim xns) (Array t ns)
+  => SomeDataFrame (Array t ns)
 
 
--- fromFoldableN :: forall (t :: Type)
---                         (as :: [Nat]) (xas :: [XNat])
---               . ( xas ~ WrapDims as )
---              => Int
---              -> [DataFrame t as]
---              -> Maybe (DataFrame t (xas +: XN))
--- fromFoldableN n@(I# n#) xs | n < 2 = Nothing
---                            | otherwise = Just $ case runRW#
---        ( \s0 -> case newByteArray# (totalLen# *# elS#) s0 of
---            (# s1, marr #) -> case go 0# totalLen# xs marr s1 of
---                s2 -> unsafeFreezeByteArray# marr s2
---        ) of (# _, r #) -> NCommons.fromBytes (# 0#, totalLen#, r #)
---   where
---     I# len#   = totalDim (undefined :: DataFrame t as)
---     elS#      = NCommons.elementByteSize (undefined :: DataFrame t as)
---     totalLen# = len# *# n#
---     go pos lim (a:as) marr s
---       | isTrue# (pos >=# lim) = s
---       | otherwise
---       , (# offX, step, arrX #) <- NCommons.toBytes a
---       = go (pos +# step) lim as marr
---            (copyByteArray# arrX (offX *# elS#) marr (pos *# elS#) (step *# elS#) s)
 
-
--- instance IsList (DataFrame Float ('[XN] :: [XNat])) where
---   type Item (DataFrame Float '[XN]) = DataFrame Float ('[] :: [Nat])
---   fromList xs = fromListN (length xs) xs
---   fromListN _ [] = error "DataFrame fromList: the list must have at least two elements"
---   fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
---   fromListN n@(I# n#) xs  | Just d1@(SomeNat (pn :: Proxy n)) <- someNatVal (fromIntegral n)
---                   = SomeDataFrame (d1 :? D) (df pn)
---     where
---       elSize# = NCommons.byteSize (0 :: Float)
---       df :: KnownNat n => Proxy n -> Array Float '[n]
---       df _ = case runRW#
---         ( \s0 -> let !(# s1, marr #) = newByteArray# (n# *# elSize#) s0
---                      go s _ [] = s
---                      go s pos (KnownDataFrame (Array (AFam.Scalar (F# a))) : as)
---                                  = go (writeFloatArray# marr pos a s) (pos +# 1#) as
---                      s2 = go s1 0# xs
---                  in unsafeFreezeByteArray# marr s2
---         ) of (# _, r #) -> NCommons.fromBytes (# 0#, n#, r #)
---   fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
---   toList (SomeDataFrame _ (df :: Array Float ns))
---     = NCommons.ewfold @(Idx '[Head ns])
---       (\_ x a -> KnownDataFrame (Array $ AFam.Scalar x) : a) [] df
-
--- instance ( xnsm ~ (x ': xns')
---          , xns ~ Init xnsm
---          , Last xnsm ~ XN
---          , ns ~ UnwrapDims xns
---          , NCommons.PrimBytes (Array t ns)
---          , Dimensions ns
---          , Show t
---          , Eq t
---          , NCommons.PrimBytes t
---          )
---       => IsList (DataFrame t ((x ': xns') :: [XNat])) where
---   type Item (DataFrame t (x ': xns')) = DataFrame t (UnwrapDims (Init (x ': xns')))
---   fromList xs = fromListN (length xs) xs
---   fromListN _ []  = error "DataFrame fromList: the list must have at least two elements"
---   fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
---   fromListN n@(I# n#) xs  | Just dLast@(SomeNat (pm :: Proxy m)) <- someNatVal (fromIntegral n)
---                           , (pnsm :: Proxy nsm, Refl, Refl, Refl) <- makeEvs pm
---                           , I# len# <- totalDim (Proxy @ns)
---                           , xd <- xdim @nsm @xnsm Proxy
---                   = unsafeCoerce ( SomeDataFrame
---                                    (unsafeCoerce xd)
---                                    (unsafeCoerce (df pnsm len# :: Array t nsm)
---                                  ) :: DataFrame t '[])
---     where
---       elSize# = NCommons.byteSize (head xs)
---       df :: NCommons.PrimBytes (Array t nsm) => Proxy nsm -> Int# -> Array t nsm
---       df _ len# = case runRW#
---         ( \s0 -> let !(# s1, marr #) = newByteArray# (n# *# elSize# *# len#) s0
---                      go s _ [] = s
---                      go s pos (KnownDataFrame earr : as) = case NCommons.toBytes earr of
---                        (# eoff#, _, ea #) -> go
---                          (copyByteArray# ea (eoff# *# elSize#) marr (pos *# elSize#) (elSize# *# len#) s)
---                          (pos +# len#)
---                          as
---                      s2 = go s1 0# xs
---                  in unsafeFreezeByteArray# marr s2
---         ) of (# _, r #) -> NCommons.fromBytes (# 0#, n# *# len#, r #)
---       makeEvs :: Proxy m
---               -> ( Proxy nsm
---                  , nsm :~: (ns +: m)
---                  , FixedDim  xnsm (ns +: m) :~: (ns +: m)
---                  , FixedXDim xnsm (ns +: m) :~: xnsm
---                  )
---       makeEvs _ = (Proxy, unsafeCoerce Refl, unsafeCoerce Refl, unsafeCoerce Refl)
---   fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
---   toList (SomeDataFrame _ df) = go offset
---     where
---       !(I# step) = totalDim (Proxy @ns)
---       !(# offset, lenN, arr #) = NCommons.toBytes df
---       lim = offset +# lenN
---       go pos | isTrue# (pos >=# lim)  = []
---              | otherwise = NCommons.fromBytes (# pos, step , arr #) : go (pos +# step)
-
-
-  -- toList (SomeDataFrame (SomeNat (pn :: Proxy n) :? D) (df :: Array Float ns))
-  --   | Refl <- (unsafeCoerce Refl :: n :~: Head ns) = NCommons.ewfold @(Idx '[n])
-  --     (\_ x a -> KnownDataFrame (Array $ AFam.Scalar x) : a) [] df
-  -- toList (SomeDataFrame (SomeNat (pn :: Proxy n) :? D) (df :: Array Float ns))
-  --   | ConcatEvidence dimAsbs <- concatEvidence df (Proxy @'[n])
-  --   , Refl <- (unsafeCoerce Refl :: n :~: Head ns) = NCommons.ewfold @(Idx '[n])
-  --     (\_ x a -> KnownDataFrame (Array $ AFam.Scalar x) : a) [] df
-
--- instance ( xnsm ~ (N n ': xns')
---          , xns ~ Init xnsm
---          , Last xnsm ~ XN
---          , ns ~ UnwrapDims xns
---          , NCommons.PrimBytes (Array Float ns)
---          , Dimensions ns
---          , XDimensions xns
---          )
---       => IsList (DataFrame Float ((N n ': xns') :: [XNat])) where
---   type Item (DataFrame Float (N n ': xns')) = DataFrame Float (UnwrapDims (Init (N n ': xns')))
---   fromList xs = fromListN (length xs) xs
---   fromListN _ []  = error "DataFrame fromList: the list must have at least two elements"
---   fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
---   fromListN n@(I# n#) xs  | Just dLast@(SomeNat (pm :: Proxy m)) <- someNatVal (fromIntegral n)
---                           , (pnsm :: Proxy nsm, SnocEvidence dnsm, Refl, Refl, Refl) <- makeEvs pm
---                           , I# len# <- totalDim (Proxy @ns)
---                           , xd <- xdim @nsm @xnsm Proxy
---                   = SomeDataFrame xd (df pnsm len#)
---     where
---       elSize# = NCommons.byteSize (head xs)
---       df :: NCommons.PrimBytes (Array Float nsm) => Proxy nsm -> Int# -> Array Float nsm
---       df _ len# = case runRW#
---         ( \s0 -> let !(# s1, marr #) = newByteArray# (n# *# elSize# *# len#) s0
---                      go s _ [] = s
---                      go s pos (KnownDataFrame earr : as) = case NCommons.toBytes earr of
---                        (# eoff#, _, ea #) -> go
---                          (copyByteArray# ea (eoff# *# elSize#) marr (pos *# elSize#) (elSize# *# len#) s)
---                          (pos +# len#)
---                          as
---                      s2 = go s1 0# xs
---                  in unsafeFreezeByteArray# marr s2
---         ) of (# _, r #) -> NCommons.fromBytes (# 0#, n# *# len#, r #)
---       makeEvs :: KnownNat m
---               => Proxy m
---               -> ( Proxy nsm
---                  , SnocEvidence ns m
---                  , nsm :~: (ns +: m)
---                  , FixedDim  xnsm (ns +: m) :~: (ns +: m)
---                  , FixedXDim xnsm (ns +: m) :~: xnsm
---                  )
---       makeEvs p = (Proxy, snocEvidence (Proxy @ns) p, unsafeCoerce Refl, unsafeCoerce Refl, unsafeCoerce Refl)
---   fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
---   toList (SomeDataFrame _ df) = go offset
---     where
---       !(I# step) = totalDim (Proxy @ns)
---       !(# offset, lenN, arr #) = NCommons.toBytes df
---       lim = offset +# lenN
---       go pos | isTrue# (pos >=# lim)  = []
---              | otherwise = NCommons.fromBytes (# pos, step , arr #) : go (pos +# step)
-
-
--- | This class is used to pattern match against available data types
---   represented by EDTRefl
-class ElementDataType t where
-  -- | Get corresponding singleton constructor for a given element data type
-  edtRefl :: proxy t -> EDTRefl t
-
--- | Represent available element data types
-data EDTRefl :: (Type -> Type) where
-  EDTFloat :: EDTRefl Float
-
-instance ElementDataType Float where
-  edtRefl _ = EDTFloat
-
+instance ( xnsm ~ (x ': xns')
+         , xns ~ Init xnsm
+         , Last xnsm ~ XN
+         , ns ~ UnwrapDims xns
+         , NCommons.PrimBytes (DataFrame t ns)
+         , Dimensions ns
+         , Show t
+         , Eq t
+         , NCommons.PrimBytes t
+         , ArrayInstanceInference t ns
+         )
+      => IsList (DataFrame t ((x ': xns') :: [XNat])) where
+  type Item (DataFrame t (x ': xns')) = DataFrame t (UnwrapDims (Init (x ': xns')))
+  fromList xs = fromListN (length xs) xs
+  fromListN _ []  = error "DataFrame fromList: the list must have at least two elements"
+  fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
+  fromListN n@(I# n#) xs  | Just (SomeNat pm) <- someNatVal (fromIntegral n)
+                          , pns <- Proxy :: Proxy (UnwrapDims (Init (x ': xns')))
+                          , pnsm <- snocP pns pm
+                          , I# len# <- totalDim (Proxy @ns)
+                          , resultBytes# <- df pnsm len#
+      = case inferArrayInstance @t @ns of
+          AIFloatX2 -> unsafeCoerce (SomeDataFrame (unsafeCoerce (ArrayF# 0# (n# *# len#) resultBytes#) :: Array Float '[]))
+          AIFloatX3 -> unsafeCoerce (SomeDataFrame (unsafeCoerce (ArrayF# 0# (n# *# len#) resultBytes#) :: Array Float '[]))
+          AIFloatX4 -> unsafeCoerce (SomeDataFrame (unsafeCoerce (ArrayF# 0# (n# *# len#) resultBytes#) :: Array Float '[]))
+          AIArrayF  -> unsafeCoerce (SomeDataFrame (unsafeCoerce (ArrayF# 0# (n# *# len#) resultBytes#) :: Array Float '[]))
+          AIArrayD  -> unsafeCoerce (SomeDataFrame (unsafeCoerce (ArrayD# 0# (n# *# len#) resultBytes#) :: Array Double '[]))
+          _ -> error "Sorry, fromListN/fromBytes is not implemented for this array type yet."
+    where
+      elSize# = NCommons.elementByteSize (head xs)
+      df :: Proxy nsm -> Int# -> ByteArray#
+      df _ len# = case runRW#
+        ( \s0 -> let !(# s1, marr #) = newByteArray# (n# *# elSize# *# len#) s0
+                     go s _ [] = s
+                     go s pos (earr : as) = case NCommons.toBytes earr of
+                       (# eoff#, _, ea #) -> go
+                         (copyByteArray# ea (eoff# *# elSize#) marr (pos *# elSize#) (elSize# *# len#) s)
+                         (pos +# len#)
+                         as
+                     s2 = go s1 0# xs
+                 in unsafeFreezeByteArray# marr s2
+        ) of (# _, r #) -> r
+      snocP :: Proxy ns -> Proxy m -> Proxy (ns +: m)
+      snocP _ _ = Proxy
+  fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
+  toList (SomeDataFrame df) = go offset
+    where
+      !(I# step) = totalDim (Proxy @ns)
+      !(# offset, lenN, arr #) = NCommons.toBytes df
+      lim = offset +# lenN
+      go pos | isTrue# (pos >=# lim)  = []
+             | otherwise = NCommons.fromBytes (# pos, step , arr #) : go (pos +# step)
 
 
 
@@ -261,7 +139,7 @@ withShape :: DataFrame t xns
                           , FixedXDim xns ns ~ xns
                           ) => DataFrame t ns -> b)
           -> b
-withShape (SomeDataFrame _ a) f = f (KnownDataFrame a)
+withShape (SomeDataFrame a) f = f (KnownDataFrame a)
 
 -- | Put some of Dimensions into existential data type
 unboundShape :: ( FixedXDim xns ns ~ xns
@@ -273,7 +151,7 @@ unboundShape :: ( FixedXDim xns ns ~ xns
                 , Eq (Array t ns)
                 ) => DataFrame t ns -> DataFrame t xns
 unboundShape (KnownDataFrame a)
-    = SomeDataFrame (xdim $ dim `inSpaceOf` a) a
+    = SomeDataFrame a
 
 
 
@@ -284,17 +162,9 @@ instance ( Show (Array t ds)
          , Dimensions ds
          ) => Show (DataFrame t ds) where
   show (KnownDataFrame arr) = unlines
-                            [ "DF [" ++ drop 4 (show $ dim `inSpaceOf` arr) ++ "]:"
+                            [ "DF [" ++ drop 4 (show $ dim @ds) ++ "]:"
                             , show arr
                             ]
-
-instance Show (Dim ds)
-      => Show (DataFrame t (ds :: [XNat])) where
-  show (SomeDataFrame d arr) = unlines
-                            [ "DF [" ++ drop 4 (show d) ++ "]:"
-                            , show arr
-                            ]
-
 
 deriving instance Bounded (Array t ds) => Bounded (DataFrame t ds)
 deriving instance Enum (Array t ds) => Enum (DataFrame t ds)
@@ -317,16 +187,9 @@ deriving instance RealFrac (Array t ds)
                => RealFrac (DataFrame t ds)
 deriving instance RealFloat (Array t ds)
                => RealFloat (DataFrame t ds)
--- deriving instance NCommons.PrimBytes (Array t ds)
---                => NCommons.PrimBytes (DataFrame t ds)
-deriving instance NCommons.FloatBytes (Array t ds)
-               => NCommons.FloatBytes (DataFrame t ds)
-deriving instance NCommons.DoubleBytes (Array t ds)
-               => NCommons.DoubleBytes (DataFrame t ds)
-deriving instance NCommons.IntBytes (Array t ds)
-               => NCommons.IntBytes (DataFrame t ds)
-deriving instance NCommons.WordBytes (Array t ds)
-               => NCommons.WordBytes (DataFrame t ds)
+type instance NCommons.ElemRep (DataFrame t xs) = NCommons.ElemRep (Array t xs)
+deriving instance NCommons.PrimBytes (Array t ds)
+               => NCommons.PrimBytes (DataFrame t ds)
 instance ( Dimensions ds
          , NCommons.ElementWise (Idx ds) t (Array Float ds)
          ) => NCommons.ElementWise (Idx ds) t (DataFrame Float ds) where
@@ -347,17 +210,20 @@ instance ( Dimensions ds
 
 
 
+
+
 instance Eq (DataFrame t (ds :: [XNat])) where
-  SomeDataFrame d1 a1 == SomeDataFrame d2 a2
-      = case check d1 d2 a1 a2 of
-          Just Refl -> a1 == a2
+  SomeDataFrame (a :: Array t nsa) == SomeDataFrame (b :: Array t nsb)
+      = case sameDim (dim @nsa) (dim @nsb) of
+          Just Refl -> a == b
           Nothing   -> False
-    where
-      check :: Dim ds -> Dim ds
-            -> p ns1 -> q ns2
-            -> Maybe (ns1 :~: ns2)
-      check a b _ _ | a == b  = Just (unsafeCoerce Refl)
-                    | otherwise = Nothing
+
+instance Show (DataFrame t (ds :: [XNat])) where
+  show (SomeDataFrame (arr :: Array t ns)) = unlines
+                            [ "DF [" ++ drop 4 (show $ dim @ns) ++ "]:"
+                            , show arr
+                            ]
+
 
 
 

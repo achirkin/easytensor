@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
@@ -11,56 +12,58 @@
 {-# LANGUAGE UndecidableInstances  #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE BangPatterns  #-}
-{-# LANGUAGE TemplateHaskell  #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Numeric.NDArray.Base.ArrayD
+-- Module      :  Numeric.Array.Family.ArrayD
 -- Copyright   :  (c) Artem Chirkin
--- License     :  BSD
+-- License     :  BSD3
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
 --
 -----------------------------------------------------------------------------
 
-module Numeric.Array.Base.ArrayD () where
+module Numeric.Array.Family.ArrayD () where
 
+
+import           GHC.Base             (runRW#)
 import           GHC.Prim
+import           GHC.TypeLits
 import           GHC.Types
+import           Data.Proxy
 
 import           Numeric.Array.Family
 import           Numeric.Commons
-import           Numeric.Array.Base.ArrayTH
+import           Numeric.Dimensions
 
 
--- * Utility functions
-
-$(broadcastArrayDec arrayDDef)
-
-$(mapVDec arrayDDef)
-
-$(zipVDec arrayDDef)
-
-$(accumV2Dec arrayDDef)
-
--- * Instances
-
-$(instanceElementWiseDec arrayDDef)
-
-$(instanceShowDec arrayDDef)
-
-$(instanceEqDec arrayDDef)
-
-$(instanceOrdDec arrayDDef)
-
-$(instanceNumDec arrayDDef)
-
-type instance ElemRep (ArrayD ds) = 'DoubleRep
-$(instancePrimBytesDec arrayDDef)
-
-
+#include "MachDeps.h"
+#define ARR_TYPE                 ArrayD
+#define ARR_FROMSCALAR           FromScalarD#
+#define ARR_CONSTR               ArrayD#
+#define EL_TYPE_BOXED            Double
+#define EL_TYPE_PRIM             Double#
+#define EL_RUNTIME_REP           'DoubleRep
+#define EL_CONSTR                D#
+#define EL_SIZE                  SIZEOF_HSDOUBLE#
+#define EL_ALIGNMENT             ALIGNMENT_HSDOUBLE#
+#define EL_ZERO                  0.0##
+#define EL_ONE                   1.0##
+#define EL_MINUS_ONE             -1.0##
+#define INDEX_ARRAY              indexDoubleArray#
+#define WRITE_ARRAY              writeDoubleArray#
+#define OP_EQ                    (==##)
+#define OP_NE                    (/=##)
+#define OP_GT                    (>##)
+#define OP_GE                    (>=##)
+#define OP_LT                    (<##)
+#define OP_LE                    (<=##)
+#define OP_PLUS                  (+##)
+#define OP_MINUS                 (-##)
+#define OP_TIMES                 (*##)
+#define OP_NEGATE                negateDouble#
+#include "Array.h"
 
 
 instance Fractional (ArrayD ds) where

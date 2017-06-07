@@ -17,7 +17,7 @@
 -- |
 -- Module      :  Numeric.Commons
 -- Copyright   :  (c) Artem Chirkin
--- License     :  MIT
+-- License     :  BSD3
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
@@ -26,11 +26,7 @@
 
 module Numeric.Commons
   ( ElementWise (..), ElemRep
-  , PrimBytes (..)
-  , FloatBytes (..)
-  , DoubleBytes (..)
-  , IntBytes (..)
-  , WordBytes (..)
+  , PrimBytes (..), FloatBytes, DoubleBytes, IntBytes, WordBytes
   , Store (..)
   , ewFoldMap
   ) where
@@ -92,11 +88,16 @@ type instance ElemRep Word16 = 'WordRep
 type instance ElemRep Word32 = 'WordRep
 type instance ElemRep Word64 = 'WordRep
 
+type FloatBytes a  = (PrimBytes a, ElemRep a ~ 'FloatRep , ElemPrim a ~ Float#)
+type DoubleBytes a = (PrimBytes a, ElemRep a ~ 'DoubleRep, ElemPrim a ~ Double#)
+type IntBytes a    = (PrimBytes a, ElemRep a ~ 'IntRep   , ElemPrim a ~ Int#)
+type WordBytes a   = (PrimBytes a, ElemRep a ~ 'WordRep  , ElemPrim a ~ Word#)
+
 -- | Facilities to convert to and from raw byte array.
 --   Warning! offsets and sizes are in elements, not in bytes!
 --   Therefore one must be really carefull if having a crazy idea of
 --     converting between types of different element sizes.
-class PrimBytes (a :: TYPE 'LiftedRep) where
+class PrimBytes (a :: Type) where
   type ElemPrim a :: TYPE (r :: RuntimeRep)
   -- | Store content of a data type in a primitive byte array
   --   (ElementOffset, NumberOfElements, ByteArrayContent )
@@ -112,26 +113,6 @@ class PrimBytes (a :: TYPE 'LiftedRep) where
   elementByteSize :: a -> Int#
   -- | Primitive indexing
   ix  :: Int# -> a -> (ElemPrim a :: TYPE (ElemRep a))
-
--- | Primitive indexing. No checks, no safety.
-class FloatBytes a where
-  -- | Primitive get Float# (element offset)
-  ixF :: Int# -> a -> Float#
-
--- | Primitive indexing. No checks, no safety.
-class DoubleBytes a where
-  -- | Primitive get Double# (element offset)
-  ixD :: Int# -> a -> Double#
-
--- | Primitive indexing. No checks, no safety.
-class IntBytes a where
-  -- | Primitive get Int# (element offset)
-  ixI :: Int# -> a -> Int#
-
--- | Primitive indexing. No checks, no safety.
-class WordBytes a where
-  -- | Primitive get Word# (element offset)
-  ixW :: Int# -> a -> Word#
 
 -- instance PrimBytes a => Storable (Store a) where
 --   sizeOf x = I# (byteSize x)
@@ -180,10 +161,6 @@ instance PrimBytes Float where
   ix _ (F# x) = x
   {-# INLINE ix #-}
 
-instance FloatBytes Float where
-  ixF _ (F# x) = x
-  {-# INLINE ixF #-}
-
 instance ElementWise Int Float Float where
   (!) x _ = x
   {-# INLINE (!) #-}
@@ -218,10 +195,6 @@ instance PrimBytes Double where
   {-# INLINE elementByteSize #-}
   ix _ (D# x) = x
   {-# INLINE ix #-}
-
-instance DoubleBytes Double where
-  ixD _ (D# x) = x
-  {-# INLINE ixD #-}
 
 instance ElementWise Int Double Double where
   (!) x _ = x
@@ -274,10 +247,6 @@ instance ElementWise Int Int Int where
   broadcast = id
   {-# INLINE broadcast #-}
 
-instance IntBytes Int where
-  ixI _ (I# x) = x
-  {-# INLINE ixI #-}
-
 instance PrimBytes Int8 where
   type ElemPrim Int8 = Int#
   toBytes v@(I8# x) = case runRW#
@@ -296,10 +265,6 @@ instance PrimBytes Int8 where
   {-# INLINE elementByteSize #-}
   ix _ (I8# x) = x
   {-# INLINE ix #-}
-
-instance IntBytes Int8 where
-  ixI _ (I8# x) = x
-  {-# INLINE ixI #-}
 
 instance ElementWise Int Int8 Int8 where
   (!) x _ = x
@@ -336,10 +301,6 @@ instance PrimBytes Int16 where
   ix _ (I16# x) = x
   {-# INLINE ix #-}
 
-instance IntBytes Int16 where
-  ixI _ (I16# x) = x
-  {-# INLINE ixI #-}
-
 instance ElementWise Int Int16 Int16 where
   (!) x _ = x
   {-# INLINE (!) #-}
@@ -374,10 +335,6 @@ instance PrimBytes Int32 where
   {-# INLINE elementByteSize #-}
   ix _ (I32# x) = x
   {-# INLINE ix #-}
-
-instance IntBytes Int32 where
-  ixI _ (I32# x) = x
-  {-# INLINE ixI #-}
 
 instance ElementWise Int Int32 Int32 where
   (!) x _ = x
@@ -414,10 +371,6 @@ instance PrimBytes Int64 where
   ix _ (I64# x) = x
   {-# INLINE ix #-}
 
-instance IntBytes Int64 where
-  ixI _ (I64# x) = x
-  {-# INLINE ixI #-}
-
 instance ElementWise Int Int64 Int64 where
   (!) x _ = x
   {-# INLINE (!) #-}
@@ -452,10 +405,6 @@ instance PrimBytes Word where
   {-# INLINE elementByteSize #-}
   ix _ (W# x) = x
   {-# INLINE ix #-}
-
-instance WordBytes Word where
-  ixW _ (W# x) = x
-  {-# INLINE ixW #-}
 
 instance ElementWise Int Word Word where
   (!) x _ = x
@@ -492,10 +441,6 @@ instance PrimBytes Word8 where
   ix _ (W8# x) = x
   {-# INLINE ix #-}
 
-instance WordBytes Word8 where
-  ixW _ (W8# x) = x
-  {-# INLINE ixW #-}
-
 instance ElementWise Int Word8 Word8 where
   (!) x _ = x
   {-# INLINE (!) #-}
@@ -530,10 +475,6 @@ instance PrimBytes Word16 where
   {-# INLINE elementByteSize #-}
   ix _ (W16# x) = x
   {-# INLINE ix #-}
-
-instance WordBytes Word16 where
-  ixW _ (W16# x) = x
-  {-# INLINE ixW #-}
 
 instance ElementWise Int Word16 Word16 where
   (!) x _ = x
@@ -570,9 +511,6 @@ instance PrimBytes Word32 where
   ix _ (W32# x) = x
   {-# INLINE ix #-}
 
-instance WordBytes Word32 where
-  ixW _ (W32# x) = x
-  {-# INLINE ixW #-}
 
 instance ElementWise Int Word32 Word32 where
   (!) x _ = x
@@ -609,9 +547,6 @@ instance PrimBytes Word64 where
   ix _ (W64# x) = x
   {-# INLINE ix #-}
 
-instance WordBytes Word64 where
-  ixW _ (W64# x) = x
-  {-# INLINE ixW #-}
 
 instance ElementWise Int Word64 Word64 where
   (!) x _ = x
