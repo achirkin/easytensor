@@ -15,7 +15,7 @@ cabal sandbox add-source .cabal-sandbox/ghc-mod/vendor/cabal-helper
 cabal sandbox add-source dimensions
 cabal sandbox add-source easytensor
 cabal install QuickCheck
-cabal install cabal-doctest-1
+cabal install cabal-doctest-1 --allow-newer
 cabal install .cabal-sandbox/ghc-mod/vendor/ghc-syb/utils/
 cabal install .cabal-sandbox/ghc-mod/vendor/cabal-helper/
 cabal install .cabal-sandbox/ghc-mod/
