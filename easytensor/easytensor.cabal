@@ -54,6 +54,7 @@ library
         Numeric.DataFrame.SubSpace
         Numeric.DataFrame.Contraction
         Numeric.DataFrame.Type
+        Numeric.DataFrame.Inference
     ghc-options: -Wall -fwarn-tabs
 
 benchmark easytensor-bench

@@ -4,11 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE TypeFamilyDependencies     #-}
-{-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE TypeOperators              #-}
-
-{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE ExistentialQuantification  #-}
@@ -24,7 +20,6 @@
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
-{-# LANGUAGE UndecidableSuperClasses    #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Type
@@ -37,23 +32,23 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.Type
-  ( DataFrame (..), withShape, unboundShape
---  , ElementDataType (..), EDTRefl (..)
+  ( -- * Data types
+    DataFrame (..)
+    -- * Bring type classes into scope
+  , NumericFrame
+    -- * Utility type families and constraints
+  , FPFRame, IntegralFrame, NumericVariantFrame, CommonOpFrame
   ) where
 
-import           Data.Proxy
+import           Data.Int
+import           Data.Word
 import           Data.Type.Equality
-import           GHC.Base             (runRW#)
-import           GHC.Exts             (IsList (..))
-import           GHC.Prim
-import           GHC.TypeLits         (Nat, SomeNat (..), someNatVal)
+import           GHC.TypeLits         (Nat)
 import           GHC.Types
--- import           Numeric.Array
 import           Numeric.Array.Family
 import qualified Numeric.Commons      as NCommons
 import           Numeric.Dimensions
 import qualified Numeric.Matrix as M
-import           Unsafe.Coerce
 
 -- | Keep data in a primitive data frame
 --    and maintain information about Dimensions in the type-system
@@ -69,91 +64,49 @@ data instance DataFrame t (xns :: [XNat])
   . ( Dimensions ns
     , FixedDim xns ns ~ ns
     , FixedXDim xns ns ~ xns
-    , Show (Array t ns)
-    , Eq (Array t ns)
-    , NCommons.PrimBytes (Array t ns)
+    , NumericFrame t ns
+    , NCommons.PrimBytes (DataFrame t ns)
     )
-  => SomeDataFrame (Array t ns)
+  => SomeDataFrame (DataFrame t ns)
+
+-- | Allow all numeric operations depending on element type
+type NumericFrame t ds = (CommonOpFrame t ds, NumericVariantFrame t ds)
+
+-- | Allow all common operations on data frames
+type CommonOpFrame t ds
+  = ( Show (DataFrame t ds)
+    , Eq (DataFrame t ds)
+    , Ord (DataFrame t ds)
+    , Num (DataFrame t ds)
+    , NCommons.ElementWise (Idx ds) t (DataFrame t ds)
+    , ArrayInstanceInference t ds
+    )
+
+-- | Allow floating-point operations on data frames
+type FPFRame t ds
+  = ( Fractional (DataFrame t ds)
+    , Floating (DataFrame t ds)
+    )
+
+-- | Allow some integer-like operations on data frames
+type IntegralFrame t (ds :: [Nat])
+  = Bounded (DataFrame t ds)
 
 
-
-instance ( xnsm ~ (x ': xns')
-         , xns ~ Init xnsm
-         , Last xnsm ~ XN
-         , ns ~ UnwrapDims xns
-         , NCommons.PrimBytes (DataFrame t ns)
-         , Dimensions ns
-         , Show t
-         , Eq t
-         , NCommons.PrimBytes t
-         , ArrayInstanceInference t ns
-         )
-      => IsList (DataFrame t ((x ': xns') :: [XNat])) where
-  type Item (DataFrame t (x ': xns')) = DataFrame t (UnwrapDims (Init (x ': xns')))
-  fromList xs = fromListN (length xs) xs
-  fromListN _ []  = error "DataFrame fromList: the list must have at least two elements"
-  fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
-  fromListN n@(I# n#) xs  | Just (SomeNat pm) <- someNatVal (fromIntegral n)
-                          , pns <- Proxy :: Proxy (UnwrapDims (Init (x ': xns')))
-                          , pnsm <- snocP pns pm
-                          , I# len# <- totalDim (Proxy @ns)
-                          , resultBytes# <- df pnsm len#
-      = case inferArrayInstance @t @ns of
-          AIFloatX2 -> unsafeCoerce (SomeDataFrame (unsafeCoerce (ArrayF# 0# (n# *# len#) resultBytes#) :: Array Float '[]))
-          AIFloatX3 -> unsafeCoerce (SomeDataFrame (unsafeCoerce (ArrayF# 0# (n# *# len#) resultBytes#) :: Array Float '[]))
-          AIFloatX4 -> unsafeCoerce (SomeDataFrame (unsafeCoerce (ArrayF# 0# (n# *# len#) resultBytes#) :: Array Float '[]))
-          AIArrayF  -> unsafeCoerce (SomeDataFrame (unsafeCoerce (ArrayF# 0# (n# *# len#) resultBytes#) :: Array Float '[]))
-          AIArrayD  -> unsafeCoerce (SomeDataFrame (unsafeCoerce (ArrayD# 0# (n# *# len#) resultBytes#) :: Array Double '[]))
-          _ -> error "Sorry, fromListN/fromBytes is not implemented for this array type yet."
-    where
-      elSize# = NCommons.elementByteSize (head xs)
-      df :: Proxy nsm -> Int# -> ByteArray#
-      df _ len# = case runRW#
-        ( \s0 -> let !(# s1, marr #) = newByteArray# (n# *# elSize# *# len#) s0
-                     go s _ [] = s
-                     go s pos (earr : as) = case NCommons.toBytes earr of
-                       (# eoff#, _, ea #) -> go
-                         (copyByteArray# ea (eoff# *# elSize#) marr (pos *# elSize#) (elSize# *# len#) s)
-                         (pos +# len#)
-                         as
-                     s2 = go s1 0# xs
-                 in unsafeFreezeByteArray# marr s2
-        ) of (# _, r #) -> r
-      snocP :: Proxy ns -> Proxy m -> Proxy (ns +: m)
-      snocP _ _ = Proxy
-  fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
-  toList (SomeDataFrame df) = go offset
-    where
-      !(I# step) = totalDim (Proxy @ns)
-      !(# offset, lenN, arr #) = NCommons.toBytes df
-      lim = offset +# lenN
-      go pos | isTrue# (pos >=# lim)  = []
-             | otherwise = NCommons.fromBytes (# pos, step , arr #) : go (pos +# step)
-
-
-
--- | Do something with
-withShape :: DataFrame t xns
-          -> (forall ns . ( Dimensions ns
-                          , FixedDim xns ns ~ ns
-                          , FixedXDim xns ns ~ xns
-                          ) => DataFrame t ns -> b)
-          -> b
-withShape (SomeDataFrame a) f = f (KnownDataFrame a)
-
--- | Put some of Dimensions into existential data type
-unboundShape :: ( FixedXDim xns ns ~ xns
-                , FixedDim xns ns ~ ns
-                , XDimensions xns
-                , Dimensions ns
-                , NCommons.PrimBytes (Array t ns)
-                , Show (Array t ns)
-                , Eq (Array t ns)
-                ) => DataFrame t ns -> DataFrame t xns
-unboundShape (KnownDataFrame a)
-    = SomeDataFrame a
-
-
+type family NumericVariantFrame t ds :: Constraint where
+  NumericVariantFrame Float  ds  = FPFRame Float ds
+  NumericVariantFrame Double ds  = FPFRame Double ds
+  NumericVariantFrame Int    ds  = IntegralFrame Int    ds
+  NumericVariantFrame Int8   ds  = IntegralFrame Int8   ds
+  NumericVariantFrame Int16  ds  = IntegralFrame Int16  ds
+  NumericVariantFrame Int32  ds  = IntegralFrame Int32  ds
+  NumericVariantFrame Int64  ds  = IntegralFrame Int64  ds
+  NumericVariantFrame Word   ds  = IntegralFrame Word   ds
+  NumericVariantFrame Word8  ds  = IntegralFrame Word8  ds
+  NumericVariantFrame Word16 ds  = IntegralFrame Word16 ds
+  NumericVariantFrame Word32 ds  = IntegralFrame Word32 ds
+  NumericVariantFrame Word64 ds  = IntegralFrame Word64 ds
+  NumericVariantFrame _      _   = ()
 
 
 
@@ -165,7 +118,6 @@ instance ( Show (Array t ds)
                             [ "DF [" ++ drop 4 (show $ dim @ds) ++ "]:"
                             , show arr
                             ]
-
 deriving instance Bounded (Array t ds) => Bounded (DataFrame t ds)
 deriving instance Enum (Array t ds) => Enum (DataFrame t ds)
 deriving instance Eq (Array t ds) => Eq (DataFrame t ds)
@@ -191,8 +143,8 @@ type instance NCommons.ElemRep (DataFrame t xs) = NCommons.ElemRep (Array t xs)
 deriving instance NCommons.PrimBytes (Array t ds)
                => NCommons.PrimBytes (DataFrame t ds)
 instance ( Dimensions ds
-         , NCommons.ElementWise (Idx ds) t (Array Float ds)
-         ) => NCommons.ElementWise (Idx ds) t (DataFrame Float ds) where
+         , NCommons.ElementWise (Idx ds) t (Array t ds)
+         ) => NCommons.ElementWise (Idx ds) t (DataFrame t ds) where
   (!) = (NCommons.!) . _getDF
   {-# INLINE (!) #-}
   ewmap f = KnownDataFrame . NCommons.ewmap f . _getDF
@@ -213,18 +165,13 @@ instance ( Dimensions ds
 
 
 instance Eq (DataFrame t (ds :: [XNat])) where
-  SomeDataFrame (a :: Array t nsa) == SomeDataFrame (b :: Array t nsb)
+  SomeDataFrame (a :: DataFrame t nsa) == SomeDataFrame (b :: DataFrame t nsb)
       = case sameDim (dim @nsa) (dim @nsb) of
           Just Refl -> a == b
           Nothing   -> False
 
 instance Show (DataFrame t (ds :: [XNat])) where
-  show (SomeDataFrame (arr :: Array t ns)) = unlines
-                            [ "DF [" ++ drop 4 (show $ dim @ns) ++ "]:"
-                            , show arr
-                            ]
-
-
+  show (SomeDataFrame arr) = show arr
 
 
 instance ( ConcatList as bs asbs

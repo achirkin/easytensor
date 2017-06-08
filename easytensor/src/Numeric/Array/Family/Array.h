@@ -304,7 +304,7 @@ instance Num (ARR_TYPE ds) where
 
 
 type instance ElemRep (ARR_TYPE ds) = EL_RUNTIME_REP
-instance Dimensions ds => PrimBytes (ARR_TYPE ds) where
+instance Dimensions'' ds => PrimBytes (ARR_TYPE ds) where
   type ElemPrim (ARR_TYPE ds) = EL_TYPE_PRIM
   toBytes (ARR_CONSTR off size a) = (# off, size, a #)
   toBytes (ARR_FROMSCALAR x) = case runRW#

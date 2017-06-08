@@ -22,6 +22,7 @@
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE BangPatterns #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.SubSpace
@@ -42,13 +43,17 @@ module Numeric.DataFrame.SubSpace
 import           Data.Proxy
 import           GHC.Base (runRW#)
 import           GHC.Prim
-import           GHC.TypeLits (Nat)
+import           GHC.TypeLits (Nat, SomeNat (..), someNatVal, type (<=?))
 import           GHC.Types
+import           GHC.Exts             (IsList (..))
 import qualified Numeric.Commons as NCommons
 import           Numeric.Dimensions
 
-
+import           Numeric.Array
 import           Numeric.DataFrame.Type
+import           Numeric.DataFrame.Inference
+import           Data.Type.Equality
+import           Unsafe.Coerce
 
 
 -- | Operations on DataFrames
@@ -306,3 +311,58 @@ ewzip :: ( SubSpace t as bs asbs
       -> DataFrame r asbs''
 ewzip _ = iwzip . const
 {-# INLINE ewzip #-}
+
+
+instance ( xnsm ~ (x ': xns')
+         , xns ~ Init xnsm
+         , Last xnsm ~ XN
+         , ns ~ UnwrapDims xns
+         , NCommons.PrimBytes (DataFrame t ns)
+         , Dimensions ns
+         , ArrayInstanceInference t ns
+         )
+      => IsList (DataFrame t ((x ': xns') :: [XNat])) where
+  type Item (DataFrame t (x ': xns')) = DataFrame t (UnwrapDims (Init (x ': xns')))
+  fromList xs = fromListN (length xs) xs
+  fromListN _ []  = error "DataFrame fromList: the list must have at least two elements"
+  fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
+  fromListN n@(I# n#) xs  | Just (SomeNat (pm :: Proxy m)) <- someNatVal (fromIntegral n)
+                          , (pnsm, Refl, Refl, Refl) <- snocP pm
+                          , I# len# <- totalDim (Proxy @ns)
+                          , resultBytes# <- df len#
+                          , DimensionsEvidence <- inferSnocDimensions (Proxy @ns) pm
+                          , ArrayInstanceEvidence <- inferSnocArrayInstance (head xs) pm
+                          , PrimBytesEvidence <- inferPrimBytes @t @(ns +: m)
+                          , NumericFrameEvidence <- inferNumericFrame @t @(ns +: m)
+      = SomeDataFrame . enforceDim @t pnsm $ NCommons.fromBytes (# 0#, n# *# len#, resultBytes# #)
+    where
+      elSize# = NCommons.elementByteSize (head xs)
+      df :: Int# -> ByteArray#
+      df len# = case runRW#
+        ( \s0 -> let !(# s1, marr #) = newByteArray# (n# *# elSize# *# len#) s0
+                     go s _ [] = s
+                     go s pos (earr : as) = case NCommons.toBytes earr of
+                       (# eoff#, _, ea #) -> go
+                         (copyByteArray# ea (eoff# *# elSize#) marr (pos *# elSize#) (elSize# *# len#) s)
+                         (pos +# len#)
+                         as
+                     s2 = go s1 0# xs
+                 in unsafeFreezeByteArray# marr s2
+        ) of (# _, r #) -> r
+      snocP :: forall m . Proxy m ->
+             ( Proxy (ns +: m)
+             , FixedXDim xnsm (ns +: m) :~: xnsm
+             , FixedDim  xnsm (ns +: m) :~: (ns +: m)
+             , (2 <=? m) :~: 'True
+             )
+      snocP _ = (Proxy, unsafeCoerce Refl, unsafeCoerce Refl, unsafeCoerce Refl)
+      enforceDim :: forall s nsm . Proxy nsm -> DataFrame s nsm -> DataFrame s nsm
+      enforceDim _ = id
+  fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
+  toList (SomeDataFrame df) = go offset
+    where
+      !(I# step) = totalDim (Proxy @ns)
+      !(# offset, lenN, arr #) = NCommons.toBytes df
+      lim = offset +# lenN
+      go pos | isTrue# (pos >=# lim)  = []
+             | otherwise = NCommons.fromBytes (# pos, step , arr #) : go (pos +# step)

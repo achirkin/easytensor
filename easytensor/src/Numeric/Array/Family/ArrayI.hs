@@ -63,3 +63,7 @@ import           Numeric.Dimensions
 #define OP_TIMES                 (*#)
 #define OP_NEGATE                negateInt#
 #include "Array.h"
+
+instance Bounded (ArrayI ds) where
+    minBound = broadcastArray minBound
+    maxBound = broadcastArray maxBound
