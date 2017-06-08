@@ -40,15 +40,14 @@ module Numeric.DataFrame.Type
   , FPFRame, IntegralFrame, NumericVariantFrame, CommonOpFrame
   ) where
 
-import           Data.Int
-import           Data.Word
-import           Data.Type.Equality
-import           GHC.TypeLits         (Nat)
-import           GHC.Types
-import           Numeric.Array.Family
-import qualified Numeric.Commons      as NCommons
-import           Numeric.Dimensions
-import qualified Numeric.Matrix as M
+import Data.Int
+import Data.Word
+import Data.Type.Equality
+import GHC.TypeLits         (Nat)
+import GHC.Types
+import Numeric.Array.Family
+import Numeric.Commons
+import Numeric.Dimensions
 
 -- | Keep data in a primitive data frame
 --    and maintain information about Dimensions in the type-system
@@ -65,7 +64,7 @@ data instance DataFrame t (xns :: [XNat])
     , FixedDim xns ns ~ ns
     , FixedXDim xns ns ~ xns
     , NumericFrame t ns
-    , NCommons.PrimBytes (DataFrame t ns)
+    , PrimBytes (DataFrame t ns)
     )
   => SomeDataFrame (DataFrame t ns)
 
@@ -78,7 +77,7 @@ type CommonOpFrame t ds
     , Eq (DataFrame t ds)
     , Ord (DataFrame t ds)
     , Num (DataFrame t ds)
-    , NCommons.ElementWise (Idx ds) t (DataFrame t ds)
+    , ElementWise (Idx ds) t (DataFrame t ds)
     , ArrayInstanceInference t ds
     )
 
@@ -139,26 +138,26 @@ deriving instance RealFrac (Array t ds)
                => RealFrac (DataFrame t ds)
 deriving instance RealFloat (Array t ds)
                => RealFloat (DataFrame t ds)
-type instance NCommons.ElemRep (DataFrame t xs) = NCommons.ElemRep (Array t xs)
-deriving instance NCommons.PrimBytes (Array t ds)
-               => NCommons.PrimBytes (DataFrame t ds)
+type instance ElemRep (DataFrame t xs) = ElemRep (Array t xs)
+deriving instance PrimBytes (Array t ds)
+               => PrimBytes (DataFrame t ds)
 instance ( Dimensions ds
-         , NCommons.ElementWise (Idx ds) t (Array t ds)
-         ) => NCommons.ElementWise (Idx ds) t (DataFrame t ds) where
-  (!) = (NCommons.!) . _getDF
+         , ElementWise (Idx ds) t (Array t ds)
+         ) => ElementWise (Idx ds) t (DataFrame t ds) where
+  (!) = (!) . _getDF
   {-# INLINE (!) #-}
-  ewmap f = KnownDataFrame . NCommons.ewmap f . _getDF
+  ewmap f = KnownDataFrame . ewmap f . _getDF
   {-# INLINE ewmap #-}
-  ewgen = KnownDataFrame . NCommons.ewgen
+  ewgen = KnownDataFrame . ewgen
   {-# INLINE ewgen #-}
-  ewfold f x0 = NCommons.ewfold f x0 . _getDF
+  ewfold f x0 = ewfold f x0 . _getDF
   {-# INLINE ewfold #-}
-  elementWise f = fmap KnownDataFrame . NCommons.elementWise f . _getDF
+  elementWise f = fmap KnownDataFrame . elementWise f . _getDF
   {-# INLINE elementWise #-}
-  indexWise f = fmap KnownDataFrame . NCommons.indexWise f . _getDF
+  indexWise f = fmap KnownDataFrame . indexWise f . _getDF
   {-# INLINE indexWise #-}
-  broadcast = KnownDataFrame . NCommons.broadcast
-  {-# INLINE NCommons.broadcast #-}
+  broadcast = KnownDataFrame . broadcast
+  {-# INLINE broadcast #-}
 
 
 
@@ -172,21 +171,6 @@ instance Eq (DataFrame t (ds :: [XNat])) where
 
 instance Show (DataFrame t (ds :: [XNat])) where
   show (SomeDataFrame arr) = show arr
-
-
-instance ( ConcatList as bs asbs
-         , Dimensions asm
-         , Dimensions (m ': bs)
-         , asm ~ (as +: m)
-         , Dimensions asbs
-         , M.MatrixProduct (Array t (as +: m)) (Array t (m :+ bs)) (Array t asbs)
-         )
-       => M.MatrixProduct (DataFrame t asm)
-                          (DataFrame t (m ': bs))
-                          (DataFrame t asbs) where
-  prod x y = KnownDataFrame $ M.prod (_getDF x) (_getDF y)
-
-
 
 
 

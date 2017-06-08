@@ -38,8 +38,8 @@ import           Data.Proxy
 import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.Dimensions
-
-import           Numeric.Matrix
+import           Numeric.DataFrame.Type
+import           Numeric.Matrix.Type
 
 #include "MachDeps.h"
 #define ARR_TYPE                 ArrayF
@@ -127,8 +127,9 @@ instance Floating (ArrayF ds) where
 
 
 
-instance (KnownNat n, KnownNat m) => MatrixCalculus Float n m (ArrayF '[n,m]) where
-  transpose (ArrayF# offs nm arr) = case runRW#
+instance (KnownNat n, KnownNat m, ArrayF '[n,m] ~ Matrix Float n m, 2 <= n, 2 <= m)
+      => MatrixCalculus Float n m where
+  transpose (KnownDataFrame (ArrayF# offs nm arr)) = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop2# n m
                (\i j s' -> writeFloatArray# marr (i +# n *# j)
@@ -140,10 +141,10 @@ instance (KnownNat n, KnownNat m) => MatrixCalculus Float n m (ArrayF '[n,m]) wh
       n = case fromInteger $ natVal (Proxy @n) of I# np -> np
       m = case fromInteger $ natVal (Proxy @m) of I# mp -> mp
       bs = n *# m *# SIZEOF_HSFLOAT#
-  transpose (FromScalarF# x) = unsafeCoerce# $ FromScalarF# x
+  transpose (KnownDataFrame (FromScalarF# x)) = unsafeCoerce# $ FromScalarF# x
 
-instance Dimensions '[n,n]
-      => SquareMatrixCalculus Float n (ArrayF '[n,n]) where
+instance ( Dimensions '[n,n], ArrayF '[n,n] ~ Matrix Float n n )
+      => SquareMatrixCalculus Float n where
   eye = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop1# n
@@ -156,7 +157,7 @@ instance Dimensions '[n,n]
       n = case fromInteger $ natVal (Proxy @n) of I# np -> np
       bs = n *# n *# SIZEOF_HSFLOAT#
   {-# INLINE eye #-}
-  diag (F# v) = case runRW#
+  diag (KnownDataFrame (Scalar (F# v))) = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop1# n
                (\j s' -> writeFloatArray# marr (j *# n1) v s'
@@ -170,7 +171,7 @@ instance Dimensions '[n,n]
   {-# INLINE diag #-}
 
 
-  det (ArrayF# off nsqr arr) = case runRW#
+  det (KnownDataFrame (ArrayF# off nsqr arr)) = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
        (# s1, mat #) -> case newByteArray#
                             (n *# SIZEOF_HSFLOAT#)
@@ -193,27 +194,27 @@ instance Dimensions '[n,n]
       n = case fromInteger $ natVal (Proxy @n) of I# np -> np
       offb = off *# SIZEOF_HSFLOAT#
       bs = nsqr *# SIZEOF_HSFLOAT#
-  det (FromScalarF# _) = 0
+  det (KnownDataFrame (FromScalarF# _)) = 0
   {-# INLINE det #-}
 
 
 
-  trace (ArrayF# off nsqr a) = F# (loop' 0# 0.0#)
+  trace (KnownDataFrame (ArrayF# off nsqr a)) = KnownDataFrame (Scalar (F# (loop' 0# 0.0#)))
     where
       n1 = n +# 1#
       n = case fromInteger $ natVal (Proxy @n) of I# np -> np
       loop' i acc | isTrue# (i ># nsqr) = acc
                   | otherwise = loop' (i +# n1)
                          (indexFloatArray# a (off +# i) `plusFloat#` acc)
-  trace (FromScalarF# x) = F# (x `timesFloat#` n)
+  trace (KnownDataFrame (FromScalarF# x)) = KnownDataFrame (Scalar (F# (x `timesFloat#` n)))
     where
       n = case fromInteger $ natVal (Proxy @n) of F# np -> np
   {-# INLINE trace #-}
 
 
 
-instance KnownNat n => MatrixInverse (ArrayF '[n,n]) where
-  inverse (ArrayF# offs nsqr arr) = case runRW#
+instance (KnownNat n, ArrayF '[n,n] ~ Matrix Float n n, 2 <= n) => MatrixInverse Float n where
+  inverse (KnownDataFrame (ArrayF# offs nsqr arr)) = case runRW#
      ( \s0 -> case newByteArray# (bs *# 2#) s0 of
          (# s1, mat #) -> case newByteArray# (vs *# 2#)
                 -- copy original matrix to the top of an augmented matrix
@@ -241,14 +242,14 @@ instance KnownNat n => MatrixInverse (ArrayF '[n,n]) where
                    (f 0# s2)
                    )
                   )
-     ) of (# _, r #) -> ArrayF# 0# nsqr r
+     ) of (# _, r #) -> KnownDataFrame (ArrayF# 0# nsqr r)
     where
       nn = 2# *# n
       n = case fromInteger $ natVal (Proxy @n) of I# np -> np
       vs = n *# SIZEOF_HSFLOAT#
       bs = n *# n *# SIZEOF_HSFLOAT#
       offb = offs *# SIZEOF_HSFLOAT#
-  inverse (FromScalarF# _) = error "Cannot take inverse of a degenerate matrix"
+  inverse (KnownDataFrame (FromScalarF# _)) = error "Cannot take inverse of a degenerate matrix"
 
 
 -----------------------------------------------------------------------------
