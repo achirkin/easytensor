@@ -13,7 +13,7 @@ module Main (main) where
 import Data.Proxy
 import GHC.TypeLits
 import GHC.Types
--- import           GHC.Exts
+import           GHC.Exts (IsList (..))
 --import Numeric.Tensor (Dim(..))
 -- import           Numeric.Commons
 -- import qualified Numeric.Tensor     as T
@@ -30,22 +30,28 @@ import Numeric.Dimensions
 import Numeric.DataFrame
 import Numeric.Commons (ix)
 -- import Unsafe.Coerce
-import Data.Functor.Identity
-import Data.Functor.Const
-import Data.Semigroup
+-- import Data.Functor.Identity
+-- import Data.Functor.Const
+-- import Data.Semigroup
+
 
 main :: IO ()
 main = do
     print $ F# (ix 0# (3 :: Float))
     putStrLn "Hello world!"
---     print (Proxy @3 :* Proxy @2 :* (D :: Dim ('[] :: [Nat])))
---     print $ case (,,,)  <$> someNatVal 3
---                         <*> someNatVal 6
---                         <*> someNatVal 8
---                         <*> someNatVal 4
---                         of
---       Nothing -> Nothing
---       Just (a,b,c,d) -> xDimVal $ a :? b :? c :? d :? D
+    print (Proxy @3 :* Proxy @2 :* (D :: Dim ('[] :: [Nat])))
+    print $ case (,,,)  <$> someNatVal 3
+                        <*> someNatVal 6
+                        <*> someNatVal 8
+                        <*> someNatVal 4
+                        of
+      Nothing -> Nothing
+      Just (a,b,c,d) -> xDimVal $ a :? b :? c :? d :? D
+    print (fromList [vec2 1 0, vec2 2 3, vec2 3 4, vec2 5 6] :: DataFrame Int '[N 2, XN])
+    print (fromList [vec4 1 0 2 11, vec4 2 22 3 0, vec4 3 4 0 0] :: DataFrame Double '[N 4, XN])
+    print (fromList [vec2 0 0, vec2 2 22, vec2 2 22] :: DataFrame Float '[N 2, XN])
+    print (fromList [0, 1, 3, 5, 7] :: DataFrame Float '[XN])
+    print (fromList [9, 13, 2] :: DataFrame Float '[N 5, N 2, XN])
 --     putStrLn s
 --     putStrLn s2
 --     -- look at this hole: amazing type inference!
@@ -106,50 +112,50 @@ main = do
 --     --   Nothing -> print "Failed to do Test1"
 --     --   Just (SomeNat p, SomeNat q) -> print
 --     --     [funTest1v p q, funTest1v (Proxy @3) q, funTest1v p (Proxy @4), funTest1v (Proxy @1) (Proxy @2)]
---   where
---     pleaseFire :: Idx i -> DataFrame Float '[3, 2] -> Const (Sum (DataFrame Float '[3, 2])) Scf
---     pleaseFire _ = Const . Sum
---     ixs :: DataFrame Float '[3,2,4]
---     ixs = iwgen $ dim @'[3,2,4] `asSpaceOf` (\(i :! j :! k :! Z) -> scalar . realToFrac $ i*100 + j*10 + k)
---     matX = mat22 (vec2 0 2) (vec2 1 (0 :: Float))
---     Just d2 = someNatVal 2
---     Just d3 = someNatVal 5
---     dimX :: Dim '[N 3, XN, XN, N 2]
---     dimX = Proxy :* d2 :? d3 :? Proxy :* D
---     dimVec2 :: Dim '[XN]
---     dimVec2 = d2 :? D
---     sVec2 = case xDimVal dimVec2 of
---         Just (XDim ds) -> show (dfFloat 3.11 `inSpaceOf` ds)
---         Nothing -> "Failed to get xDimVal dimVec2"
---     s2 = case xDimVal dimVec2 of
---         Just (XDim ds) -> show (dfFloat (exp 3) `inSpaceOf` ds)
---         Nothing -> "Failed to get xDimVal dimVec2"
---     x3 = case xDimVal dimX of
---         Just (XDim ds) -> show $ unboundShape (dfFloat 42.0001 `inSpaceOf` ds) `inSpaceOf` Proxy @'[XN,XN,XN,N _]
---         Nothing -> "Failed to get xDimVal dimX"
---     s = case xDimVal dimX of
---         Just (XDim ds) -> let pix = 2 * dfFloat pi `inSpaceOf` ds
---                           in show pix ++ show (pix ! (1 :! 2 :! 1 :! 2 :! Z) :: Scf)
---         Nothing -> "Failed to get xDimVal dimX"
---     -- dimX1 :: Dim '[3,2,4]
---     -- dimX1 = dim
---     -- dimX2 :: Dim '[4,5,2]
---     -- dimX2 = dim
---     dfX1  :: DFF '[3,2,4]
---     dfX1  = pi
---     dfX2  :: DFF '[4,5]
---     dfX2  = 1
---     -- dfY :: DFF '[3,2,5]
---     dfY   = dfX1 %* dfX2
+  -- where
+    -- pleaseFire :: Idx i -> DataFrame Float '[3, 2] -> Const (Sum (DataFrame Float '[3, 2])) Scf
+    -- pleaseFire _ = Const . Sum
+    -- ixs :: DataFrame Float '[3,2,4]
+    -- ixs = iwgen $ dim @'[3,2,4] `asSpaceOf` (\(i :! j :! k :! Z) -> scalar . realToFrac $ i*100 + j*10 + k)
+    -- matX = mat22 (vec2 0 2) (vec2 1 (0 :: Float))
+    -- Just d2 = someNatVal 2
+    -- Just d3 = someNatVal 5
+    -- dimX :: Dim '[N 3, XN, XN, N 2]
+    -- dimX = Proxy :* d2 :? d3 :? Proxy :* D
+    -- dimVec2 :: Dim '[XN]
+    -- dimVec2 = d2 :? D
+    -- sVec2 = case xDimVal dimVec2 of
+    --     Just (XDim ds) -> show (dfFloat 3.11 `inSpaceOf` ds)
+    --     Nothing -> "Failed to get xDimVal dimVec2"
+    -- s2 = case xDimVal dimVec2 of
+    --     Just (XDim ds) -> show (dfFloat (exp 3) `inSpaceOf` ds)
+    --     Nothing -> "Failed to get xDimVal dimVec2"
+    -- -- x3 = case xDimVal dimX of
+    -- --     Just (XDim ds) -> show $ unboundShape (dfFloat 42.0001 `inSpaceOf` ds) `inSpaceOf` Proxy @'[XN,XN,XN,N _]
+    -- --     Nothing -> "Failed to get xDimVal dimX"
+    -- s = case xDimVal dimX of
+    --     Just (XDim ds) -> let pix = 2 * dfFloat pi `inSpaceOf` ds
+    --                       in show pix ++ show (pix ! (1 :! 2 :! 1 :! 2 :! Z) :: Scf)
+    --     Nothing -> "Failed to get xDimVal dimX"
+    -- -- dimX1 :: Dim '[3,2,4]
+    -- -- dimX1 = dim
+    -- -- dimX2 :: Dim '[4,5,2]
+    -- -- dimX2 = dim
+    -- dfX1  :: DFF '[3,2,4]
+    -- dfX1  = pi
+    -- dfX2  :: DFF '[4,5]
+    -- dfX2  = 1
+    -- -- dfY :: DFF '[3,2,5]
+    -- dfY   = dfX1 %* dfX2
 --
 --     -- dfY2  = (runSlice . slice (Get 4 )
 --     --                   $ slice (Get 2 :& 1 :& 1)
 --     --                   (\(i :! j :! Z) v -> [ (v ! 1 :! Z) - realToFrac i
 --     --                                        , (v ! 2 :! Z) *2 / realToFrac j])) dfY
-
-dfFloat :: Fractional (DataFrame Float ds)
-        => Float -> DataFrame Float (ds :: [Nat])
-dfFloat = realToFrac
-
-
-type DFF (ds :: [Nat]) = DataFrame Float ds
+--
+-- dfFloat :: Fractional (DataFrame Float ds)
+--         => Float -> DataFrame Float (ds :: [Nat])
+-- dfFloat = realToFrac
+--
+--
+-- type DFF (ds :: [Nat]) = DataFrame Float ds

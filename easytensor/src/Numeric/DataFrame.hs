@@ -33,7 +33,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame
-  ( DataFrame, withShape, unboundShape
+  ( DataFrame
   , (<::>), (<+:>), (<:>)
   , module Numeric.Scalar
   , module Numeric.Vector
@@ -45,11 +45,12 @@ module Numeric.DataFrame
   , slice, runSlice, subSpace, index
   , M.MatrixCalculus (), M.SquareMatrixCalculus ()
   , M.MatrixInverse ()
-  , NumericFrame, FPDataFrame
+  , NumericFrame
   -- , inferNumeric, inferFloating -- , inferSubSpace
    -- * Modules for DataFrame operations
   , module Numeric.DataFrame.SubSpace
   , module Numeric.DataFrame.Contraction
+  , module Numeric.DataFrame.Inference
   ) where
 
 import Data.Functor.Const
@@ -61,7 +62,6 @@ import           GHC.TypeLits       (Nat, natVal, type (+), type (-), KnownNat, 
 import           GHC.Types
 -- import           Numeric.Array
 import           Numeric.Array (Array)
-import qualified Numeric.Array as AFam -- (Scalar (..))
 import qualified Numeric.Commons as NCommons
 import           Numeric.Dimensions
 import qualified Numeric.Matrix as M
@@ -72,6 +72,7 @@ import           Unsafe.Coerce
 import           Numeric.DataFrame.Type
 import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Contraction
+import           Numeric.DataFrame.Inference
 
 
 
@@ -450,27 +451,6 @@ inverse :: ( KnownNat n
            , M.MatrixInverse (Array t '[n,n])
            ) => Matrix t n n -> Matrix t n n
 inverse = KnownDataFrame . M.inverse . _getDF
-
-
-
--- | If instance of Dimensions ds is available, I must provide a way
---   to bring instances of DataFrame into scope.
---   For example, Ord, Num, Eq, and SubSpace t '[] ds ds must be there for any ds.
-type NumericFrame (t :: Type) (ds :: [Nat]) =
-  ( Show (DataFrame t ds)
-  , Eq (DataFrame t ds)
-  , Ord (DataFrame t ds)
-  , Num (DataFrame t ds)
-  , SubSpace t '[] ds ds
-  -- , ElementDataType t
-  )
-
--- | NumericFrame t ds plus Fractional and Floating instances
-type FPDataFrame (t :: Type) (ds :: [Nat]) =
-  ( NumericFrame t ds
-  , Fractional (DataFrame t ds)
-  , Floating (DataFrame t ds)
-  )
 
 
 -- -- | Lookup a proper instance for our typeclasses at runtime
