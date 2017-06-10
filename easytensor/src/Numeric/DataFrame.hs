@@ -10,10 +10,15 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame
-  ( DataFrame
+  ( DataFrame (SomeDataFrame)
+  , NumericFrame
+    -- * Utility type families and constraints
+  , FPFRame, IntegralFrame, NumericVariantFrame, CommonOpFrame
+    -- * Simplified type aliases
   , module Numeric.Scalar
   , module Numeric.Vector
   , module Numeric.Matrix
+    -- * Functionality
   , module Numeric.DataFrame.SubSpace
   , module Numeric.DataFrame.Contraction
   , module Numeric.DataFrame.Inference

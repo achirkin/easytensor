@@ -13,7 +13,6 @@ module Main (main) where
 import Data.Proxy
 import GHC.TypeLits
 import GHC.Types
-import           GHC.Exts (IsList (..))
 --import Numeric.Tensor (Dim(..))
 -- import           Numeric.Commons
 -- import qualified Numeric.Tensor     as T
@@ -52,6 +51,16 @@ main = do
     print (fromList [vec2 0 0, vec2 2 22, vec2 2 22] :: DataFrame Float '[N 2, XN])
     print (fromList [0, 1, 3, 5, 7] :: DataFrame Float '[XN])
     print (fromList [9, 13, 2] :: DataFrame Float '[N 5, N 2, XN])
+    print $ vec2 1 1 %* mat22 (vec2 1 1) (vec2 2 (3 :: Float))
+    print (toList (42 :: DataFrame Int '[4,3,2]))
+    -- Seems like I have to specify known dimension explicitly,
+    -- because the inference process within the pattern match
+    -- cannot escape the case expression.
+    -- On the other hand, if I type wrong dimension it will throw a nice type-level error.
+    case fromList [10, 100, 1000] :: DataFrame Double '[N 4, N 2, XN] of
+                    -- Amazing inference!
+                    -- m :: KnownNat k => DataFrame '[4,2,k]
+        SomeDataFrame m -> print $ vec4 1 2.25 3 0.162 %* m
 --     putStrLn s
 --     putStrLn s2
 --     -- look at this hole: amazing type inference!

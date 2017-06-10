@@ -31,7 +31,7 @@ import           Data.Type.Equality
 --import           Data.Proxy
 import           Unsafe.Coerce
 
-
+import           Numeric.Commons
 import           Numeric.DataFrame
 import           Numeric.Dimensions
 
@@ -52,23 +52,24 @@ unsafeEqProof = unsafeCoerce Refl
 -- | Generating random DataFrames
 newtype SimpleDF (ds :: [Nat] ) = SDF { getDF :: DataFrame Float ds}
 data SomeSimpleDF = forall (ds :: [Nat])
-                  . (Dimensions ds, FPDataFrame Float ds)
+                  . (Dimensions ds, NumericFrame Float ds)
                  => SSDF !(SimpleDF ds)
 data SomeSimpleDFNonScalar
     = forall (ds :: [Nat]) (a :: Nat) (z :: Nat) (as :: [Nat]) (zs :: [Nat])
     . ( Dimensions ds
-      , FPDataFrame Float ds
+      , NumericFrame Float ds
       , ds ~ (a :+ as), ds ~ (zs +: z)
       )
    => SSDFN !(SimpleDF ds)
 data SomeSimpleDFPair = forall (ds :: [Nat])
                       . ( Dimensions ds
-                        , FPDataFrame Float ds
+                        , NumericFrame Float ds
                         )
                      => SSDFP !(SimpleDF ds) !(SimpleDF ds)
 
 instance ( Dimensions ds
-         , FPDataFrame Float ds
+         , NumericFrame Float ds
+         , PrimBytes (DataFrame Float ds)
          ) => Arbitrary (SimpleDF (ds :: [Nat])) where
   arbitrary = SDF <$> elementWise (dim @ds) f 0
     where

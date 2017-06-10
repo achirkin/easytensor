@@ -62,7 +62,7 @@ class ConcatList as bs asbs
 --     1. matrix-matrix product
 --     2. matrix-vector or vector-matrix product
 --     3. dot product of two vectors.
-(%*) :: ( ConcatList (as +: m) (m ': bs) (as ++ bs)
+(%*) :: ( ConcatList as bs (as ++ bs)
         , Contraction t as bs asbs
         , KnownNat m
         , PrimBytes (DataFrame t (as +: m))

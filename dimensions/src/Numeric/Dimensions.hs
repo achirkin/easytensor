@@ -39,7 +39,8 @@ module Numeric.Dimensions
   , inSpaceOf, asSpaceOf, appendIdx, splitIdx
     -- * Type families for Dim-XDim manipulations
   , FixedDim, FixedXDim, ValidDims
-  , WrapDims, WrapHead, UnwrapDims, ConsDim
+  , WrapDims, UnwrapDims, AsXDims, AsDims
+  , WrapHead, ConsDim
   , type (:<), type (>:)
     -- * Generic type-level list operations
   , module Numeric.Dimensions.List
@@ -253,7 +254,7 @@ class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
     -- | Make snoc almost as good as cons
     inferSnocDimensions :: (KnownNat z, 2 <= z) => p ds -> q z -> DimensionsEvidence (ds +: z)
     -- | Init of the list is also Dimensions
-    inferInitDimensions :: Dimensions (d :+ ds) => p (d :+ ds) -> DimensionsEvidence (Init (d :+ ds))
+    inferInitDimensions :: Dimensions ds => p ds -> DimensionsEvidence (Init ds)
     -- | Tail of the list is also Dimensions
     inferTailDimensions :: Dimensions ds => p ds -> DimensionsEvidence (Tail ds)
     -- | Take KnownNat of the list is also Dimensions
@@ -464,7 +465,7 @@ instance Dimensions'' ('[] :: [Nat]) where
     {-# INLINE inferSuffixDimensions #-}
     inferSnocDimensions _ _ = DimensionsEvidence
     {-# INLINE inferSnocDimensions #-}
-    inferInitDimensions _ = DimensionsEvidence
+    inferInitDimensions _ = error "Init -- empty type-level list"
     {-# INLINE inferInitDimensions #-}
     inferTailDimensions _ = error "Tail -- empty type-level list"
     {-# INLINE inferTailDimensions #-}
@@ -567,9 +568,10 @@ instance ( Dimensions'' ds
       , Refl <- unsafeCoerce Refl :: (d :+ (ds +: z)) :~: ((d :+ ds) +: z)
       = DimensionsEvidence :: DimensionsEvidence (d :+ (ds +: z))
     {-# INLINE inferSnocDimensions #-}
-    inferInitDimensions (_ :: p (d0 :+ d :+ ds))
-      | DimensionsEvidence <- inferInitDimensions (Proxy @(d :+ ds))
-      = DimensionsEvidence :: DimensionsEvidence (d0 :+ Init (d :+ ds))
+    inferInitDimensions _ = case tList (Proxy @ds) of
+        TLEmpty -> DimensionsEvidence
+        TLCons _ _ -> case inferInitDimensions (Proxy @ds) of
+          DimensionsEvidence -> DimensionsEvidence :: DimensionsEvidence (d :+ Init ds)
     {-# INLINE inferInitDimensions #-}
     inferTailDimensions _ = DimensionsEvidence
     {-# INLINE inferTailDimensions #-}
@@ -672,10 +674,33 @@ type family ValidDims (ns :: [Nat]) :: Constraint where
     ValidDims '[] = ()
     ValidDims (x ': xs) = (2 <= x, ValidDims xs)
 
+-- | Map Dims onto XDims (injective)
+type family AsXDims (ns :: [Nat]) = (xns :: [XNat]) | xns -> ns where
+    AsXDims '[] = '[]
+    AsXDims (n ': ns) = N n ': AsXDims ns
+
+-- | Map XDims onto Dims (injective)
+type family AsDims (xns::[XNat]) = (ns :: [Nat]) | ns -> xns where
+    AsDims '[] = '[]
+    AsDims (N x ': xs) = x ': AsDims xs
+
+-- | Treat Dims or XDims uniformly as XDims
 type family WrapDims (x::[k]) :: [XNat] where
     WrapDims ('[] :: [Nat])     = '[]
+    WrapDims ('[] :: [XNat])    = '[]
     WrapDims (n ': ns :: [Nat]) = N n ': WrapDims ns
     WrapDims (xns :: [XNat])    = xns
+
+-- | Treat Dims or XDims uniformly as Dims
+type family UnwrapDims (xns::[k]) :: [Nat] where
+    UnwrapDims ('[] :: [Nat])  = '[]
+    UnwrapDims ('[] :: [XNat]) = '[]
+    UnwrapDims (N x ': xs)     = x ': UnwrapDims xs
+    UnwrapDims (XN ': _)       = TypeError (
+           'Text "Cannot unwrap dimension XN into Nat"
+     ':$$: 'Text "(dimension is not known at compile time)"
+     )
+
 
 -- | Unify usage of XNat and Nat.
 --   This is useful in function and type definitions.
@@ -684,9 +709,6 @@ type family ConsDim (x :: Nat) (xs :: [k]) = (ys :: [k]) | ys -> x xs where
     ConsDim x (xs :: [Nat]) = x ': xs
     ConsDim x (xs :: [XNat]) = N x ': xs
 
-type family UnwrapDims (xns::[XNat]) = (ns :: [Nat]) | ns -> xns where
-    UnwrapDims '[] = '[]
-    UnwrapDims (N x ': xs) = x ': UnwrapDims xs
 
 -- | FixedDim puts very tight constraints on what list of naturals can be.
 --   This allows establishing strong relations between [XNat] and [Nat].

@@ -197,7 +197,7 @@ class KnownNat (Length xs) => FiniteList (xs :: [k]) where
     -- | Make snoc almost as good as cons
     inferSnocFiniteList :: p xs -> q z -> FiniteListEvidence (xs +: z)
     -- | Init of the list is also known list
-    inferInitFiniteList :: p (x :+ xs) -> FiniteListEvidence (Init (x :+ xs))
+    inferInitFiniteList :: p xs -> FiniteListEvidence (Init xs)
     -- | Tail of the list is also known list
     inferTailFiniteList :: p xs -> FiniteListEvidence (Tail xs)
     -- | Take KnownNat of the list is also known list
@@ -225,7 +225,7 @@ instance FiniteList ('[] :: [k]) where
     {-# INLINE inferSuffixFiniteList #-}
     inferSnocFiniteList _ _ = FiniteListEvidence
     {-# INLINE inferSnocFiniteList #-}
-    inferInitFiniteList _ = FiniteListEvidence
+    inferInitFiniteList _ = error "Init -- empty type-level list"
     {-# INLINE inferInitFiniteList #-}
     inferTailFiniteList _ = error "Tail -- empty type-level list"
     {-# INLINE inferTailFiniteList #-}
@@ -266,9 +266,10 @@ instance FiniteList xs => FiniteList (x :+ xs :: [k]) where
       , Refl <- unsafeCoerce Refl :: (x :+ (xs +: z)) :~: ((x :+ xs) +: z)
       = FiniteListEvidence :: FiniteListEvidence (x :+ (xs +: z))
     {-# INLINE inferSnocFiniteList #-}
-    inferInitFiniteList (_ :: p (x0 :+ x :+ xs))
-      | FiniteListEvidence <- inferInitFiniteList (Proxy @(x :+ xs))
-      = FiniteListEvidence :: FiniteListEvidence (x0 :+ Init (x :+ xs))
+    inferInitFiniteList _ = case tList (Proxy @xs) of
+        TLEmpty -> FiniteListEvidence
+        TLCons _ _ -> case inferInitFiniteList (Proxy @xs) of
+          FiniteListEvidence -> FiniteListEvidence :: FiniteListEvidence (x :+ Init xs)
     {-# INLINE inferInitFiniteList #-}
     inferTailFiniteList _ = FiniteListEvidence
     {-# INLINE inferTailFiniteList #-}
