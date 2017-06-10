@@ -125,7 +125,13 @@ iwfoldMap f = iwfoldl (\i b -> mappend b . f i) mempty
 
 
 
-
+-- instance ( NCommons.ElementWise (Idx asbs) t (DataFrame t asbs)
+--          , Dimensions asbs
+--          , NCommons.PrimBytes (DataFrame t asbs)
+--          , NCommons.PrimBytes t
+--          ) => SubSpace t '[] asbs asbs where
+--     i !. x = KnownDataFrame (Scalar (x NCommons.! i))
+--
 
 instance ( ConcatList as bs asbs
          , Dimensions as
@@ -133,6 +139,7 @@ instance ( ConcatList as bs asbs
          , Dimensions asbs
          , NCommons.PrimBytes (DataFrame t as)
          , NCommons.PrimBytes (DataFrame t asbs)
+        --  , as ~ (Head as ': Tail as)
          ) => SubSpace t as bs asbs where
 
     i !. d = r

@@ -64,7 +64,6 @@ data instance DataFrame t (xns :: [XNat])
     , FixedDim xns ns ~ ns
     , FixedXDim xns ns ~ xns
     , NumericFrame t ns
-    , PrimBytes (DataFrame t ns)
     )
   => SomeDataFrame (DataFrame t ns)
 
@@ -78,6 +77,7 @@ type CommonOpFrame t ds
     , Ord (DataFrame t ds)
     , Num (DataFrame t ds)
     , ElementWise (Idx ds) t (DataFrame t ds)
+    , PrimBytes (DataFrame t ds)
     , ArrayInstanceInference t ds
     )
 

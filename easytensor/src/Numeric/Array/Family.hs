@@ -40,6 +40,7 @@ import Numeric.Dimensions
 import Data.Int
 import Data.Word
 import Data.Type.Equality
+import Data.Proxy
 import Unsafe.Coerce
 
 -- | Full collection of n-order arrays
@@ -191,6 +192,8 @@ class ArraySizeInference ds where
                            => p t ds -> q z -> ArrayInstanceEvidence t (ds +: z)
     inferConsArrayInstance :: (ElemTypeInference t, KnownNat z)
                            => q z -> p t ds -> ArrayInstanceEvidence t (z :+ ds)
+    inferInitArrayInstance :: ElemTypeInference t
+                           => p t ds -> ArrayInstanceEvidence t (Init ds)
 
 
 -- | Use this typeclass constraint in libraries functions if there is a need
@@ -233,6 +236,8 @@ instance ArraySizeInference '[] where
     {-# INLINE inferSnocArrayInstance #-}
     inferConsArrayInstance _ _ = ArrayInstanceEvidence
     {-# INLINE inferConsArrayInstance #-}
+    inferInitArrayInstance _ = error "Init -- empty type-level list"
+    {-# INLINE inferInitArrayInstance #-}
 
 instance KnownNat d => ArraySizeInference '[d] where
     arraySizeInstance = case natVal' (proxy# :: Proxy# d) of
@@ -247,8 +252,21 @@ instance KnownNat d => ArraySizeInference '[d] where
     {-# INLINE inferSnocArrayInstance #-}
     inferConsArrayInstance _ _ = ArrayInstanceEvidence
     {-# INLINE inferConsArrayInstance #-}
+    inferInitArrayInstance _ = ArrayInstanceEvidence
+    {-# INLINE inferInitArrayInstance #-}
 
-instance ArraySizeInference (d1 ': d2 ': ds) where
+instance KnownNat d1 => ArraySizeInference '[d1, d2] where
+    arraySizeInstance = ASArray
+    {-# INLINE arraySizeInstance #-}
+    inferSnocArrayInstance _ _ = ArrayInstanceEvidence
+    {-# INLINE inferSnocArrayInstance #-}
+    inferConsArrayInstance _ _ = ArrayInstanceEvidence
+    {-# INLINE inferConsArrayInstance #-}
+    inferInitArrayInstance _ = ArrayInstanceEvidence
+    {-# INLINE inferInitArrayInstance #-}
+
+
+instance ArraySizeInference (d1 ': d2 ': d3 ': ds) where
     arraySizeInstance = ASArray
     {-# INLINE arraySizeInstance #-}
     -- I know that for dimensionality > 2 all instances are the same.
@@ -258,6 +276,11 @@ instance ArraySizeInference (d1 ': d2 ': ds) where
     {-# INLINE inferSnocArrayInstance #-}
     inferConsArrayInstance _ _ = ArrayInstanceEvidence
     {-# INLINE inferConsArrayInstance #-}
+    -- I know that for dimensionality > 2 all instances are the same.
+    -- Hence this dirty hack should work.
+    -- I have to change this when I have customized N*M instances
+    inferInitArrayInstance p = unsafeCoerce (inferConsArrayInstance (Proxy @3) p)
+    {-# INLINE inferInitArrayInstance #-}
 
 
 
