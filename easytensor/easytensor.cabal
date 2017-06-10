@@ -16,7 +16,7 @@ description:
 category: Math, Geometry
 author: Artem Chirkin
 extra-source-files:
-    src/Numeric/Array/Base/Array.h
+    src/Numeric/Array/Family/Array.h
 
 source-repository head
     type: git
