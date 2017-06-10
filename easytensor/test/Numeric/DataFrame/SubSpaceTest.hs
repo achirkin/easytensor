@@ -19,7 +19,7 @@ module Numeric.DataFrame.SubSpaceTest (runTests) where
 import           Test.QuickCheck
 import           Data.Type.Equality
 import           Numeric.DataFrame.Arbitraries
---import           Data.Proxy
+import           Data.Proxy
 
 import           Numeric.DataFrame
 import           Numeric.Dimensions
@@ -27,11 +27,11 @@ import           Numeric.Dimensions
 
 
 
--- prop_Dims :: SomeSimpleDF -> SomeSimpleDF -> Bool
--- prop_Dims (SSDF (SDF x)) (SSDF (SDF y))
---   | ConcatEvidence <- concatEvidence x y
---   = order dimXY == order x + order y
---  && totalDim dimXY == totalDim x * totalDim y
+prop_Dims :: SomeSimpleDF -> SomeSimpleDF -> Bool
+prop_Dims (SSDF (SDF (x :: DataFrame Float xs))) (SSDF (SDF (y :: DataFrame Float ys)))
+    | DimensionsEvidence <- inferConcatDimensions x y
+    = order (Proxy @(xs ++ ys)) == order x + order y
+      && totalDim (Proxy @(xs ++ ys)) == totalDim x * totalDim y
 
 
 prop_Eye :: SomeSimpleDFNonScalar -> Bool
@@ -44,17 +44,17 @@ prop_Eye (SSDFN (SDF (x :: DataFrame Float (d ': ds))))
          ) of
     (Refl, Refl, Refl, Refl) -> eye %* x == x
 
---
--- prop_VariousFixed :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
--- prop_VariousFixed (SDF x) (SDF y) = and
---    [ ((dimMax `inSpaceOf` y) !. z) == x
---    , (1:!3 !. z) == x
---    , (2:!2 !. z) %* eye == x
---    , ewfoldl y (+) 10 z == ewfoldr y (+) 0 z + 10
---    , y * 2 == ewmap (dim @'[7]) (*2) y
---    ]
---   where
---     z = ewgen y x :: DataFrame Float '[2,5,4,3,7]
+
+prop_VariousFixed :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
+prop_VariousFixed (SDF x) (SDF y) = and
+   [ ((dimMax `inSpaceOf` y) !. z) == x
+   , (1:!3 !. z) == x
+   , (2:!2 !. z) %* eye == x
+   , ewfoldl y (+) 10 z == ewfoldr y (+) 0 z + 10
+   , y * 2 == ewmap (dim @'[7]) (*2) y
+   ]
+  where
+    z = ewgen y x :: DataFrame Float '[2,5,4,3,7]
 
 
 return []
