@@ -48,7 +48,10 @@ library
         Numeric.Array.Family.ArrayD
         Numeric.Array.Family.ArrayI
         Numeric.Array.Family.FloatX2
+        Numeric.Array.Family.FloatX3
+        Numeric.Array.Family.FloatX4
         Numeric.Array.Family
+        Numeric.Array.ElementWise
         Numeric.Array
         Numeric.DataFrame.SubSpace
         Numeric.DataFrame.Contraction

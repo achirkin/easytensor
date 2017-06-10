@@ -26,8 +26,8 @@ module Numeric.Vector
 
 import GHC.TypeLits
 
+import           Numeric.Array.ElementWise
 import           Numeric.Dimensions
-import qualified Numeric.Commons as NCommons
 import           Numeric.DataFrame.Type
 
 import           Numeric.Scalar
@@ -50,25 +50,25 @@ type Vec4d = Vector Double 4
 --                     propagated into whole Vec
 (.*.) :: ( Num t
          , Num (Vector t n)
-         , NCommons.ElementWise (Idx '[n]) t (Vector t n)
+         , ElementWise (Idx '[n]) t (Vector t n)
          )
       => Vector t n -> Vector t n -> Vector t n
-(.*.) a b = NCommons.broadcast . NCommons.ewfold (const (+)) 0 $ a * b
+(.*.) a b = broadcast . ewfold (const (+)) 0 $ a * b
 infixl 7 .*.
 
 -- | Scalar product -- sum of Vecs' components products -- a scalar
 dot :: ( Num t
        , Num (Vector t n)
-       , NCommons.ElementWise (Idx '[n]) t (Vector t n)
+       , ElementWise (Idx '[n]) t (Vector t n)
        )
     => Vector t n -> Vector t n -> Scalar t
-dot a b = scalar . NCommons.ewfold (const (+)) 0 $ a * b
+dot a b = scalar . ewfold (const (+)) 0 $ a * b
 
 -- | Dot product of two vectors
 infixl 7 ·
 (·) :: ( Num t
        , Num (Vector t n)
-       , NCommons.ElementWise (Idx '[n]) t (Vector t n)
+       , ElementWise (Idx '[n]) t (Vector t n)
        )
     => Vector t n -> Vector t n -> Scalar t
 (·) = dot
@@ -77,39 +77,39 @@ infixl 7 ·
 
 -- | Sum of absolute values
 normL1 :: ( Num t
-          , NCommons.ElementWise (Idx '[n]) t (Vector t n)
+          , ElementWise (Idx '[n]) t (Vector t n)
           )
        => Vector t n -> Scalar t
-normL1 = scalar . NCommons.ewfold (const (\a -> (abs a +))) 0
+normL1 = scalar . ewfold (const (\a -> (abs a +))) 0
 
 -- | hypot function (square root of squares)
 normL2 :: ( Floating t
-          , NCommons.ElementWise (Idx '[n]) t (Vector t n)
+          , ElementWise (Idx '[n]) t (Vector t n)
           )
        => Vector t n -> Scalar t
-normL2 = scalar . sqrt . NCommons.ewfold (const (\a -> (a*a +))) 0
+normL2 = scalar . sqrt . ewfold (const (\a -> (a*a +))) 0
 
 -- | Maximum of absolute values
 normLPInf :: ( Ord t, Num t
-             , NCommons.ElementWise (Idx '[n]) t (Vector t n)
+             , ElementWise (Idx '[n]) t (Vector t n)
              )
           => Vector t n -> Scalar t
-normLPInf = scalar . NCommons.ewfold (const (max . abs)) 0
+normLPInf = scalar . ewfold (const (max . abs)) 0
 
 -- | Minimum of absolute values
 normLNInf :: ( Ord t, Num t
-             , NCommons.ElementWise (Idx '[n]) t (Vector t n)
+             , ElementWise (Idx '[n]) t (Vector t n)
              )
           => Vector t n -> Scalar t
-normLNInf x = scalar $ NCommons.ewfold (const (min . abs))
-                                 (abs $ x NCommons.! (1 :! Z)) x
+normLNInf x = scalar $ ewfold (const (min . abs))
+                                 (abs $ x ! (1 :! Z)) x
 
 -- | Norm in Lp space
 normLP :: ( Floating t
-          , NCommons.ElementWise (Idx '[n]) t (Vector t n)
+          , ElementWise (Idx '[n]) t (Vector t n)
           )
        => Int -> Vector t n -> Scalar t
-normLP i' = scalar . (**ri) . NCommons.ewfold (const (\a -> (a**i +))) 0
+normLP i' = scalar . (**ri) . ewfold (const (\a -> (a**i +))) 0
   where
     i  = fromIntegral i'
     ri = recip i
@@ -120,43 +120,43 @@ normLP i' = scalar . (**ri) . NCommons.ewfold (const (\a -> (a**i +))) 0
   #-}
 
 -- | Compose a 2D vector
-vec2 :: NCommons.ElementWise (Idx '[2]) t (Vector t 2) => t -> t -> Vector t 2
-vec2 a b = NCommons.ewgen f
+vec2 :: ElementWise (Idx '[2]) t (Vector t 2) => t -> t -> Vector t 2
+vec2 a b = ewgen f
   where
     f (1 :! Z) = a
     f _ = b
 
 -- | Take a determinant of a matrix composed from two 2D vectors.
 --   Like a cross product in 2D.
-det2 :: ( NCommons.ElementWise (Idx '[2]) t (Vector t 2)
+det2 :: ( ElementWise (Idx '[2]) t (Vector t 2)
         , Num t
         ) => Vector t 2 -> Vector t 2 -> Scalar t
-det2 a b = scalar $ a NCommons.! (1 :! Z) * b NCommons.! (2 :! Z)
-                     - a NCommons.! (2 :! Z) * b NCommons.! (1 :! Z)
+det2 a b = scalar $ a ! (1 :! Z) * b ! (2 :! Z)
+                     - a ! (2 :! Z) * b ! (1 :! Z)
 
 -- | Compose a 3D vector
-vec3 :: NCommons.ElementWise (Idx '[3]) t (Vector t 3) => t -> t -> t -> Vector t 3
-vec3 a b c = NCommons.ewgen f
+vec3 :: ElementWise (Idx '[3]) t (Vector t 3) => t -> t -> t -> Vector t 3
+vec3 a b c = ewgen f
   where
     f (1 :! Z) = a
     f (2 :! Z) = b
     f _ = c
 
 -- | Cross product
-cross :: ( NCommons.ElementWise (Idx '[3]) t (Vector t 3)
+cross :: ( ElementWise (Idx '[3]) t (Vector t 3)
          , Num t
          ) => Vector t 3 -> Vector t 3 -> Vector t 3
-cross a b = vec3 ( a NCommons.! (2 :! Z) * b NCommons.! (3 :! Z)
-                 - a NCommons.! (3 :! Z) * b NCommons.! (2 :! Z) )
-                 ( a NCommons.! (3 :! Z) * b NCommons.! (1 :! Z)
-                 - a NCommons.! (1 :! Z) * b NCommons.! (3 :! Z) )
-                 ( a NCommons.! (1 :! Z) * b NCommons.! (2 :! Z)
-                 - a NCommons.! (2 :! Z) * b NCommons.! (1 :! Z) )
+cross a b = vec3 ( a ! (2 :! Z) * b ! (3 :! Z)
+                 - a ! (3 :! Z) * b ! (2 :! Z) )
+                 ( a ! (3 :! Z) * b ! (1 :! Z)
+                 - a ! (1 :! Z) * b ! (3 :! Z) )
+                 ( a ! (1 :! Z) * b ! (2 :! Z)
+                 - a ! (2 :! Z) * b ! (1 :! Z) )
 
 
 -- | Cross product for two vectors in 3D
 infixl 7 ×
-(×) :: ( NCommons.ElementWise (Idx '[3]) t (Vector t 3)
+(×) :: ( ElementWise (Idx '[3]) t (Vector t 3)
        , Num t
         ) => Vector t 3 -> Vector t 3 -> Vector t 3
 (×) = cross
@@ -164,9 +164,9 @@ infixl 7 ×
 
 
 -- | Compose a 3D vector
-vec4 :: NCommons.ElementWise (Idx '[4]) t (Vector t 4)
+vec4 :: ElementWise (Idx '[4]) t (Vector t 4)
      => t -> t -> t -> t -> Vector t 4
-vec4 a b c d = NCommons.ewgen f
+vec4 a b c d = ewgen f
   where
     f (1 :! Z) = a
     f (2 :! Z) = b

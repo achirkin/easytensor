@@ -12,7 +12,6 @@
 {-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE FlexibleContexts           #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Commons
@@ -25,10 +24,8 @@
 -----------------------------------------------------------------------------
 
 module Numeric.Commons
-  ( ElementWise (..), ElemRep
+  ( ElemRep
   , PrimBytes (..), FloatBytes, DoubleBytes, IntBytes, WordBytes
-  , Store (..)
-  , ewFoldMap
   ) where
 
 #include "MachDeps.h"
@@ -41,37 +38,6 @@ import           GHC.Prim
 --import           GHC.Ptr
 import           GHC.Types
 import           GHC.Word
-
-
--- | Access elements.
---   i is an index type
---   x is an element
---   t is a container type
-class ElementWise i x t | t -> x i where
-  -- | Index a container
-  (!)   :: t -> i -> x
-  -- | map all elements with index
-  ewmap :: (i -> x -> x) -> t -> t
-  -- | generate data from elements
-  ewgen :: (i -> x) -> t
-  -- | fold all element with index
-  ewfold :: (i -> x -> a -> a) -> a -> t -> a
-  -- | Apply an applicative functor on each element (Lens-like traversal)
-  elementWise :: forall f . Applicative f => (x -> f x) -> t -> f t
-  -- | Apply an applicative functor on each element with its index
-  --     (Lens-like indexed traversal)
-  indexWise :: forall f . Applicative f => (i -> x -> f x) -> t -> f t
-  -- | Fill a container with a single value
-  broadcast :: x -> t
-
-ewFoldMap :: (ElementWise i x t, Monoid m) => (i -> x -> m) -> t -> m
-ewFoldMap f = ewfold (\i x m -> m `mappend` f i x) mempty
-{-# INLINE ewFoldMap #-}
-
-newtype Store a = Store { unStore :: a}
-  deriving ( Eq, Show, Num, Fractional, Floating
-           , Real, RealFrac, RealFloat, Ord)
-
 
 
 type family ElemRep a :: RuntimeRep
@@ -161,22 +127,6 @@ instance PrimBytes Float where
   ix _ (F# x) = x
   {-# INLINE ix #-}
 
-instance ElementWise Int Float Float where
-  (!) x _ = x
-  {-# INLINE (!) #-}
-  ewmap f = f 1
-  {-# INLINE ewmap #-}
-  ewgen f   = f 1
-  {-# INLINE ewgen #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
-  elementWise = id
-  {-# INLINE elementWise #-}
-  indexWise f = f 1
-  {-# INLINE indexWise #-}
-  broadcast = id
-  {-# INLINE broadcast #-}
-
 instance PrimBytes Double where
   type ElemPrim Double = Double#
   toBytes v@(D# x) = case runRW#
@@ -195,22 +145,6 @@ instance PrimBytes Double where
   {-# INLINE elementByteSize #-}
   ix _ (D# x) = x
   {-# INLINE ix #-}
-
-instance ElementWise Int Double Double where
-  (!) x _ = x
-  {-# INLINE (!) #-}
-  ewmap f = f 1
-  {-# INLINE ewmap #-}
-  ewgen f   = f 1
-  {-# INLINE ewgen #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
-  elementWise = id
-  {-# INLINE elementWise #-}
-  indexWise f = f 1
-  {-# INLINE indexWise #-}
-  broadcast = id
-  {-# INLINE broadcast #-}
 
 instance PrimBytes Int where
   type ElemPrim Int = Int#
@@ -231,22 +165,6 @@ instance PrimBytes Int where
   ix _ (I# x) = x
   {-# INLINE ix #-}
 
-instance ElementWise Int Int Int where
-  (!) x _ = x
-  {-# INLINE (!) #-}
-  ewmap f = f 1
-  {-# INLINE ewmap #-}
-  ewgen f   = f 1
-  {-# INLINE ewgen #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
-  elementWise = id
-  {-# INLINE elementWise #-}
-  indexWise f = f 1
-  {-# INLINE indexWise #-}
-  broadcast = id
-  {-# INLINE broadcast #-}
-
 instance PrimBytes Int8 where
   type ElemPrim Int8 = Int#
   toBytes v@(I8# x) = case runRW#
@@ -265,22 +183,6 @@ instance PrimBytes Int8 where
   {-# INLINE elementByteSize #-}
   ix _ (I8# x) = x
   {-# INLINE ix #-}
-
-instance ElementWise Int Int8 Int8 where
-  (!) x _ = x
-  {-# INLINE (!) #-}
-  ewmap f = f 1
-  {-# INLINE ewmap #-}
-  ewgen f   = f 1
-  {-# INLINE ewgen #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
-  elementWise = id
-  {-# INLINE elementWise #-}
-  indexWise f = f 1
-  {-# INLINE indexWise #-}
-  broadcast = id
-  {-# INLINE broadcast #-}
 
 instance PrimBytes Int16 where
   type ElemPrim Int16 = Int#
@@ -301,22 +203,6 @@ instance PrimBytes Int16 where
   ix _ (I16# x) = x
   {-# INLINE ix #-}
 
-instance ElementWise Int Int16 Int16 where
-  (!) x _ = x
-  {-# INLINE (!) #-}
-  ewmap f = f 1
-  {-# INLINE ewmap #-}
-  ewgen f   = f 1
-  {-# INLINE ewgen #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
-  elementWise = id
-  {-# INLINE elementWise #-}
-  indexWise f = f 1
-  {-# INLINE indexWise #-}
-  broadcast = id
-  {-# INLINE broadcast #-}
-
 instance PrimBytes Int32 where
   type ElemPrim Int32 = Int#
   toBytes v@(I32# x) = case runRW#
@@ -335,22 +221,6 @@ instance PrimBytes Int32 where
   {-# INLINE elementByteSize #-}
   ix _ (I32# x) = x
   {-# INLINE ix #-}
-
-instance ElementWise Int Int32 Int32 where
-  (!) x _ = x
-  {-# INLINE (!) #-}
-  ewmap f = f 1
-  {-# INLINE ewmap #-}
-  ewgen f   = f 1
-  {-# INLINE ewgen #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
-  elementWise = id
-  {-# INLINE elementWise #-}
-  indexWise f = f 1
-  {-# INLINE indexWise #-}
-  broadcast = id
-  {-# INLINE broadcast #-}
 
 instance PrimBytes Int64 where
   type ElemPrim Int64 = Int#
@@ -371,22 +241,6 @@ instance PrimBytes Int64 where
   ix _ (I64# x) = x
   {-# INLINE ix #-}
 
-instance ElementWise Int Int64 Int64 where
-  (!) x _ = x
-  {-# INLINE (!) #-}
-  ewmap f = f 1
-  {-# INLINE ewmap #-}
-  ewgen f   = f 1
-  {-# INLINE ewgen #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
-  elementWise = id
-  {-# INLINE elementWise #-}
-  indexWise f = f 1
-  {-# INLINE indexWise #-}
-  broadcast = id
-  {-# INLINE broadcast #-}
-
 instance PrimBytes Word where
   type ElemPrim Word = Word#
   toBytes v@(W# x) = case runRW#
@@ -405,22 +259,6 @@ instance PrimBytes Word where
   {-# INLINE elementByteSize #-}
   ix _ (W# x) = x
   {-# INLINE ix #-}
-
-instance ElementWise Int Word Word where
-  (!) x _ = x
-  {-# INLINE (!) #-}
-  ewmap f = f 1
-  {-# INLINE ewmap #-}
-  ewgen f   = f 1
-  {-# INLINE ewgen #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
-  elementWise = id
-  {-# INLINE elementWise #-}
-  indexWise f = f 1
-  {-# INLINE indexWise #-}
-  broadcast = id
-  {-# INLINE broadcast #-}
 
 instance PrimBytes Word8 where
   type ElemPrim Word8 = Word#
@@ -441,22 +279,6 @@ instance PrimBytes Word8 where
   ix _ (W8# x) = x
   {-# INLINE ix #-}
 
-instance ElementWise Int Word8 Word8 where
-  (!) x _ = x
-  {-# INLINE (!) #-}
-  ewmap f = f 1
-  {-# INLINE ewmap #-}
-  ewgen f   = f 1
-  {-# INLINE ewgen #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
-  elementWise = id
-  {-# INLINE elementWise #-}
-  indexWise f = f 1
-  {-# INLINE indexWise #-}
-  broadcast = id
-  {-# INLINE broadcast #-}
-
 instance PrimBytes Word16 where
   type ElemPrim Word16 = Word#
   toBytes v@(W16# x) = case runRW#
@@ -475,22 +297,6 @@ instance PrimBytes Word16 where
   {-# INLINE elementByteSize #-}
   ix _ (W16# x) = x
   {-# INLINE ix #-}
-
-instance ElementWise Int Word16 Word16 where
-  (!) x _ = x
-  {-# INLINE (!) #-}
-  ewmap f = f 1
-  {-# INLINE ewmap #-}
-  ewgen f   = f 1
-  {-# INLINE ewgen #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
-  elementWise = id
-  {-# INLINE elementWise #-}
-  indexWise f = f 1
-  {-# INLINE indexWise #-}
-  broadcast = id
-  {-# INLINE broadcast #-}
 
 instance PrimBytes Word32 where
   type ElemPrim Word32 = Word#
@@ -512,22 +318,6 @@ instance PrimBytes Word32 where
   {-# INLINE ix #-}
 
 
-instance ElementWise Int Word32 Word32 where
-  (!) x _ = x
-  {-# INLINE (!) #-}
-  ewmap f = f 1
-  {-# INLINE ewmap #-}
-  ewgen f   = f 1
-  {-# INLINE ewgen #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
-  elementWise = id
-  {-# INLINE elementWise #-}
-  indexWise f = f 1
-  {-# INLINE indexWise #-}
-  broadcast = id
-  {-# INLINE broadcast #-}
-
 instance PrimBytes Word64 where
   type ElemPrim Word64 = Word#
   toBytes v@(W64# x) = case runRW#
@@ -546,20 +336,3 @@ instance PrimBytes Word64 where
   {-# INLINE elementByteSize #-}
   ix _ (W64# x) = x
   {-# INLINE ix #-}
-
-
-instance ElementWise Int Word64 Word64 where
-  (!) x _ = x
-  {-# INLINE (!) #-}
-  ewmap f = f 1
-  {-# INLINE ewmap #-}
-  ewgen f   = f 1
-  {-# INLINE ewgen #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
-  elementWise = id
-  {-# INLINE elementWise #-}
-  indexWise f = f 1
-  {-# INLINE indexWise #-}
-  broadcast = id
-  {-# INLINE broadcast #-}

@@ -27,6 +27,7 @@ import GHC.TypeLits (Nat)
 import Numeric.Dimensions
 import Numeric.Commons
 import Numeric.Array
+import Numeric.Array.ElementWise
 import Numeric.DataFrame.Type
 
 
@@ -75,8 +76,8 @@ inferPrimBytes = case getArrayInstance @t @ds of
     AIArrayW32 -> notImplemented
     AIArrayW64 -> notImplemented
     AIFloatX2  -> PrimBytesEvidence
-    AIFloatX3  -> notImplemented
-    AIFloatX4  -> notImplemented
+    AIFloatX3  -> PrimBytesEvidence
+    AIFloatX4  -> PrimBytesEvidence
 
 inferElementWise :: forall t (ds :: [Nat])
                 . ( ArrayInstanceInference t ds
@@ -98,8 +99,8 @@ inferElementWise = case getArrayInstance @t @ds of
     AIArrayW32 -> notImplemented
     AIArrayW64 -> notImplemented
     AIFloatX2  -> ElementWiseEvidence
-    AIFloatX3  -> notImplemented
-    AIFloatX4  -> notImplemented
+    AIFloatX3  -> ElementWiseEvidence
+    AIFloatX4  -> ElementWiseEvidence
 
 
 inferNumericFrame :: forall t (ds :: [Nat])
@@ -109,8 +110,8 @@ inferNumericFrame :: forall t (ds :: [Nat])
                    => NumericFrameEvidence t ds
 inferNumericFrame = case getArrayInstance @t @ds of
     AIFloatX2  -> NumericFrameEvidence
-    AIFloatX3  -> notImplemented
-    AIFloatX4  -> notImplemented
+    AIFloatX3  -> NumericFrameEvidence
+    AIFloatX4  -> NumericFrameEvidence
     AIScalar   -> case elemTypeInstance @t of
       ETFloat  -> NumericFrameEvidence
       ETDouble -> NumericFrameEvidence

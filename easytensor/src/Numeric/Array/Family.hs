@@ -29,7 +29,7 @@ module Numeric.Array.Family
   , FloatX2 (..), FloatX3 (..), FloatX4 (..)
   , ArrayInstanceInference, ElemType (..), ArraySize (..)
   , ElemTypeInference (..), ArraySizeInference (..), ArrayInstanceEvidence (..)
-  , getArrayInstance, ArrayInstance (..)
+  , getArrayInstance, ArrayInstance (..), inferArrayInstance
   ) where
 
 import GHC.TypeLits (Nat, natVal', KnownNat, type (<=), type (<=?))
@@ -37,6 +37,7 @@ import GHC.TypeLits (Nat, natVal', KnownNat, type (<=), type (<=?))
 import GHC.Prim
 import Numeric.Commons
 import Numeric.Dimensions
+import Numeric.Array.ElementWise
 import Data.Int
 import Data.Word
 import Data.Type.Equality
@@ -366,7 +367,18 @@ getArrayInstance = case (elemTypeInstance @t, arraySizeInstance @ds) of
     (ETWord32 , ASArray) -> AIArrayW32
     (ETWord64 , ASArray) -> AIArrayW64
 
-
+-- | Given element type instance and proper dimension list,
+--   infer a corresponding array instance
+inferArrayInstance :: forall t ds
+                    . ( Dimensions ds
+                      , ElemTypeInference t
+                      )
+                  => ArrayInstanceEvidence t ds
+inferArrayInstance = case tList (Proxy @ds) of
+    TLEmpty -> ArrayInstanceEvidence
+    TLCons _ TLEmpty -> ArrayInstanceEvidence
+    TLCons _ (TLCons _ TLEmpty) -> ArrayInstanceEvidence
+    TLCons _ (TLCons _ (TLCons _ _)) -> ArrayInstanceEvidence
 
 _suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)
 _suppressHlintUnboxedTuplesWarning = undefined

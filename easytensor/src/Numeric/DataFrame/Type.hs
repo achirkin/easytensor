@@ -46,6 +46,7 @@ import Data.Type.Equality
 import GHC.TypeLits         (Nat)
 import GHC.Types
 import Numeric.Array.Family
+import Numeric.Array.ElementWise
 import Numeric.Commons
 import Numeric.Dimensions
 

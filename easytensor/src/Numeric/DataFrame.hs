@@ -23,9 +23,14 @@ module Numeric.DataFrame
   , module Numeric.DataFrame.Contraction
   , module Numeric.DataFrame.Inference
   , module Numeric.DataFrame.Shape
+  , ElementWise ()
+  , ArrayInstanceEvidence (..), ArrayInstance (..), getArrayInstance, inferArrayInstance
+  , ArraySizeInference (..), ArraySize (..)
+  , ElemTypeInference (..), ElemType (..)
   ) where
 
-import Numeric.Array ()
+import Numeric.Array
+import Numeric.Array.ElementWise
 
 import Numeric.DataFrame.Type
 import Numeric.DataFrame.SubSpace
