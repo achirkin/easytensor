@@ -36,6 +36,7 @@ import           GHC.Types
 import           Data.Proxy
 
 import           Numeric.Array.Family
+import           Numeric.Array.ElementWise
 import           Numeric.Commons
 import           Numeric.Dimensions
 import           Numeric.DataFrame.Type
@@ -143,7 +144,7 @@ instance (KnownNat n, KnownNat m, ArrayF '[n,m] ~ Matrix Float n m, 2 <= n, 2 <=
       bs = n *# m *# SIZEOF_HSFLOAT#
   transpose (KnownDataFrame (FromScalarF# x)) = unsafeCoerce# $ FromScalarF# x
 
-instance ( Dimensions '[n,n], ArrayF '[n,n] ~ Matrix Float n n )
+instance ( Dimensions '[n,n], ArrayF '[n,n] ~ Array Float '[n,n] )
       => SquareMatrixCalculus Float n where
   eye = case runRW#
      ( \s0 -> case newByteArray# bs s0 of

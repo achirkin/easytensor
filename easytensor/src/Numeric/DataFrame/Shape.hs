@@ -122,6 +122,9 @@ a <+:> b = case (# toBytes a, toBytes b
 infixl 5 <+:>
 
 
+-- | Input must be parametrized by [Nat] to make sure every element
+--   in the input list has the same dimensionality.
+--   Output is in [XNat], because the last dimension is unknown at compile time
 fromList :: forall ns t xns xnsm
           . ( ns ~ AsDims xns
             , xnsm ~ (xns +: XN)

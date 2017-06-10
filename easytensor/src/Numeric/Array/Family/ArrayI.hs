@@ -33,6 +33,7 @@ import           GHC.Types
 import           Data.Proxy
 
 import           Numeric.Array.Family
+import           Numeric.Array.ElementWise
 import           Numeric.Commons
 import           Numeric.Dimensions
 

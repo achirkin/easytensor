@@ -45,8 +45,7 @@ import GHC.Prim
 import GHC.TypeLits (Nat)
 import GHC.Types
 
-import qualified Numeric.Commons as NCommons
-
+import Numeric.Commons
 import Numeric.Dimensions
 import Numeric.DataFrame.Type
 
@@ -60,8 +59,8 @@ class ( ConcatList as bs asbs
       , Dimensions as
       , Dimensions bs
       , Dimensions asbs
-      , NCommons.PrimBytes (DataFrame t as)
-      , NCommons.PrimBytes (DataFrame t asbs)
+      , PrimBytes (DataFrame t as)
+      , PrimBytes (DataFrame t asbs)
       ) => SubSpace (t :: Type) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
                     | asbs as -> bs, asbs bs -> as, as bs -> asbs where
     -- | Get an element
@@ -124,67 +123,57 @@ iwfoldMap f = iwfoldl (\i b -> mappend b . f i) mempty
 {-# INLINE iwfoldMap #-}
 
 
-
--- instance ( NCommons.ElementWise (Idx asbs) t (DataFrame t asbs)
---          , Dimensions asbs
---          , NCommons.PrimBytes (DataFrame t asbs)
---          , NCommons.PrimBytes t
---          ) => SubSpace t '[] asbs asbs where
---     i !. x = KnownDataFrame (Scalar (x NCommons.! i))
---
-
 instance ( ConcatList as bs asbs
          , Dimensions as
          , Dimensions bs
          , Dimensions asbs
-         , NCommons.PrimBytes (DataFrame t as)
-         , NCommons.PrimBytes (DataFrame t asbs)
-        --  , as ~ (Head as ': Tail as)
+         , PrimBytes (DataFrame t as)
+         , PrimBytes (DataFrame t asbs)
          ) => SubSpace t as bs asbs where
 
     i !. d = r
         where
-          r = case (# NCommons.toBytes d, fromIdx i, totalDim r #) of
+          r = case (# toBytes d, fromIdx i, totalDim r #) of
                 (# (# off, _, arr #), I# i#, I# l# #)
-                  -> NCommons.fromBytes (# off +# i# *# l#, l#, arr #)
+                  -> fromBytes (# off +# i# *# l#, l#, arr #)
     {-# INLINE (!.) #-}
 
-    ewmap _ f df = case (# NCommons.toBytes df, totalDim (Proxy @as) #) of
+    ewmap _ f df = case (# toBytes df, totalDim (Proxy @as) #) of
         (# (# off, len, arr #), I# l# #) -> case runRW#
            ( \s0 -> case newByteArray# (len *# elS) s0 of
                (# s1, marr #) -> case go off (off +# len) l# arr marr s1 of
                    s2 -> unsafeFreezeByteArray# marr s2
-           ) of (# _, r #) -> NCommons.fromBytes (# 0#, len, r #)
+           ) of (# _, r #) -> fromBytes (# 0#, len, r #)
       where
-        elS = NCommons.elementByteSize df
+        elS = elementByteSize df
         go pos lim step arr marr s
           | isTrue# (pos >=# lim) = s
-          | otherwise = case NCommons.toBytes (f (NCommons.fromBytes (# pos, step, arr #))) of
+          | otherwise = case toBytes (f (fromBytes (# pos, step, arr #))) of
              (# offX, _, arrX #) -> go (pos +# step) lim step arr marr
                (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
 
-    iwmap f df = case (# NCommons.toBytes df, totalDim (Proxy @as) #) of
+    iwmap f df = case (# toBytes df, totalDim (Proxy @as) #) of
         (# (# off, len, arr #), I# l# #) -> case runRW#
            ( \s0 -> case newByteArray# (len *# elS) s0 of
                (# s1, marr #) -> case go off (off +# len) l# arr marr dimMin s1 of
                    s2 -> unsafeFreezeByteArray# marr s2
-           ) of (# _, r #) -> NCommons.fromBytes (# 0#, len, r #)
+           ) of (# _, r #) -> fromBytes (# 0#, len, r #)
       where
-        elS = NCommons.elementByteSize df
+        elS = elementByteSize df
         go pos lim step arr marr curI s
           | isTrue# (pos >=# lim) = s
-          | otherwise = case NCommons.toBytes (f curI (NCommons.fromBytes (# pos, step, arr #))) of
+          | otherwise = case toBytes (f curI (fromBytes (# pos, step, arr #))) of
              (# offX, _, arrX #) -> go (pos +# step) lim step arr marr (succIdx curI)
                (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
 
-    ewgen _ x = case (# NCommons.toBytes x, totalDim (Proxy @asbs) #) of
+    ewgen _ x = case (# toBytes x, totalDim (Proxy @asbs) #) of
         (# tobytesX , I# len# #) -> case runRW#
            ( \s0 -> case newByteArray# (len# *# elS) s0 of
                (# s1, marr #) -> case go 0# len# tobytesX marr s1 of
                    s2 -> unsafeFreezeByteArray# marr s2
-           ) of (# _, r #) -> NCommons.fromBytes (# 0#, len#, r #)
+           ) of (# _, r #) -> fromBytes (# 0#, len#, r #)
       where
-        elS = NCommons.elementByteSize (undefined :: DataFrame t as)
+        elS = elementByteSize (undefined :: DataFrame t as)
         go pos lim tobytesX@(# offX, step, arrX #) marr s
           | isTrue# (pos >=# lim) = s
           | otherwise = go (pos +# step) lim tobytesX marr
@@ -195,46 +184,46 @@ instance ( ConcatList as bs asbs
            ( \s0 -> case newByteArray# (len# *# elS) s0 of
                (# s1, marr #) -> case go 0# len# asl# marr dimMin s1 of
                    s2 -> unsafeFreezeByteArray# marr s2
-           ) of (# _, r #) -> NCommons.fromBytes (# 0#, len#, r #)
+           ) of (# _, r #) -> fromBytes (# 0#, len#, r #)
       where
-        elS = NCommons.elementByteSize (undefined :: DataFrame t as)
+        elS = elementByteSize (undefined :: DataFrame t as)
         go pos lim step marr curI s
           | isTrue# (pos >=# lim) = s
-          | otherwise = case NCommons.toBytes (f curI) of
+          | otherwise = case toBytes (f curI) of
              (# offX, _, arrX #) -> go (pos +# step) lim step marr (succIdx curI)
                (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (step *# elS) s)
 
-    ewfoldl _ f x0 df = case (# NCommons.toBytes df, totalDim ( Proxy @as) #) of
+    ewfoldl _ f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
         (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr x0
       where
         go pos lim step arr acc
           | isTrue# (pos >=# lim) = acc
           | otherwise = go (pos +# step) lim step arr
-              ( f acc (NCommons.fromBytes (# pos, step, arr #)) )
+              ( f acc (fromBytes (# pos, step, arr #)) )
 
-    iwfoldl f x0 df = case (# NCommons.toBytes df, totalDim ( Proxy @as) #) of
+    iwfoldl f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
         (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr dimMin x0
       where
         go pos lim step arr curI acc
           | isTrue# (pos >=# lim) = acc
           | otherwise = go (pos +# step) lim step arr (succIdx curI)
-              ( f curI acc (NCommons.fromBytes (# pos, step, arr #)) )
+              ( f curI acc (fromBytes (# pos, step, arr #)) )
 
-    ewfoldr _ f x0 df = case (# NCommons.toBytes df, totalDim ( Proxy @as) #) of
+    ewfoldr _ f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
         (# (# off, len, arr #), I# l# #) -> go (off +# len -# l#) off l# arr x0
       where
         go pos lim step arr acc
           | isTrue# (pos <# lim) = acc
           | otherwise = go (pos -# step) lim step arr
-              ( f (NCommons.fromBytes (# pos, step, arr #)) acc )
+              ( f (fromBytes (# pos, step, arr #)) acc )
 
-    iwfoldr f x0 df = case (# NCommons.toBytes df, totalDim ( Proxy @as) #) of
+    iwfoldr f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
         (# (# off, len, arr #), I# l# #) -> go (off +# len -# l#) off l# arr dimMin x0
       where
         go pos lim step arr curI acc
           | isTrue# (pos <# lim) = acc
           | otherwise = go (pos -# step) lim step arr (succIdx curI)
-              ( f curI (NCommons.fromBytes (# pos, step, arr #)) acc )
+              ( f curI (fromBytes (# pos, step, arr #)) acc )
 
     -- implement elementWise in terms of indexWise
     elementWise _ = indexWise . const
@@ -253,7 +242,7 @@ instance ( ConcatList as bs asbs
         runWithState g = case runRW#
                            ( \s0 -> case g s0 of
                                 (# s1, (# marr, _ #) #) -> unsafeFreezeByteArray# marr s1
-                           ) of (# _, arr #) -> NCommons.fromBytes (# 0#, rezLength#, arr #)
+                           ) of (# _, arr #) -> fromBytes (# 0#, rezLength#, arr #)
 
         -- Prepare empty byte array for the result DataFrame and keep a current position counter
         -- Input: state
@@ -267,7 +256,7 @@ instance ( ConcatList as bs asbs
         updateChunk :: (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
                     -> DataFrame s as'
                     -> (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
-        updateChunk g dfChunk = case NCommons.toBytes dfChunk of
+        updateChunk g dfChunk = case toBytes dfChunk of
             (# off#, _, arr#  #) -> \s -> case g s of
                                         (# s1, (# marr#, pos# #) #) -> case
                                             copyByteArray# arr# (off# *# rezElBSize#)
@@ -283,7 +272,7 @@ instance ( ConcatList as bs asbs
         applyF idx s dfChunk = updateChunk <$> s <*> f idx dfChunk
 
         -- Element byte size of the result DataFrame (byte size of s)
-        rezElBSize# = NCommons.elementByteSize (undefined :: DataFrame s asbs')
+        rezElBSize# = elementByteSize (undefined :: DataFrame s asbs')
         -- Number of primitive elements in the result DataFrame chunk
         !(I# rezStepN#) = totalDim (Proxy @as')
         -- Number of primitive elements in the result DataFrame

@@ -86,10 +86,9 @@ instance Arbitrary SomeSimpleDF where
     dimN <- choose (0, maxDims) :: Gen Int
     intDims <- mapM (\_ -> choose (2, maxDimSize) :: Gen Int) [1..dimN]
     let eGen = case someDimVal intDims of
-          Just (SomeDim (_ :: Dim ds)) -> inferFloating (undefined :: DataFrame Float ds) $
-            \_ -> case ( unsafeEqProof :: (2 <=? Head ds) :~: 'True
-                       ) of
-              Refl -> Right $ SSDF <$> (arbitrary :: Gen (SimpleDF ds))
+          Just (SomeDim (_ :: Dim ds)) -> case inferArrayInstance @Float @ds of
+            ArrayInstanceEvidence -> case inferNumericFrame @Float @ds of
+              NumericFrameEvidence -> Right $ SSDF <$> (arbitrary :: Gen (SimpleDF ds))
           Nothing -> Left "cannot construct Dim value."
     case eGen of
       Left s -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
@@ -102,11 +101,12 @@ instance Arbitrary SomeSimpleDFNonScalar where
     dimN <- choose (1, maxDims) :: Gen Int
     intDims <- mapM (\_ -> choose (2, maxDimSize) :: Gen Int) [1..dimN]
     let eGen = case someDimVal intDims of
-          Just (SomeDim (_ :: Dim ds)) -> inferFloating (undefined :: DataFrame Float ds) $
-            \_ -> case ( unsafeEqProof :: ds :~: (Head ds :+ Tail ds)
-                       , unsafeEqProof :: ds :~: (Init ds +: Last ds)
-                       ) of
-              (Refl, Refl) -> Right $ SSDFN <$> (arbitrary :: Gen (SimpleDF ds))
+          Just (SomeDim (_ :: Dim ds)) -> case inferArrayInstance @Float @ds of
+            ArrayInstanceEvidence -> case inferNumericFrame @Float @ds of
+              NumericFrameEvidence -> case ( unsafeEqProof :: ds :~: (Head ds :+ Tail ds)
+                                           , unsafeEqProof :: ds :~: (Init ds +: Last ds)
+                                           ) of
+                (Refl, Refl) -> Right $ SSDFN <$> (arbitrary :: Gen (SimpleDF ds))
           Nothing -> Left "cannot construct Dim value."
     case eGen of
       Left s -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
@@ -119,8 +119,11 @@ instance Arbitrary SomeSimpleDFPair where
     dimN <- choose (0, maxDims) :: Gen Int
     intDims <- mapM (\_ -> choose (2, maxDimSize) :: Gen Int) [1..dimN]
     let eGen = case someDimVal intDims of
-          Just (SomeDim (_ :: Dim ds)) -> inferFloating (undefined :: DataFrame Float ds) $
-            \_ -> Right $ SSDFP <$> (arbitrary :: Gen (SimpleDF ds)) <*> (arbitrary :: Gen (SimpleDF ds))
+          Just (SomeDim (_ :: Dim ds)) -> case inferArrayInstance @Float @ds of
+            ArrayInstanceEvidence -> case inferNumericFrame @Float @ds of
+              NumericFrameEvidence -> Right $ SSDFP
+                          <$> (arbitrary :: Gen (SimpleDF ds))
+                          <*> (arbitrary :: Gen (SimpleDF ds))
           Nothing -> Left "cannot construct Dim value."
     case eGen of
       Left s -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s

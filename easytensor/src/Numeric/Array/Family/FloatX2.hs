@@ -29,6 +29,7 @@ import           GHC.Types
 -- import           Data.Proxy
 
 import           Numeric.Array.Family
+import           Numeric.Array.ElementWise
 import           Numeric.Commons
 import           Numeric.Dimensions
 
@@ -115,11 +116,11 @@ instance Num FloatX2 where
   {-# INLINE abs #-}
   signum (FloatX2# a1 a2)
     = FloatX2# (if isTrue# (a1 `gtFloat#` 0.0#)
-                 then 1.0#
-                 else if isTrue# (a1 `ltFloat#` 0.0#) then -1.0# else 0.0# )
-                (if isTrue# (a2 `gtFloat#` 0.0#)
-                 then 1.0#
-                 else if isTrue# (a1 `ltFloat#` 0.0#) then -1.0# else 0.0# )
+                then 1.0#
+                else if isTrue# (a1 `ltFloat#` 0.0#) then -1.0# else 0.0# )
+               (if isTrue# (a2 `gtFloat#` 0.0#)
+                then 1.0#
+                else if isTrue# (a2 `ltFloat#` 0.0#) then -1.0# else 0.0# )
   {-# INLINE signum #-}
   fromInteger n = case fromInteger n of F# x -> FloatX2# x x
   {-# INLINE fromInteger #-}
