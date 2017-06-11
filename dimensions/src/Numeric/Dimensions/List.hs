@@ -15,6 +15,7 @@
 {-# LANGUAGE TypeFamilyDependencies    #-}
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UndecidableInstances      #-}
+{-# LANGUAGE ConstraintKinds           #-}
 --------------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.List
@@ -34,6 +35,7 @@ module Numeric.Dimensions.List
   , IsPrefix, IsSuffix
   , ConcatList (..), FiniteList (..), TypeList (..)
   , inferConcat, inferSuffix, inferPrefix, ConcatEvidence (..), FiniteListEvidence (..)
+  , NonEmptyListEvidence (..), inferNonEmptyList
   ) where
 
 import           Data.Proxy         (Proxy (..))
@@ -89,7 +91,7 @@ type family Drop (n::Nat) (xs :: [k]) :: [k] where
 type family Suffix (as :: [k]) (asbs :: [k]) :: [k] where
     Suffix '[] bs = bs
     Suffix as as = '[]
-    Suffix (_ :+ as) (_' : asbs) = Suffix as asbs
+    Suffix (_ :+ as) (_ :+ asbs) = Suffix as asbs
 
 type family Prefix (bs :: [k]) (asbs :: [k]) :: [k] where
     Prefix '[] as = as
@@ -135,6 +137,32 @@ type family Last (xs :: [k]) :: k where
     Last '[]       = TypeError ( 'Text
       "Last -- empty type-level list."
      )
+
+
+type NonEmptyList xs = ( xs ~ (Head xs :+ Tail xs)
+                       , xs ~ (Init xs +: Last xs)
+                       , IsPrefix  (Init xs) xs ~ 'True
+                       , IsPrefix '[Head xs] xs ~ 'True
+                       , IsSuffix  (Tail xs) xs ~ 'True
+                       , IsSuffix '[Last xs] xs ~ 'True
+                       , Suffix '[Head xs] xs ~   Tail xs
+                       , Suffix  (Init xs) xs ~ '[Last xs]
+                       , Prefix '[Last xs] xs ~   Init xs
+                       , Prefix  (Tail xs) xs ~ '[Head xs]
+                       , Prefix  (Tail xs) ('[Head xs] ++ Tail xs) ~ '[Head xs]
+                       , Suffix  (Init xs) (Init xs ++ '[Last xs]) ~ '[Last xs]
+                       , IsPrefix '[Head xs] ('[Head xs] ++ Tail xs) ~ 'True
+                       , IsSuffix '[Last xs] (Init xs ++ '[Last xs]) ~ 'True
+                       , xs ~ ('[Head xs] ++ Tail xs)
+                       , xs ~ (Init xs ++ '[Last xs])
+                       )
+
+data NonEmptyListEvidence xs
+  = NonEmptyList xs => NonEmptyListEvidence
+
+inferNonEmptyList ::  forall x xs . NonEmptyListEvidence (x ': xs)
+inferNonEmptyList = unsafeCoerce (NonEmptyListEvidence @'[x])
+
 
 -- | Represent a triple of lists forming a relation `as ++ bs ~ asbs`
 class ( asbs ~ Concat as bs

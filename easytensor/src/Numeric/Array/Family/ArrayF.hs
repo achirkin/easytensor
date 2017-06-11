@@ -128,13 +128,13 @@ instance Floating (ArrayF ds) where
 
 
 
-instance (KnownNat n, KnownNat m, ArrayF '[n,m] ~ Matrix Float n m, 2 <= n, 2 <= m)
+instance (KnownNat n, KnownNat m, ArrayF '[n,m] ~ Array Float '[n,m], 2 <= n, 2 <= m)
       => MatrixCalculus Float n m where
   transpose (KnownDataFrame (ArrayF# offs nm arr)) = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop2# n m
-               (\i j s' -> writeFloatArray# marr (i +# n *# j)
-                              (indexFloatArray# arr (offs +# i *# m +# j)) s'
+               (\i j s' -> writeFloatArray# marr (j +# m *# i)
+                              (indexFloatArray# arr (offs +# j *# n +# i)) s'
                ) s1 of
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, r #) -> fromBytes (# 0#, nm, r #)
@@ -214,7 +214,7 @@ instance ( Dimensions '[n,n], ArrayF '[n,n] ~ Array Float '[n,n] )
 
 
 
-instance (KnownNat n, ArrayF '[n,n] ~ Matrix Float n n, 2 <= n) => MatrixInverse Float n where
+instance (KnownNat n, ArrayF '[n,n] ~ Array Float '[n,n], 2 <= n) => MatrixInverse Float n where
   inverse (KnownDataFrame (ArrayF# offs nsqr arr)) = case runRW#
      ( \s0 -> case newByteArray# (bs *# 2#) s0 of
          (# s1, mat #) -> case newByteArray# (vs *# 2#)

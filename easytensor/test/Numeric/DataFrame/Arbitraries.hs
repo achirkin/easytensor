@@ -55,10 +55,10 @@ data SomeSimpleDF = forall (ds :: [Nat])
                   . (Dimensions ds, NumericFrame Float ds)
                  => SSDF !(SimpleDF ds)
 data SomeSimpleDFNonScalar
-    = forall (ds :: [Nat]) (a :: Nat) (z :: Nat) (as :: [Nat]) (zs :: [Nat])
+    = forall (ds :: [Nat]) (a :: Nat) (as :: [Nat])
     . ( Dimensions ds
       , NumericFrame Float ds
-      , ds ~ (a :+ as), ds ~ (zs +: z)
+      , ds ~ (a :+ as)
       )
    => SSDFN !(SimpleDF ds)
 data SomeSimpleDFPair = forall (ds :: [Nat])

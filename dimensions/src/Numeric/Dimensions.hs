@@ -9,6 +9,7 @@
 {-# LANGUAGE TypeApplications, FunctionalDependencies     #-}
 {-# LANGUAGE ConstraintKinds      #-}
 {-# LANGUAGE UnboxedTuples      #-}
+{-# LANGUAGE AllowAmbiguousTypes      #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions
@@ -32,6 +33,7 @@ module Numeric.Dimensions
     Idx (..), Dim (..), XNat, XN, N
   , XDim (..), SomeDim (..), xDimVal, someDimVal, sameDim, compareDim
   , Slice (..)
+  , ValidDim (..), inferLastValidDim
     -- * Operations
   , Dimensions, Dimensions' (..), Dimensions'' (..)
   , DimensionsEvidence (..)
@@ -113,6 +115,9 @@ data SomeDim = forall ns . Dimensions ns => SomeDim (Dim ns)
 data DimensionsEvidence (ns :: [Nat])
   = Dimensions ns => DimensionsEvidence
 
+-- | A singleton type used to proof that a certain dimension is valid
+data ValidDim (n :: Nat)
+  = (KnownNat n, 2 <= n) => ValidDim
 
 -- | Construct dimensionality at runtime
 xDimVal :: Dim (xns :: [XNat]) -> Maybe (XDim xns)
@@ -171,6 +176,12 @@ compareDim (a :? as) (b :? bs) = compareDim as bs `mappend` compare a b
 compareDim (a :* as) (b :? bs) = compareDim as bs `mappend` compare (SomeNat a) b
 compareDim (a :? as) (b :* bs) = compareDim as bs `mappend` compare a (SomeNat b)
 
+-- | Proof that the last dimension in the list is, indeed, KnownNat and >= 2.
+inferLastValidDim :: forall n ns . Dimensions (n ': ns) => ValidDim (Last (n ': ns))
+inferLastValidDim = case tList (Proxy @(n ': ns)) of
+    TLCons _ TLEmpty -> ValidDim
+    TLCons _ (TLCons (_ :: Proxy x) (_ :: TypeList xs)) -> case inferTailDimensions (Proxy @(n ': ns)) of
+      DimensionsEvidence -> inferLastValidDim @x @xs
 
 --------------------------------------------------------------------------------
 -- * Dimension-enabled operations
@@ -273,6 +284,8 @@ inSpaceOf x _ = x
 asSpaceOf :: a ds -> (b ds -> c) -> (b ds -> c)
 asSpaceOf _ = id
 {-# INLINE asSpaceOf #-}
+
+
 
 --------------------------------------------------------------------------------
 -- Some important instances
