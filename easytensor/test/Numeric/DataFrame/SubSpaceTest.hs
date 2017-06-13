@@ -46,28 +46,28 @@ prop_IndexDimMax :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
 prop_IndexDimMax (SDF x) (SDF y) =
    ((dimMax `inSpaceOf` y) !. z) == x
   where
-    z = ewgen y x :: DataFrame Float '[2,5,4,3,7]
+    z = ewgen x :: DataFrame Float '[2,5,4,3,7]
 
 prop_IndexCustom1 :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
-prop_IndexCustom1 (SDF x) (SDF y) = (1:!3 !. z) == x
+prop_IndexCustom1 (SDF x) (SDF _) = (1:!3 !. z) == x
   where
-    z = ewgen y x :: DataFrame Float '[2,5,4,3,7]
+    z = ewgen x :: DataFrame Float '[2,5,4,3,7]
 
 prop_IndexCustom2 :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
-prop_IndexCustom2 (SDF x) (SDF y) = (2:!2 !. z) %* eye == x
+prop_IndexCustom2 (SDF x) (SDF _) = (2:!2 !. z) %* eye == x
   where
-    z = ewgen y x :: DataFrame Float '[2,5,4,3,7]
+    z = ewgen x :: DataFrame Float '[2,5,4,3,7]
 
 prop_Foldlr :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
-prop_Foldlr (SDF x) (SDF y) =
-   abs (ewfoldl y (+) 10 z - ewfoldr y (+) 0 z - 10) < ewgen x (zmax * 0.0001)
+prop_Foldlr (SDF x) (SDF _) =
+   abs (ewfoldl (+) 10 z - ewfoldr @_ @'[2,5,4] (+) 0 z - 10) < ewgen (zmax * 0.0001)
   where
-    z = ewgen y x :: DataFrame Float '[2,5,4,3,7]
-    zmax = ewfoldl z (max . abs) 0 z
+    z = ewgen x :: DataFrame Float '[2,5,4,3,7]
+    zmax = ewfoldl @_ @'[2,5,4] (max . abs) 0 z
 
 prop_Ewmap :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
 prop_Ewmap (SDF _) (SDF y) =
-   y * 2 == ewmap (dim @'[7]) (*2) y
+   y * 2 == ewmap @_ @'[3] (*2) y
 
 
 return []

@@ -304,6 +304,10 @@ instance ElementWise (Idx '[4]) Float FloatX4 where
   ewgen f = case (f (1:!Z), f (2:!Z), f (3:!Z), f (4:!Z)) of (F# r1, F# r2, F# r3, F# r4) -> FloatX4# r1 r2 r3 r4
   {-# INLINE ewgen #-}
 
+  ewgenA f = (\(F# a) (F# b) (F# c) (F# d) -> FloatX4# a b c d)
+          <$> f (1:!Z) <*> f (2:!Z) <*> f (3:!Z) <*> f (4:!Z)
+  {-# INLINE ewgenA #-}
+
   ewfold f x0 (FloatX4# x y z w) = f (4:!Z) (F# w) (f (3:!Z) (F# z) (f (2:!Z) (F# y) (f (1:!Z) (F# x) x0)))
   {-# INLINE ewfold #-}
 

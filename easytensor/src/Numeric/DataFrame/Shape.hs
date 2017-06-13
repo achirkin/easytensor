@@ -34,7 +34,7 @@
 
 module Numeric.DataFrame.Shape
     ( (<:>), (<::>), (<+:>)
-    , fromList, DataFrameToList (..)
+    , fromList, DataFrameToList (..), fromScalar
     ) where
 
 import GHC.TypeLits
@@ -49,8 +49,10 @@ import Unsafe.Coerce
 import Numeric.Dimensions
 import Numeric.Commons
 import Numeric.Array.Family
+import qualified Numeric.Array.ElementWise as EW
 import Numeric.DataFrame.Type
 import Numeric.DataFrame.Inference
+import Numeric.Scalar as Scalar
 
 -- | Append one DataFrame to another, adding up their last dimensionality
 (<:>) :: forall (n :: Nat) (m :: Nat) (npm :: Nat) (ds :: [Nat])
@@ -254,3 +256,8 @@ instance ( xnsm ~ (x ': xns')
   fromListN = fromListN
   toList (SomeDataFrame (df :: DataFrame t ds))
     | Refl <- unsafeCoerce Refl :: ds :~: (ns +: Last ds) = toList df
+
+-- | Broadcast scalar value onto a whole data frame
+fromScalar :: EW.ElementWise (Idx ds) t (DataFrame t ds)
+           => Scalar.Scalar t -> DataFrame t ds
+fromScalar = EW.broadcast . Scalar.unScalar
