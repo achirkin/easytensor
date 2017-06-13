@@ -24,10 +24,8 @@
 
 module Numeric.DataFrame.BasicTest (runTests) where
 
-import           Test.QuickCheck
-
-
 import           Numeric.DataFrame.Arbitraries
+import           Test.QuickCheck
 
 
 

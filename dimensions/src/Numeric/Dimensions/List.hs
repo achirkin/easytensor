@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
+{-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ExplicitNamespaces        #-}
@@ -15,7 +16,6 @@
 {-# LANGUAGE TypeFamilyDependencies    #-}
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UndecidableInstances      #-}
-{-# LANGUAGE ConstraintKinds           #-}
 --------------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.List
@@ -39,8 +39,9 @@ module Numeric.Dimensions.List
   ) where
 
 import           Data.Proxy         (Proxy (..))
-import           Data.Type.Equality
-import           GHC.TypeLits
+import           Data.Type.Equality ((:~:)(..))
+import           GHC.TypeLits       (Nat, KnownNat, type(-), type(+), natVal
+                                    ,TypeError, ErrorMessage(..))
 import           GHC.Types          (Type)
 import           Unsafe.Coerce      (unsafeCoerce)
 

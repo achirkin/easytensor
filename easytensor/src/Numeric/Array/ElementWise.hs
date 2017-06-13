@@ -1,6 +1,6 @@
-{-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE Rank2Types             #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.ElementWise
@@ -16,8 +16,8 @@ module Numeric.Array.ElementWise
   ( ElementWise (..)
   ) where
 
-import Data.Int
-import Data.Word
+import           Data.Int  (Int16, Int32, Int64, Int8)
+import           Data.Word (Word16, Word32, Word64, Word8)
 
 -- | Access elements.
 --   i is an index type

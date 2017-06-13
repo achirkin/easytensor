@@ -1,27 +1,19 @@
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE Rank2Types             #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE TypeInType             #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE InstanceSigs           #-}
-
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE RankNTypes             #-}
-{-# LANGUAGE UndecidableInstances   #-}
-{-# LANGUAGE UnboxedTuples, MagicHash #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE BangPatterns            #-}
+{-# LANGUAGE DataKinds               #-}
+{-# LANGUAGE FlexibleContexts        #-}
+{-# LANGUAGE FlexibleInstances       #-}
+{-# LANGUAGE FunctionalDependencies  #-}
+{-# LANGUAGE InstanceSigs            #-}
+{-# LANGUAGE KindSignatures          #-}
+{-# LANGUAGE MagicHash               #-}
+{-# LANGUAGE MultiParamTypeClasses   #-}
+{-# LANGUAGE ScopedTypeVariables     #-}
+{-# LANGUAGE TypeApplications        #-}
+{-# LANGUAGE TypeFamilies            #-}
+{-# LANGUAGE TypeOperators           #-}
+{-# LANGUAGE UnboxedTuples           #-}
+{-# LANGUAGE UndecidableInstances    #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE BangPatterns #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.SubSpace
@@ -39,17 +31,16 @@ module Numeric.DataFrame.SubSpace
   , ewzip, iwzip
   ) where
 
-import GHC.Base (runRW#)
-import GHC.Prim
-import GHC.TypeLits (Nat)
-import GHC.Types
+import           GHC.Base                  (runRW#)
+import           GHC.Prim
+import           GHC.Types                 (Int (..), Type, isTrue#)
 
 
-import Numeric.Commons
-import Numeric.Dimensions
-import Numeric.DataFrame.Type
-import Numeric.Scalar
 import qualified Numeric.Array.ElementWise as EW
+import           Numeric.Commons
+import           Numeric.DataFrame.Type
+import           Numeric.Dimensions
+import           Numeric.Scalar
 
 -- | Operations on DataFrames
 -- as is an element dimensionality

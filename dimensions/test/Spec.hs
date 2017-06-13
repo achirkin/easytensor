@@ -1,8 +1,8 @@
-import           Control.Monad                  (unless)
+import           Control.Monad               (unless)
 import qualified Numeric.Dimensions.ListTest
 
 main :: IO ()
-main = do
+main =
   test "Dimensions.List"    Numeric.Dimensions.ListTest.runTests
 
 

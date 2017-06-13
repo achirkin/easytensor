@@ -1,14 +1,17 @@
-
-{-# LANGUAGE DataKinds, PolyKinds, TypeFamilyDependencies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE FlexibleContexts, FlexibleInstances #-}
-{-# LANGUAGE TypeOperators    #-}
-{-# LANGUAGE UnboxedTuples, MagicHash #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE ExistentialQuantification  #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE ConstraintKinds  #-}
-{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MagicHash                  #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeFamilyDependencies     #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UnboxedTuples              #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.Family
@@ -32,16 +35,17 @@ module Numeric.Array.Family
   , getArrayInstance, ArrayInstance (..), inferArrayInstance
   ) where
 
-import GHC.TypeLits (Nat, natVal', KnownNat, type (<=), type (<=?))
--- import GHC.Types (Type)
-import GHC.Prim
-import Numeric.Commons
-import Numeric.Dimensions
-import Numeric.Array.ElementWise
-import Data.Int
-import Data.Word
-import Data.Type.Equality
-import Unsafe.Coerce
+
+import           Data.Int                  (Int16, Int32, Int64, Int8)
+import           Data.Type.Equality        ((:~:) (..))
+import           Data.Word                 (Word16, Word32, Word64, Word8)
+import           GHC.Prim                  (ByteArray#, Double#, Float#, Int#,
+                                            Word#, unsafeCoerce#)
+import           Unsafe.Coerce             (unsafeCoerce)
+
+import           Numeric.Array.ElementWise
+import           Numeric.Commons
+import           Numeric.Dimensions
 
 -- | Full collection of n-order arrays
 type family Array t (ds :: [Nat]) = v | v -> t ds where
@@ -242,7 +246,7 @@ instance ArraySizeInference '[] where
     {-# INLINE inferInitArrayInstance #-}
 
 instance KnownNat d => ArraySizeInference '[d] where
-    arraySizeInstance = case natVal' (proxy# :: Proxy# d) of
+    arraySizeInstance = case natVal (Proxy:: Proxy d) of
         0 -> unsafeCoerce# ASScalar
         1 -> unsafeCoerce# ASScalar
         2 -> unsafeCoerce# ASX2
@@ -376,10 +380,11 @@ inferArrayInstance :: forall t ds
                       )
                   => ArrayInstanceEvidence t ds
 inferArrayInstance = case tList (Proxy @ds) of
-    TLEmpty -> ArrayInstanceEvidence
-    TLCons _ TLEmpty -> ArrayInstanceEvidence
-    TLCons _ (TLCons _ TLEmpty) -> ArrayInstanceEvidence
+    TLEmpty                          -> ArrayInstanceEvidence
+    TLCons _ TLEmpty                 -> ArrayInstanceEvidence
+    TLCons _ (TLCons _ TLEmpty)      -> ArrayInstanceEvidence
     TLCons _ (TLCons _ (TLCons _ _)) -> ArrayInstanceEvidence
+
 
 _suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)
 _suppressHlintUnboxedTuplesWarning = undefined

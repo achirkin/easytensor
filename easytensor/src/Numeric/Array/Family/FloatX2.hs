@@ -3,9 +3,9 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE TypeFamilies          #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE UnboxedTuples         #-}
+{-# OPTIONS_GHC -fno-warn-orphans  #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.Family.FloatX2
@@ -22,14 +22,13 @@ module Numeric.Array.Family.FloatX2 () where
 
 #include "MachDeps.h"
 
-import           GHC.Base             (runRW#)
+import           GHC.Base                  (runRW#)
 import           GHC.Prim
--- import           GHC.TypeLits
-import           GHC.Types
--- import           Data.Proxy
+import           GHC.Types                 (Float (..), RuntimeRep (..),
+                                            isTrue#)
 
-import           Numeric.Array.Family
 import           Numeric.Array.ElementWise
+import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.Dimensions
 
@@ -278,7 +277,7 @@ instance PrimBytes FloatX2 where
   {-# INLINE elementByteSize #-}
   ix 0# (FloatX2# a1 _) = a1
   ix 1# (FloatX2# _ a2) = a2
-  ix _ _ = undefined
+  ix _ _                = undefined
   {-# INLINE ix #-}
 
 
