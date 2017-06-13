@@ -7,12 +7,12 @@
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE UndecidableInstances  #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE TypeApplications  #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# OPTIONS_GHC -fno-warn-orphans  #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.Family.ArrayI
@@ -26,14 +26,12 @@
 
 module Numeric.Array.Family.ArrayI () where
 
-import           GHC.Base             (runRW#)
+import           GHC.Base                  (runRW#)
 import           GHC.Prim
-import           GHC.TypeLits
-import           GHC.Types
-import           Data.Proxy
+import           GHC.Types                 (Int (..), RuntimeRep (..), isTrue#)
 
-import           Numeric.Array.Family
 import           Numeric.Array.ElementWise
+import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.Dimensions
 

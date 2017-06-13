@@ -1,7 +1,9 @@
 {-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
 -----------------------------------------------------------------------------
@@ -22,13 +24,11 @@ module Numeric.DataFrame.Inference
     , NumericFrameEvidence (..), inferNumericFrame
     ) where
 
-import GHC.TypeLits (Nat)
-
-import Numeric.Dimensions
-import Numeric.Commons
-import Numeric.Array
-import Numeric.Array.ElementWise
-import Numeric.DataFrame.Type
+import           Numeric.Array
+import           Numeric.Array.ElementWise
+import           Numeric.Commons
+import           Numeric.DataFrame.Type
+import           Numeric.Dimensions
 
 
 -- | Evidence for PrimBytes class

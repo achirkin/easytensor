@@ -1,23 +1,20 @@
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE InstanceSigs               #-}
-{-# LANGUAGE Rank2Types                 #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TypeApplications           #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MagicHash                  #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE NoMonomorphismRestriction  #-}
 {-# LANGUAGE PolyKinds                  #-}
-{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 -----------------------------------------------------------------------------
@@ -40,15 +37,22 @@ module Numeric.DataFrame.Type
   , FPFRame, IntegralFrame, NumericVariantFrame, CommonOpFrame
   ) where
 
-import Data.Int
-import Data.Word
-import Data.Type.Equality
-import GHC.TypeLits         (Nat)
-import GHC.Types
-import Numeric.Array.Family
-import Numeric.Array.ElementWise
-import Numeric.Commons
-import Numeric.Dimensions
+import           Data.Int                  (Int16, Int32, Int64, Int8)
+import           Data.Type.Equality        ((:~:) (..))
+import           Data.Word                 (Word16, Word32, Word64, Word8)
+import           Foreign.Storable          (Storable (..))
+import           GHC.Exts                  (Int (..), Ptr (..))
+import           GHC.Prim                  (copyAddrToByteArray#,
+                                            copyByteArrayToAddr#, newByteArray#,
+                                            plusAddr#, quotInt#,
+                                            unsafeFreezeByteArray#, (*#))
+import           GHC.Types                 (Constraint, IO (..), Type)
+
+
+import           Numeric.Array.ElementWise
+import           Numeric.Array.Family
+import           Numeric.Commons
+import           Numeric.Dimensions
 
 -- | Keep data in a primitive data frame
 --    and maintain information about Dimensions in the type-system
@@ -163,6 +167,32 @@ instance ( Dimensions ds
   {-# INLINE broadcast #-}
 
 
+instance PrimBytes (DataFrame t ds) => Storable (DataFrame t ds) where
+  sizeOf x = I# (byteSize x)
+  alignment x = I# (byteAlign x)
+  peekElemOff ptr (I# offset) =
+    peekByteOff ptr (I# (offset *# byteSize (undefined :: DataFrame t ds)))
+  pokeElemOff ptr (I# offset) =
+    pokeByteOff ptr (I# (offset *# byteSize (undefined :: DataFrame t ds)))
+  peekByteOff (Ptr addr) (I# offset) = IO $ \s0 -> case newByteArray# bsize s0 of
+    (# s1, marr #) -> case copyAddrToByteArray# (addr `plusAddr#` offset)
+                                                 marr 0# bsize s1 of
+      s2 -> case unsafeFreezeByteArray# marr s2 of
+        (# s3, arr #) -> (# s3, fromBytes (# 0#, bsize `quotInt#` ebsize, arr #) #)
+    where
+      bsize = byteSize (undefined :: DataFrame t ds)
+      ebsize = elementByteSize (undefined :: DataFrame t ds)
+  pokeByteOff (Ptr addr) (I# offset) x = IO
+          $ \s0 -> case copyByteArrayToAddr# xbytes xboff
+                                             (addr `plusAddr#` offset)
+                                              bsize s0 of
+       s2 -> (# s2, () #)
+    where
+      !(# elOff, elNum, xbytes #) = toBytes x
+      bsize = elementByteSize x *# elNum
+      xboff  = elementByteSize x *# elOff
+  peek ptr = peekByteOff ptr 0
+  poke ptr = pokeByteOff ptr 0
 
 
 

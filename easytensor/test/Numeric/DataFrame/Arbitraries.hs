@@ -10,25 +10,22 @@
 -- Num, Ord, Fractional, Floating, etc
 --
 -----------------------------------------------------------------------------
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE KindSignatures       #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE Rank2Types           #-}
-{-# LANGUAGE ConstraintKinds      #-}
-{-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE GADTs                #-}
-{-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE PolyKinds #-}
-
+{-# LANGUAGE ConstraintKinds           #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE PartialTypeSignatures     #-}
+{-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE TypeOperators             #-}
+{-# LANGUAGE UndecidableInstances      #-}
 module Numeric.DataFrame.Arbitraries where
 
-import           GHC.TypeLits
-import           Test.QuickCheck
 import           Data.Type.Equality
---import           Data.Proxy
+import           Test.QuickCheck
 import           Unsafe.Coerce
 
 import           Numeric.Commons
@@ -91,7 +88,7 @@ instance Arbitrary SomeSimpleDF where
               NumericFrameEvidence -> Right $ SSDF <$> (arbitrary :: Gen (SimpleDF ds))
           Nothing -> Left "cannot construct Dim value."
     case eGen of
-      Left s -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
+      Left s  -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
       Right v -> v
   shrink (SSDF x) = SSDF <$> shrink x
 
@@ -109,7 +106,7 @@ instance Arbitrary SomeSimpleDFNonScalar where
                 (Refl, Refl) -> Right $ SSDFN <$> (arbitrary :: Gen (SimpleDF ds))
           Nothing -> Left "cannot construct Dim value."
     case eGen of
-      Left s -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
+      Left s  -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
       Right v -> v
   shrink (SSDFN x) = SSDFN <$> shrink x
 
@@ -126,7 +123,7 @@ instance Arbitrary SomeSimpleDFPair where
                           <*> (arbitrary :: Gen (SimpleDF ds))
           Nothing -> Left "cannot construct Dim value."
     case eGen of
-      Left s -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
+      Left s  -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
       Right v -> v
   shrink (SSDFP x y) = SSDFP <$> shrink x <*> shrink y
 

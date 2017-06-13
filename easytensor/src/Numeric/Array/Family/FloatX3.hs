@@ -3,9 +3,9 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE TypeFamilies          #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE UnboxedTuples         #-}
+{-# OPTIONS_GHC -fno-warn-orphans  #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.Family.FloatX3
@@ -22,14 +22,13 @@ module Numeric.Array.Family.FloatX3 () where
 
 #include "MachDeps.h"
 
-import           GHC.Base             (runRW#)
+import           GHC.Base                  (runRW#)
 import           GHC.Prim
--- import           GHC.TypeLits
-import           GHC.Types
--- import           Data.Proxy
+import           GHC.Types                 (Float (..), RuntimeRep (..),
+                                            isTrue#)
 
-import           Numeric.Array.Family
 import           Numeric.Array.ElementWise
+import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.Dimensions
 
@@ -248,7 +247,7 @@ instance PrimBytes FloatX3 where
   ix 0# (FloatX3# a1 _ _) = a1
   ix 1# (FloatX3# _ a2 _) = a2
   ix 2# (FloatX3# _ _ a3) = a3
-  ix _ _ = undefined
+  ix _ _                  = undefined
   {-# INLINE ix #-}
 
 
@@ -257,7 +256,7 @@ instance ElementWise (Idx '[3]) Float FloatX3 where
   (!) (FloatX3# a1 _ _) ( 1 :! Z) = F# a1
   (!) (FloatX3# _ a2 _) ( 2 :! Z) = F# a2
   (!) (FloatX3# _ _ a3) ( 3 :! Z) = F# a3
-  (!) _               ( _ :! Z) = undefined
+  (!) _               ( _ :! Z)   = undefined
   {-# INLINE (!) #-}
 
   broadcast (F# x) = FloatX3# x x x

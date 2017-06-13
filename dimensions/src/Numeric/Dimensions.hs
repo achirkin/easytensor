@@ -1,15 +1,22 @@
 {-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE Rank2Types, FlexibleContexts #-}
-{-# LANGUAGE GADTs, PolyKinds #-}
-{-# LANGUAGE TypeFamilies, TypeFamilyDependencies #-}
-{-# LANGUAGE MultiParamTypeClasses, MagicHash #-}
-{-# LANGUAGE KindSignatures, DataKinds #-}
-{-# LANGUAGE TypeOperators, FlexibleInstances, ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications, FunctionalDependencies     #-}
-{-# LANGUAGE ConstraintKinds      #-}
-{-# LANGUAGE UnboxedTuples      #-}
-{-# LANGUAGE AllowAmbiguousTypes      #-}
+{-# LANGUAGE AllowAmbiguousTypes       #-}
+{-# LANGUAGE ConstraintKinds           #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ExplicitNamespaces        #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE MagicHash                 #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE TypeFamilies              #-}
+{-# LANGUAGE TypeFamilyDependencies    #-}
+{-# LANGUAGE TypeOperators             #-}
+{-# LANGUAGE UndecidableInstances      #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions
@@ -47,21 +54,28 @@ module Numeric.Dimensions
   , type (:<), type (>:)
     -- * Generic type-level list operations
   , module Numeric.Dimensions.List
+    -- * Re-export of GHC.TypeLits
+  , Nat, KnownNat, natVal, SomeNat (..), someNatVal
+  , type (+), type (-), type (<=), type (<=?)
   ) where
 
 
-import Control.Arrow (first)
-import GHC.TypeLits
-import GHC.Prim
-import GHC.Types
-import GHC.Exts
-import Data.Maybe (isJust)
-import Data.Proxy
-import Data.Type.Equality
+import           Control.Arrow           (first)
+import           Data.Maybe              (isJust)
+import           Data.Proxy              (Proxy (..))
+import           Data.Type.Equality      ((:~:) (..))
+import           GHC.Exts                (Constraint, IsList (..), Proxy#,
+                                          State#, proxy#)
+import           GHC.TypeLits            (type (+), type (-), type (<=),
+                                          type (<=?), ErrorMessage (..),
+                                          KnownNat, Nat, SomeNat (..),
+                                          TypeError, natVal, natVal', sameNat,
+                                          someNatVal)
+import           GHC.Types               (Type)
 
-import Unsafe.Coerce
+import           Unsafe.Coerce           (unsafeCoerce)
 
-import Numeric.Dimensions.List
+import           Numeric.Dimensions.List
 
 -- | Type-level dimensional indexing with arbitrary Int values inside
 data Idx (ds :: [Nat]) where
@@ -159,12 +173,12 @@ isValidDim p = if 2 <= natVal p then unsafeCoerce (Just Refl)
 -- | We either get evidence that this function was instantiated with the
 -- same type-level Dimensions, or 'Nothing'.
 sameDim :: Dim as -> Dim bs -> Maybe (as :~: bs)
-sameDim D D = Just (unsafeCoerce Refl)
+sameDim D D                 = Just (unsafeCoerce Refl)
 sameDim (a :* as) (b :* bs) = sameNat a b >> unsafeCoerce <$> sameDim as bs
 sameDim (a :? as) (b :? bs) | a == b = unsafeCoerce <$> sameDim as bs
 sameDim (a :* as) (b :? bs) | SomeNat a == b = unsafeCoerce <$> sameDim as bs
 sameDim (a :? as) (b :* bs) | a == SomeNat b = unsafeCoerce <$> sameDim as bs
-sameDim _ _ = Nothing
+sameDim _ _                 = Nothing
 
 -- | Compare dimensions by their size in reversed lexicorgaphic order
 --   (the biggest dimension is the last one).
@@ -293,7 +307,7 @@ asSpaceOf _ = id
 --------------------------------------------------------------------------------
 
 instance Show (Idx ds) where
-    show Z = "Idx Ø"
+    show Z  = "Idx Ø"
     show xs = "Idx" ++ foldr (\i s -> " " ++ show i ++ s) "" (idxToList xs)
 
 instance Dimensions'' ds => Show (Dim ds) where
@@ -314,11 +328,11 @@ instance Show SomeDim where
 
 
 idxToList :: Idx ds -> [Int]
-idxToList Z = []
+idxToList Z         = []
 idxToList (x :! xs) = x : idxToList xs
 
 idxFromList :: [Int] -> Idx ds
-idxFromList [] = unsafeCoerce Z
+idxFromList []     = unsafeCoerce Z
 idxFromList (x:xs) = unsafeCoerce $ x :! unsafeCoerce (idxFromList xs)
 
 instance Eq (Idx ds) where
@@ -348,7 +362,7 @@ instance Num (Idx '[n]) where
 
 
 instance Ord (Idx ds) where
-    compare Z Z = EQ
+    compare Z Z             = EQ
     compare (a:!as) (b:!bs) = compare as bs `mappend` compare a b
 
 instance Ord (Dim ds) where
@@ -516,9 +530,9 @@ instance ( Dimensions'' ds
             (n, k) -> if n >= k then unsafeCoerce Z
                                 else f n ds
       where
-        f 0 ds' = unsafeCoerce ds'
+        f 0 ds'      = unsafeCoerce ds'
         f i (_:!ds') = unsafeCoerce (f (i-1) $ unsafeCoerce ds')
-        f _ Z = unsafeCoerce Z
+        f _ Z        = unsafeCoerce Z
     {-# INLINE dropDims #-}
     takeDims p ds = case (fromInteger (natVal p), order ds) of
             (0, _) -> unsafeCoerce Z

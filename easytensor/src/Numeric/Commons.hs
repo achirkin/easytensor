@@ -1,17 +1,17 @@
-{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE CPP                        #-}
+{-# LANGUAGE ConstraintKinds            #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE FunctionalDependencies     #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MagicHash                  #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE UnboxedTuples              #-}
-{-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeInType                 #-}
-{-# LANGUAGE ConstraintKinds            #-}
-{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE UnboxedTuples              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Commons
@@ -31,13 +31,12 @@ module Numeric.Commons
 #include "MachDeps.h"
 #include "HsBaseConfig.h"
 
---import           Foreign.Storable
-import           GHC.Base         (runRW#)
-import           GHC.Int
+import           GHC.Base  (runRW#)
+import           GHC.Int   (Int16 (..), Int32 (..), Int64 (..), Int8 (..))
 import           GHC.Prim
---import           GHC.Ptr
-import           GHC.Types
-import           GHC.Word
+import           GHC.Types (Double (..), Float (..), Int (..), RuntimeRep (..),
+                            Type, Word (..))
+import           GHC.Word  (Word16 (..), Word32 (..), Word64 (..), Word8 (..))
 
 
 type family ElemRep a :: RuntimeRep
@@ -79,34 +78,6 @@ class PrimBytes (a :: Type) where
   elementByteSize :: a -> Int#
   -- | Primitive indexing
   ix  :: Int# -> a -> (ElemPrim a :: TYPE (ElemRep a))
-
--- instance PrimBytes a => Storable (Store a) where
---   sizeOf x = I# (byteSize x)
---   alignment x = I# (byteAlign x)
---   peekElemOff ptr (I# offset) =
---     peekByteOff ptr (I# (offset *# byteSize (undefined :: a)))
---   pokeElemOff ptr (I# offset) =
---     pokeByteOff ptr (I# (offset *# byteSize (undefined :: a)))
---   peekByteOff (Ptr addr) (I# offset) = IO $ \s0 -> case newByteArray# bsize s0 of
---     (# s1, marr #) -> case copyAddrToByteArray# (addr `plusAddr#` offset)
---                                                  marr 0# bsize s1 of
---       s2 -> case unsafeFreezeByteArray# marr s2 of
---         (# s3, arr #) -> (# s3, fromBytes (# 0#, bsize `quotInt#` ebsize, arr #) #)
---     where
---       bsize = byteSize (undefined :: a)
---       ebsize = elementByteSize (undefined :: a)
---   pokeByteOff (Ptr addr) (I# offset) x = IO
---           $ \s0 -> case copyByteArrayToAddr# xbytes xboff
---                                              (addr `plusAddr#` offset)
---                                               bsize s0 of
---        s2 -> (# s2, () #)
---     where
---       !(# elOff, elNum, xbytes #) = toBytes x
---       bsize = elementByteSize x *# elNum
---       xboff  = elementByteSize x *# elOff
---   peek ptr = peekByteOff ptr 0
---   poke ptr = pokeByteOff ptr 0
-
 
 instance PrimBytes Float where
   type ElemPrim Float = Float#

@@ -1,7 +1,7 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE KindSignatures        #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Vector
@@ -24,12 +24,9 @@ module Numeric.Vector
     , det2, cross, (×)
     ) where
 
-import GHC.TypeLits
-
 import           Numeric.Array.ElementWise
-import           Numeric.Dimensions
 import           Numeric.DataFrame.Type
-
+import           Numeric.Dimensions
 import           Numeric.Scalar
 
 --------------------------------------------------------------------------------
@@ -124,7 +121,7 @@ vec2 :: ElementWise (Idx '[2]) t (Vector t 2) => t -> t -> Vector t 2
 vec2 a b = ewgen f
   where
     f (1 :! Z) = a
-    f _ = b
+    f _        = b
 
 -- | Take a determinant of a matrix composed from two 2D vectors.
 --   Like a cross product in 2D.
@@ -140,7 +137,7 @@ vec3 a b c = ewgen f
   where
     f (1 :! Z) = a
     f (2 :! Z) = b
-    f _ = c
+    f _        = c
 
 -- | Cross product
 cross :: ( ElementWise (Idx '[3]) t (Vector t 3)
@@ -171,4 +168,4 @@ vec4 a b c d = ewgen f
     f (1 :! Z) = a
     f (2 :! Z) = b
     f (3 :! Z) = c
-    f _ = d
+    f _        = d

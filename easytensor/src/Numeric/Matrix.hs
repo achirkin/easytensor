@@ -1,8 +1,10 @@
-{-# LANGUAGE MagicHash, DataKinds #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE MultiParamTypeClasses, KindSignatures #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE MagicHash                 #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE TypeFamilies              #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Matrix
@@ -26,13 +28,14 @@ module Numeric.Matrix
   , (%*)
   ) where
 
-import GHC.Types
+import           GHC.Types                     (Type)
 
-import Numeric.Commons
-import Numeric.DataFrame.Shape
-import Numeric.Vector
-import Numeric.DataFrame.Contraction ((%*))
-import Numeric.Matrix.Type
+import           Numeric.Commons
+import           Numeric.DataFrame.Contraction ((%*))
+import           Numeric.DataFrame.Shape
+import           Numeric.Dimensions            (Nat)
+import           Numeric.Matrix.Type
+import           Numeric.Vector
 
 
 -- Type abbreviations

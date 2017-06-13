@@ -1,25 +1,20 @@
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE InstanceSigs               #-}
-{-# LANGUAGE Rank2Types                 #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE TypeOperators              #-}
-{-# LANGUAGE ConstraintKinds            #-}
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE ExistentialQuantification  #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE KindSignatures             #-}
-{-# LANGUAGE MagicHash                  #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE NoMonomorphismRestriction  #-}
-{-# LANGUAGE PolyKinds                  #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE UnboxedTuples              #-}
-{-# LANGUAGE UndecidableInstances       #-}
-{-# LANGUAGE TypeApplications           #-}
-{-# LANGUAGE BangPatterns               #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE BangPatterns              #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE MagicHash                 #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE TypeFamilies              #-}
+{-# LANGUAGE TypeOperators             #-}
+{-# LANGUAGE UnboxedTuples             #-}
+{-# LANGUAGE UndecidableInstances      #-}
+{-# OPTIONS_GHC -fno-warn-orphans      #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Shape
@@ -37,22 +32,20 @@ module Numeric.DataFrame.Shape
     , fromList, DataFrameToList (..), fromScalar
     ) where
 
-import GHC.TypeLits
-import GHC.Types (Type, Int (..), isTrue#)
-import GHC.Base (runRW#)
-import GHC.Prim
-import qualified GHC.Exts as Exts  (IsList (..))
-import Data.Proxy
-import Data.Type.Equality
-import Unsafe.Coerce
+import           Data.Type.Equality          ((:~:) (..))
+import           GHC.Base                    (runRW#)
+import qualified GHC.Exts                    as Exts (IsList (..))
+import           GHC.Prim
+import           GHC.Types                   (Int (..), Type, isTrue#)
+import           Unsafe.Coerce               (unsafeCoerce)
 
-import Numeric.Dimensions
-import Numeric.Commons
-import Numeric.Array.Family
-import qualified Numeric.Array.ElementWise as EW
-import Numeric.DataFrame.Type
-import Numeric.DataFrame.Inference
-import Numeric.Scalar as Scalar
+import qualified Numeric.Array.ElementWise   as EW
+import           Numeric.Array.Family
+import           Numeric.Commons
+import           Numeric.DataFrame.Inference
+import           Numeric.DataFrame.Type
+import           Numeric.Dimensions
+import           Numeric.Scalar              as Scalar
 
 -- | Append one DataFrame to another, adding up their last dimensionality
 (<:>) :: forall (n :: Nat) (m :: Nat) (npm :: Nat) (ds :: [Nat])

@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
@@ -7,13 +8,12 @@
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE UndecidableInstances  #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE BangPatterns  #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# OPTIONS_GHC -fno-warn-orphans  #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.Family.ArrayF
@@ -29,17 +29,16 @@ module Numeric.Array.Family.ArrayF () where
 
 
 
-import           GHC.Base             (runRW#)
+import           GHC.Base                  (runRW#)
 import           GHC.Prim
-import           GHC.TypeLits
-import           GHC.Types
-import           Data.Proxy
+import           GHC.Types                 (Float (..), Int (..),
+                                            RuntimeRep (..), isTrue#)
 
-import           Numeric.Array.Family
 import           Numeric.Array.ElementWise
+import           Numeric.Array.Family
 import           Numeric.Commons
-import           Numeric.Dimensions
 import           Numeric.DataFrame.Type
+import           Numeric.Dimensions
 import           Numeric.Matrix.Type
 
 #include "MachDeps.h"

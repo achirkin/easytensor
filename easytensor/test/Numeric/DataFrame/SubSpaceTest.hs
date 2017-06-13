@@ -8,20 +8,20 @@
 --
 --
 -----------------------------------------------------------------------------
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeOperators, TypeApplications #-}
-{-# LANGUAGE DataKinds, PolyKinds #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeOperators       #-}
 
 module Numeric.DataFrame.SubSpaceTest (runTests) where
 
-import           Test.QuickCheck
-import           Numeric.DataFrame.Arbitraries
-import           Data.Proxy
-
 import           Numeric.DataFrame
+import           Numeric.DataFrame.Arbitraries
 import           Numeric.Dimensions
+import           Test.QuickCheck
 
 
 

@@ -29,15 +29,15 @@ module Numeric.DataFrame
   , ElemTypeInference (..), ElemType (..)
   ) where
 
-import Numeric.Array
-import Numeric.Array.ElementWise
+import           Numeric.Array
+import           Numeric.Array.ElementWise
 
-import Numeric.DataFrame.Type
-import Numeric.DataFrame.SubSpace
-import Numeric.DataFrame.Contraction
-import Numeric.DataFrame.Inference
-import Numeric.DataFrame.Shape
+import           Numeric.DataFrame.Contraction
+import           Numeric.DataFrame.Inference
+import           Numeric.DataFrame.Shape
+import           Numeric.DataFrame.SubSpace
+import           Numeric.DataFrame.Type
 
-import Numeric.Scalar
-import Numeric.Vector
-import Numeric.Matrix
+import           Numeric.Matrix
+import           Numeric.Scalar
+import           Numeric.Vector

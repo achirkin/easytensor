@@ -2,14 +2,14 @@
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MagicHash              #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
-{-# LANGUAGE MagicHash              #-}
-{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE UnboxedTuples          #-}
+{-# LANGUAGE UndecidableInstances   #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Contraction
@@ -29,20 +29,20 @@ module Numeric.DataFrame.Contraction
   ( Contraction (..), (%*)
   ) where
 
-import GHC.Types (Type, Int (..), Word (..), RuntimeRep (..), isTrue#)
-import GHC.TypeLits (Nat, KnownNat, natVal)
-import GHC.Base (runRW#)
-import GHC.Prim
-import Data.Proxy
-import Data.Int
-import Data.Word
-import Data.Type.Equality
-import Unsafe.Coerce
 
-import Numeric.Array.Family
-import Numeric.Commons
-import Numeric.Dimensions
-import Numeric.DataFrame.Type
+import           Data.Int               (Int16, Int32, Int64, Int8)
+import           Data.Type.Equality     ((:~:) (..))
+import           Data.Word              (Word16, Word32, Word64, Word8)
+import           GHC.Base               (runRW#)
+import           GHC.Prim
+import           GHC.Types              (Int (..), RuntimeRep (..), Type,
+                                         Word (..), isTrue#)
+import           Unsafe.Coerce          (unsafeCoerce)
+
+import           Numeric.Array.Family
+import           Numeric.Commons
+import           Numeric.DataFrame.Type
+import           Numeric.Dimensions
 
 
 class ConcatList as bs asbs

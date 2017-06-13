@@ -1,4 +1,5 @@
-{-# LANGUAGE KindSignatures, DataKinds #-}
+{-# LANGUAGE DataKinds      #-}
+{-# LANGUAGE KindSignatures #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Scalar
@@ -15,10 +16,10 @@ module Numeric.Scalar
     , Scf, Scd
     ) where
 
-import GHC.TypeLits (Nat)
 
-import qualified Numeric.Array.Family as AFam
+import qualified Numeric.Array.Family   as AFam
 import           Numeric.DataFrame.Type
+import           Numeric.Dimensions     (Nat)
 
 -- | Alias for zero-dimensional DataFrame
 type Scalar t = DataFrame t ('[] :: [Nat])
