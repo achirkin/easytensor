@@ -157,13 +157,6 @@ type NonEmptyList xs = ( xs ~ (Head xs :+ Tail xs)
                        , xs ~ (Init xs ++ '[Last xs])
                        )
 
-data NonEmptyListEvidence xs
-  = NonEmptyList xs => NonEmptyListEvidence
-
-inferNonEmptyList ::  forall x xs . NonEmptyListEvidence (x ': xs)
-inferNonEmptyList = unsafeCoerce (NonEmptyListEvidence @'[x])
-
-
 -- | Represent a triple of lists forming a relation `as ++ bs ~ asbs`
 class ( asbs ~ Concat as bs
       , as   ~ Prefix bs asbs
@@ -331,6 +324,11 @@ instance FiniteList xs => FiniteList (x :+ xs :: [k]) where
 ---- Constructing evidence for our constraints
 --------------------------------------------------------------------------------
 
+-- | Various kinds of proofs to make sure we infer list operations and constrains
+--   over simple cons ar snoc
+data NonEmptyListEvidence xs
+  = NonEmptyList xs => NonEmptyListEvidence
+
 -- | Pattern-matching on the constructor of this type
 --   brings an evidence that `as ++ bs ~ asbs`
 data ConcatEvidence (as :: [k]) (bs :: [k]) (asbs :: [k])
@@ -346,6 +344,11 @@ data ConcatEvidence (as :: [k]) (bs :: [k]) (asbs :: [k])
 data FiniteListEvidence (xs :: [k])
   = FiniteList xs => FiniteListEvidence
 
+
+-- | Various kinds of proofs to make sure we infer list operations and constrains
+--   over cons constructor
+inferNonEmptyList ::  forall x xs . NonEmptyListEvidence (x ': xs)
+inferNonEmptyList = unsafeCoerce (NonEmptyListEvidence @'[x])
 
 -- | Any two type-level lists can be concatenated,
 --   so we just fool the compiler by unsafeCoercing proxy-like data type.

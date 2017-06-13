@@ -34,6 +34,7 @@ module Numeric.Dimensions
   , XDim (..), SomeDim (..), xDimVal, someDimVal, sameDim, compareDim
   , Slice (..)
   , ValidDim (..), inferLastValidDim
+  , Proxy (..)
     -- * Operations
   , Dimensions, Dimensions' (..), Dimensions'' (..)
   , DimensionsEvidence (..)
