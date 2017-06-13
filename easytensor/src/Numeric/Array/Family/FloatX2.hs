@@ -299,6 +299,9 @@ instance ElementWise (Idx '[2]) Float FloatX2 where
   ewgen f = case (f (1:!Z), f (2:!Z)) of (F# r1, F# r2) -> FloatX2# r1 r2
   {-# INLINE ewgen #-}
 
+  ewgenA f = (\(F# r1) (F# r2) -> FloatX2# r1 r2) <$> f (1:!Z) <*> f (2:!Z)
+  {-# INLINE ewgenA #-}
+
   ewfold f x0 (FloatX2# x y) = f (2:!Z) (F# y) (f (1:!Z) (F# x) x0)
   {-# INLINE ewfold #-}
 

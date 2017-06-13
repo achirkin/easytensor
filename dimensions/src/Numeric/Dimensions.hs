@@ -219,11 +219,11 @@ class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
     -- | Total number of elements - product of all dimension sizes (unboxed)
     totalDim :: t ds -> Int
     -- | Run a primitive loop over all dimensions (1..n)
-    loopS  :: Idx  ds -> (Idx  ds -> State# s -> State# s) -> State# s -> State# s
+    loopS  :: Dim  ds -> (Idx  ds -> State# s -> State# s) -> State# s -> State# s
     -- | Run a loop over all dimensions keeping a boxed accumulator (1..n)
-    loopA  :: Idx  ds -> (Idx  ds -> a -> a) -> a -> a
+    loopA  :: Dim  ds -> (Idx  ds -> a -> a) -> a -> a
     -- | Run a loop in a reverse order n..1
-    loopReverse :: Idx ds -> (Idx  ds -> a -> a) -> a -> a
+    loopReverse :: Dim ds -> (Idx  ds -> a -> a) -> a -> a
     -- | Get index offset: i1 + i2*n1 + i3*n1*n2 + ...
     ioffset   :: Idx ds -> Int
     -- | Drop a number of dimensions
@@ -499,14 +499,14 @@ instance ( Dimensions'' ds
     totalDim _ = fromIntegral (natVal (Proxy @d))
                * totalDim (Proxy @ds)
     {-# INLINE totalDim #-}
-    loopS (n:!Z) f = loop1 n (\i -> f (i:!Z))
-    loopS (n:!ns) f = loopS ns (\js -> loop1 n (\i -> f (i:!js)))
+    loopS (n:*D) f = loop1 (fromInteger $ natVal n) (\i -> f (i:!Z))
+    loopS (n:*ns) f = loopS ns (\js -> loop1 (fromInteger $ natVal n) (\i -> f (i:!js)))
     {-# INLINE loopS #-}
-    loopA (n:!Z) f = loopA1 n (f . (:!Z))
-    loopA (n:!ns) f = loopA ns (\js -> loopA1 n (f . (:!js)))
+    loopA (n:*D) f = loopA1 (fromInteger $ natVal n) (f . (:!Z))
+    loopA (n:*ns) f = loopA ns (\js -> loopA1 (fromInteger $ natVal n) (f . (:!js)))
     {-# INLINE loopA #-}
-    loopReverse (n:!Z) f = loopReverse1 n (f . (:!Z))
-    loopReverse (n:!ns) f = loopReverse ns (\js -> loopReverse1 n (f . (:!js)))
+    loopReverse (n:*D) f = loopReverse1 (fromInteger $ natVal n) (f . (:!Z))
+    loopReverse (n:*ns) f = loopReverse ns (\js -> loopReverse1 (fromInteger $ natVal n) (f . (:!js)))
     {-# INLINE loopReverse #-}
     ioffset (i:!Z) = i
     ioffset iis@(i:!is) = i + fromIntegral (natVal' (headDim# iis)) * ioffset is

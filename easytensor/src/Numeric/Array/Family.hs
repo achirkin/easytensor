@@ -41,7 +41,6 @@ import Numeric.Array.ElementWise
 import Data.Int
 import Data.Word
 import Data.Type.Equality
-import Data.Proxy
 import Unsafe.Coerce
 
 -- | Full collection of n-order arrays
@@ -81,6 +80,8 @@ instance ElementWise (Idx ('[] :: [Nat])) t (Scalar t) where
   {-# INLINE ewmap #-}
   ewgen f = Scalar $ f Z
   {-# INLINE ewgen #-}
+  ewgenA f = Scalar <$> f Z
+  {-# INLINE ewgenA #-}
   ewfold f x0 x = f Z (_unScalar x) x0
   {-# INLINE ewfold #-}
   elementWise f = fmap Scalar . f . _unScalar

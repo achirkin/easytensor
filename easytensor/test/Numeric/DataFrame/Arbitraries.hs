@@ -71,11 +71,11 @@ instance ( Dimensions ds
          , NumericFrame Float ds
          , PrimBytes (DataFrame Float ds)
          ) => Arbitrary (SimpleDF (ds :: [Nat])) where
-  arbitrary = SDF <$> elementWise (dim @ds) f 0
+  arbitrary = SDF <$> elementWise @_ @_ @ds f 0
     where
       f :: Scalar Float -> Gen (Scalar Float)
       f _ = scalar <$> choose (-10000,100000)
-  shrink sdf = SDF <$> elementWise (dim @ds) f (getDF sdf)
+  shrink sdf = SDF <$> elementWise @_ @_ @ds f (getDF sdf)
     where
       f :: Scalar Float -> [Scalar Float]
       f = fmap scalar . shrink . unScalar

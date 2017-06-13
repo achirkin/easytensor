@@ -118,7 +118,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
   ewmap f x@(ARR_CONSTR offset n arr) = case runRW#
      (\s0 -> case newByteArray# bs s0 of
        (# s1, marr #) -> case newMutVar# 0 s1 of
-         (# s2, mi #) -> case loopS (dimMax `inSpaceOf` x)
+         (# s2, mi #) -> case loopS (dim `inSpaceOf` x)
              (\ii ss -> case readMutVar# mi ss of
                (# sss, I# i #) ->
                  case f ii (EL_CONSTR (INDEX_ARRAY arr (offset +# i))) of
@@ -132,7 +132,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
   ewmap f x@(ARR_FROMSCALAR scalVal) = case runRW#
      (\s0 -> case newByteArray# bs s0 of
        (# s1, marr #) -> case newMutVar# 0 s1 of
-         (# s2, mi #) -> case loopS (dimMax `inSpaceOf` x)
+         (# s2, mi #) -> case loopS (dim `inSpaceOf` x)
              (\ii ss -> case readMutVar# mi ss of
                (# sss, I# i #) ->
                  case f ii (EL_CONSTR scalVal) of
@@ -149,7 +149,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
   ewgen f = case runRW#
      (\s0 -> case newByteArray# bs s0 of
        (# s1, marr #) -> case newMutVar# 0 s1 of
-         (# s2, mi #) -> case loopS (dimMax `inSpaceOf` x)
+         (# s2, mi #) -> case loopS (dim `inSpaceOf` x)
              (\ii ss -> case readMutVar# mi ss of
                (# sss, I# i #) -> case f ii of
                   (EL_CONSTR r) -> writeMutVar# mi (I# (i +# 1#))
@@ -163,9 +163,20 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
       bs = n *# EL_SIZE
   {-# INLINE ewgen #-}
 
+  ewgenA f
+      = case loopA (dim `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of
+        AU# _ ff -> wr x bs n <$> ff
+    where
+      g ds (AU# i ff) = AU# ( i +# 1# )
+                          $ (\(EL_CONSTR z) u a s -> WRITE_ARRAY a i z (u a s))
+                           <$> f ds <*> ff
+      x = undefined :: ARR_TYPE ds
+      n = case totalDim x of I# d -> d
+      bs = n *# EL_SIZE
+
   ewfold f v0 x@(ARR_CONSTR offset _ arr) = case runRW#
     (\s0 -> case newMutVar# (0,v0) s0 of
-       (# s1, miv #) -> case loopS (dimMax `inSpaceOf` x)
+       (# s1, miv #) -> case loopS (dim `inSpaceOf` x)
              (\ii ss -> case readMutVar# miv ss of
                (# sss, (I# i, v) #) -> writeMutVar# miv
                       ( I# (i +# 1#)
@@ -176,7 +187,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
     ) of (# _, (_, r) #) -> r
   ewfold f v0 x@(ARR_FROMSCALAR scalVal) = case runRW#
     (\s0 -> case newMutVar# v0 s0 of
-        (# s1, miv #) -> case loopS (dimMax `inSpaceOf` x)
+        (# s1, miv #) -> case loopS (dim `inSpaceOf` x)
               (\ii ss -> case readMutVar# miv ss of
                 (# sss, v #) -> writeMutVar# miv
                        ( f ii (EL_CONSTR scalVal) v
@@ -187,7 +198,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
   {-# INLINE ewfold #-}
 
   indexWise f x@(ARR_CONSTR offset n arr)
-      = case loopA (dimMax `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of
+      = case loopA (dim `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of
         AU# _ ff -> wr x bs n <$> ff
     where
       g ds (AU# i ff) = AU# ( i +# 1# )
@@ -196,7 +207,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
       bs = n *# EL_SIZE
 
   indexWise f x@(ARR_FROMSCALAR scalVal)
-      = case loopA (dimMax `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of
+      = case loopA (dim `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of
         AU# _ ff -> wr x bs n <$> ff
     where
       n = case totalDim x of I# d -> d

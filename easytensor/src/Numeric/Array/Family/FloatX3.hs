@@ -270,6 +270,10 @@ instance ElementWise (Idx '[3]) Float FloatX3 where
   ewgen f = case (f (1:!Z), f (2:!Z), f (3:!Z)) of (F# r1, F# r2, F# r3) -> FloatX3# r1 r2 r3
   {-# INLINE ewgen #-}
 
+  ewgenA f = (\(F# r1) (F# r2) (F# r3) -> FloatX3# r1 r2 r3)
+          <$> f (1:!Z) <*> f (2:!Z) <*> f (3:!Z)
+  {-# INLINE ewgenA #-}
+
   ewfold f x0 (FloatX3# x y z) = f (3:!Z) (F# z) (f (2:!Z) (F# y) (f (1:!Z) (F# x) x0))
   {-# INLINE ewfold #-}
 
