@@ -71,7 +71,6 @@ import           GHC.TypeLits            (type (+), type (-), type (<=),
                                           KnownNat, Nat, SomeNat (..),
                                           TypeError, natVal, natVal', sameNat,
                                           someNatVal)
-import           GHC.Types               (Type)
 
 import           Unsafe.Coerce           (unsafeCoerce)
 
@@ -221,7 +220,7 @@ class XDimensions (xds :: [XNat]) where
              , FixedXDim xds ds ~ xds) => Dim ds -> Dim xds
 
 -- | Loose compile-time information about dimensionalities
-xdim :: forall (ds :: [Nat]) (xds :: [XNat]) (p :: [Nat] -> Type)
+xdim :: forall (ds :: [Nat]) (xds :: [XNat]) (p :: [Nat] -> *)
       . ( Dimensions ds
         , XDimensions xds
         , FixedXDim xds ds ~ xds) => p ds -> Dim xds
@@ -262,7 +261,7 @@ class Dimensions' ds => Dimensions'' (ds :: [Nat]) where
     --      (a `diffIdx` b) = a - b
     diffIdx   :: Idx ds -> Idx ds -> Int
     -- | Infer that concatenation is also Dimensions
-    inferConcatDimensions :: forall (bs :: [Nat]) (p :: [Nat] -> Type) (q :: [Nat] -> Type)
+    inferConcatDimensions :: forall (bs :: [Nat]) (p :: [Nat] -> *) (q :: [Nat] -> *)
                            . Dimensions bs
                           => p ds
                           -> q bs
