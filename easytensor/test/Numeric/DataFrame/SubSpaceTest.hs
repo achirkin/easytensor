@@ -60,10 +60,10 @@ prop_IndexCustom2 (SDF x) (SDF _) = (2:!2 !. z) %* eye == x
 
 prop_Foldlr :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
 prop_Foldlr (SDF x) (SDF _) =
-   abs (ewfoldl (+) 10 z - ewfoldr @_ @'[2,5,4] (+) 0 z - 10) < ewgen (zmax * 0.0001)
+   abs (ewfoldl (+) 10 z - ewfoldr @_ @'[2,5,4] (+) 0 z - 10) <= fromScalar (zmax * 0.0001)
   where
     z = ewgen x :: DataFrame Float '[2,5,4,3,7]
-    zmax = ewfoldl @_ @'[2,5,4] (max . abs) 0 z
+    zmax = ewfoldl @Float @'[] @'[2,5,4,3,7] (max . abs) 0.001 z
 
 prop_Ewmap :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
 prop_Ewmap (SDF _) (SDF y) =
