@@ -42,7 +42,6 @@ import           Data.Proxy         (Proxy (..))
 import           Data.Type.Equality ((:~:)(..))
 import           GHC.TypeLits       (Nat, KnownNat, type(-), type(+), natVal
                                     ,TypeError, ErrorMessage(..))
-import           GHC.Types          (Type)
 import           Unsafe.Coerce      (unsafeCoerce)
 
 -- | Synonym for a type-level cons
@@ -201,7 +200,7 @@ class KnownNat (Length xs) => FiniteList (xs :: [k]) where
     -- | Get type-level constructed list
     tList :: t xs -> TypeList xs
     -- | Infer that concatenation is also finite
-    inferConcatFiniteList :: forall (bs :: [k]) (p :: [k] -> Type) (q :: [k] -> Type)
+    inferConcatFiniteList :: forall (bs :: [k]) (p :: [k] -> *) (q :: [k] -> *)
                           . FiniteList bs
                          => p xs
                          -> q bs
