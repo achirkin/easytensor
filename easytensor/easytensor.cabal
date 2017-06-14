@@ -37,6 +37,8 @@ library
     exposed-modules:
         Numeric.Commons
         Numeric.DataFrame
+        Numeric.DataFrame.IO
+        Numeric.DataFrame.ST
         Numeric.Matrix
         Numeric.Vector
         Numeric.Scalar
@@ -58,6 +60,7 @@ library
         Numeric.Array
         Numeric.DataFrame.SubSpace
         Numeric.DataFrame.Contraction
+        Numeric.DataFrame.Mutable
         Numeric.DataFrame.Type
         Numeric.DataFrame.Inference
         Numeric.DataFrame.Shape
