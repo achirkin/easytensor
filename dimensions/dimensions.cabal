@@ -1,6 +1,6 @@
 name: dimensions
 version: 0.1.0.0
-cabal-version: >=1.20
+cabal-version: >=2.0
 build-type: Simple
 license: BSD3
 license-file: LICENSE
@@ -18,6 +18,7 @@ source-repository head
     location: https://github.com/achirkin/easytensor.git
     subdir: dimensions
 
+
 library
 
     exposed-modules:
@@ -33,14 +34,16 @@ library
         Numeric.Dimensions.List
     ghc-options: -Wall -fwarn-tabs
 
+
 test-suite dimensions-test
 
-    type: exitcode-stdio-1.0
-    main-is: Spec.hs
+    type: detailed-0.9
+    test-module: Spec
     other-modules:
         Numeric.Dimensions.ListTest
     build-depends:
         base -any,
+        Cabal >=2.0,
         QuickCheck -any,
         dimensions -any
     default-language: Haskell2010

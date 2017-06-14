@@ -21,11 +21,14 @@ extra-source-files:
 source-repository head
     type: git
     location: https://github.com/achirkin/easytensor.git
+    subdir: easytensor
+
 
 flag unsafeindices
     description:
         Disable bound checks when accessing elements of a tensor/matrix/vector.
     default: False
+
 
 library
 
@@ -61,7 +64,9 @@ library
         Numeric.Matrix.Type
     ghc-options: -Wall -fwarn-tabs
 
+
 benchmark easytensor-bench
+
     type: exitcode-stdio-1.0
     main-is: Main.hs
     build-depends:
@@ -73,15 +78,18 @@ benchmark easytensor-bench
     hs-source-dirs: bench
     ghc-options: -Wall -fwarn-tabs -threaded -rtsopts -with-rtsopts=-N
 
+
 test-suite easytensor-test
-    type: exitcode-stdio-1.0
-    main-is: Spec.hs
+
+    type: detailed-0.9
+    test-module: Spec
     other-modules:
         Numeric.DataFrame.Arbitraries
         Numeric.DataFrame.SubSpaceTest
         Numeric.DataFrame.BasicTest
     build-depends:
         base -any,
+        Cabal >=2.0,
         QuickCheck -any,
         easytensor -any,
         dimensions -any
