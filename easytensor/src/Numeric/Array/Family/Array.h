@@ -232,6 +232,26 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
                       <$> fa <*> ff
       bs = n *# EL_SIZE
 
+  update ei (EL_CONSTR y) (ARR_CONSTR off len arr)
+    | I# i <- fromEnum ei
+    = case runRW#
+        ( \s0 -> case newByteArray# ( len *# EL_SIZE ) s0 of
+          (# s1, marr #) -> case copyByteArray# arr (off *# EL_SIZE) marr 0# (len *# EL_SIZE) s1 of
+            s2 -> case WRITE_ARRAY marr i y s2 of
+              s3 -> unsafeFreezeByteArray# marr s3
+        ) of (# _, r #) -> ARR_CONSTR 0# len r
+
+
+  update ei (EL_CONSTR y) x@(ARR_FROMSCALAR scalVal)
+    | I# i   <- fromEnum ei
+    , I# len <- totalDim x
+    = case runRW#
+        ( \s0 -> case newByteArray# ( len *# EL_SIZE ) s0 of
+          (# s1, marr #) -> case loop1# len (\j -> WRITE_ARRAY marr j scalVal) s1 of
+            s2 -> case WRITE_ARRAY marr i y s2 of
+              s3 -> unsafeFreezeByteArray# marr s3
+        ) of (# _, r #) -> ARR_CONSTR 0# len r
+
 
 instance Dimensions ds
       => Show (ARR_TYPE ds) where
@@ -321,7 +341,7 @@ instance Dimensions'' ds => PrimBytes (ARR_TYPE ds) where
   toBytes (ARR_FROMSCALAR x) = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) -> case loop1# n
-               (\i ss -> WRITE_ARRAY marr i x ss
+               (\i -> WRITE_ARRAY marr i x
                ) s1 of
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, r #) -> (# 0#, n, r #)

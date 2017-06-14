@@ -311,3 +311,8 @@ instance ElementWise (Idx '[2]) Float FloatX2 where
   indexWise f (FloatX2# x y) = (\(F# a) (F# b) -> FloatX2# a b)
                              <$> f (1:!Z) (F# x) <*> f (2:!Z) (F# y)
   {-# INLINE indexWise #-}
+
+  update (1 :! Z) (F# q) (FloatX2# _ y) = FloatX2# q y
+  update (2 :! Z) (F# q) (FloatX2# x _) = FloatX2# x q
+  update (_ :! Z) _ x = x
+  {-# INLINE update #-}

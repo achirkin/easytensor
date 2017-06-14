@@ -41,6 +41,8 @@ class ElementWise i x t | t -> x i where
   indexWise :: forall f . Applicative f => (i -> x -> f x) -> t -> f t
   -- | Fill a container with a single value
   broadcast :: x -> t
+  -- | Update a single element
+  update :: i -> x -> t -> t
 
 
 instance ElementWise Int Float Float where
@@ -60,6 +62,9 @@ instance ElementWise Int Float Float where
   {-# INLINE indexWise #-}
   broadcast = id
   {-# INLINE broadcast #-}
+  update _ = const
+  {-# INLINE update #-}
+
 
 
 instance ElementWise Int Double Double where
@@ -79,6 +84,8 @@ instance ElementWise Int Double Double where
   {-# INLINE indexWise #-}
   broadcast = id
   {-# INLINE broadcast #-}
+  update _ = const
+  {-# INLINE update #-}
 
 
 instance ElementWise Int Int Int where
@@ -98,6 +105,8 @@ instance ElementWise Int Int Int where
   {-# INLINE indexWise #-}
   broadcast = id
   {-# INLINE broadcast #-}
+  update _ = const
+  {-# INLINE update #-}
 
 
 instance ElementWise Int Int8 Int8 where
@@ -117,6 +126,8 @@ instance ElementWise Int Int8 Int8 where
   {-# INLINE indexWise #-}
   broadcast = id
   {-# INLINE broadcast #-}
+  update _ = const
+  {-# INLINE update #-}
 
 instance ElementWise Int Int16 Int16 where
   (!) x _ = x
@@ -135,6 +146,8 @@ instance ElementWise Int Int16 Int16 where
   {-# INLINE indexWise #-}
   broadcast = id
   {-# INLINE broadcast #-}
+  update _ = const
+  {-# INLINE update #-}
 
 instance ElementWise Int Int32 Int32 where
   (!) x _ = x
@@ -153,6 +166,8 @@ instance ElementWise Int Int32 Int32 where
   {-# INLINE indexWise #-}
   broadcast = id
   {-# INLINE broadcast #-}
+  update _ = const
+  {-# INLINE update #-}
 
 
 instance ElementWise Int Int64 Int64 where
@@ -172,6 +187,8 @@ instance ElementWise Int Int64 Int64 where
   {-# INLINE indexWise #-}
   broadcast = id
   {-# INLINE broadcast #-}
+  update _ = const
+  {-# INLINE update #-}
 
 
 instance ElementWise Int Word Word where
@@ -191,6 +208,8 @@ instance ElementWise Int Word Word where
   {-# INLINE indexWise #-}
   broadcast = id
   {-# INLINE broadcast #-}
+  update _ = const
+  {-# INLINE update #-}
 
 
 instance ElementWise Int Word8 Word8 where
@@ -210,6 +229,8 @@ instance ElementWise Int Word8 Word8 where
   {-# INLINE indexWise #-}
   broadcast = id
   {-# INLINE broadcast #-}
+  update _ = const
+  {-# INLINE update #-}
 
 
 instance ElementWise Int Word16 Word16 where
@@ -229,6 +250,8 @@ instance ElementWise Int Word16 Word16 where
   {-# INLINE indexWise #-}
   broadcast = id
   {-# INLINE broadcast #-}
+  update _ = const
+  {-# INLINE update #-}
 
 
 instance ElementWise Int Word32 Word32 where
@@ -248,6 +271,8 @@ instance ElementWise Int Word32 Word32 where
   {-# INLINE indexWise #-}
   broadcast = id
   {-# INLINE broadcast #-}
+  update _ = const
+  {-# INLINE update #-}
 
 
 instance ElementWise Int Word64 Word64 where
@@ -267,3 +292,5 @@ instance ElementWise Int Word64 Word64 where
   {-# INLINE indexWise #-}
   broadcast = id
   {-# INLINE broadcast #-}
+  update _ = const
+  {-# INLINE update #-}

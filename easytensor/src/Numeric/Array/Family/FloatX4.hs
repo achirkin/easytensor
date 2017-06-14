@@ -317,3 +317,10 @@ instance ElementWise (Idx '[4]) Float FloatX4 where
   indexWise f (FloatX4# x y z w) = (\(F# a) (F# b) (F# c) (F# d) -> FloatX4# a b c d)
                              <$> f (1:!Z) (F# x) <*> f (2:!Z) (F# y) <*> f (3:!Z) (F# z) <*> f (4:!Z) (F# w)
   {-# INLINE indexWise #-}
+
+  update (1 :! Z) (F# q) (FloatX4# _ y z w) = FloatX4# q y z w
+  update (2 :! Z) (F# q) (FloatX4# x _ z w) = FloatX4# x q z w
+  update (3 :! Z) (F# q) (FloatX4# x y _ w) = FloatX4# x y q w
+  update (4 :! Z) (F# q) (FloatX4# x y z _) = FloatX4# x y z q
+  update (_ :! Z) _ x = x
+  {-# INLINE update #-}

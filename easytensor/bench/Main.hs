@@ -77,3 +77,7 @@ main = do
               (\v -> print v >> return (sqrt . trace $ v %* transpose v)) x
     putStrLn "\nTraces for each matrix element:"
     print rVec
+
+    -- Updating existing frames
+    print $ update (2:!Z) (scalar 777) rVec
+    print $ update (2:!3:!Z) (vec2 999 999) x
