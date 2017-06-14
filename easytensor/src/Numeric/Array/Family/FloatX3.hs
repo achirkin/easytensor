@@ -283,3 +283,9 @@ instance ElementWise (Idx '[3]) Float FloatX3 where
   indexWise f (FloatX3# x y z) = (\(F# a) (F# b) (F# c) -> FloatX3# a b c)
                              <$> f (1:!Z) (F# x) <*> f (2:!Z) (F# y) <*> f (3:!Z) (F# z)
   {-# INLINE indexWise #-}
+
+  update (1 :! Z) (F# q) (FloatX3# _ y z) = FloatX3# q y z
+  update (2 :! Z) (F# q) (FloatX3# x _ z) = FloatX3# x q z
+  update (3 :! Z) (F# q) (FloatX3# x y _) = FloatX3# x y q
+  update (_ :! Z) _ x = x
+  {-# INLINE update #-}

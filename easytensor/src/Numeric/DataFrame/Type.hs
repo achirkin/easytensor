@@ -165,6 +165,8 @@ instance ( Dimensions ds
   {-# INLINE indexWise #-}
   broadcast = KnownDataFrame . broadcast
   {-# INLINE broadcast #-}
+  update i x = KnownDataFrame . update i x . _getDF
+  {-# INLINE update #-}
 
 
 instance PrimBytes (DataFrame t ds) => Storable (DataFrame t ds) where

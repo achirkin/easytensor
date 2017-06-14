@@ -94,6 +94,8 @@ instance ElementWise (Idx ('[] :: [Nat])) t (Scalar t) where
   {-# INLINE indexWise #-}
   broadcast = Scalar
   {-# INLINE broadcast #-}
+  update _ x _ = Scalar x
+  {-# INLINE update #-}
 
 -- * Array implementations.
 --   All array implementations have the same structure:

@@ -26,7 +26,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.SubSpace
-  ( SubSpace (..), (!)
+  ( SubSpace (..), (!), element
   , ewfoldMap, iwfoldMap
   , ewzip, iwzip
   ) where
@@ -55,6 +55,8 @@ class ( ConcatList as bs asbs
                     | asbs as -> bs, asbs bs -> as, as bs -> asbs where
     -- | Get an element
     (!.) :: Idx bs -> DataFrame t asbs -> DataFrame t as
+    -- | Set a new value to an element
+    update :: Idx bs -> DataFrame t as -> DataFrame t asbs -> DataFrame t asbs
     -- | Map a function over each element of DataFrame
     ewmap  :: forall s as' asbs'
             . SubSpace s as' bs asbs'
@@ -94,7 +96,14 @@ class ( ConcatList as bs asbs
               -> DataFrame s asbs' -> f (DataFrame t asbs)
 infixr 4 !.
 
-
+-- | Apply a functor over a single element (simple lens)
+element :: forall t as bs asbs f
+         . (SubSpace t as bs asbs, Applicative f)
+        => Idx bs
+        -> (DataFrame t as -> f (DataFrame t as))
+        -> DataFrame t asbs -> f (DataFrame t asbs)
+element i f df = flip (update i) df <$> f (i !. df)
+{-# INLINE element #-}
 
 -- | Index an element (reverse of !.)
 (!) :: SubSpace t as bs asbs
@@ -299,6 +308,19 @@ instance {-# OVERLAPPABLE #-}
         -- Number of primitive elements in the result DataFrame
         !(I# rezLength#) = totalDim (Proxy @asbs)
 
+    update ei x df
+      | I# i <- fromEnum ei
+      , (# off, len, arr #) <- toBytes df
+      , (# offX, lenX, arrX #) <- toBytes x
+      , elS <- elementByteSize df
+      = case runRW#
+          ( \s0 -> case newByteArray# ( len *# elS ) s0 of
+            (# s1, marr #) -> case copyByteArray# arr (off *# elS) marr 0# (len *# elS) s1 of
+              s2 -> case copyByteArray# arrX (offX *# elS) marr (lenX *# i *# elS) (lenX *# elS) s2 of
+                s3 -> unsafeFreezeByteArray# marr s3
+          ) of (# _, r #) -> fromBytes (# 0#, len, r #)
+
+
 -- | This datatype is used to carry compound state in loops
 data StateOffset = SO# Int# (State# RealWorld)
 
@@ -331,3 +353,5 @@ instance {-# OVERLAPPING #-}
     {-# INLINE elementWise #-}
     indexWise f x = EW.ewgenA (\i -> unScalar <$> f i (i !. x))
     {-# INLINE indexWise #-}
+    update i x = EW.update i (unScalar x)
+    {-# INLINE update #-}
