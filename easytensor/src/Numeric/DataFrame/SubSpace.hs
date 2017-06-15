@@ -146,12 +146,11 @@ ewzip :: ( SubSpace t as bs asbs
          , SubSpace s as' bs asbs'
          , SubSpace r as'' bs asbs''
          )
-      => proxy bs
-      -> (DataFrame t as -> DataFrame s as' -> DataFrame r as'')
+      => (DataFrame t as -> DataFrame s as' -> DataFrame r as'')
       -> DataFrame t asbs
       -> DataFrame s asbs'
       -> DataFrame r asbs''
-ewzip _ = iwzip . const
+ewzip = iwzip . const
 {-# INLINE ewzip #-}
 
 
