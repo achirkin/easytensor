@@ -40,12 +40,13 @@ import           GHC.Types                   (Int (..), Type, isTrue#)
 import           Unsafe.Coerce               (unsafeCoerce)
 
 import qualified Numeric.Array.ElementWise   as EW
-import           Numeric.Array.Family
+import           Numeric.Array.Family        hiding (Scalar)
 import           Numeric.Commons
 import           Numeric.DataFrame.Inference
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
 import           Numeric.Scalar              as Scalar
+import           Numeric.Vector              (vec2)
 
 -- | Append one DataFrame to another, adding up their last dimensionality
 (<:>) :: forall (n :: Nat) (m :: Nat) (npm :: Nat) (ds :: [Nat])
@@ -73,15 +74,14 @@ a <:> b = case (# toBytes a, toBytes b
 infixl 5 <:>
 
 -- | Append one DataFrame to another, adding up their last dimensionality
-(<::>) :: forall (ds :: [Nat]) (t :: Type) (n :: Nat)
+(<::>) :: forall (ds :: [Nat]) (t :: Type)
        .  ( PrimBytes (DataFrame t ds)
           , PrimBytes (DataFrame t ds)
-          , PrimBytes (DataFrame t (ds +: n :: [Nat]))
-          , n ~ 2
+          , PrimBytes (DataFrame t (ds +: 2 :: [Nat]))
           )
         => DataFrame t ds
         -> DataFrame t ds
-        -> DataFrame t (ds +: n :: [Nat])
+        -> DataFrame t (ds +: 2 :: [Nat])
 a <::> b = case (# toBytes a, toBytes b
                 , byteSize a
                 , byteSize b
@@ -93,6 +93,14 @@ a <::> b = case (# toBytes a, toBytes b
              s3 -> unsafeFreezeByteArray# mr s3
      ) of (# _, r #) -> fromBytes (# 0#, n1 +# n2, r #)
 infixl 5 <::>
+{-# NOINLINE [1] (<::>) #-}
+
+{-# RULES
+"<::>/vec2-Float"  forall (a :: Scalar Float)  (b :: Scalar Float)  . a <::> b = vec2 (unScalar a) (unScalar b)
+"<::>/vec2-Double" forall (a :: Scalar Double) (b :: Scalar Double) . a <::> b = vec2 (unScalar a) (unScalar b)
+"<::>/vec2-Int"    forall (a :: Scalar Int)    (b :: Scalar Int)    . a <::> b = vec2 (unScalar a) (unScalar b)
+-- "<::>/vec2-Word"   forall (a :: Scalar Word)   (b :: Scalar Word)   . a <::> b = vec2 (unScalar a) (unScalar b)
+  #-}
 
 -- | Append one DataFrame to another, adding up their last dimensionality
 (<+:>) :: forall (ds :: [Nat]) (n :: Nat) (m :: Nat) (t :: Type)

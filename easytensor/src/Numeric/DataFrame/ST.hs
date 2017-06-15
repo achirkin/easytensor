@@ -38,6 +38,7 @@ import           Numeric.Commons
 import           Numeric.DataFrame.Type
 import           Numeric.DataFrame.Mutable
 import           Numeric.Dimensions
+import           Numeric.Scalar
 
 
 -- | Mutable DataFrame that lives in ST.
@@ -100,30 +101,30 @@ thawDataFrame df = STDataFrame <$> ST (thawDataFrame# df)
 -- | Write a single element at the specified index
 writeDataFrame :: forall t (ns :: [Nat]) s
                 . ( MutableFrame t ns, Dimensions ns )
-               => STDataFrame s t ns -> Idx ns -> t -> ST s ()
-writeDataFrame (STDataFrame mdf) ei = ST . writeDataFrame# mdf ei
+               => STDataFrame s t ns -> Idx ns -> Scalar t -> ST s ()
+writeDataFrame (STDataFrame mdf) ei = ST . writeDataFrame# mdf ei . unScalar
 {-# INLINE writeDataFrame #-}
 
 
 -- | Read a single element at the specified index
 readDataFrame :: forall t (ns :: [Nat]) s
                 . ( MutableFrame t ns, Dimensions ns )
-               => STDataFrame s t ns -> Idx ns -> ST s t
-readDataFrame (STDataFrame mdf) = ST . readDataFrame# mdf
+               => STDataFrame s t ns -> Idx ns -> ST s (Scalar t)
+readDataFrame (STDataFrame mdf) = fmap scalar . ST . readDataFrame# mdf
 {-# INLINE readDataFrame #-}
 
 
 -- | Write a single element at the specified element offset
 writeDataFrameOff :: forall t (ns :: [Nat]) s
                 . ( MutableFrame t ns, Dimensions ns )
-               => STDataFrame s t ns -> Int -> t -> ST s ()
-writeDataFrameOff (STDataFrame mdf) (I# i) x = ST $ \s -> (# writeDataFrameOff# mdf i x s, () #)
+               => STDataFrame s t ns -> Int -> Scalar t -> ST s ()
+writeDataFrameOff (STDataFrame mdf) (I# i) x = ST $ \s -> (# writeDataFrameOff# mdf i (unScalar x) s, () #)
 {-# INLINE writeDataFrameOff #-}
 
 
 -- | Read a single element at the specified element offset
 readDataFrameOff :: forall t (ns :: [Nat]) s
                 . ( MutableFrame t ns, Dimensions ns )
-               => STDataFrame s t ns -> Int -> ST s t
-readDataFrameOff (STDataFrame mdf) (I# i) = ST (readDataFrameOff# mdf i)
+               => STDataFrame s t ns -> Int -> ST s (Scalar t)
+readDataFrameOff (STDataFrame mdf) (I# i) = scalar <$> ST (readDataFrameOff# mdf i)
 {-# INLINE readDataFrameOff #-}
