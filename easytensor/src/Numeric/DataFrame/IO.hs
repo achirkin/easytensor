@@ -37,6 +37,7 @@ import           Numeric.Commons
 import           Numeric.DataFrame.Type
 import           Numeric.DataFrame.Mutable
 import           Numeric.Dimensions
+import           Numeric.Scalar
 
 -- | Mutable DataFrame that lives in IO.
 --   Internal representation is always a ByteArray.
@@ -98,30 +99,30 @@ thawDataFrame df = IODataFrame <$> IO (thawDataFrame# df)
 -- | Write a single element at the specified index
 writeDataFrame :: forall t (ns :: [Nat])
                 . ( MutableFrame t ns, Dimensions ns )
-               => IODataFrame t ns -> Idx ns -> t -> IO ()
-writeDataFrame (IODataFrame mdf) ei = IO . writeDataFrame# mdf ei
+               => IODataFrame t ns -> Idx ns -> Scalar t -> IO ()
+writeDataFrame (IODataFrame mdf) ei = IO . writeDataFrame# mdf ei . unScalar
 {-# INLINE writeDataFrame #-}
 
 
 -- | Read a single element at the specified index
 readDataFrame :: forall t (ns :: [Nat])
                 . ( MutableFrame t ns, Dimensions ns )
-               => IODataFrame t ns -> Idx ns -> IO t
-readDataFrame (IODataFrame mdf) = IO . readDataFrame# mdf
+               => IODataFrame t ns -> Idx ns -> IO (Scalar t)
+readDataFrame (IODataFrame mdf) = fmap scalar . IO . readDataFrame# mdf
 {-# INLINE readDataFrame #-}
 
 
 -- | Write a single element at the specified element offset
 writeDataFrameOff :: forall t (ns :: [Nat])
                 . ( MutableFrame t ns, Dimensions ns )
-               => IODataFrame t ns -> Int -> t -> IO ()
-writeDataFrameOff (IODataFrame mdf) (I# i) x = IO $ \s -> (# writeDataFrameOff# mdf i x s, () #)
+               => IODataFrame t ns -> Int -> Scalar t -> IO ()
+writeDataFrameOff (IODataFrame mdf) (I# i) x = IO $ \s -> (# writeDataFrameOff# mdf i (unScalar x) s, () #)
 {-# INLINE writeDataFrameOff #-}
 
 
 -- | Read a single element at the specified element offset
 readDataFrameOff :: forall t (ns :: [Nat])
                 . ( MutableFrame t ns, Dimensions ns )
-               => IODataFrame t ns -> Int -> IO t
-readDataFrameOff (IODataFrame mdf) (I# i) = IO (readDataFrameOff# mdf i)
+               => IODataFrame t ns -> Int -> IO (Scalar t)
+readDataFrameOff (IODataFrame mdf) (I# i) = scalar <$> IO (readDataFrameOff# mdf i)
 {-# INLINE readDataFrameOff #-}
