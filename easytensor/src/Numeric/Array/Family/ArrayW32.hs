@@ -15,7 +15,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Numeric.Array.Family.ArrayI
+-- Module      :  Numeric.Array.Family.ArrayW32
 -- Copyright   :  (c) Artem Chirkin
 -- License     :  BSD3
 --
@@ -24,11 +24,12 @@
 --
 -----------------------------------------------------------------------------
 
-module Numeric.Array.Family.ArrayI () where
+module Numeric.Array.Family.ArrayW32 () where
 
 import           GHC.Base                  (runRW#)
 import           GHC.Prim
 import           GHC.Types                 (Int (..), RuntimeRep (..), isTrue#)
+import           GHC.Word                  (Word32 (..))
 
 import           Numeric.Array.ElementWise
 import           Numeric.Array.Family
@@ -37,57 +38,51 @@ import           Numeric.Dimensions
 
 
 #include "MachDeps.h"
-#define ARR_TYPE                 ArrayI
-#define ARR_FROMSCALAR           FromScalarI#
-#define ARR_CONSTR               ArrayI#
-#define EL_TYPE_BOXED            Int
-#define EL_TYPE_PRIM             Int#
-#define EL_RUNTIME_REP           'IntRep
-#define EL_CONSTR                I#
-#define EL_SIZE                  SIZEOF_HSINT#
-#define EL_ALIGNMENT             ALIGNMENT_HSINT#
-#define EL_ZERO                  0#
-#define EL_ONE                   1#
+#define ARR_TYPE                 ArrayW32
+#define ARR_FROMSCALAR           FromScalarW32#
+#define ARR_CONSTR               ArrayW32#
+#define EL_TYPE_BOXED            Word32
+#define EL_TYPE_PRIM             Word#
+#define EL_RUNTIME_REP           'WordRep
+#define EL_CONSTR                W32#
+#define EL_SIZE                  SIZEOF_WORD32#
+#define EL_ALIGNMENT             ALIGNMENT_WORD32#
+#define EL_ZERO                  0##
+#define EL_ONE                   1##
 #define EL_MINUS_ONE             -1#
-#define INDEX_ARRAY              indexIntArray#
-#define WRITE_ARRAY              writeIntArray#
-#define OP_EQ                    (==#)
-#define OP_NE                    (/=#)
-#define OP_GT                    (>#)
-#define OP_GE                    (>=#)
-#define OP_LT                    (<#)
-#define OP_LE                    (<=#)
-#define OP_PLUS                  (+#)
-#define OP_MINUS                 (-#)
-#define OP_TIMES                 (*#)
-#define OP_NEGATE                negateInt#
+#define INDEX_ARRAY              indexWord32Array#
+#define WRITE_ARRAY              writeWord32Array#
+#define OP_EQ                    eqWord#
+#define OP_NE                    neWord#
+#define OP_GT                    gtWord#
+#define OP_GE                    geWord#
+#define OP_LT                    ltWord#
+#define OP_LE                    leWord#
+#define OP_PLUS                  plusWord#
+#define OP_MINUS                 minusWord#
+#define OP_TIMES                 timesWord#
 #include "Array.h"
 
-
-instance Num (ArrayI ds) where
-  (+) = zipV (+#)
+instance Num (ArrayW32 ds) where
+  (+) = zipV plusWord#
   {-# INLINE (+) #-}
-  (-) = zipV (-#)
+  (-) = zipV minusWord#
   {-# INLINE (-) #-}
-  (*) = zipV (*#)
+  (*) = zipV timesWord#
   {-# INLINE (*) #-}
-  negate = mapV negateInt#
+  negate = mapV (\x -> int2Word# (negateInt# (word2Int# x)))
   {-# INLINE negate #-}
-  abs = mapV (\x -> if isTrue# (x >=# 0#)
-                    then x
-                    else negateInt# x
-                )
+  abs = id
   {-# INLINE abs #-}
-  signum = mapV (\x -> if isTrue# (x ># 0#)
-                       then 1#
-                       else if isTrue# (x <# 0#)
-                            then -1#
-                            else 0#
+  signum = mapV (\x -> if isTrue# (gtWord# x 0##)
+                       then 1##
+                       else 0##
                 )
   {-# INLINE signum #-}
   fromInteger = broadcastArray . fromInteger
   {-# INLINE fromInteger #-}
 
-instance Bounded (ArrayI ds) where
+
+instance Bounded (ArrayW32 ds) where
     minBound = broadcastArray minBound
     maxBound = broadcastArray maxBound

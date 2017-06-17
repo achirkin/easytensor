@@ -52,6 +52,15 @@ library
         Numeric.Array.Family.ArrayF
         Numeric.Array.Family.ArrayD
         Numeric.Array.Family.ArrayI
+        Numeric.Array.Family.ArrayI8
+        Numeric.Array.Family.ArrayI16
+        Numeric.Array.Family.ArrayI32
+        Numeric.Array.Family.ArrayI64
+        Numeric.Array.Family.ArrayW
+        Numeric.Array.Family.ArrayW8
+        Numeric.Array.Family.ArrayW16
+        Numeric.Array.Family.ArrayW32
+        Numeric.Array.Family.ArrayW64
         Numeric.Array.Family.FloatX2
         Numeric.Array.Family.FloatX3
         Numeric.Array.Family.FloatX4
@@ -67,21 +76,7 @@ library
         Numeric.Matrix.Type
     ghc-options: -Wall -fwarn-tabs
 
-
-benchmark easytensor-bench
-
-    type: exitcode-stdio-1.0
-    main-is: Main.hs
-    build-depends:
-        base -any,
-        easytensor -any,
-        dimensions -any
-    default-language: Haskell2010
-    hs-source-dirs: bench
-    ghc-options: -Wall -fwarn-tabs -threaded -rtsopts -with-rtsopts=-N
-
-
-test-suite easytensor-test
+test-suite et-test
 
     type: detailed-0.9
     test-module: Spec
@@ -97,4 +92,33 @@ test-suite easytensor-test
         dimensions -any
     default-language: Haskell2010
     hs-source-dirs: test
-    ghc-options: -Wall -fwarn-tabs -threaded -rtsopts -with-rtsopts=-N
+    ghc-options: -Wall -fwarn-tabs
+
+
+
+benchmark et-bench-misc
+
+    type: exitcode-stdio-1.0
+    main-is: misc.hs
+    build-depends:
+        base -any,
+        easytensor -any,
+        dimensions -any
+    default-language: Haskell2010
+    hs-source-dirs: bench
+    ghc-options: -Wall -fwarn-tabs
+
+
+
+benchmark et-bench-spfolds
+
+    type: exitcode-stdio-1.0
+    main-is: subspacefolds.hs
+    build-depends:
+        base -any,
+        easytensor -any,
+        dimensions -any,
+        time -any
+    default-language: Haskell2010
+    hs-source-dirs: bench
+    ghc-options: -Wall -fwarn-tabs

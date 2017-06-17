@@ -69,6 +69,30 @@ import           Numeric.Matrix.Type
 #include "Array.h"
 
 
+instance Num (ArrayF ds) where
+  (+) = zipV plusFloat#
+  {-# INLINE (+) #-}
+  (-) = zipV minusFloat#
+  {-# INLINE (-) #-}
+  (*) = zipV timesFloat#
+  {-# INLINE (*) #-}
+  negate = mapV negateFloat#
+  {-# INLINE negate #-}
+  abs = mapV (\x -> if isTrue# (geFloat# x 0.0#)
+                    then x
+                    else negateFloat# x
+                )
+  {-# INLINE abs #-}
+  signum = mapV (\x -> if isTrue# (gtFloat# x 0.0#)
+                       then 1.0#
+                       else if isTrue# (ltFloat# x 0.0#)
+                            then -1.0#
+                            else 0.0#
+                )
+  {-# INLINE signum #-}
+  fromInteger = broadcastArray . fromInteger
+  {-# INLINE fromInteger #-}
+
 instance Fractional (ArrayF ds) where
   (/) = zipV divideFloat#
   {-# INLINE (/) #-}

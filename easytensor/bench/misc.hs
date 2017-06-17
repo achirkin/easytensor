@@ -38,7 +38,7 @@ main = do
                     -- m :: KnownNat k => DataFrame '[4,2,k]
         SomeDataFrame m -> print $ vec4 1 2.25 3 0.162 %* m
     putStrLn "Constructing larger matrices"
-    let x :: DataFrame Float '[2,5,4]
+    let x :: DataFrame Double '[2,5,4]
         x =   transpose ( (56707.4   <::> 73558.41  <+:> 47950.074  <+:> 83394.61  <+:> 25611.629 )
                      <::> (53704.516 <::> -3277.478 <+:> 99479.92   <+:> 18915.17  <+:> 59666.938 ) )
          <::> transpose ( (-3035.543 <::> 15831.447 <+:> 73256.625  <+:> 80709.38  <+:> 72695.04  )
@@ -47,12 +47,12 @@ main = do
                      <::> (-8484.239 <::> 16877.531 <+:> 65145.742  <+:> 80219.67  <+:> 81508.87  ) )
          <+:> transpose ( (53105.71  <::> 16255.646 <+:> 23324.957  <+:> -4438.164 <+:> 35369.824 )
                      <::> (67930.45  <::> 8950.834  <+:> 64451.71   <+:> 76685.57  <+:> 6728.465  ) )
-        y :: DataFrame Float '[3,7]
+        y :: DataFrame Double '[3,7]
         y = transpose $
                (70096.85  <::> 34332.492 <+:> 3642.8867 <+:> 25242.25  <+:> 59776.234 <+:> 12092.57 <+:> 10708.498)
           <::> (46447.965 <::> 37145.668 <+:> 56899.656 <+:> 85367.56  <+:> 15872.262 <+:> 87466.24 <+:> 82506.76 )
           <+:> (50458.848 <::> 31650.453 <+:> 71432.78  <+:> 53073.203 <+:> 59267.883 <+:> 82369.89 <+:> 78171.56 )
-        z = ewgen x :: DataFrame Float '[2,5,4,3,7]
+        z = ewgen x :: DataFrame Double '[2,5,4,3,7]
     print $ ewfoldl @_ @'[2] (+) 10 z
     print $ ewfoldr @_ @'[2,5] (+) 0 z + 10
     print $ ewfoldl (+) 10 z - ewfoldr @_ @'[2,5,4] (+) 0 z - 10
@@ -73,7 +73,7 @@ main = do
     -- This means we can even do arbitrary IO for each subtensor
     -- indexed by suffix dimensions.
     putStrLn "\nWelement-wise IO!"
-    rVec <- elementWise @Float @_ @'[4] @_
+    rVec <- elementWise @Double @_ @'[4] @_
               (\v -> print v >> return (sqrt . trace $ v %* transpose v)) x
     putStrLn "\nTraces for each matrix element:"
     print rVec

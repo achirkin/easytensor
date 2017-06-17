@@ -66,15 +66,15 @@ inferPrimBytes = case getArrayInstance @t @ds of
     AIArrayF   -> PrimBytesEvidence
     AIArrayD   -> PrimBytesEvidence
     AIArrayI   -> PrimBytesEvidence
-    AIArrayI8  -> notImplemented
-    AIArrayI16 -> notImplemented
-    AIArrayI32 -> notImplemented
-    AIArrayI64 -> notImplemented
-    AIArrayW   -> notImplemented
-    AIArrayW8  -> notImplemented
-    AIArrayW16 -> notImplemented
-    AIArrayW32 -> notImplemented
-    AIArrayW64 -> notImplemented
+    AIArrayI8  -> PrimBytesEvidence
+    AIArrayI16 -> PrimBytesEvidence
+    AIArrayI32 -> PrimBytesEvidence
+    AIArrayI64 -> PrimBytesEvidence
+    AIArrayW   -> PrimBytesEvidence
+    AIArrayW8  -> PrimBytesEvidence
+    AIArrayW16 -> PrimBytesEvidence
+    AIArrayW32 -> PrimBytesEvidence
+    AIArrayW64 -> PrimBytesEvidence
     AIFloatX2  -> PrimBytesEvidence
     AIFloatX3  -> PrimBytesEvidence
     AIFloatX4  -> PrimBytesEvidence
@@ -89,15 +89,15 @@ inferElementWise = case getArrayInstance @t @ds of
     AIArrayF   -> ElementWiseEvidence
     AIArrayD   -> ElementWiseEvidence
     AIArrayI   -> ElementWiseEvidence
-    AIArrayI8  -> notImplemented
-    AIArrayI16 -> notImplemented
-    AIArrayI32 -> notImplemented
-    AIArrayI64 -> notImplemented
-    AIArrayW   -> notImplemented
-    AIArrayW8  -> notImplemented
-    AIArrayW16 -> notImplemented
-    AIArrayW32 -> notImplemented
-    AIArrayW64 -> notImplemented
+    AIArrayI8  -> ElementWiseEvidence
+    AIArrayI16 -> ElementWiseEvidence
+    AIArrayI32 -> ElementWiseEvidence
+    AIArrayI64 -> ElementWiseEvidence
+    AIArrayW   -> ElementWiseEvidence
+    AIArrayW8  -> ElementWiseEvidence
+    AIArrayW16 -> ElementWiseEvidence
+    AIArrayW32 -> ElementWiseEvidence
+    AIArrayW64 -> ElementWiseEvidence
     AIFloatX2  -> ElementWiseEvidence
     AIFloatX3  -> ElementWiseEvidence
     AIFloatX4  -> ElementWiseEvidence
@@ -128,19 +128,12 @@ inferNumericFrame = case getArrayInstance @t @ds of
     AIArrayF   -> NumericFrameEvidence
     AIArrayD   -> NumericFrameEvidence
     AIArrayI   -> NumericFrameEvidence
-    AIArrayI8  -> notImplemented
-    AIArrayI16 -> notImplemented
-    AIArrayI32 -> notImplemented
-    AIArrayI64 -> notImplemented
-    AIArrayW   -> notImplemented
-    AIArrayW8  -> notImplemented
-    AIArrayW16 -> notImplemented
-    AIArrayW32 -> notImplemented
-    AIArrayW64 -> notImplemented
-
-
-
-
-
-notImplemented :: a
-notImplemented = error "Sorry, not implemented for this data type yet"
+    AIArrayI8  -> NumericFrameEvidence
+    AIArrayI16 -> NumericFrameEvidence
+    AIArrayI32 -> NumericFrameEvidence
+    AIArrayI64 -> NumericFrameEvidence
+    AIArrayW   -> NumericFrameEvidence
+    AIArrayW8  -> NumericFrameEvidence
+    AIArrayW16 -> NumericFrameEvidence
+    AIArrayW32 -> NumericFrameEvidence
+    AIArrayW64 -> NumericFrameEvidence
