@@ -312,28 +312,6 @@ instance Ord (ARR_TYPE ds) where
   {-# INLINE max #-}
 
 
-instance Num (ARR_TYPE ds) where
-  (+) = zipV OP_PLUS
-  {-# INLINE (+) #-}
-  (-) = zipV OP_MINUS
-  {-# INLINE (-) #-}
-  (*) = zipV OP_TIMES
-  {-# INLINE (*) #-}
-  negate = mapV OP_NEGATE
-  {-# INLINE negate #-}
-  abs = mapV (\x -> if isTrue# (OP_GE x EL_ZERO) then x else OP_NEGATE x)
-  {-# INLINE abs #-}
-  signum = mapV (\x -> if isTrue# (OP_GT x EL_ZERO)
-                      then EL_ONE
-                      else if isTrue# (OP_LT x EL_ZERO)
-                           then EL_MINUS_ONE
-                           else EL_ZERO
-                )
-  {-# INLINE signum #-}
-  fromInteger = broadcastArray . fromInteger
-  {-# INLINE fromInteger #-}
-
-
 type instance ElemRep (ARR_TYPE ds) = EL_RUNTIME_REP
 instance Dimensions'' ds => PrimBytes (ARR_TYPE ds) where
   type ElemPrim (ARR_TYPE ds) = EL_TYPE_PRIM
