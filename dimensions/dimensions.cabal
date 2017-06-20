@@ -26,11 +26,16 @@ library
         Numeric.Dimensions.Inference
     build-depends:
         base >=4.9 && <5,
-        ghc >= 8.2.0
+        ghc >= 8.2.0,
+        ghc-prim >= 0.5
     default-language: Haskell2010
     hs-source-dirs: src
     other-modules:
         Numeric.Dimensions.List
+        Numeric.Dimensions.Type
+        Numeric.Dimensions.Dim
+        Numeric.Dimensions.Idx
+        Numeric.Dimensions.Traverse
     ghc-options: -Wall -fwarn-tabs
 
 
