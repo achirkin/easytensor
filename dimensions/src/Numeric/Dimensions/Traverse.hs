@@ -84,10 +84,10 @@ overDim# ds f off0# a0 s0 = case overDim'# ds g off0# a0 s0 of
 
 -- | Same as overDim#, but with no return value
 overDim_# :: Dim (ds :: [Nat])
-         -> (Idx ds -> Int# -> State# s -> (# State# s, () #))
-         -> Int#
-         -> State# s
-         -> (# State# s, () #)
+          -> (Idx ds -> Int# -> State# s -> (# State# s, () #))
+          -> Int#
+          -> State# s
+          -> (# State# s, () #)
 overDim_# ds f off0# s0 = case overDim_'# ds g off0# s0 of
                               (# s1, _ #) -> (# s1, () #)
   where
@@ -112,9 +112,9 @@ overDimIdx# _ _ = error "Impossible Dim structure in overDim# function."
 
 -- | Traverse over all dimensions keeping track of indices
 overDimIdx_# :: Dim (ds :: [Nat])
-            -> (Idx ds -> State# s -> (# State# s, () #))
-            -> State# s
-            -> (# State# s, () #)
+             -> (Idx ds -> State# s -> (# State# s, () #))
+             -> State# s
+             -> (# State# s, () #)
 overDimIdx_# D f = f Z
 overDimIdx_# ((Dn :: Dim n) :* ds) f = overDimIdx_# ds (loop 1)
   where
@@ -137,8 +137,8 @@ overDimOff# ds f off0# = loop off0#
 
 -- | Traverse over all dimensions keeping track of total offset
 overDimOff_# :: Dim (ds :: [Nat])
-            -> (Int# -> State# s -> (# State# s, () #))
-            -> Int# -> State# s -> (# State# s, () #)
+             -> (Int# -> State# s -> (# State# s, () #))
+             -> Int# -> State# s -> (# State# s, () #)
 overDimOff_# ds f off0# = loop off0#
   where
     n = case dimVal ds of I# n# -> n# +# off0#
@@ -146,17 +146,37 @@ overDimOff_# ds f off0# = loop off0#
                 | otherwise = case f off# s of
                                   (# s', () #) -> loop (off# +# 1#) s'
 
+-- | Traverse from the first index to the second index in each dimension.
+--   Indices must be within Dim range, which is not checked.
+--   You can combine positive and negative traversal directions along different dimensions.
+overDimPart# :: forall (ds :: [Nat]) a s
+              . Dimensions ds
+             => Idx ds
+             -> Idx ds
+             -> (Idx ds -> Int# -> a -> State# s -> (# State# s, a #))
+             -> Int#
+             -> a
+             -> State# s
+             -> (# State# s, a #)
+overDimPart# = overDimPart'# offs
+    where
+      offs = createOffsets (dim @ds) 1
+      createOffsets :: forall (ns :: [Nat]) . Dim ns -> Int -> Idx ns
+      createOffsets D _ = Z
+      createOffsets ((Dn :: Dim n) :* ds) k = k :! createOffsets ds (k * dimVal' @n)
+      createOffsets _ _ = error "Impossible Dim structure in overDimPart# function."
+
 
 
 
 
 
 overDim'# :: Dim (ds :: [Nat])
-         -> (Idx ds -> Int# -> a -> State# s -> (# State# s, Int#, a #))
-         -> Int#
-         -> a
-         -> State# s
-         -> (# State# s, Int#,  a #)
+          -> (Idx ds -> Int# -> a -> State# s -> (# State# s, Int#, a #))
+          -> Int#
+          -> a
+          -> State# s
+          -> (# State# s, Int#,  a #)
 overDim'# D f = f Z
 overDim'# ((Dn :: Dim n) :* ds) f = overDim'# ds (loop 1)
   where
@@ -168,10 +188,10 @@ overDim'# _ _ = error "Impossible Dim structure in overDim# function."
 
 
 overDim_'# :: Dim (ds :: [Nat])
-         -> (Idx ds -> Int# -> State# s -> (# State# s, Int# #))
-         -> Int#
-         -> State# s
-         -> (# State# s, Int# #)
+           -> (Idx ds -> Int# -> State# s -> (# State# s, Int# #))
+           -> Int#
+           -> State# s
+           -> (# State# s, Int# #)
 overDim_'# D f = f Z
 overDim_'# ((Dn :: Dim n) :* ds) f = overDim_'# ds (loop 1)
   where
@@ -184,21 +204,24 @@ overDim_'# _ _ = error "Impossible Dim structure in overDim_# function."
 
 overDimPart'# :: Idx (ds :: [Nat])
               -> Idx (ds :: [Nat])
-              -> (Idx ds -> Int# -> a -> State# s -> (# State# s, Int#, a #))
+              -> Idx (ds :: [Nat])
+              -> (Idx ds -> Int# -> a -> State# s -> (# State# s, a #))
               -> Int#
               -> a
               -> State# s
-              -> (# State# s, Int#,  a #)
-overDimPart'# Z Z f = f Z
-overDimPart'# (iMin:!mins) (iMax:!maxs) f = overDimPart'# mins maxs (loop iMin)
+              -> (# State# s, a #)
+overDimPart'# _ Z Z f off0# = f Z off0#
+overDimPart'# (I# iW:!iws) (iMin:!mins) (iMax:!maxs) f off0#
+    | iMax >= iMin = overDimPart'# iws mins maxs (loop iMin) (off0# +# minOff#)
+    | otherwise    = overDimPart'# iws mins maxs (looi iMin) (off0# +# minOff#)
   where
-    loop i js off# a s | i > iMax = (# s, off#, a #)
+    minOff# = case iMin of I# i -> iW *# (i -# 1#)
+    loop i js off# a s | i > iMax = (# s, a #)
                        | otherwise = case f (i:!js) off# a s of
-                               (# s', off1#, b #) -> loop (i+1) js off1# b s'
--- overDim'# _ _ = error "Impossible Dim structure in overDim# function."
-
-
-
+                               (# s', b #) -> loop (i+1) js (off# +# iW) b s'
+    looi i js off# a s | i < iMax = (# s, a #)
+                       | otherwise = case f (i:!js) off# a s of
+                               (# s', b #) -> looi (i-1) js (off# -# iW) b s'
 
 
 
@@ -253,3 +276,13 @@ overDimOff_ ds stf off0# = IO $ overDimOff_# ds (\off#-> case stf off# of
                                                            IO f -> f
                                          ) off0#
 {-# INLINE overDimOff_ #-}
+
+overDimPart :: forall (ds :: [Nat]) a
+             . Dimensions ds
+            => Idx ds -> Idx ds
+            -> (Idx ds -> Int# -> a -> IO a)
+            -> Int# -> a -> IO a
+overDimPart iMin iMax stf off0# = IO . overDimPart# iMin iMax (\i off# a -> case stf i off# a of
+                                                                   IO f -> f
+                                                              ) off0#
+{-# INLINE overDimPart #-}
