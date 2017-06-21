@@ -24,6 +24,7 @@ library
     exposed-modules:
         Numeric.Dimensions
         Numeric.Dimensions.Inference
+        Numeric.TypeLits
     build-depends:
         base >=4.9 && <5,
         ghc >= 8.2.0,

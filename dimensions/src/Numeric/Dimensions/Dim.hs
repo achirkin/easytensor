@@ -18,6 +18,7 @@
 {-# LANGUAGE AllowAmbiguousTypes       #-}
 {-# LANGUAGE Rank2Types                #-}
 {-# LANGUAGE TypeInType                #-}
+{-# LANGUAGE RoleAnnotations           #-}
 -- {-# OPTIONS_GHC -fno-warn-inline-rule-shadowing #-}
 -----------------------------------------------------------------------------
 -- |
@@ -59,11 +60,10 @@ module Numeric.Dimensions.Dim
 --                                           TypeError, natVal, natVal', sameNat,
 --                                           someNatVal)
 import GHC.Exts
-import GHC.TypeLits
+import GHC.Types
 
-import           Unsafe.Coerce           (unsafeCoerce)
-
---import           Numeric.Dimensions.List
+import Numeric.TypeLits
+import           Numeric.Dimensions.List
 
 
 -- | Either known or unknown at compile-time natural number
@@ -79,7 +79,7 @@ data Dim (ns :: k) where
   -- | Zero-rank dimensionality - scalar
   D   :: Dim '[]
   -- | List-like concatenation of dimensionality
-  (:*) :: {-# UNPACK #-} !(Dim n) -> {-# UNPACK #-} !(Dim ns) -> Dim (ConsDim n ns)
+  (:*) :: {-# UNPACK #-} !(Dim n) -> Dim ns -> Dim (ConsDim n ns)
   -- | Proxy-like constructor
   Dn   :: forall (n :: Nat) . KnownDim n => Dim (n :: Nat)
   -- | Nat known at runtime packed into existential constructor
@@ -88,44 +88,7 @@ infixr 5 :*
 
 -- | Same as SomeNat, but for Dimensions:
 --   Hide all information about Dimensions inside
-data SomeDim = forall (ns :: [Nat]) . KnownDims ns => SomeDim (Dim ns)
-
--- | This class gives the int associated with a type-level natural.
---   Valid known dim must be not less than 2.
-class KnownDim (n :: Nat) where
-    -- | Get value of type-level dim at runtime
-    dimVal' :: Int
-
--- | A constraint family that makes sure all subdimensions are known.
-type family KnownDims (ns :: [Nat]) :: Constraint where
-    KnownDims '[] = ()
-    KnownDims (x ': xs) = ( KnownDim x, KnownDims xs )
-
-
-
-instance {-# OVERLAPPABLE #-} (KnownNat n, 21 <= n) => KnownDim n where
-    {-# INLINE dimVal' #-}
-    dimVal' = fromInteger (natVal' (proxy# :: Proxy# n))
-
-instance {-# OVERLAPPING #-} KnownDim 2  where { {-# INLINE dimVal' #-}; dimVal' = 2 }
-instance {-# OVERLAPPING #-} KnownDim 3  where { {-# INLINE dimVal' #-}; dimVal' = 3 }
-instance {-# OVERLAPPING #-} KnownDim 4  where { {-# INLINE dimVal' #-}; dimVal' = 4 }
-instance {-# OVERLAPPING #-} KnownDim 5  where { {-# INLINE dimVal' #-}; dimVal' = 5 }
-instance {-# OVERLAPPING #-} KnownDim 6  where { {-# INLINE dimVal' #-}; dimVal' = 6 }
-instance {-# OVERLAPPING #-} KnownDim 7  where { {-# INLINE dimVal' #-}; dimVal' = 7 }
-instance {-# OVERLAPPING #-} KnownDim 8  where { {-# INLINE dimVal' #-}; dimVal' = 8 }
-instance {-# OVERLAPPING #-} KnownDim 9  where { {-# INLINE dimVal' #-}; dimVal' = 9 }
-instance {-# OVERLAPPING #-} KnownDim 10 where { {-# INLINE dimVal' #-}; dimVal' = 10 }
-instance {-# OVERLAPPING #-} KnownDim 11 where { {-# INLINE dimVal' #-}; dimVal' = 11 }
-instance {-# OVERLAPPING #-} KnownDim 12 where { {-# INLINE dimVal' #-}; dimVal' = 12 }
-instance {-# OVERLAPPING #-} KnownDim 13 where { {-# INLINE dimVal' #-}; dimVal' = 13 }
-instance {-# OVERLAPPING #-} KnownDim 14 where { {-# INLINE dimVal' #-}; dimVal' = 14 }
-instance {-# OVERLAPPING #-} KnownDim 15 where { {-# INLINE dimVal' #-}; dimVal' = 15 }
-instance {-# OVERLAPPING #-} KnownDim 16 where { {-# INLINE dimVal' #-}; dimVal' = 16 }
-instance {-# OVERLAPPING #-} KnownDim 17 where { {-# INLINE dimVal' #-}; dimVal' = 17 }
-instance {-# OVERLAPPING #-} KnownDim 18 where { {-# INLINE dimVal' #-}; dimVal' = 18 }
-instance {-# OVERLAPPING #-} KnownDim 19 where { {-# INLINE dimVal' #-}; dimVal' = 19 }
-instance {-# OVERLAPPING #-} KnownDim 20 where { {-# INLINE dimVal' #-}; dimVal' = 20 }
+data SomeDims = forall (ns :: [Nat]) . KnownDims ns => SomeDims (Dim ns)
 
 
 -- | Get value of type-level dim at runtime.
@@ -137,18 +100,14 @@ dimVal D = 1
 dimVal (d :* ds) = dimVal d * dimVal ds
 {-# INLINE dimVal #-}
 
--- | Similar to `someNatVal`, but for a single dimension
-someDimVal :: Int -> Maybe (Dim XN)
-someDimVal x | 2 > x     = Nothing
-             | otherwise = Just (reifyDim x $ \(_ :: Proxy# n) -> Dx (Dn @n))
-
 -- | Convert a list of ints into unknown type-level Dimensions list
-someDimsVal :: [Int] -> Maybe SomeDim
-someDimsVal []             = Just $ SomeDim D
+someDimsVal :: [Int] -> Maybe SomeDims
+someDimsVal []             = Just $ SomeDims D
 someDimsVal (x:xs) | 2 > x = Nothing
                    | otherwise = do
-  SomeDim ps <- someDimsVal xs
-  return $ reifyDim x $ \(_ :: Proxy# n) -> SomeDim (Dn @n :* ps)
+  SomeDim (_ :: Proxy# n) <- someDimVal x
+  SomeDims ps <- someDimsVal xs
+  return $ SomeDims (Dn @n :* ps)
 
 
 -- | Unify usage of XNat and Nat.
@@ -160,18 +119,6 @@ type family ConsDim (x :: l) (xs :: [k]) = (ys :: [k]) | ys -> x xs l where
     ConsDim  XN        (xs :: [XNat]) = XN  ': xs
 
 
--- | This function does GHC's magic to convert user-supplied `dimVal'` function
---   to create an instance of KnownDim typeclass at runtime.
---   The trick is taken from Edward Kmett's reflection library explained
---   in https://www.schoolofhaskell.com/user/thoughtpolice/using-reflection
-reifyDim :: forall r . Int -> (forall (n :: Nat) . KnownDim n => Proxy# n -> r) -> r
-reifyDim n k = unsafeCoerce (MagicDim k :: MagicDim r) n proxy#
-newtype MagicDim r = MagicDim (forall (n :: Nat) . KnownDim n => Proxy# n -> r)
-
-instance Show (Dim ds) where
-    show D      = "Dim Ø"
-    show ds     = "Dim " ++ dimList ds
-
 dimList :: Dim ds -> String
 dimList  D        = ""
 dimList  d@Dn     = show (dimVal d)
@@ -180,9 +127,14 @@ dimList (d :* D)  = show (dimVal d)
 dimList (d :* ds) = show (dimVal d) ++ ' ':dimList ds
 
 
-instance Show SomeDim where
-    show (SomeDim p) = "Some" ++ show p
 
+
+instance Show (Dim ds) where
+    show D      = "Dim Ø"
+    show ds     = "Dim " ++ dimList ds
+
+instance Show SomeDims where
+    show (SomeDims p) = "Some" ++ show p
 
 class Dimensions (ds :: [Nat]) where
     -- | Dimensionality of our space
@@ -195,3 +147,62 @@ instance Dimensions '[] where
 instance (KnownDim d, Dimensions ds) => Dimensions (d ': ds) where
     dim = Dn :* dim
     {-# INLINE dim #-}
+
+
+
+inferDimensions :: forall (ds :: [Nat])
+                 . (KnownDims ds, FiniteList ds)
+                => Evidence (Dimensions ds)
+inferDimensions = case tList @Nat @ds of
+  TLEmpty -> Evidence
+  TLCons _ (_ :: TypeList ds') -> case inferDimensions @ds' of
+    Evidence -> Evidence
+{-# INLINE inferDimensions #-}
+
+inferDimKnownDims :: forall (ds :: [Nat])
+                   . Dimensions ds
+                  => Evidence (KnownDims ds)
+inferDimKnownDims = inferDimKnownDims' (dim @ds)
+  where
+    inferDimKnownDims' :: forall (ns :: [Nat]) . Dim ns -> Evidence (KnownDims ns)
+    inferDimKnownDims' D = Evidence
+    inferDimKnownDims' (Dn :* ds) = case inferDimKnownDims' ds of Evidence -> Evidence
+    inferDimKnownDims' _ = error "Impossible Dim constructor"
+{-# INLINE inferDimKnownDims #-}
+
+inferDimFiniteList :: forall (ds :: [Nat])
+                    . Dimensions ds
+                   => Evidence (FiniteList ds)
+inferDimFiniteList = inferDimFiniteList' (dim @ds)
+  where
+    inferDimFiniteList' :: forall (ns :: [Nat]) . Dim ns -> Evidence (FiniteList ns)
+    inferDimFiniteList' D = Evidence
+    inferDimFiniteList' (Dn :* ds) = case inferDimFiniteList' ds of Evidence -> Evidence
+    inferDimFiniteList' _ = error "Impossible Dim constructor"
+{-# INLINE inferDimFiniteList #-}
+
+
+
+inferTailDimensions :: forall (ds :: [Nat])
+                    . Dimensions ds
+                    => Evidence (Dimensions (Tail ds))
+inferTailDimensions = case dim @ds of
+    D -> error "Tail dimensions error -- empty Dim list"
+    Dn :* ds' -> reifyDims ds' Evidence
+    _ -> error "Tail dimensions error -- impossible Dim constructor"
+
+
+
+
+
+
+
+
+-- | This function does GHC's magic to convert user-supplied `dimVal'` function
+--   to create an instance of KnownDim typeclass at runtime.
+--   The trick is taken from Edward Kmett's reflection library explained
+--   in https://www.schoolofhaskell.com/user/thoughtpolice/using-reflection
+reifyDims :: forall r (ds :: [Nat]) . Dim ds -> ( Dimensions ds => r) -> r
+reifyDims ds k = unsafeCoerce# (MagicDims k :: MagicDims ds r) ds
+{-# INLINE reifyDims #-}
+newtype MagicDims ds r = MagicDims (Dimensions ds => r)

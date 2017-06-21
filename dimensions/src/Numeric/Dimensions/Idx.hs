@@ -154,7 +154,7 @@ instance IsList (Idx ds) where
 instance Dimensions ds => Enum (Idx ds) where
     succ Z = Z
     succ (i:!is) | i < _     = succ i :! is
-                 | otherwise = 1      :! succ is
+                 | otherwise =      1 :! succ is
     {-# INLINE succ #-}
     pred Z = Z
     {-# INLINE pred #-}

@@ -1,4 +1,5 @@
-{-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
+-- {-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
+{-# LANGUAGE AllowAmbiguousTypes       #-}
 {-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
@@ -8,8 +9,11 @@
 {-# LANGUAGE FunctionalDependencies    #-}
 {-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE MagicHash                 #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE RoleAnnotations           #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
@@ -34,15 +38,18 @@ module Numeric.Dimensions.List
   , Tail, Init, Last, Concat, Reverse, Take, Drop, Suffix, Prefix
   , IsPrefix, IsSuffix
   , ConcatList (..), FiniteList (..), TypeList (..)
-  , inferConcat, inferSuffix, inferPrefix, ConcatEvidence (..), FiniteListEvidence (..)
-  , NonEmptyListEvidence (..), inferNonEmptyList
+  , inferConcat, inferSuffix, inferPrefix, ConcatEvidence, FiniteListEvidence
+  , NonEmptyListEvidence, inferNonEmptyList
+  , inferKnownLength
+  , inferTailFiniteList, inferConcatFiniteList
+  , inferPrefixFiniteList, inferSuffixFiniteList
+  , inferSnocFiniteList, inferInitFiniteList
+  , inferTakeNFiniteList, inferDropNFiniteList, inferReverseFiniteList
   ) where
 
-import           Data.Proxy         (Proxy (..))
-import           Data.Type.Equality ((:~:)(..))
-import           GHC.TypeLits       (Nat, KnownNat, type(-), type(+), natVal
-                                    ,TypeError, ErrorMessage(..))
-import           Unsafe.Coerce      (unsafeCoerce)
+import           Data.Proxy       (Proxy (..))
+import           Numeric.TypeLits
+import           Unsafe.Coerce    (unsafeCoerce)
 
 -- | Synonym for a type-level cons
 --     (injective, since this is just a synonym for the list constructor)
@@ -188,136 +195,149 @@ instance ( asbs ~ Concat as bs
 -- | Type level list, used together with FiniteList typeclass
 data TypeList (xs :: [k]) where
     TLEmpty :: TypeList '[]
-    TLCons :: FiniteList xs => Proxy x -> TypeList xs -> TypeList (x :+ xs)
+    TLCons  :: FiniteList xs => !(Proxy# x) -> TypeList xs -> TypeList (x :+ xs)
 
 -- | Type-level list that is known to be finite.
 --   Basically, provides means to get its length and term-level rep (via TypeList)
-class KnownNat (Length xs) => FiniteList (xs :: [k]) where
+class FiniteList (xs :: [k]) where
     -- | Length of a type-level list at type level
     type Length xs :: Nat
     -- | Length of a type-level list at term level
-    order :: t xs -> Int
+    order :: Int
     -- | Get type-level constructed list
-    tList :: t xs -> TypeList xs
-    -- | Infer that concatenation is also finite
-    inferConcatFiniteList :: forall (bs :: [k]) (p :: [k] -> *) (q :: [k] -> *)
-                          . FiniteList bs
-                         => p xs
-                         -> q bs
-                         -> FiniteListEvidence (xs ++ bs)
-    -- | Infer that prefix is also finite
-    inferPrefixFiniteList :: (IsSuffix bs xs ~ 'True, FiniteList bs)
-                         => p bs
-                         -> q xs
-                         -> FiniteListEvidence (Prefix bs xs)
-    -- | Infer that suffix is also finite
-    inferSuffixFiniteList :: (IsPrefix as xs ~ 'True, FiniteList as)
-                         => p as
-                         -> q xs
-                         -> FiniteListEvidence (Suffix as xs)
-    -- | Make snoc almost as good as cons
-    inferSnocFiniteList :: p xs -> q z -> FiniteListEvidence (xs +: z)
-    -- | Init of the list is also known list
-    inferInitFiniteList :: p xs -> FiniteListEvidence (Init xs)
-    -- | Tail of the list is also known list
-    inferTailFiniteList :: p xs -> FiniteListEvidence (Tail xs)
-    -- | Take KnownNat of the list is also known list
-    inferTakeNFiniteList :: KnownNat n => p n -> q xs -> FiniteListEvidence (Take n xs)
-    -- | Drop KnownNat of the list is also known list
-    inferDropNFiniteList :: KnownNat n => p n -> q xs -> FiniteListEvidence (Drop n xs)
-    -- | Reverse of the list is also known list
-    inferReverseFiniteList :: q xs -> FiniteListEvidence (Reverse xs)
+    tList :: TypeList xs
 
 
 
 instance FiniteList ('[] :: [k]) where
     type Length '[] = 0
-    order _ = 0
+    order = 0
     {-# INLINE order #-}
-    tList _ = TLEmpty
+    tList = TLEmpty
     {-# INLINE tList #-}
-    inferConcatFiniteList _ (_ :: q bs) = FiniteListEvidence :: FiniteListEvidence bs
-    {-# INLINE inferConcatFiniteList #-}
-    inferPrefixFiniteList (_ :: p bs) _
-      | Refl <- unsafeCoerce Refl :: bs :~: '[] = FiniteListEvidence
-    {-# INLINE inferPrefixFiniteList #-}
-    inferSuffixFiniteList (_ :: p as) _
-      | Refl <- unsafeCoerce Refl :: as :~: '[] = FiniteListEvidence
-    {-# INLINE inferSuffixFiniteList #-}
-    inferSnocFiniteList _ _ = FiniteListEvidence
-    {-# INLINE inferSnocFiniteList #-}
-    inferInitFiniteList _ = error "Init -- empty type-level list"
-    {-# INLINE inferInitFiniteList #-}
-    inferTailFiniteList _ = error "Tail -- empty type-level list"
-    {-# INLINE inferTailFiniteList #-}
-    inferTakeNFiniteList _ _ = FiniteListEvidence
-    {-# INLINE inferTakeNFiniteList #-}
-    inferDropNFiniteList _ _ = FiniteListEvidence
-    {-# INLINE inferDropNFiniteList #-}
-    inferReverseFiniteList _ = FiniteListEvidence
-    {-# INLINE inferReverseFiniteList #-}
 
 instance FiniteList xs => FiniteList (x :+ xs :: [k]) where
     type Length (x :+ xs) = Length xs + 1
-    order _ = fromInteger (natVal (Proxy @(Length (x :+ xs))))
+    order = 1 + order @k @xs
     {-# INLINE order #-}
-    tList _ = TLCons Proxy (tList (Proxy :: Proxy xs))
+    tList = TLCons proxy# (tList @k @xs)
     {-# INLINE tList #-}
-    inferConcatFiniteList _ (pbs :: p bs)
-      | FiniteListEvidence  <- inferConcatFiniteList (Proxy @xs) pbs
-      , Refl <- unsafeCoerce Refl :: x :+ (xs ++ bs) :~: ((x :+ xs) ++ bs)
-      = FiniteListEvidence :: FiniteListEvidence (x :+ (xs ++ bs))
-    {-# INLINE inferConcatFiniteList #-}
-    inferPrefixFiniteList (_ :: p bs) xs
-      | Refl <- unsafeCoerce Refl :: Prefix bs (x :+ xs) :~: Take (Length (x :+ xs) - Length bs) (x :+ xs)
-      = inferTakeNFiniteList (Proxy @(Length (x :+ xs) - Length bs)) xs
-    {-# INLINE inferPrefixFiniteList #-}
-    inferSuffixFiniteList (pas :: p as) _
-      | TLEmpty <- tList pas
-        = FiniteListEvidence
-      | TLCons _ (pas' :: TypeList as') <- tList pas
-      , Refl <- unsafeCoerce Refl :: IsPrefix as' xs :~: 'True
-      , Refl <- unsafeCoerce Refl :: Suffix as' xs :~: Suffix as (x :+ xs)
-      , FiniteListEvidence <- inferSuffixFiniteList pas' (Proxy @xs)
-        = FiniteListEvidence :: FiniteListEvidence (Suffix as' xs)
-      | otherwise = error "inferSuffixFiniteList: TypeList failed to pattern match"
-    {-# INLINE inferSuffixFiniteList #-}
-    inferSnocFiniteList _ (q :: q z)
-      | FiniteListEvidence <- inferSnocFiniteList (Proxy @xs) q
-      , Refl <- unsafeCoerce Refl :: (x :+ (xs +: z)) :~: ((x :+ xs) +: z)
-      = FiniteListEvidence :: FiniteListEvidence (x :+ (xs +: z))
-    {-# INLINE inferSnocFiniteList #-}
-    inferInitFiniteList _ = case tList (Proxy @xs) of
-        TLEmpty -> FiniteListEvidence
-        TLCons _ _ -> case inferInitFiniteList (Proxy @xs) of
-          FiniteListEvidence -> FiniteListEvidence :: FiniteListEvidence (x :+ Init xs)
-    {-# INLINE inferInitFiniteList #-}
-    inferTailFiniteList _ = FiniteListEvidence
-    {-# INLINE inferTailFiniteList #-}
-    inferTakeNFiniteList (pn :: p n) _
-      | 0 <- natVal pn
-      , Refl <- unsafeCoerce Refl :: Take n (x :+ xs) :~: '[]
-        = FiniteListEvidence :: FiniteListEvidence '[]
-      | otherwise
-      , Refl <- unsafeCoerce Refl :: Take n (x :+ xs) :~: (x :+ Take (n-1) xs)
-      , FiniteListEvidence <- inferTakeNFiniteList (Proxy @(n-1)) (Proxy @xs)
-        = FiniteListEvidence :: FiniteListEvidence (x :+ Take (n-1) xs)
-    {-# INLINE inferTakeNFiniteList #-}
-    inferDropNFiniteList (pn :: p n) _
-      | 0 <- natVal pn
-      , Refl <- unsafeCoerce Refl :: Drop n (x :+ xs) :~: (x :+ xs)
-        = FiniteListEvidence :: FiniteListEvidence (x :+ xs)
-      | otherwise
-      , Refl <- unsafeCoerce Refl :: Drop n (x :+ xs) :~: Drop (n-1) xs
-      , FiniteListEvidence <- inferDropNFiniteList (Proxy @(n-1)) (Proxy @xs)
-        = FiniteListEvidence :: FiniteListEvidence (Drop (n-1) xs)
-    {-# INLINE inferDropNFiniteList #-}
-    inferReverseFiniteList _
-      | FiniteListEvidence <- inferReverseFiniteList (Proxy @xs)
-      , FiniteListEvidence <- inferSnocFiniteList (Proxy @(Reverse xs)) (Proxy @x)
-      , Refl <- unsafeCoerce Refl :: Reverse (x :+ xs) :~: (Reverse xs +: x)
-       = FiniteListEvidence :: FiniteListEvidence (Reverse xs +: x)
-    {-# INLINE inferReverseFiniteList #-}
+
+
+
+unsafeEqEvidence :: forall x y . Evidence (x ~ y)
+unsafeEqEvidence = unsafeCoerce (Evidence @())
+{-# INLINE unsafeEqEvidence #-}
+
+-- | Length of a finite list is known and equal to `order` of the list
+inferKnownLength :: forall xs . FiniteList xs => Evidence (KnownDim (Length xs))
+inferKnownLength = reifyDim (order @_ @xs) $
+      \(_ :: Proxy# n) -> unsafeCoerce (Evidence @(KnownDim n))
+{-# INLINE inferKnownLength #-}
+
+
+-- | Tail of the list is also known list
+inferTailFiniteList :: forall xs . FiniteList xs => Evidence (FiniteList (Tail xs))
+inferTailFiniteList = case tList @_ @xs of
+  TLEmpty    -> error "Tail of FiniteList -- empty type-level list"
+  TLCons _ _ -> Evidence
+{-# INLINE inferTailFiniteList #-}
+
+-- | Infer that concatenation is also finite
+inferConcatFiniteList :: forall as bs
+                       . (FiniteList as, FiniteList bs)
+                      => Evidence (FiniteList (as ++ bs))
+inferConcatFiniteList = case tList @_ @as of
+  TLEmpty -> Evidence
+  TLCons (_ :: Proxy# a) (_ :: TypeList as') -> case inferConcatFiniteList @as' @bs of
+      Evidence -> case unsafeEqEvidence @((a ': as') ++ bs) @(a ': (as' ++ bs)) of
+        Evidence -> Evidence
+{-# INLINE inferConcatFiniteList #-}
+
+
+-- | Infer that prefix is also finite
+inferPrefixFiniteList :: forall bs asbs
+                       . (IsSuffix bs asbs ~ 'True, FiniteList bs, FiniteList asbs)
+                      => Evidence (FiniteList (Prefix bs asbs))
+inferPrefixFiniteList = reifyDim (order @_ @asbs - order @_ @bs) $
+      \(_ :: Proxy# n) -> unsafeCoerce (inferTakeNFiniteList @n @asbs)
+{-# INLINE inferPrefixFiniteList #-}
+
+-- | Infer that suffix is also finite
+inferSuffixFiniteList :: forall as asbs
+                       . (IsPrefix as asbs ~ 'True, FiniteList as, FiniteList asbs)
+                      => Evidence (FiniteList (Suffix as asbs))
+inferSuffixFiniteList = case tList @_ @as of
+  TLEmpty -> Evidence
+  TLCons _ (_ :: TypeList as') -> case tList @_ @asbs of
+    TLCons _ (_ :: TypeList asbs') -> case unsafeEqEvidence @(IsPrefix as' asbs') @'True
+                                  `sumEvs` unsafeEqEvidence @(Suffix as' asbs') @(Suffix as asbs) of
+      Evidence -> inferSuffixFiniteList @as' @asbs'
+{-# INLINE inferSuffixFiniteList #-}
+
+-- | Make snoc almost as good as cons
+inferSnocFiniteList :: forall xs z
+                     . FiniteList xs
+                    => Evidence (FiniteList (xs +: z))
+inferSnocFiniteList = case tList @_ @xs of
+  TLEmpty -> Evidence
+  TLCons (_ :: Proxy# x) (_ :: TypeList xs') -> case inferSnocFiniteList @xs' @z
+                                            `sumEvs` unsafeEqEvidence @(x :+ (xs' +: z)) @(xs +: z) of
+    Evidence -> Evidence
+{-# INLINE inferSnocFiniteList #-}
+
+-- | Init of the list is also known list
+inferInitFiniteList :: forall xs
+                     . FiniteList xs
+                    => Evidence (FiniteList (Init xs))
+inferInitFiniteList = case tList @_ @xs of
+  TLEmpty -> error "Init of FiniteList -- empty type-level list"
+  TLCons _ TLEmpty -> Evidence
+  TLCons _ (TLCons _ _ :: TypeList xs') -> case inferInitFiniteList @xs' of
+    Evidence -> Evidence
+{-# INLINE inferInitFiniteList #-}
+
+-- | Take KnownDim of the list is also known list
+inferTakeNFiniteList :: forall n xs
+                      . (KnownDim n, FiniteList xs)
+                     => Evidence (FiniteList (Take n xs))
+inferTakeNFiniteList = case magic (dimVal' @n) (tList @_ @xs) of
+      TLEmpty    -> Evidence
+      TLCons _ _ -> Evidence
+    where
+      magic :: forall ns . Int -> TypeList ns -> TypeList (Take n ns)
+      magic _ TLEmpty = TLEmpty
+      magic 0 _ = unsafeCoerce TLEmpty
+      magic n (TLCons p tl) = unsafeCoerce $ TLCons p (unsafeCoerce $ magic (n-1) tl :: TypeList (Tail ns))
+{-# INLINE inferTakeNFiniteList #-}
+
+-- | Drop KnownDim of the list is also known list
+inferDropNFiniteList :: forall n xs
+                      . (KnownDim n, FiniteList xs)
+                     => Evidence (FiniteList (Drop n xs))
+inferDropNFiniteList = case magic (dimVal' @n) (tList @_ @xs) of
+      TLEmpty    -> Evidence
+      TLCons _ _ -> Evidence
+    where
+      magic :: forall ns . Int -> TypeList ns -> TypeList (Drop n ns)
+      magic _ TLEmpty       = TLEmpty
+      magic 0 tl            = unsafeCoerce tl
+      magic n (TLCons _ tl) = unsafeCoerce $ magic (n-1) tl
+{-# INLINE inferDropNFiniteList #-}
+
+-- | Reverse of the list is also known list
+inferReverseFiniteList :: forall xs . FiniteList xs => Evidence (FiniteList (Reverse xs))
+inferReverseFiniteList = case magic (tList @_ @xs) (unsafeCoerce TLEmpty) of
+      TLEmpty    -> Evidence
+      TLCons _ _ -> Evidence
+    where
+      magic :: forall ns . TypeList ns -> TypeList (Reverse ns) -> TypeList (Reverse ns)
+      magic TLEmpty xs = xs
+      magic (TLCons p sx) TLEmpty = magic (unsafeCoerce sx :: TypeList ns)
+                                          (unsafeCoerce (TLCons p TLEmpty) :: TypeList (Reverse ns))
+      magic (TLCons p sx) xs@(TLCons _ _) = magic (unsafeCoerce sx :: TypeList ns)
+                                                  (unsafeCoerce (TLCons p xs) :: TypeList (Reverse ns))
+{-# INLINE inferReverseFiniteList #-}
 
 
 --------------------------------------------------------------------------------
@@ -326,50 +346,52 @@ instance FiniteList xs => FiniteList (x :+ xs :: [k]) where
 
 -- | Various kinds of proofs to make sure we infer list operations and constrains
 --   over simple cons ar snoc
-data NonEmptyListEvidence xs
-  = NonEmptyList xs => NonEmptyListEvidence
+type NonEmptyListEvidence xs
+  = Evidence (NonEmptyList xs)
 
 -- | Pattern-matching on the constructor of this type
 --   brings an evidence that `as ++ bs ~ asbs`
-data ConcatEvidence (as :: [k]) (bs :: [k]) (asbs :: [k])
-  = ( asbs ~ Concat as bs
+type ConcatEvidence (as :: [k]) (bs :: [k]) (asbs :: [k])
+  = Evidence ( asbs ~ Concat as bs
     , as   ~ Prefix bs asbs
     , bs   ~ Suffix as asbs
     , IsSuffix bs asbs ~ 'True
     , IsPrefix as asbs ~ 'True
-    ) => ConcatEvidence
+    )
 
 -- | Pattern-matching on the constructor of this type
 --   brings an evidence that the type-level parameter list is finite
-data FiniteListEvidence (xs :: [k])
-  = FiniteList xs => FiniteListEvidence
+type FiniteListEvidence (xs :: [k])
+  = Evidence (FiniteList xs)
 
 
 -- | Various kinds of proofs to make sure we infer list operations and constrains
 --   over cons constructor
 inferNonEmptyList ::  forall x xs . NonEmptyListEvidence (x ': xs)
-inferNonEmptyList = unsafeCoerce (NonEmptyListEvidence @'[x])
+inferNonEmptyList = unsafeCoerce (Evidence :: NonEmptyListEvidence '[x])
 
 -- | Any two type-level lists can be concatenated,
 --   so we just fool the compiler by unsafeCoercing proxy-like data type.
-inferConcat :: p as -> q bs -> ConcatEvidence as bs (as ++ bs)
-inferConcat _ _ = unsafeCoerce (ConcatEvidence :: ConcatEvidence ('[] :: [()]) ('[] :: [()]) ('[] :: [()]))
+inferConcat :: forall as bs . ConcatEvidence as bs (as ++ bs)
+inferConcat = unsafeCoerce (Evidence :: ConcatEvidence ('[] :: [()]) ('[] :: [()]) ('[] :: [()]))
 {-# INLINE inferConcat #-}
 
 
 -- | `as` being prefix of `asbs` is enough to infer some concatenation relations
 --   so we just fool the compiler by unsafeCoercing proxy-like data type.
-inferSuffix :: IsPrefix as asbs ~ 'True
-            => p as -> q asbs -> ConcatEvidence as (Suffix as asbs) asbs
-inferSuffix _ _ = unsafeCoerce (ConcatEvidence :: ConcatEvidence ('[] :: [()]) ('[] :: [()]) ('[] :: [()]))
+inferSuffix :: forall as asbs
+             . IsPrefix as asbs ~ 'True
+            => ConcatEvidence as (Suffix as asbs) asbs
+inferSuffix = unsafeCoerce (Evidence :: ConcatEvidence ('[] :: [()]) ('[] :: [()]) ('[] :: [()]))
 {-# INLINE inferSuffix #-}
 
 
 -- | `bs` being suffix of `asbs` is enough to infer some concatenation relations
 --   so we just fool the compiler by unsafeCoercing proxy-like data type.
-inferPrefix :: IsSuffix bs asbs ~ 'True
-            => p bs -> q asbs -> ConcatEvidence (Prefix bs asbs) bs asbs
-inferPrefix _ _ = unsafeCoerce (ConcatEvidence :: ConcatEvidence ('[] :: [()]) ('[] :: [()]) ('[] :: [()]))
+inferPrefix :: forall bs asbs
+             . IsSuffix bs asbs ~ 'True
+            => ConcatEvidence (Prefix bs asbs) bs asbs
+inferPrefix = unsafeCoerce (Evidence :: ConcatEvidence ('[] :: [()]) ('[] :: [()]) ('[] :: [()]))
 {-# INLINE inferPrefix #-}
 
 
