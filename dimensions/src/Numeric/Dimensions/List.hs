@@ -197,6 +197,10 @@ data TypeList (xs :: [k]) where
     TLEmpty :: TypeList '[]
     TLCons  :: FiniteList xs => !(Proxy# x) -> TypeList xs -> TypeList (x :+ xs)
 
+instance Show (TypeList xs) where
+    show TLEmpty = "TLEmpty"
+    show (TLCons _ xs) = "TLCons " ++ show xs
+
 -- | Type-level list that is known to be finite.
 --   Basically, provides means to get its length and term-level rep (via TypeList)
 class FiniteList (xs :: [k]) where
@@ -231,16 +235,18 @@ unsafeEqEvidence = unsafeCoerce (Evidence @())
 
 -- | Length of a finite list is known and equal to `order` of the list
 inferKnownLength :: forall xs . FiniteList xs => Evidence (KnownDim (Length xs))
-inferKnownLength = reifyDim (order @_ @xs) $
-      \(_ :: Proxy# n) -> unsafeCoerce (Evidence @(KnownDim n))
+inferKnownLength = reifyDim (order @_ @xs) f
+  where
+    f :: forall n . KnownDim n => Proxy# n -> Evidence (KnownDim (Length xs))
+    f _ = unsafeCoerce (Evidence @(KnownDim n))
 {-# INLINE inferKnownLength #-}
 
 
 -- | Tail of the list is also known list
-inferTailFiniteList :: forall xs . FiniteList xs => Evidence (FiniteList (Tail xs))
+inferTailFiniteList :: forall xs . FiniteList xs => Maybe (Evidence (FiniteList (Tail xs)))
 inferTailFiniteList = case tList @_ @xs of
-  TLEmpty    -> error "Tail of FiniteList -- empty type-level list"
-  TLCons _ _ -> Evidence
+  TLEmpty    -> Nothing
+  TLCons _ _ -> Just Evidence
 {-# INLINE inferTailFiniteList #-}
 
 -- | Infer that concatenation is also finite
@@ -249,8 +255,8 @@ inferConcatFiniteList :: forall as bs
                       => Evidence (FiniteList (as ++ bs))
 inferConcatFiniteList = case tList @_ @as of
   TLEmpty -> Evidence
-  TLCons (_ :: Proxy# a) (_ :: TypeList as') -> case inferConcatFiniteList @as' @bs of
-      Evidence -> case unsafeEqEvidence @((a ': as') ++ bs) @(a ': (as' ++ bs)) of
+  TLCons _ (_ :: TypeList as') -> case inferConcatFiniteList @as' @bs of
+      Evidence -> case unsafeEqEvidence @(as ++ bs) @(Head as ': (as' ++ bs)) of
         Evidence -> Evidence
 {-# INLINE inferConcatFiniteList #-}
 
@@ -259,8 +265,10 @@ inferConcatFiniteList = case tList @_ @as of
 inferPrefixFiniteList :: forall bs asbs
                        . (IsSuffix bs asbs ~ 'True, FiniteList bs, FiniteList asbs)
                       => Evidence (FiniteList (Prefix bs asbs))
-inferPrefixFiniteList = reifyDim (order @_ @asbs - order @_ @bs) $
-      \(_ :: Proxy# n) -> unsafeCoerce (inferTakeNFiniteList @n @asbs)
+inferPrefixFiniteList = reifyDim (order @_ @asbs - order @_ @bs) f
+  where
+    f :: forall n . KnownDim n => Proxy# n -> Evidence (FiniteList (Prefix bs asbs))
+    f _ = unsafeCoerce (inferTakeNFiniteList @n @asbs)
 {-# INLINE inferPrefixFiniteList #-}
 
 -- | Infer that suffix is also finite
@@ -281,34 +289,36 @@ inferSnocFiniteList :: forall xs z
                     => Evidence (FiniteList (xs +: z))
 inferSnocFiniteList = case tList @_ @xs of
   TLEmpty -> Evidence
-  TLCons (_ :: Proxy# x) (_ :: TypeList xs') -> case inferSnocFiniteList @xs' @z
-                                            `sumEvs` unsafeEqEvidence @(x :+ (xs' +: z)) @(xs +: z) of
+  TLCons _ (_ :: TypeList xs') -> case inferSnocFiniteList @xs' @z
+                              `sumEvs` unsafeEqEvidence @(Head xs :+ (xs' +: z)) @(xs +: z) of
     Evidence -> Evidence
 {-# INLINE inferSnocFiniteList #-}
 
 -- | Init of the list is also known list
 inferInitFiniteList :: forall xs
                      . FiniteList xs
-                    => Evidence (FiniteList (Init xs))
+                    => Maybe (Evidence (FiniteList (Init xs)))
 inferInitFiniteList = case tList @_ @xs of
-  TLEmpty -> error "Init of FiniteList -- empty type-level list"
-  TLCons _ TLEmpty -> Evidence
+  TLEmpty -> Nothing
+  TLCons _ TLEmpty -> Just Evidence
   TLCons _ (TLCons _ _ :: TypeList xs') -> case inferInitFiniteList @xs' of
-    Evidence -> Evidence
+    Just Evidence -> Just Evidence
+    Nothing -> Nothing
 {-# INLINE inferInitFiniteList #-}
 
 -- | Take KnownDim of the list is also known list
 inferTakeNFiniteList :: forall n xs
                       . (KnownDim n, FiniteList xs)
                      => Evidence (FiniteList (Take n xs))
-inferTakeNFiniteList = case magic (dimVal' @n) (tList @_ @xs) of
-      TLEmpty    -> Evidence
-      TLCons _ _ -> Evidence
+inferTakeNFiniteList = magic @n @xs (dimVal' @n) (tList @_ @xs)
     where
-      magic :: forall ns . Int -> TypeList ns -> TypeList (Take n ns)
-      magic _ TLEmpty = TLEmpty
-      magic 0 _ = unsafeCoerce TLEmpty
-      magic n (TLCons p tl) = unsafeCoerce $ TLCons p (unsafeCoerce $ magic (n-1) tl :: TypeList (Tail ns))
+      magic :: forall m ns . Int -> TypeList ns -> Evidence (FiniteList (Take m ns))
+      magic _ TLEmpty = Evidence
+      magic 0 _ = case unsafeEqEvidence @(Take m ns) @'[] of
+              Evidence -> Evidence
+      magic n (TLCons _ tl) = case unsafeEqEvidence @(Head ns ': Take (m-1) (Tail ns)) @(Take m ns) of
+              Evidence -> case magic @(m-1) @(Tail ns) (n-1) tl of
+                Evidence -> Evidence
 {-# INLINE inferTakeNFiniteList #-}
 
 -- | Drop KnownDim of the list is also known list
@@ -333,10 +343,11 @@ inferReverseFiniteList = case magic (tList @_ @xs) (unsafeCoerce TLEmpty) of
     where
       magic :: forall ns . TypeList ns -> TypeList (Reverse ns) -> TypeList (Reverse ns)
       magic TLEmpty xs = xs
-      magic (TLCons p sx) TLEmpty = magic (unsafeCoerce sx :: TypeList ns)
-                                          (unsafeCoerce (TLCons p TLEmpty) :: TypeList (Reverse ns))
-      magic (TLCons p sx) xs@(TLCons _ _) = magic (unsafeCoerce sx :: TypeList ns)
-                                                  (unsafeCoerce (TLCons p xs) :: TypeList (Reverse ns))
+      magic (TLCons p sx) xs = case xs of
+        TLCons _ _ -> magic (unsafeCoerce sx :: TypeList ns)
+                            (unsafeCoerce (TLCons p xs) :: TypeList (Reverse ns))
+        _ -> magic (unsafeCoerce sx :: TypeList ns)
+                   (unsafeCoerce (TLCons p TLEmpty) :: TypeList (Reverse ns))
 {-# INLINE inferReverseFiniteList #-}
 
 
