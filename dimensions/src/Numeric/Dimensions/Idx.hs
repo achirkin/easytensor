@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes       #-}
 {-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
@@ -9,16 +10,14 @@
 {-# LANGUAGE MagicHash                 #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE Rank2Types                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE TypeFamilyDependencies    #-}
+{-# LANGUAGE TypeInType                #-}
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UndecidableInstances      #-}
-{-# LANGUAGE AllowAmbiguousTypes       #-}
-{-# LANGUAGE Rank2Types                #-}
-{-# LANGUAGE TypeInType                #-}
--- {-# OPTIONS_GHC -fno-warn-inline-rule-shadowing #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.Idx
@@ -27,39 +26,23 @@
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
--- Provides a data type Idx that enumerates through multiple dimensions.
--- Lower indices go first, i.e. assumed enumeration
---          is i = i1 + i2*n1 + i3*n1*n2 + ... + ik*n1*n2*...*n(k-1).
--- This is also to encourage column-first matrix enumeration and array layout.
---
--- Some of the type-level list operations are implemented using type families
---   and weirdly duplicated for kinds k,Nat,XNat:
---   This duplication is needed to workaround some GHC bugs (panic with "no skolem info")
 -----------------------------------------------------------------------------
 
 module Numeric.Dimensions.Idx
   ( -- * Data types
     Idx (..)
+  , appendIdx, splitIdx
   ) where
 
 
--- import           Control.Arrow           (first)
--- import           Data.Maybe              (isJust)
--- import           Data.Type.Equality      ((:~:) (..))
--- import           GHC.Exts                (Constraint, IsList (..), Proxy#,
---                                           State#, proxy#)
--- import           GHC.TypeLits            (type (+), type (-), type (<=),
---                                           type (<=?), ErrorMessage (..),
---                                           KnownNat, Nat, SomeNat (..),
---                                           TypeError, natVal, natVal', sameNat,
---                                           someNatVal)
--- import GHC.Exts
-import GHC.TypeLits
-import GHC.Exts                (IsList (..))
-import Numeric.Dimensions.Dim
---import Numeric.Dimensions.List
-
+import           Control.Arrow           (first)
+import           GHC.Exts                (IsList (..))
 import           Unsafe.Coerce           (unsafeCoerce)
+
+import           Numeric.Dimensions.Dim
+import           Numeric.Dimensions.List
+import           Numeric.TypeLits
+
 
 
 -- | Type-level dimensional indexing with arbitrary Int values inside
@@ -78,27 +61,62 @@ idxFromList :: [Int] -> Idx ds
 idxFromList []     = unsafeCoerce Z
 idxFromList (x:xs) = unsafeCoerce $ x :! unsafeCoerce (idxFromList xs)
 
--- appendIdx :: Idx as -> Int -> Idx (as +: b)
--- appendIdx Z i = i :! Z
--- appendIdx jjs@(j :! js) i = case proofCons jjs js of
---     Refl -> unsafeCoerce $ j :! appendIdx js i
---   where
---     proofCons :: Idx as -> Idx bs -> as :~: (b :+ bs)
---     proofCons _ _ = unsafeCoerce Refl
--- {-# INLINE appendIdx #-}
---
--- splitIdx :: FiniteList as => Idx (as ++ bs) -> (Idx as, Idx bs)
--- splitIdx idx = rez
---   where
---     getAs :: (Idx as, Idx bs) -> Proxy as
---     getAs _ = Proxy
---     rez = splitN (order $ getAs rez) idx
---     splitN :: Int -> Idx (as ++ bs) -> (Idx as, Idx bs)
---     splitN 0 js = unsafeCoerce (Z, js)
---     splitN n (j :! js) = first (unsafeCoerce . (j :!))
---                        $ splitN (n-1) (unsafeCoerce js)
---     splitN _ Z  = unsafeCoerce (Z, Z)
--- {-# INLINE splitIdx #-}
+succIdx :: Dim xs -> Idx xs -> Idx xs
+succIdx _ Z = Z
+succIdx ((Dn :: Dim d) :* ds) (i :! is) | i >= dimVal' @d = 1 :! succIdx ds is
+                                        | otherwise       = succ i :! is
+{-# INLINE succIdx #-}
+
+predIdx :: Dim xs -> Idx xs -> Idx xs
+predIdx _ Z = Z
+predIdx ((Dn :: Dim d) :* ds) (i :! is) | i <= 1    = dimVal' @d :! predIdx ds is
+                                        | otherwise = pred i :! is
+{-# INLINE predIdx #-}
+
+-- | Convert zero-based offset into Idx in a given space
+toIdx :: Dim xs -> Int -> Idx xs
+toIdx D _ = Z
+toIdx ((Dn :: Dim d) :* ds) off = case divMod off (dimVal' @d) of
+      (off', i) -> i+1 :! toIdx ds off'
+
+-- | Get zero-based offset of current index
+fromIdx :: Dim xs -> Idx xs -> Int
+fromIdx _ Z                             = 0
+fromIdx ((Dn :: Dim d) :* ds) (i :! is) = i - 1 + dimVal' @d * fromIdx ds is
+
+-- | Offset difference of two indices (first idx - second idx)
+diffIdx :: Dim xs -> Idx xs -> Idx xs -> Int
+diffIdx _ Z _ = 0
+diffIdx ((Dn :: Dim d) :* ds) (i1:!is1) (i2:!is2) = i1 - i2
+          + dimVal' @d * diffIdx ds is1 is2
+
+-- | Step dimension index by an Integer offset
+stepIdx :: Dim ds -> Int -> Idx ds -> Idx ds
+stepIdx _ _ Z = Z
+stepIdx ((Dn :: Dim d) :* ds) di (i:!is)
+      = case divMod (di + i - 1) (dimVal' @d) of
+         (0  , i') -> i'+1 :! is
+         (di', i') -> i'+1 :! stepIdx ds di' is
+{-# INLINE stepIdx #-}
+
+-- | Append index dimension
+appendIdx :: forall (as :: [Nat]) (b :: Nat)
+           . Idx as -> Int -> Idx (as +: b)
+appendIdx Z i = i :! Z
+appendIdx (j :! js) i = unsafeCoerce $ j :! (unsafeCoerce (appendIdx js i) :: Idx (Tail (as +: b)))
+{-# INLINE appendIdx #-}
+
+-- | Split index into prefix and suffix dimensioned indices
+splitIdx :: forall (as :: [Nat]) (bs :: [Nat])
+          . FiniteList as => Idx (as ++ bs) -> (Idx as, Idx bs)
+splitIdx = splitN (order @_ @as)
+  where
+    splitN :: Int -> Idx (as ++ bs) -> (Idx as, Idx bs)
+    splitN 0 js = unsafeCoerce (Z, js)
+    splitN n (j :! js) = first (unsafeCoerce . (j :!))
+                       $ splitN (n-1) (unsafeCoerce js)
+    splitN _ Z  = unsafeCoerce (Z, Z)
+{-# INLINE splitIdx #-}
 
 
 instance Show (Idx ds) where
@@ -131,16 +149,14 @@ instance Dimensions ds => Bounded (Idx ds) where
     maxBound = f (dim @ds)
       where
         f :: forall ns . Dim ns -> Idx ns
-        f D = Z
+        f D                     = Z
         f ((Dn :: Dim n) :* ds) = dimVal' @n :! f ds
-        f _ = undefined
     {-# INLINE maxBound #-}
     minBound = f (dim @ds)
       where
         f :: forall (ns :: [Nat]) . Dim ns -> Idx ns
-        f D = Z
+        f D          = Z
         f (Dn :* ds) = 1 :! f ds
-        f _ = undefined
     {-# INLINE minBound #-}
 
 instance IsList (Idx ds) where
@@ -152,31 +168,35 @@ instance IsList (Idx ds) where
     toList = idxToList
 
 instance Dimensions ds => Enum (Idx ds) where
-    succ Z = Z
-    succ (i:!is) | i < _     = succ i :! is
-                 | otherwise =      1 :! succ is
+    succ = succIdx (dim @ds)
     {-# INLINE succ #-}
-    pred Z = Z
+    pred = predIdx (dim @ds)
     {-# INLINE pred #-}
-    -- toEnum = toIdx
-    -- {-# INLINE toEnum #-}
-    -- fromEnum = fromIdx
-    -- {-# INLINE fromEnum #-}
-    -- enumFrom x = take (diffIdx maxBound x + 1) $ iterate succ x
-    -- {-# INLINE enumFrom #-}
-    -- enumFromTo x y | x >= y    = take (diffIdx x y + 1) $ iterate pred x
-    --                | otherwise = take (diffIdx y x + 1) $ iterate succ x
-    -- {-# INLINE enumFromTo #-}
-    -- enumFromThen x x' = take n $ iterate (stepIdx dn) x
-    --   where
-    --     dn = diffIdx x' x
-    --     n  = 1 + if dn == 0 then 0
-    --                         else if dn > 0 then diffIdx maxBound x `div` dn
-    --                                        else diffIdx x minBound `div` negate dn
-    -- {-# INLINE enumFromThen #-}
-    -- enumFromThenTo x x' y = take n $ iterate (stepIdx dn) x
-    --   where
-    --     dn = diffIdx x' x
-    --     n  = 1 + if dn == 0 then 0
-    --                         else diffIdx y x `div` dn
-    -- {-# INLINE enumFromThenTo #-}
+    toEnum = toIdx (dim @ds)
+    {-# INLINE toEnum #-}
+    fromEnum = fromIdx (dim @ds)
+    {-# INLINE fromEnum #-}
+    enumFrom x = take (diffIdx ds maxBound x + 1) $ iterate (succIdx ds) x
+      where
+        ds = dim @ds
+    {-# INLINE enumFrom #-}
+    enumFromTo x y | x >= y    = take (diffIdx ds x y + 1) $ iterate (predIdx ds) x
+                   | otherwise = take (diffIdx ds y x + 1) $ iterate (succIdx ds) x
+      where
+        ds = dim @ds
+    {-# INLINE enumFromTo #-}
+    enumFromThen x x' = take n $ iterate (stepIdx ds dn) x
+      where
+        ds = dim @ds
+        dn = diffIdx ds x' x
+        n  = 1 + if dn == 0 then 0
+                            else if dn > 0 then diffIdx ds maxBound x `div` dn
+                                           else diffIdx ds x minBound `div` negate dn
+    {-# INLINE enumFromThen #-}
+    enumFromThenTo x x' y = take n $ iterate (stepIdx ds dn) x
+      where
+        ds = dim @ds
+        dn = diffIdx ds x' x
+        n  = 1 + if dn == 0 then 0
+                            else diffIdx ds y x `div` dn
+    {-# INLINE enumFromThenTo #-}
