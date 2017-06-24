@@ -337,17 +337,15 @@ inferDropNFiniteList = case magic (dimVal' @n) (tList @_ @xs) of
 
 -- | Reverse of the list is also known list
 inferReverseFiniteList :: forall xs . FiniteList xs => Evidence (FiniteList (Reverse xs))
-inferReverseFiniteList = case magic (tList @_ @xs) (unsafeCoerce TLEmpty) of
+inferReverseFiniteList = case magic (tList @_ @xs) TLEmpty of
       TLEmpty    -> Evidence
       TLCons _ _ -> Evidence
     where
-      magic :: forall ns . TypeList ns -> TypeList (Reverse ns) -> TypeList (Reverse ns)
-      magic TLEmpty xs = xs
-      magic (TLCons p sx) xs = case xs of
-        TLCons _ _ -> magic (unsafeCoerce sx :: TypeList ns)
-                            (unsafeCoerce (TLCons p xs) :: TypeList (Reverse ns))
-        _ -> magic (unsafeCoerce sx :: TypeList ns)
-                   (unsafeCoerce (TLCons p TLEmpty) :: TypeList (Reverse ns))
+      magic :: forall (ns :: [k]) (bs :: [k])
+             . FiniteList bs
+            => TypeList ns -> TypeList bs -> TypeList (Reverse ns)
+      magic TLEmpty xs = unsafeCoerce xs
+      magic (TLCons p sx) xs = magic (unsafeCoerce sx :: TypeList ns) (TLCons p xs)
 {-# INLINE inferReverseFiniteList #-}
 
 
