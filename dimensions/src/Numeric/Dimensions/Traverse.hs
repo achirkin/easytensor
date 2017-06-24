@@ -61,7 +61,7 @@ import GHC.Exts
 import GHC.TypeLits
 import           GHC.IO                 (IO(..))
 
-import           Unsafe.Coerce           (unsafeCoerce)
+-- import           Unsafe.Coerce           (unsafeCoerce)
 
 import Numeric.Dimensions.Dim
 import Numeric.Dimensions.Idx
@@ -108,7 +108,6 @@ overDimIdx# ((Dn :: Dim n) :* ds) f = overDimIdx# ds (loop 1)
     loop i js a s | i > n = (# s,  a #)
                   | otherwise = case f (i:!js) a s of
                             (# s', b #) -> loop (i+1) js b s'
-overDimIdx# _ _ = error "Impossible Dim structure in overDim# function."
 
 -- | Traverse over all dimensions keeping track of indices
 overDimIdx_# :: Dim (ds :: [Nat])
@@ -122,7 +121,6 @@ overDimIdx_# ((Dn :: Dim n) :* ds) f = overDimIdx_# ds (loop 1)
     loop i js s | i > n = (# s,  () #)
                 | otherwise = case f (i:!js) s of
                           (# s', _ #) -> loop (i+1) js s'
-overDimIdx_# _ _ = error "Impossible Dim structure in overDim# function."
 
 -- | Traverse over all dimensions keeping track of total offset
 overDimOff# :: Dim (ds :: [Nat])
@@ -164,7 +162,6 @@ overDimPart# = overDimPart'# offs
       createOffsets :: forall (ns :: [Nat]) . Dim ns -> Int -> Idx ns
       createOffsets D _ = Z
       createOffsets ((Dn :: Dim n) :* ds) k = k :! createOffsets ds (k * dimVal' @n)
-      createOffsets _ _ = error "Impossible Dim structure in overDimPart# function."
 
 
 
@@ -184,7 +181,6 @@ overDim'# ((Dn :: Dim n) :* ds) f = overDim'# ds (loop 1)
     loop i js off# a s | i > n = (# s, off#, a #)
                        | otherwise = case f (i:!js) off# a s of
                                (# s', off1#, b #) -> loop (i+1) js off1# b s'
-overDim'# _ _ = error "Impossible Dim structure in overDim# function."
 
 
 overDim_'# :: Dim (ds :: [Nat])
@@ -199,7 +195,6 @@ overDim_'# ((Dn :: Dim n) :* ds) f = overDim_'# ds (loop 1)
     loop i js off# s | i > n = (# s, off# #)
                      | otherwise = case f (i:!js) off# s of
                                (# s', off1# #) -> loop (i+1) js off1# s'
-overDim_'# _ _ = error "Impossible Dim structure in overDim_# function."
 
 
 overDimPart'# :: Idx (ds :: [Nat])
