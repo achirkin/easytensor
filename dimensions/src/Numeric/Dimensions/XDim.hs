@@ -31,14 +31,14 @@
 
 module Numeric.Dimensions.XDim
   ( -- * Data types
-    XDim (..), xdim
+    XDim (..), xdim, xDimVal
     -- * Constraints
-  , XDimensions
+  , XDimensions (..)
   ) where
 
 
 import           Data.Maybe              (isJust)
-import           GHC.Exts                (Constraint, unsafeCoerce#)
+import           GHC.Exts                (unsafeCoerce#)
 
 import           Numeric.Dimensions.Dim
 import           Numeric.TypeLits

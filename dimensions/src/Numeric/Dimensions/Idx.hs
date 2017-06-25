@@ -50,7 +50,7 @@ data Idx (ds :: [Nat]) where
    -- | Zero-rank dimensionality - scalar
    Z :: Idx '[]
    -- | List-like concatenation of indices
-   (:!) :: {-# UNPACK #-} !Int -> {-# UNPACK #-} !(Idx ds) -> Idx (d ': ds)
+   (:!) :: {-# UNPACK #-} !Int -> !(Idx ds) -> Idx (d ': ds)
 infixr 5 :!
 
 idxToList :: Idx ds -> [Int]
