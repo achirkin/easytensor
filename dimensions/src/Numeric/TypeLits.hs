@@ -26,7 +26,7 @@
 
 module Numeric.TypeLits
   ( -- * Nats backed by Int
-    SomeDim (..), someDimVal, reifyDim
+    SomeIntNat (..), someIntNatVal, intNatVal, reifyDim
   , KnownDim (..), KnownDims, dimVal#, Proxy#, proxy#
     -- * Dynamically constructing evidence
   , Evidence (..), withEvidence, sumEvs
@@ -34,9 +34,11 @@ module Numeric.TypeLits
   , inferTimesKnownDim
     -- * Re-export original GHC TypeLits
   , module GHC.TypeLits
+  , Proxy (..)
   ) where
 
 
+import           Data.Proxy    (Proxy(..))
 import           GHC.Exts      (Constraint, Proxy#, proxy#)
 import           GHC.TypeLits
 import           GHC.Types     (Type)
@@ -45,7 +47,9 @@ import           Unsafe.Coerce (unsafeCoerce)
 
 -- | Same as SomeNat, but for Dimensions:
 --   Hide all information about Dimensions inside
-data SomeDim = forall (n :: Nat) . KnownDim n => SomeDim (Proxy# n)
+data SomeIntNat = forall (n :: Nat) . KnownDim n => SomeIntNat (Proxy n)
+
+
 
 -- | This class gives the int associated with a type-level natural.
 --   Valid known dim must be not less than 2.
@@ -61,6 +65,10 @@ type family KnownDims (ns :: [Nat]) :: Constraint where
 dimVal# :: forall (n :: Nat) . KnownDim n => Proxy# n -> Int
 dimVal# _ = dimVal' @n
 {-# INLINE dimVal# #-}
+
+
+intNatVal :: forall n proxy . KnownDim n => proxy n -> Int
+intNatVal _ = dimVal' @n
 
 instance {-# OVERLAPPABLE #-} KnownNat n => KnownDim n where
     {-# INLINE dimVal' #-}
@@ -90,10 +98,13 @@ instance {-# OVERLAPPING #-} KnownDim 20 where { {-# INLINE dimVal' #-}; dimVal'
 
 
 -- | Similar to `someNatVal`, but for a single dimension
-someDimVal :: Int -> Maybe SomeDim
-someDimVal x | 0 > x     = Nothing
-             | otherwise = Just (reifyDim x SomeDim)
-{-# INLINE someDimVal #-}
+someIntNatVal :: Int -> Maybe SomeIntNat
+someIntNatVal x | 0 > x     = Nothing
+                | otherwise = Just (reifyDim x f)
+  where
+    f :: forall (n :: Nat) . KnownDim n => Proxy# n -> SomeIntNat
+    f _ = SomeIntNat (Proxy @n)
+{-# INLINE someIntNatVal #-}
 
 
 -- | This function does GHC's magic to convert user-supplied `dimVal'` function
@@ -106,18 +117,18 @@ reifyDim n k = unsafeCoerce (MagicDim k :: MagicDim r) n proxy#
 newtype MagicDim r = MagicDim (forall (n :: Nat) . KnownDim n => Proxy# n -> r)
 
 
-instance Eq SomeDim where
-  SomeDim x == SomeDim y = dimVal# x == dimVal# y
+instance Eq SomeIntNat where
+  SomeIntNat x == SomeIntNat y = intNatVal x == intNatVal y
 
-instance Ord SomeDim where
-  compare (SomeDim x) (SomeDim y) = compare (dimVal# x) (dimVal# y)
+instance Ord SomeIntNat where
+  compare (SomeIntNat x) (SomeIntNat y) = compare (intNatVal x) (intNatVal y)
 
-instance Show SomeDim where
-  showsPrec p (SomeDim x) = showsPrec p (dimVal# x)
+instance Show SomeIntNat where
+  showsPrec p (SomeIntNat x) = showsPrec p (intNatVal x)
 
-instance Read SomeDim where
+instance Read SomeIntNat where
   readsPrec p xs = do (a,ys) <- readsPrec p xs
-                      case someDimVal a of
+                      case someIntNatVal a of
                         Nothing -> []
                         Just n  -> [(n,ys)]
 

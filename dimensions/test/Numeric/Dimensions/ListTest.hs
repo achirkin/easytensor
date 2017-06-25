@@ -33,26 +33,26 @@ import           Numeric.Dimensions
 
 -- * Test simple binary nat ops
 
-natSum :: Proxy# a -> Proxy# b -> Proxy# (a+b)
-natSum _ _ = proxy#
-natMul :: Proxy# a -> Proxy# b -> Proxy# (a*b)
-natMul _ _ = proxy#
-natRem :: Proxy# a -> Proxy# b -> Proxy# (a-b)
-natRem _ _ = proxy#
-natSucc :: Proxy# a -> Proxy# (a + 1)
-natSucc _ = proxy#
-natPred :: Proxy# a -> Proxy# (a - 1)
-natPred _ = proxy#
+natSum :: Dim a -> Dim b -> Proxy (a+b)
+natSum _ _ = Proxy
+natMul :: Dim a -> Dim b -> Proxy (a*b)
+natMul _ _ = Proxy
+natRem :: Dim a -> Dim b -> Proxy (a-b)
+natRem _ _ = Proxy
+natSucc :: Dim a -> Proxy (a + 1)
+natSucc _ = Proxy
+natPred :: Dim a -> Proxy (a - 1)
+natPred _ = Proxy
 
 prop_KnownNats :: Int -> Int -> Bool
 prop_KnownNats a b
   | x <- max (abs a) (abs b)
   , y <- min (abs a) (abs b)
   , z <- y `mod` 50
-  , Just (SomeDim (px :: Proxy# x)) <- someDimVal x
-  , Just (SomeDim (py :: Proxy# y)) <- someDimVal y
-  , Just (SomeDim (px1 :: Proxy# x1)) <- someDimVal (x+1)
-  , Just (SomeDim (_ :: Proxy# z)) <- someDimVal z
+  , Just (SomeDim (px@Dn :: Dim x)) <- someDimVal x
+  , Just (SomeDim (py@Dn :: Dim y)) <- someDimVal y
+  , Just (SomeDim (px1@Dn :: Dim x1)) <- someDimVal (x+1)
+  , Just (SomeDim (Dn :: Dim z)) <- someDimVal z
   , Just Evidence <- (\e1 e2 e3 -> e1 `sumEvs` e2 `sumEvs` e3)
         <$> inferMinusKnownDimM @x @y
         <*> inferMinusKnownDimM @x1 @1
@@ -61,11 +61,11 @@ prop_KnownNats a b
           `sumEvs` inferPlusKnownDim @y @1
          )
   = and
-    [ x + y == dimVal# (natSum px py)
-    , x * y == dimVal# (natMul px py)
-    , x - y == dimVal# (natRem px py)
-    , x == dimVal# (natPred px1)
-    , y + 1 == dimVal# (natSucc py)
+    [ x + y == intNatVal (natSum px py)
+    , x * y == intNatVal (natMul px py)
+    , x - y == intNatVal (natRem px py)
+    , x == intNatVal (natPred px1)
+    , y + 1 == intNatVal (natSucc py)
     ]
 prop_KnownNats _ _ = True
 
@@ -77,7 +77,7 @@ prop_FiniteList :: Int -> [Int] -> Bool
 prop_FiniteList a xs'
   | n <- (abs a)
   , xs <- (2+) . abs <$> xs'
-  , Just (SomeDim (_ :: Proxy# n)) <- someDimVal n
+  , Just (SomeDim (Dn :: Dim n)) <- someDimVal n
   , Just (SomeDims (pxs :: Dim xs)) <- someDimsVal xs
   , Evidence <- reifyDimensions pxs
   , Evidence <- inferDimFiniteList @xs

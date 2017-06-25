@@ -39,7 +39,7 @@
 
 module Numeric.Dimensions.Dim
   ( -- * Data types
-    XNat, XN, N, Dim (..), dimVal
+    XNat, XN, N, Dim (..), dimVal, fromInt
   , SomeDims (..), SomeDim (..), someDimVal, someDimsVal, sameDim, compareDim
   , inSpaceOf, asSpaceOf
     -- * Constraints
@@ -80,18 +80,31 @@ data Dim (ns :: k) where
   -- | List-like concatenation of dimensionality.
   --   NatKind constraint is needed here to infer that
   (:*) :: forall (n::l) (ns::[k]) . NatKind [k] l
-       => {-# UNPACK #-} !(Dim n) -> Dim ns -> Dim (ConsDim n ns)
+       => !(Dim n) -> Dim ns -> Dim (ConsDim n ns)
   -- | Proxy-like constructor
   Dn :: forall (n :: Nat) . KnownDim n => Dim (n :: Nat)
   -- | Nat known at runtime packed into existential constructor
-  Dx :: forall (n :: Nat) (m :: Nat) . (KnownDim m, n <= m)
-     => {-# UNPACK #-} !(Dim m) -> Dim (XN n)
+  Dx :: forall (n :: Nat) (m :: Nat) . n <= m
+     => !(Dim m) -> Dim (XN n)
 infixr 5 :*
 
+-- | Get runtime-known dim and make sure it is not smaller than the given Nat.
+fromInt :: forall m . KnownDim m => Int -> Maybe (Dim (XN m))
+fromInt i | i < dimVal' @m = Nothing
+          | otherwise      = do
+  SomeDim (dn :: Dim n) <- someDimVal i
+  return $ case unsafeEqEvidence @(m <=? n) @'True of
+      Evidence -> Dx dn
+
+
+
+-- | Same as SomeNat, but for Dimension:
+--   Hide all information about Dimension inside
+data SomeDim = forall (n :: Nat) . SomeDim (Dim n)
 
 -- | Same as SomeNat, but for Dimensions:
 --   Hide all information about Dimensions inside
-data SomeDims = forall (ns :: [Nat]) . KnownDims ns => SomeDims (Dim ns)
+data SomeDims = forall (ns :: [Nat]) . SomeDims (Dim ns)
 
 -- | Get value of type-level dim at runtime.
 --   Gives a product of all dimensions if is a list.
@@ -102,7 +115,14 @@ dimVal (Dn :: Dim m)      = dimVal' @m
 dimVal (Dx (Dn :: Dim m)) = dimVal' @m
 {-# INLINE dimVal #-}
 
-
+-- | Similar to `someNatVal`, but for a single dimension
+someDimVal :: Int -> Maybe SomeDim
+someDimVal x | 0 > x     = Nothing
+             | otherwise = Just (reifyDim x f)
+  where
+    f :: forall (n :: Nat) . KnownDim n => Proxy# n -> SomeDim
+    f _ = SomeDim (Dn @n)
+{-# INLINE someDimVal #-}
 
 -- | Convert a list of ints into unknown type-level Dimensions list
 someDimsVal :: [Int] -> Maybe SomeDims
@@ -111,10 +131,7 @@ someDimsVal (x:xs) | 0 > x = Nothing
                    | otherwise = do
   SomeDim p <- someDimVal x
   SomeDims ps <- someDimsVal xs
-  return $ SomeDims (f p :* ps)
-  where
-    f :: forall (n :: Nat) . KnownDim n => Proxy# n -> Dim n
-    f _ = Dn
+  return $ SomeDims (p :* ps)
 
 dimList :: Dim ds -> String
 dimList  D        = ""
@@ -465,3 +482,8 @@ reifyDims :: forall r (ds :: [Nat]) . Dim ds -> ( Dimensions ds => r) -> r
 reifyDims ds k = unsafeCoerce# (MagicDims k :: MagicDims ds r) ds
 {-# INLINE reifyDims #-}
 newtype MagicDims ds r = MagicDims (Dimensions ds => r)
+
+
+unsafeEqEvidence :: forall x y . Evidence (x ~ y)
+unsafeEqEvidence = unsafeCoerce# (Evidence @())
+{-# INLINE unsafeEqEvidence #-}
