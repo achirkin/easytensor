@@ -23,18 +23,19 @@ library
 
     exposed-modules:
         Numeric.Dimensions
+        Numeric.Dimensions.Dim
         Numeric.Dimensions.XDim
+        Numeric.Dimensions.Idx
+        Numeric.Dimensions.List
+        Numeric.Dimensions.Traverse
+        Numeric.Dimensions.Traverse.IO
+        Numeric.Dimensions.Traverse.ST
         Numeric.TypeLits
     build-depends:
         base >=4.9 && <5,
         ghc-prim >= 0.5
     default-language: Haskell2010
     hs-source-dirs: src
-    other-modules:
-        Numeric.Dimensions.List
-        Numeric.Dimensions.Dim
-        Numeric.Dimensions.Idx
-        Numeric.Dimensions.Traverse
     ghc-options: -Wall -fwarn-tabs
 
 

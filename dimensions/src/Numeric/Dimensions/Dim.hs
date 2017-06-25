@@ -27,28 +27,26 @@
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
--- Provides a data type Idx that enumerates through multiple dimensions.
+-- Provides a data type `Dim ds` to keep dimension sizes
+-- for multiple-dimensional data.
 -- Lower indices go first, i.e. assumed enumeration
 --          is i = i1 + i2*n1 + i3*n1*n2 + ... + ik*n1*n2*...*n(k-1).
--- This is also to encourage column-first matrix enumeration and array layout.
 --
--- Some of the type-level list operations are implemented using type families
---   and weirdly duplicated for kinds k,Nat,XNat:
---   This duplication is needed to workaround some GHC bugs (panic with "no skolem info")
 -----------------------------------------------------------------------------
 
 module Numeric.Dimensions.Dim
-  ( -- * Data types
-    XNat, XN, N, Dim (..), dimVal, fromInt
+  ( -- * Dimension data types
+    Nat, XNat, XN, N, Dim (..), dimVal, totalDim, fromInt
   , SomeDims (..), SomeDim (..), someDimVal, someDimsVal, sameDim, compareDim
   , inSpaceOf, asSpaceOf
-    -- * Constraints
+    -- * Dimension constraints
   , Dimensions (..), KnownDim (..), KnownDims
     -- * Type-level programming
+    --   Provide type families to work with lists of dimensions (`[Nat]` or `[XNat]`)
   , AsXDims, AsDims, WrapDims, UnwrapDims, WrapHead, UnwrapHead
   , ConsDim, NatKind
   , FixedDim, FixedXDim, type (:<), type (>:)
-    -- * Inference of evidence
+    -- * Inference of dimension evidence
   , inferDimensions, inferDimKnownDims, inferDimFiniteList
   , inferTailDimensions, inferConcatDimensions
   , inferPrefixDimensions, inferSuffixDimensions
@@ -115,6 +113,11 @@ dimVal (Dn :: Dim m)      = dimVal' @m
 dimVal (Dx (Dn :: Dim m)) = dimVal' @m
 {-# INLINE dimVal #-}
 
+-- | Product of all dimension sizes.
+totalDim :: forall ds proxy . Dimensions ds => proxy ds -> Int
+totalDim _ = dimVal (dim @ds)
+{-# INLINE totalDim #-}
+
 -- | Similar to `someNatVal`, but for a single dimension
 someDimVal :: Int -> Maybe SomeDim
 someDimVal x | 0 > x     = Nothing
@@ -173,6 +176,8 @@ inSpaceOf :: a ds -> b ds -> a ds
 inSpaceOf x _ = x
 {-# INLINE inSpaceOf #-}
 
+-- | Similar to `asProxyTypeOf`,
+--   Give a hint to type checker to fix the type of a function argument.
 asSpaceOf :: a ds -> (b ds -> c) -> (b ds -> c)
 asSpaceOf _ = id
 {-# INLINE asSpaceOf #-}
@@ -271,6 +276,8 @@ type family FixedDim (xns :: [XNat]) (ns :: [Nat]) :: [Nat] where
     FixedDim '[]       ns = '[]
     FixedDim (x ': xs) ns = UnwrapHead x ns ': FixedDim xs (Tail ns)
 
+-- | FixedDim puts very tight constraints on what list of naturals can be.
+--   This allows establishing strong relations between [XNat] and [Nat].
 type family FixedXDim (xns :: [XNat]) (ns :: [Nat]) :: [XNat] where
     FixedXDim xs '[]       = '[]
     FixedXDim xs (n ': ns) = WrapHead n xs ': FixedXDim (Tail xs) ns
@@ -297,14 +304,16 @@ type family UnwrapHead (n :: XNat) (xs :: [Nat]) :: Nat where
 
 
 
--- | Synonym for (:+) that ignores Nat values 0 and 1
+-- | Synonym for (:+) that treats Nat values 0 and 1 in a special way:
+--   it preserves the property that all dimensions is greater than 1.
 type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
     0 :< _  = '[]
     1 :< ns = ns
     n :< ns = n :+ ns
 infixr 6 :<
 
--- | Synonym for (+:) that ignores Nat values 0 and 1
+-- | Synonym for (+:) that treats Nat values 0 and 1 in a special way:
+--   it preserves the property that all dimensions is greater than 1.
 type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
     _  >: 0 = '[]
     ns >: 1 = ns
@@ -318,6 +327,7 @@ infixl 6 >:
 -- * Inference of evidence
 --------------------------------------------------------------------------------
 
+-- | Infer `Dimensions` given that the list is KnownDims and finite
 inferDimensions :: forall (ds :: [Nat])
                  . (KnownDims ds, FiniteList ds)
                 => Evidence (Dimensions ds)
@@ -327,6 +337,7 @@ inferDimensions = case tList @Nat @ds of
     Evidence -> Evidence
 {-# INLINE inferDimensions #-}
 
+-- | `Dimensions` implies `KnownDims`
 inferDimKnownDims :: forall (ds :: [Nat])
                    . Dimensions ds
                   => Evidence (KnownDims ds)
@@ -337,6 +348,8 @@ inferDimKnownDims = inferDimKnownDims' (dim @ds)
     inferDimKnownDims' (Dn :* ds) = case inferDimKnownDims' ds of Evidence -> Evidence
 {-# INLINE inferDimKnownDims #-}
 
+
+-- | `Dimensions` implies `FiniteList`
 inferDimFiniteList :: forall (ds :: [Nat])
                     . Dimensions ds
                    => Evidence (FiniteList ds)
@@ -349,6 +362,7 @@ inferDimFiniteList = inferDimFiniteList' (dim @ds)
 
 
 
+-- | Infer that tail list is also Dimensions
 inferTailDimensions :: forall (ds :: [Nat])
                     . Dimensions ds
                     => Maybe (Evidence (Dimensions (Tail ds)))
@@ -357,7 +371,7 @@ inferTailDimensions = case dim @ds of
     Dn :* ds' -> Just $ reifyDimensions ds'
 
 
--- | Infer that concatenation is also finite
+-- | Infer that concatenation is also Dimensions
 inferConcatDimensions :: forall as bs
                        . (Dimensions as, Dimensions bs)
                       => Evidence (Dimensions (as ++ bs))
@@ -370,7 +384,7 @@ inferConcatDimensions = reifyDimensions $ magic (dim @as) (unsafeCoerce# $ dim @
 {-# INLINE inferConcatDimensions #-}
 
 
--- | Infer that prefix is also finite
+-- | Infer that prefix is also Dimensions
 inferPrefixDimensions :: forall bs asbs
                        . (IsSuffix bs asbs ~ 'True, Dimensions bs, Dimensions asbs)
                       => Evidence (Dimensions (Prefix bs asbs))
@@ -386,7 +400,7 @@ inferPrefixDimensions = reifyDimensions $ magic (len dasbs - len (dim @bs)) (uns
     magic n (d :* ds) = d :* magic (n-1) ds
 {-# INLINE inferPrefixDimensions #-}
 
--- | Infer that suffix is also finite
+-- | Infer that suffix is also Dimensions
 inferSuffixDimensions :: forall as asbs
                        . (IsPrefix as asbs ~ 'True, Dimensions as, Dimensions asbs)
                       => Evidence (Dimensions (Suffix as asbs))
@@ -410,7 +424,7 @@ inferSnocDimensions = reifyDimensions $ magic (dim @xs)
 {-# INLINE inferSnocDimensions #-}
 
 
--- | Init of the list is also known list
+-- | Init of the list is also Dimensions
 inferInitDimensions :: forall xs
                      . Dimensions xs
                     => Maybe (Evidence (Dimensions (Init xs)))
@@ -424,7 +438,7 @@ inferInitDimensions = case dim @xs of
       magic (d :* ds) = d :* magic ds
 {-# INLINE inferInitDimensions #-}
 
--- | Take KnownDim of the list is also known list
+-- | Take KnownDim of the list is also Dimensions
 inferTakeNDimensions :: forall n xs
                       . (KnownDim n, Dimensions xs)
                      => Evidence (Dimensions (Take n xs))
@@ -436,7 +450,7 @@ inferTakeNDimensions = reifyDimensions $ magic (dimVal' @n) (dim @xs)
       magic n (d :* ds) = unsafeCoerce# $ d :* (unsafeCoerce# $ magic (n-1) ds :: Dim (Tail ns))
 {-# INLINE inferTakeNDimensions #-}
 
--- | Drop KnownDim of the list is also known list
+-- | Drop KnownDim of the list is also Dimensions
 inferDropNDimensions :: forall n xs
                       . (KnownDim n, Dimensions xs)
                      => Evidence (Dimensions (Drop n xs))
@@ -448,7 +462,7 @@ inferDropNDimensions = reifyDimensions $ magic (dimVal' @n) (dim @xs)
       magic n (_ :* ds) = unsafeCoerce# $ magic (n-1) ds
 {-# INLINE inferDropNDimensions #-}
 
--- | Reverse of the list is also known list
+-- | Reverse of the list is also Dimensions
 inferReverseDimensions :: forall xs . Dimensions xs => Evidence (Dimensions (Reverse xs))
 inferReverseDimensions = reifyDimensions $ magic (dim @xs) (unsafeCoerce# D)
     where

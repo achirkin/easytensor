@@ -1,25 +1,10 @@
-{-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE DataKinds                 #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE ExplicitNamespaces        #-}
-{-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE FlexibleInstances         #-}
 {-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE KindSignatures            #-}
 {-# LANGUAGE MagicHash                 #-}
-{-# LANGUAGE MultiParamTypeClasses     #-}
-{-# LANGUAGE PolyKinds                 #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
-{-# LANGUAGE TypeFamilies              #-}
-{-# LANGUAGE TypeFamilyDependencies    #-}
-{-# LANGUAGE TypeOperators             #-}
-{-# LANGUAGE UndecidableInstances      #-}
 {-# LANGUAGE UnboxedTuples             #-}
-{-# LANGUAGE AllowAmbiguousTypes       #-}
-{-# LANGUAGE Rank2Types                #-}
-{-# LANGUAGE TypeInType                #-}
--- {-# OPTIONS_GHC -fno-warn-inline-rule-shadowing #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.Traverse
@@ -28,43 +13,21 @@
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
--- Provides a data type Idx that enumerates through multiple dimensions.
--- Lower indices go first, i.e. assumed enumeration
---          is i = i1 + i2*n1 + i3*n1*n2 + ... + ik*n1*n2*...*n(k-1).
--- This is also to encourage column-first matrix enumeration and array layout.
+-- Map a function over all dimensions provided dimension indices or offsets.
 --
--- Some of the type-level list operations are implemented using type families
---   and weirdly duplicated for kinds k,Nat,XNat:
---   This duplication is needed to workaround some GHC bugs (panic with "no skolem info")
 -----------------------------------------------------------------------------
 
 module Numeric.Dimensions.Traverse
-  ( module Numeric.Dimensions.Traverse
-  , module Numeric.Dimensions.Dim
-  , module Numeric.Dimensions.Idx
-  -- , module Control.Monad.ST
-  , module GHC.Exts
+  ( overDim#, overDim_#, overDimIdx#, overDimIdx_#, overDimOff#, overDimOff_#
+  , overDimPart#
+  , foldDim, foldDimIdx, foldDimIdxOff
   ) where
 
 
--- import           Control.Arrow           (first)
--- import           Data.Maybe              (isJust)
--- import           Data.Type.Equality      ((:~:) (..))
--- import           GHC.Exts                (Constraint, IsList (..), Proxy#,
---                                           State#, proxy#)
--- import           GHC.TypeLits            (type (+), type (-), type (<=),
---                                           type (<=?), ErrorMessage (..),
---                                           KnownNat, Nat, SomeNat (..),
---                                           TypeError, natVal, natVal', sameNat,
---                                           someNatVal)
-import GHC.Exts
-import GHC.TypeLits
-import           GHC.IO                 (IO(..))
+import           GHC.Exts
 
--- import           Unsafe.Coerce           (unsafeCoerce)
-
-import Numeric.Dimensions.Dim
-import Numeric.Dimensions.Idx
+import           Numeric.Dimensions.Dim
+import           Numeric.Dimensions.Idx
 
 
 
@@ -81,6 +44,17 @@ overDim# ds f off0# a0 s0 = case overDim'# ds g off0# a0 s0 of
     g i off# a s = case f i off# a s of
                     (# t, b #) -> (# t, off# +# 1#, b #)
 {-# INLINE overDim# #-}
+
+-- | Fold over all dimensions keeping track of index and offset
+foldDim :: Dim (ds :: [Nat])
+        -> (Idx ds -> Int# -> a -> a)
+        -> Int# -> a -> a
+foldDim ds f off0# a0 = case foldDim' ds g off0# a0 of
+                              (# _, a1 #) -> a1
+  where
+    g i off# a = (# off# +# 1#, f i off# a #)
+{-# INLINE foldDim #-}
+
 
 -- | Same as overDim#, but with no return value
 overDim_# :: Dim (ds :: [Nat])
@@ -109,7 +83,20 @@ overDimIdx# ((Dn :: Dim n) :* ds) f = overDimIdx# ds (loop 1)
                   | otherwise = case f (i:!js) a s of
                             (# s', b #) -> loop (i+1) js b s'
 
--- | Traverse over all dimensions keeping track of indices
+-- | Fold all dimensions keeping track of indices
+foldDimIdx :: Dim (ds :: [Nat])
+            -> (Idx ds -> a -> a)
+            -> a -> a
+foldDimIdx D f = f Z
+foldDimIdx ((Dn :: Dim n) :* ds) f = foldDimIdx ds (loop 1)
+  where
+    n = dimVal' @n
+    loop i js a | i > n = a
+                | otherwise = case f (i:!js) a of b -> loop (i+1) js b
+
+
+
+-- | Traverse over all dimensions keeping track of indices, with no return value
 overDimIdx_# :: Dim (ds :: [Nat])
              -> (Idx ds -> State# s -> (# State# s, () #))
              -> State# s
@@ -133,7 +120,18 @@ overDimOff# ds f off0# = loop off0#
                   | otherwise = case f off# a s of
                                   (# s', b #) -> loop (off# +# 1#) b s'
 
--- | Traverse over all dimensions keeping track of total offset
+-- | Fold over all dimensions keeping track of total offset
+foldDimIdxOff :: Dim (ds :: [Nat])
+            -> (Int# -> a -> a)
+            -> Int# -> a -> a
+foldDimIdxOff ds f off0# = loop off0#
+  where
+    n = case dimVal ds of I# n# -> n# +# off0#
+    loop off# a | isTrue# (off# >=# n) = a
+                | otherwise = case f off# a of b -> loop (off# +# 1#) b
+
+
+-- | Traverse over all dimensions keeping track of total offset, with not return value
 overDimOff_# :: Dim (ds :: [Nat])
              -> (Int# -> State# s -> (# State# s, () #))
              -> Int# -> State# s -> (# State# s, () #)
@@ -183,6 +181,19 @@ overDim'# ((Dn :: Dim n) :* ds) f = overDim'# ds (loop 1)
                                (# s', off1#, b #) -> loop (i+1) js off1# b s'
 
 
+
+foldDim' :: Dim (ds :: [Nat])
+         -> (Idx ds -> Int# -> a -> (# Int#, a #))
+         -> Int# -> a -> (# Int#,  a #)
+foldDim' D f = f Z
+foldDim' ((Dn :: Dim n) :* ds) f = foldDim' ds (loop 1)
+  where
+    n = dimVal' @n
+    loop i js off# a | i > n = (#  off#, a #)
+                     | otherwise = case f (i:!js) off# a of
+                               (# off1#, b #) -> loop (i+1) js off1# b
+
+
 overDim_'# :: Dim (ds :: [Nat])
            -> (Idx ds -> Int# -> State# s -> (# State# s, Int# #))
            -> Int#
@@ -217,67 +228,3 @@ overDimPart'# (I# iW:!iws) (iMin:!mins) (iMax:!maxs) f off0#
     looi i js off# a s | i < iMax = (# s, a #)
                        | otherwise = case f (i:!js) off# a s of
                                (# s', b #) -> looi (i-1) js (off# -# iW) b s'
-
-
-
-
-
-
-
-
-overDim :: Dim (ds :: [Nat])
-        -> (Idx ds -> Int# -> a -> IO a)
-        -> Int# -> a -> IO a
-overDim ds stf off0# = IO . overDim# ds (\i off# a -> case stf i off# a of
-                                                           IO f -> f
-                                         ) off0#
-{-# INLINE overDim #-}
-
-overDimIdx :: Dim (ds :: [Nat])
-           -> (Idx ds -> a -> IO a)
-           -> a -> IO a
-overDimIdx ds stf = IO . overDimIdx# ds (\i a -> case stf i a of IO f -> f)
-{-# INLINE overDimIdx #-}
-
-overDimOff :: Dim (ds :: [Nat])
-        -> (Idx ds -> Int# -> a -> IO a)
-        -> Int# -> a -> IO a
-overDimOff ds stf off0# = IO . overDim# ds (\i off# a -> case stf i off# a of
-                                                           IO f -> f
-                                         ) off0#
-{-# INLINE overDimOff #-}
-
-
-
-overDim_ :: Dim (ds :: [Nat])
-         -> (Idx ds -> Int# -> IO ())
-         -> Int# -> IO ()
-overDim_ ds stf off0# = IO $ overDim_# ds (\i off# -> case stf i off# of
-                                                           IO f -> f
-                                          ) off0#
-{-# INLINE overDim_ #-}
-
-overDimIdx_ :: Dim (ds :: [Nat])
-            -> (Idx ds -> IO ())
-            -> IO ()
-overDimIdx_ ds stf = IO $ overDimIdx_# ds (\i -> case stf i of IO f -> f)
-{-# INLINE overDimIdx_ #-}
-
-
-overDimOff_ :: Dim (ds :: [Nat])
-            -> (Int# -> IO ())
-            -> Int# -> IO ()
-overDimOff_ ds stf off0# = IO $ overDimOff_# ds (\off#-> case stf off# of
-                                                           IO f -> f
-                                         ) off0#
-{-# INLINE overDimOff_ #-}
-
-overDimPart :: forall (ds :: [Nat]) a
-             . Dimensions ds
-            => Idx ds -> Idx ds
-            -> (Idx ds -> Int# -> a -> IO a)
-            -> Int# -> a -> IO a
-overDimPart iMin iMax stf off0# = IO . overDimPart# iMin iMax (\i off# a -> case stf i off# a of
-                                                                   IO f -> f
-                                                              ) off0#
-{-# INLINE overDimPart #-}

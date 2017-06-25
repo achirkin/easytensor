@@ -26,6 +26,11 @@
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
+-- Provides a data type Idx that enumerates through multiple dimensions.
+-- Lower indices go first, i.e. assumed enumeration
+--          is i = i1 + i2*n1 + i3*n1*n2 + ... + ik*n1*n2*...*n(k-1).
+-- This is also to encourage column-first matrix enumeration and array layout.
+-- 
 -----------------------------------------------------------------------------
 
 module Numeric.Dimensions.Idx
@@ -41,7 +46,6 @@ import           Unsafe.Coerce           (unsafeCoerce)
 
 import           Numeric.Dimensions.Dim
 import           Numeric.Dimensions.List
-import           Numeric.TypeLits
 
 
 
