@@ -27,6 +27,8 @@
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
+-- Some dimensions in a type-level dimension list may by not known at compile time.
+--
 -----------------------------------------------------------------------------
 
 module Numeric.Dimensions.XDim

@@ -21,6 +21,11 @@
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
+-- This modules is based on `GHC.TypeLits` and re-exports its functionality.
+-- It provides `KnownDim` class that is similar to `KnownNat`, but keeps
+-- `Int`s instead of `Integer`s.
+-- A set of utility functions provide inference functionality, so
+-- that `KnownDim` can be preserved over some type-level operations.
 --
 -----------------------------------------------------------------------------
 
@@ -52,7 +57,7 @@ data SomeIntNat = forall (n :: Nat) . KnownDim n => SomeIntNat (Proxy n)
 
 
 -- | This class gives the int associated with a type-level natural.
---   Valid known dim must be not less than 2.
+--   Valid known dim must be not less than 0.
 class KnownDim (n :: Nat) where
     -- | Get value of type-level dim at runtime
     dimVal' :: Int
@@ -62,11 +67,12 @@ type family KnownDims (ns :: [Nat]) :: Constraint where
     KnownDims '[] = ()
     KnownDims (x ': xs) = ( KnownDim x, KnownDims xs )
 
+-- | A variant of `dimVal'` that gets `Proxy#` as an argument.
 dimVal# :: forall (n :: Nat) . KnownDim n => Proxy# n -> Int
 dimVal# _ = dimVal' @n
 {-# INLINE dimVal# #-}
 
-
+-- | Similar to `natVal` from `GHC.TypeLits`, but returns `Int`.
 intNatVal :: forall n proxy . KnownDim n => proxy n -> Int
 intNatVal _ = dimVal' @n
 
