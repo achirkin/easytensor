@@ -58,15 +58,14 @@ foldDim ds f off0# a0 = case foldDim' ds g off0# a0 of
 
 -- | Same as overDim#, but with no return value
 overDim_# :: Dim (ds :: [Nat])
-          -> (Idx ds -> Int# -> State# s -> (# State# s, () #))
+          -> (Idx ds -> Int# -> State# s -> State# s)
           -> Int#
           -> State# s
-          -> (# State# s, () #)
+          -> State# s
 overDim_# ds f off0# s0 = case overDim_'# ds g off0# s0 of
-                              (# s1, _ #) -> (# s1, () #)
+                              (# s1, _ #) -> s1
   where
-    g i off# s = case f i off# s of
-                    (# t, _ #) -> (# t, off# +# 1# #)
+    g i off# s = case f i off# s of t -> (# t, off# +# 1# #)
 {-# INLINE overDim_# #-}
 
 -- | Traverse over all dimensions keeping track of indices
@@ -98,16 +97,15 @@ foldDimIdx ((Dn :: Dim n) :* ds) f = foldDimIdx ds (loop 1)
 
 -- | Traverse over all dimensions keeping track of indices, with no return value
 overDimIdx_# :: Dim (ds :: [Nat])
-             -> (Idx ds -> State# s -> (# State# s, () #))
+             -> (Idx ds -> State# s -> State# s)
              -> State# s
-             -> (# State# s, () #)
+             -> State# s
 overDimIdx_# D f = f Z
 overDimIdx_# ((Dn :: Dim n) :* ds) f = overDimIdx_# ds (loop 1)
   where
     n = dimVal' @n
-    loop i js s | i > n = (# s,  () #)
-                | otherwise = case f (i:!js) s of
-                          (# s', _ #) -> loop (i+1) js s'
+    loop i js s | i > n = s
+                | otherwise = case f (i:!js) s of s' -> loop (i+1) js s'
 
 -- | Traverse over all dimensions keeping track of total offset
 overDimOff# :: Dim (ds :: [Nat])
@@ -133,14 +131,13 @@ foldDimIdxOff ds f off0# = loop off0#
 
 -- | Traverse over all dimensions keeping track of total offset, with not return value
 overDimOff_# :: Dim (ds :: [Nat])
-             -> (Int# -> State# s -> (# State# s, () #))
-             -> Int# -> State# s -> (# State# s, () #)
+             -> (Int# -> State# s -> State# s)
+             -> Int# -> State# s -> State# s
 overDimOff_# ds f off0# = loop off0#
   where
     n = case dimVal ds of I# n# -> n# +# off0#
-    loop off# s | isTrue# (off# >=# n) = (# s,  () #)
-                | otherwise = case f off# s of
-                                  (# s', () #) -> loop (off# +# 1#) s'
+    loop off# s | isTrue# (off# >=# n) = s
+                | otherwise = loop (off# +# 1#) (f off# s)
 
 -- | Traverse from the first index to the second index in each dimension.
 --   Indices must be within Dim range, which is not checked.

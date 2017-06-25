@@ -1,7 +1,8 @@
-{-# LANGUAGE DataKinds                 #-}
-{-# LANGUAGE KindSignatures            #-}
-{-# LANGUAGE MagicHash                 #-}
-{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE KindSignatures      #-}
+{-# LANGUAGE MagicHash           #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE UnboxedTuples       #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.Traverse.IO
@@ -22,7 +23,7 @@ module Numeric.Dimensions.Traverse.IO
 
 
 import           GHC.Exts
-import           GHC.IO                 (IO (..))
+import           GHC.IO                      (IO (..))
 
 import           Numeric.Dimensions.Dim
 import           Numeric.Dimensions.Idx
@@ -61,8 +62,7 @@ overDimOff ds stf off0# = IO . overDim# ds (\i off# a -> case stf i off# a of
 overDim_ :: Dim (ds :: [Nat])
          -> (Idx ds -> Int# -> IO ())
          -> Int# -> IO ()
-overDim_ ds stf off0# = IO $ overDim_# ds (\i off# -> case stf i off# of
-                                                           IO f -> f
+overDim_ ds stf off0# = fst'# $ overDim_# ds (\i off# -> fst# (stf i off#)
                                           ) off0#
 {-# INLINE overDim_ #-}
 
@@ -70,7 +70,7 @@ overDim_ ds stf off0# = IO $ overDim_# ds (\i off# -> case stf i off# of
 overDimIdx_ :: Dim (ds :: [Nat])
             -> (Idx ds -> IO ())
             -> IO ()
-overDimIdx_ ds stf = IO $ overDimIdx_# ds (\i -> case stf i of IO f -> f)
+overDimIdx_ ds stf = fst'# $ overDimIdx_# ds (\i -> fst# (stf i))
 {-# INLINE overDimIdx_ #-}
 
 
@@ -78,10 +78,16 @@ overDimIdx_ ds stf = IO $ overDimIdx_# ds (\i -> case stf i of IO f -> f)
 overDimOff_ :: Dim (ds :: [Nat])
             -> (Int# -> IO ())
             -> Int# -> IO ()
-overDimOff_ ds stf off0# = IO $ overDimOff_# ds (\off#-> case stf off# of
-                                                           IO f -> f
+overDimOff_ ds stf off0# = fst'# $ overDimOff_# ds (\off#-> fst# (stf off#)
                                          ) off0#
 {-# INLINE overDimOff_ #-}
+
+fst# :: IO () -> State# RealWorld -> State# RealWorld
+fst# (IO f) s = case f s of (# t, _ #) -> t
+{-# INLINE fst# #-}
+
+fst'# :: (State# RealWorld -> State# RealWorld) -> IO ()
+fst'# f = IO $ \s -> case f s of t -> (# t, () #)
 
 -- | Traverse from the first index to the second index in each dimension.
 --   Indices must be within Dim range, which is not checked.
