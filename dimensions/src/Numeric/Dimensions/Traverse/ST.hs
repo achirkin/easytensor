@@ -18,7 +18,7 @@
 
 module Numeric.Dimensions.Traverse.ST
   ( overDim, overDim_, overDimIdx, overDimIdx_, overDimOff, overDimOff_, overDimPart
-  , foldDim, foldDimIdx, foldDimIdxOff
+  , foldDim, foldDimIdx, foldDimOff
   ) where
 
 
@@ -33,11 +33,13 @@ import           Numeric.Dimensions.Traverse
 
 -- | Traverse over all dimensions keeping track of index and offset
 overDim :: Dim (ds :: [Nat])
-        -> (Idx ds -> Int# -> a -> ST s a)
-        -> Int# -> a -> ST s a
-overDim ds stf off0# = ST . overDim# ds (\i off# a -> case stf i off# a of
+        -> (Idx ds -> Int# -> a -> ST s a) -- ^ function to map over each dimension
+        -> Int# -- ^ Initial offset
+        -> Int# -- ^ offset step
+        -> a -> ST s a
+overDim ds stf off0# step# = ST . overDim# ds (\i off# a -> case stf i off# a of
                                                            ST f -> f
-                                         ) off0#
+                                         ) off0# step#
 {-# INLINE overDim #-}
 
 -- | Traverse over all dimensions keeping track of indices
@@ -49,21 +51,25 @@ overDimIdx ds stf = ST . overDimIdx# ds (\i a -> case stf i a of ST f -> f)
 
 -- | Traverse over all dimensions keeping track of total offset
 overDimOff :: Dim (ds :: [Nat])
-        -> (Idx ds -> Int# -> a -> ST s a)
-        -> Int# -> a -> ST s a
-overDimOff ds stf off0# = ST . overDim# ds (\i off# a -> case stf i off# a of
+        -> (Idx ds -> Int# -> a -> ST s a) -- ^ function to map over each dimension
+        -> Int# -- ^ Initial offset
+        -> Int# -- ^ offset step
+        -> a -> ST s a
+overDimOff ds stf off0# step# = ST . overDim# ds (\i off# a -> case stf i off# a of
                                                            ST f -> f
-                                         ) off0#
+                                         ) off0# step#
 {-# INLINE overDimOff #-}
 
 
 
 -- | Same as overDim#, but with no return value
 overDim_ :: Dim (ds :: [Nat])
-         -> (Idx ds -> Int# -> ST s ())
-         -> Int# -> ST s ()
-overDim_ ds stf off0# = fst'# $ overDim_# ds (\i off# -> fst# (stf i off#)
-                                          ) off0#
+         -> (Idx ds -> Int# -> ST s ()) -- ^ function to map over each dimension
+         -> Int# -- ^ Initial offset
+         -> Int# -- ^ offset step
+         -> ST s ()
+overDim_ ds stf off0# step# = fst'# $ overDim_# ds (\i off# -> fst# (stf i off#)
+                                          ) off0# step#
 {-# INLINE overDim_ #-}
 
 -- | Traverse over all dimensions keeping track of indices, with no return value
@@ -76,10 +82,12 @@ overDimIdx_ ds stf = fst'# $ overDimIdx_# ds (\i -> fst# (stf i))
 
 -- | Traverse over all dimensions keeping track of total offset, with not return value
 overDimOff_ :: Dim (ds :: [Nat])
-            -> (Int# -> ST s ())
-            -> Int# -> ST s ()
-overDimOff_ ds stf off0# = fst'# $ overDimOff_# ds (\off#-> fst# (stf off#)
-                                         ) off0#
+            -> (Int# -> ST s ()) -- ^ function to map over each dimension
+            -> Int# -- ^ Initial offset
+            -> Int# -- ^ offset step
+            -> ST s ()
+overDimOff_ ds stf off0# step# = fst'# $ overDimOff_# ds (\off#-> fst# (stf off#)
+                                         ) off0# step#
 {-# INLINE overDimOff_ #-}
 
 fst# :: ST s () -> State# s -> State# s
@@ -95,9 +103,11 @@ fst'# f = ST $ \s -> case f s of t -> (# t, () #)
 overDimPart :: forall (ds :: [Nat]) a s
              . Dimensions ds
             => Idx ds -> Idx ds
-            -> (Idx ds -> Int# -> a -> ST s a)
-            -> Int# -> a -> ST s a
-overDimPart iMin iMax stf off0# = ST . overDimPart# iMin iMax (\i off# a -> case stf i off# a of
+            -> (Idx ds -> Int# -> a -> ST s a) -- ^ function to map over each dimension
+            -> Int# -- ^ Initial offset
+            -> Int# -- ^ offset step
+            -> a -> ST s a
+overDimPart iMin iMax stf off0# step# = ST . overDimPart# iMin iMax (\i off# a -> case stf i off# a of
                                                                    ST f -> f
-                                                              ) off0#
+                                                              ) off0# step#
 {-# INLINE overDimPart #-}

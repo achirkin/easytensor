@@ -40,6 +40,7 @@ import           GHC.Word               (Word16 (..), Word32 (..), Word64 (..),
 import           Numeric.Commons
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
+import           Numeric.TypeLits
 
 
 -- | Mutable DataFrame type

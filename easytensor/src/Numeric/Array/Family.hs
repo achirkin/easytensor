@@ -12,6 +12,7 @@
 {-# LANGUAGE TypeFamilyDependencies     #-}
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UnboxedTuples              #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.Family
@@ -31,7 +32,7 @@ module Numeric.Array.Family
   , Scalar (..)
   , FloatX2 (..), FloatX3 (..), FloatX4 (..)
   , ArrayInstanceInference, ElemType (..), ArraySize (..)
-  , ElemTypeInference (..), ArraySizeInference (..), ArrayInstanceEvidence (..)
+  , ElemTypeInference (..), ArraySizeInference (..), ArrayInstanceEvidence
   , getArrayInstance, ArrayInstance (..), inferArrayInstance
   ) where
 
@@ -41,10 +42,10 @@ import           Data.Type.Equality        ((:~:) (..))
 import           Data.Word                 (Word16, Word32, Word64, Word8)
 import           GHC.Prim                  (ByteArray#, Double#, Float#, Int#,
                                             Word#, unsafeCoerce#)
-import           Unsafe.Coerce             (unsafeCoerce)
 
 import           Numeric.Array.ElementWise
 import           Numeric.Commons
+import           Numeric.TypeLits
 import           Numeric.Dimensions
 
 -- | Full collection of n-order arrays
@@ -70,11 +71,36 @@ type family Array t (ds :: [Nat]) = v | v -> t ds where
 -- | Specialize scalar type without any arrays
 newtype Scalar t = Scalar { _unScalar :: t }
   deriving ( Bounded, Enum, Eq, Integral
-           , Num, Fractional, Floating, Ord, Read, Real, RealFrac, RealFloat
-           , PrimBytes)
+           , Num, Fractional, Floating, Ord, Read, Real, RealFrac, RealFloat)
 instance Show t => Show (Scalar t) where
   show (Scalar t) = "{ " ++ show t ++ " }"
-type instance ElemRep (Scalar t) = ElemRep t
+
+type instance ElemRep  (Scalar t) = ElemRep t
+type instance ElemPrim (Scalar Float ) = Float#
+type instance ElemPrim (Scalar Double) = Double#
+type instance ElemPrim (Scalar Int   ) = Int#
+type instance ElemPrim (Scalar Int8  ) = Int#
+type instance ElemPrim (Scalar Int16 ) = Int#
+type instance ElemPrim (Scalar Int32 ) = Int#
+type instance ElemPrim (Scalar Int64 ) = Int#
+type instance ElemPrim (Scalar Word  ) = Word#
+type instance ElemPrim (Scalar Word8 ) = Word#
+type instance ElemPrim (Scalar Word16) = Word#
+type instance ElemPrim (Scalar Word32) = Word#
+type instance ElemPrim (Scalar Word64) = Word#
+
+deriving instance PrimBytes (Scalar Float)
+deriving instance PrimBytes (Scalar Double)
+deriving instance PrimBytes (Scalar Int)
+deriving instance PrimBytes (Scalar Int8)
+deriving instance PrimBytes (Scalar Int16)
+deriving instance PrimBytes (Scalar Int32)
+deriving instance PrimBytes (Scalar Int64)
+deriving instance PrimBytes (Scalar Word)
+deriving instance PrimBytes (Scalar Word8)
+deriving instance PrimBytes (Scalar Word16)
+deriving instance PrimBytes (Scalar Word32)
+deriving instance PrimBytes (Scalar Word64)
 
 -- | Indexing over scalars is trivial...
 instance ElementWise (Idx ('[] :: [Nat])) t (Scalar t) where
@@ -96,6 +122,7 @@ instance ElementWise (Idx ('[] :: [Nat])) t (Scalar t) where
   {-# INLINE broadcast #-}
   update _ x _ = Scalar x
   {-# INLINE update #-}
+
 
 -- * Array implementations.
 --   All array implementations have the same structure:
@@ -185,8 +212,8 @@ data ArrayInstance t (ds :: [Nat])
 
 -- | A singleton type used to prove that the given Array family instance
 --   has a known instance
-data ArrayInstanceEvidence t (ds :: [Nat])
-  = ArrayInstanceInference t ds => ArrayInstanceEvidence
+type ArrayInstanceEvidence t (ds :: [Nat])
+  = Evidence (ArrayInstanceInference t ds)
 
 
 class ElemTypeInference t where
@@ -196,9 +223,9 @@ class ElemTypeInference t where
 class ArraySizeInference ds where
     -- | Pattern match agains result to get actual array dimensionality
     arraySizeInstance :: ArraySize ds
-    inferSnocArrayInstance :: (ElemTypeInference t, KnownNat z)
+    inferSnocArrayInstance :: (ElemTypeInference t, KnownDim z)
                            => p t ds -> q z -> ArrayInstanceEvidence t (ds +: z)
-    inferConsArrayInstance :: (ElemTypeInference t, KnownNat z)
+    inferConsArrayInstance :: (ElemTypeInference t, KnownDim z)
                            => q z -> p t ds -> ArrayInstanceEvidence t (z :+ ds)
     inferInitArrayInstance :: ElemTypeInference t
                            => p t ds -> ArrayInstanceEvidence t (Init ds)
@@ -240,15 +267,15 @@ instance ElemTypeInference Word64 where
 instance ArraySizeInference '[] where
     arraySizeInstance = ASScalar
     {-# INLINE arraySizeInstance #-}
-    inferSnocArrayInstance _ _ = ArrayInstanceEvidence
+    inferSnocArrayInstance _ _ = Evidence
     {-# INLINE inferSnocArrayInstance #-}
-    inferConsArrayInstance _ _ = ArrayInstanceEvidence
+    inferConsArrayInstance _ _ = Evidence
     {-# INLINE inferConsArrayInstance #-}
     inferInitArrayInstance _ = error "Init -- empty type-level list"
     {-# INLINE inferInitArrayInstance #-}
 
-instance KnownNat d => ArraySizeInference '[d] where
-    arraySizeInstance = case natVal (Proxy:: Proxy d) of
+instance KnownDim d => ArraySizeInference '[d] where
+    arraySizeInstance = case dimVal' @d of
         0 -> unsafeCoerce# ASScalar
         1 -> unsafeCoerce# ASScalar
         2 -> unsafeCoerce# ASX2
@@ -256,21 +283,21 @@ instance KnownNat d => ArraySizeInference '[d] where
         4 -> unsafeCoerce# ASX4
         _ -> case (unsafeCoerce# Refl :: (5 <=? d) :~: 'True) of Refl -> ASXN
     {-# INLINE arraySizeInstance #-}
-    inferSnocArrayInstance _ _ = ArrayInstanceEvidence
+    inferSnocArrayInstance _ _ = Evidence
     {-# INLINE inferSnocArrayInstance #-}
-    inferConsArrayInstance _ _ = ArrayInstanceEvidence
+    inferConsArrayInstance _ _ = Evidence
     {-# INLINE inferConsArrayInstance #-}
-    inferInitArrayInstance _ = ArrayInstanceEvidence
+    inferInitArrayInstance _ = Evidence
     {-# INLINE inferInitArrayInstance #-}
 
-instance KnownNat d1 => ArraySizeInference '[d1, d2] where
+instance KnownDim d1 => ArraySizeInference '[d1, d2] where
     arraySizeInstance = ASArray
     {-# INLINE arraySizeInstance #-}
-    inferSnocArrayInstance _ _ = ArrayInstanceEvidence
+    inferSnocArrayInstance _ _ = Evidence
     {-# INLINE inferSnocArrayInstance #-}
-    inferConsArrayInstance _ _ = ArrayInstanceEvidence
+    inferConsArrayInstance _ _ = Evidence
     {-# INLINE inferConsArrayInstance #-}
-    inferInitArrayInstance _ = ArrayInstanceEvidence
+    inferInitArrayInstance _ = Evidence
     {-# INLINE inferInitArrayInstance #-}
 
 
@@ -280,14 +307,14 @@ instance ArraySizeInference (d1 ': d2 ': d3 ': ds) where
     -- I know that for dimensionality > 2 all instances are the same.
     -- Hence this dirty hack should work.
     -- I have to change this when I have customized N*M instances
-    inferSnocArrayInstance p q = unsafeCoerce (inferConsArrayInstance q p)
+    inferSnocArrayInstance p q = unsafeCoerce# (inferConsArrayInstance q p)
     {-# INLINE inferSnocArrayInstance #-}
-    inferConsArrayInstance _ _ = ArrayInstanceEvidence
+    inferConsArrayInstance _ _ = Evidence
     {-# INLINE inferConsArrayInstance #-}
     -- I know that for dimensionality > 2 all instances are the same.
     -- Hence this dirty hack should work.
     -- I have to change this when I have customized N*M instances
-    inferInitArrayInstance p = unsafeCoerce (inferConsArrayInstance (Proxy @3) p)
+    inferInitArrayInstance p = unsafeCoerce# (inferConsArrayInstance (Proxy @3) p)
     {-# INLINE inferInitArrayInstance #-}
 
 
@@ -377,15 +404,16 @@ getArrayInstance = case (elemTypeInstance @t, arraySizeInstance @ds) of
 -- | Given element type instance and proper dimension list,
 --   infer a corresponding array instance
 inferArrayInstance :: forall t ds
-                    . ( Dimensions ds
+                    . ( FiniteList ds
+                      , KnownDims ds
                       , ElemTypeInference t
                       )
                   => ArrayInstanceEvidence t ds
-inferArrayInstance = case tList (Proxy @ds) of
-    TLEmpty                          -> ArrayInstanceEvidence
-    TLCons _ TLEmpty                 -> ArrayInstanceEvidence
-    TLCons _ (TLCons _ TLEmpty)      -> ArrayInstanceEvidence
-    TLCons _ (TLCons _ (TLCons _ _)) -> ArrayInstanceEvidence
+inferArrayInstance = case tList @_ @ds of
+    TLEmpty                          -> Evidence
+    TLCons _ TLEmpty                 -> Evidence
+    TLCons _ (TLCons _ TLEmpty)      -> Evidence
+    TLCons _ (TLCons _ (TLCons _ _)) -> Evidence
 
 
 _suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)

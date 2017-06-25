@@ -15,12 +15,14 @@
 {-# LANGUAGE TemplateHaskell     #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE CPP                 #-}
 
 module Numeric.DataFrame.SubSpaceTest (runTests) where
 
 import           Numeric.DataFrame
 import           Numeric.DataFrame.Arbitraries
 import           Numeric.Dimensions
+import           Numeric.TypeLits
 import           Test.QuickCheck
 
 
@@ -28,23 +30,24 @@ import           Test.QuickCheck
 
 prop_Dims :: SomeSimpleDF -> SomeSimpleDF -> Bool
 prop_Dims (SSDF (SDF (x :: DataFrame Float xs))) (SSDF (SDF (y :: DataFrame Float ys)))
-    | DimensionsEvidence <- inferConcatDimensions x y
-    = order (Proxy @(xs ++ ys)) == order x + order y
+    | Evidence <- inferConcatDimensions @xs @ys
+    , Evidence <- inferConcatFiniteList @xs @ys
+    = order @_ @(xs ++ ys) == order @_ @xs + order @_ @ys
       && totalDim (Proxy @(xs ++ ys)) == totalDim x * totalDim y
 
-
-prop_Eye :: SomeSimpleDFNonScalar -> Bool
-prop_Eye (SSDFN (SDF (x :: DataFrame Float (d ': ds))))
-  | DimensionsEvidence <- inferTailDimensions x
-  , DimensionsEvidence <- inferInitDimensions x
-  , NonEmptyListEvidence <- inferNonEmptyList @d @ds
-  , ValidDim <- inferLastValidDim @d @ds
-  = eye %* x == x && x == x %* eye
+-- GHC 8.0.2 panics!
+-- prop_Eye :: SomeSimpleDFNonScalar -> Bool
+-- prop_Eye (SSDFN (SDF (x :: DataFrame Float (d ': ds))))
+--   | Just Evidence <- inferTailDimensions @(d ': ds)
+--   , Just Evidence <- inferInitDimensions @(d ': ds)
+--   , Evidence <- inferNonEmptyList @d @ds
+--   -- , Evidence <- inferLastValidDim @d @ds
+--   = eye %* x == x && x == x %* eye
 
 
 prop_IndexDimMax :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
 prop_IndexDimMax (SDF x) (SDF y) =
-   ((dimMax `inSpaceOf` y) !. z) == x
+   ((maxBound `inSpaceOf` y) !. z) == x
   where
     z = ewgen x :: DataFrame Float '[2,5,4,3,7]
 
@@ -53,10 +56,14 @@ prop_IndexCustom1 (SDF x) (SDF _) = (1:!3 !. z) == x
   where
     z = ewgen x :: DataFrame Float '[2,5,4,3,7]
 
+
+#if __GLASGOW_HASKELL__ >= 802
+-- GHC 8.0.2 cannot understand that Prefix/Suffix functions have kind Nat here
 prop_IndexCustom2 :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
 prop_IndexCustom2 (SDF x) (SDF _) = (2:!2 !. z) %* eye == x
   where
     z = ewgen x :: DataFrame Float '[2,5,4,3,7]
+#endif
 
 prop_Foldlr :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
 prop_Foldlr (SDF x) (SDF _) =

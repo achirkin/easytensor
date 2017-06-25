@@ -31,6 +31,7 @@ import           Unsafe.Coerce
 import           Numeric.Commons
 import           Numeric.DataFrame
 import           Numeric.Dimensions
+import           Numeric.TypeLits
 
 
 
@@ -49,17 +50,17 @@ unsafeEqProof = unsafeCoerce Refl
 -- | Generating random DataFrames
 newtype SimpleDF (ds :: [Nat] ) = SDF { getDF :: DataFrame Float ds}
 data SomeSimpleDF = forall (ds :: [Nat])
-                  . (Dimensions ds, NumericFrame Float ds)
+                  . (Dimensions ds, FiniteList ds, KnownDims ds, NumericFrame Float ds)
                  => SSDF !(SimpleDF ds)
 data SomeSimpleDFNonScalar
     = forall (ds :: [Nat]) (a :: Nat) (as :: [Nat])
-    . ( Dimensions ds
+    . ( Dimensions ds, FiniteList ds, KnownDims ds
       , NumericFrame Float ds
       , ds ~ (a :+ as)
       )
    => SSDFN !(SimpleDF ds)
 data SomeSimpleDFPair = forall (ds :: [Nat])
-                      . ( Dimensions ds
+                      . ( Dimensions ds, FiniteList ds, KnownDims ds
                         , NumericFrame Float ds
                         )
                      => SSDFP !(SimpleDF ds) !(SimpleDF ds)
@@ -82,10 +83,9 @@ instance Arbitrary SomeSimpleDF where
   arbitrary = do
     dimN <- choose (0, maxDims) :: Gen Int
     intDims <- mapM (\_ -> choose (2, maxDimSize) :: Gen Int) [1..dimN]
-    let eGen = case someDimVal intDims of
-          Just (SomeDim (_ :: Dim ds)) -> case inferArrayInstance @Float @ds of
-            ArrayInstanceEvidence -> case inferNumericFrame @Float @ds of
-              NumericFrameEvidence -> Right $ SSDF <$> (arbitrary :: Gen (SimpleDF ds))
+    let eGen = case someDimsVal intDims of
+          Just (SomeDims (dds :: Dim ds)) -> case inferGoodDims dds of
+              Evidence -> Right $ SSDF <$> (arbitrary :: Gen (SimpleDF ds))
           Nothing -> Left "cannot construct Dim value."
     case eGen of
       Left s  -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
@@ -97,10 +97,9 @@ instance Arbitrary SomeSimpleDFNonScalar where
   arbitrary = do
     dimN <- choose (1, maxDims) :: Gen Int
     intDims <- mapM (\_ -> choose (2, maxDimSize) :: Gen Int) [1..dimN]
-    let eGen = case someDimVal intDims of
-          Just (SomeDim (_ :: Dim ds)) -> case inferArrayInstance @Float @ds of
-            ArrayInstanceEvidence -> case inferNumericFrame @Float @ds of
-              NumericFrameEvidence -> case ( unsafeEqProof :: ds :~: (Head ds :+ Tail ds)
+    let eGen = case someDimsVal intDims of
+          Just (SomeDims (dds :: Dim ds)) -> case inferGoodDims dds of
+              Evidence -> case ( unsafeEqProof :: ds :~: (Head ds :+ Tail ds)
                                            , unsafeEqProof :: ds :~: (Init ds +: Last ds)
                                            ) of
                 (Refl, Refl) -> Right $ SSDFN <$> (arbitrary :: Gen (SimpleDF ds))
@@ -115,10 +114,9 @@ instance Arbitrary SomeSimpleDFPair where
   arbitrary = do
     dimN <- choose (0, maxDims) :: Gen Int
     intDims <- mapM (\_ -> choose (2, maxDimSize) :: Gen Int) [1..dimN]
-    let eGen = case someDimVal intDims of
-          Just (SomeDim (_ :: Dim ds)) -> case inferArrayInstance @Float @ds of
-            ArrayInstanceEvidence -> case inferNumericFrame @Float @ds of
-              NumericFrameEvidence -> Right $ SSDFP
+    let eGen = case someDimsVal intDims of
+          Just (SomeDims (dds :: Dim ds)) -> case inferGoodDims dds of
+              Evidence -> Right $ SSDFP
                           <$> (arbitrary :: Gen (SimpleDF ds))
                           <*> (arbitrary :: Gen (SimpleDF ds))
           Nothing -> Left "cannot construct Dim value."
@@ -126,6 +124,14 @@ instance Arbitrary SomeSimpleDFPair where
       Left s  -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
       Right v -> v
   shrink (SSDFP x y) = SSDFP <$> shrink x <*> shrink y
+
+
+inferGoodDims :: forall (ds :: [Nat]) . Dim ds -> Evidence (Dimensions ds, FiniteList ds, KnownDims ds, NumericFrame Float ds)
+inferGoodDims ds = case reifyDimensions ds of
+  Evidence -> case inferDimKnownDims @ds `sumEvs` inferDimFiniteList @ds of
+    Evidence -> case inferArrayInstance @Float @ds of
+      Evidence -> case inferNumericFrame @Float @ds of
+        Evidence -> Evidence
 
 instance Show (DataFrame Float ds) => Show (SimpleDF ds) where
   show (SDF sdf) = show sdf

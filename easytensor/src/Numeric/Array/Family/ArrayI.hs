@@ -34,6 +34,8 @@ import           Numeric.Array.ElementWise
 import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.Dimensions
+import           Numeric.Dimensions.Traverse
+import           Numeric.TypeLits
 
 
 #include "MachDeps.h"

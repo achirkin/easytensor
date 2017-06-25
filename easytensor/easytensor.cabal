@@ -1,6 +1,6 @@
 name: easytensor
 version: 0.1.0.0
-cabal-version: >=2.0
+cabal-version: >=1.20
 build-type: Simple
 license: MIT
 license-file: LICENSE
@@ -86,7 +86,7 @@ test-suite et-test
         Numeric.DataFrame.BasicTest
     build-depends:
         base -any,
-        Cabal >=2.0,
+        Cabal >=1.20,
         QuickCheck -any,
         easytensor -any,
         dimensions -any

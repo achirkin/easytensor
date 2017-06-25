@@ -45,6 +45,7 @@ import           Numeric.Commons
 import           Numeric.DataFrame.Inference
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
+import           Numeric.TypeLits
 import           Numeric.Scalar              as Scalar
 import           Numeric.Vector              (vec2)
 
@@ -130,12 +131,12 @@ infixl 5 <+:>
 --   Output is in [XNat], because the last dimension is unknown at compile time
 fromList :: forall ns t xns xnsm
           . ( ns ~ AsDims xns
-            , xnsm ~ (xns +: XN)
+            , xnsm ~ (xns +: XN 2)
             , PrimBytes (DataFrame t ns)
             , Dimensions ns
             , ArrayInstanceInference t ns
             )
-         => [DataFrame t ns] -> DataFrame t (xns +: XN)
+         => [DataFrame t ns] -> DataFrame t (xns +: XN 2)
 fromList xs = fromListN (length xs) xs
 
 -- | Implement function `toList`.
@@ -164,9 +165,9 @@ instance ( Dimensions ns
 instance DataFrameToList t xz (xns :: [XNat]) where
   toList (SomeDataFrame (df :: DataFrame t nsz))
       | (pns :: Proxy ns, _ :: Proxy z, Refl, Refl, Refl, Refl, Refl) <- getXSZ @nsz
-      , DimensionsEvidence <- inferInitDimensions (Proxy @nsz)
-      , ArrayInstanceEvidence <- inferInitArrayInstance df
-      , NumericFrameEvidence <- inferNumericFrame @t @ns
+      , Just Evidence <- inferInitDimensions @nsz
+      , Evidence <- inferInitArrayInstance df
+      , Evidence <- inferNumericFrame @t @ns
       , I# step <- totalDim pns
       , (# offset, lenN, arr #) <- toBytes df
       = go pns step arr (offset +# lenN) offset
@@ -199,22 +200,22 @@ instance DataFrameToList t xz (xns :: [XNat]) where
 
 fromListN :: forall ns t xns xnsm
            . ( ns ~ AsDims xns
-             , xnsm ~ (xns +: XN)
+             , xnsm ~ (xns +: XN 2)
              , PrimBytes (DataFrame t ns)
              , Dimensions ns
              , ArrayInstanceInference t ns
              )
-          => Int -> [DataFrame t ns] -> DataFrame t (xns +: XN)
+          => Int -> [DataFrame t ns] -> DataFrame t (xns +: XN 2)
 fromListN _ []  = error "DataFrame fromList: the list must have at least two elements"
 fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
 fromListN n@(I# n#) xs  | Just (SomeNat (pm :: Proxy m)) <- someNatVal (fromIntegral n)
                         , (pnsm, Refl, Refl, Refl) <- snocP pm
                         , I# len# <- totalDim (Proxy @ns)
                         , resultBytes# <- df len#
-                        , DimensionsEvidence <- inferSnocDimensions (Proxy @ns) pm
-                        , ArrayInstanceEvidence <- inferSnocArrayInstance (head xs) pm
-                        , PrimBytesEvidence <- inferPrimBytes @t @(ns +: m)
-                        , NumericFrameEvidence <- inferNumericFrame @t @(ns +: m)
+                        , Evidence <- inferSnocDimensions @ns @m
+                        , Evidence <- inferSnocArrayInstance (head xs) pm
+                        , Evidence <- inferPrimBytes @t @(ns +: m)
+                        , Evidence <- inferNumericFrame @t @(ns +: m)
     = SomeDataFrame . enforceDim @t pnsm $ fromBytes (# 0#, n# *# len#, resultBytes# #)
   where
     elSize# = elementByteSize (head xs)
@@ -244,9 +245,9 @@ fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show
 
 instance ( xnsm ~ (x ': xns')
          , xns ~ Init xnsm
-         , Last xnsm ~ XN
+         , Last xnsm ~ XN 2
          , ns ~ AsDims xns
-         , (x ': xns') ~ (xns +: XN)
+         , (x ': xns') ~ (xns +: XN 2)
          , PrimBytes (DataFrame t ns)
          , Dimensions ns
          , ArrayInstanceInference t ns

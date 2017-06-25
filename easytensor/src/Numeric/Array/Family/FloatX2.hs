@@ -256,8 +256,8 @@ instance Floating FloatX2 where
 --   {-# INLINE det2 #-}
 
 type instance ElemRep FloatX2 = 'FloatRep
+type instance ElemPrim FloatX2 = Float#
 instance PrimBytes FloatX2 where
-  type ElemPrim FloatX2 = Float#
   toBytes (FloatX2# a1 a2) = case runRW#
      ( \s0 -> case newByteArray# (SIZEOF_HSFLOAT# *# 2#) s0 of
          (# s1, marr #) -> case writeFloatArray# marr 0# a1 s1 of

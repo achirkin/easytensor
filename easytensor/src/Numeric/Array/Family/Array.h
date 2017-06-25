@@ -118,7 +118,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
   ewmap f x@(ARR_CONSTR offset n arr) = case runRW#
      (\s0 -> case newByteArray# bs s0 of
        (# s1, marr #) -> case newMutVar# 0 s1 of
-         (# s2, mi #) -> case loopS (dim `inSpaceOf` x)
+         (# s2, mi #) -> case overDimIdx_# (dim `inSpaceOf` x)
              (\ii ss -> case readMutVar# mi ss of
                (# sss, I# i #) ->
                  case f ii (EL_CONSTR (INDEX_ARRAY arr (offset +# i))) of
@@ -132,7 +132,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
   ewmap f x@(ARR_FROMSCALAR scalVal) = case runRW#
      (\s0 -> case newByteArray# bs s0 of
        (# s1, marr #) -> case newMutVar# 0 s1 of
-         (# s2, mi #) -> case loopS (dim `inSpaceOf` x)
+         (# s2, mi #) -> case overDimIdx_# (dim `inSpaceOf` x)
              (\ii ss -> case readMutVar# mi ss of
                (# sss, I# i #) ->
                  case f ii (EL_CONSTR scalVal) of
@@ -149,7 +149,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
   ewgen f = case runRW#
      (\s0 -> case newByteArray# bs s0 of
        (# s1, marr #) -> case newMutVar# 0 s1 of
-         (# s2, mi #) -> case loopS (dim `inSpaceOf` x)
+         (# s2, mi #) -> case overDimIdx_# (dim `inSpaceOf` x)
              (\ii ss -> case readMutVar# mi ss of
                (# sss, I# i #) -> case f ii of
                   (EL_CONSTR r) -> writeMutVar# mi (I# (i +# 1#))
@@ -164,7 +164,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
   {-# INLINE ewgen #-}
 
   ewgenA f
-      = case loopA (dim `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of
+      = case foldDimIdx (dim `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of
         AU# _ ff -> wr x bs n <$> ff
     where
       g ds (AU# i ff) = AU# ( i +# 1# )
@@ -176,7 +176,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
 
   ewfold f v0 x@(ARR_CONSTR offset _ arr) = case runRW#
     (\s0 -> case newMutVar# (0,v0) s0 of
-       (# s1, miv #) -> case loopS (dim `inSpaceOf` x)
+       (# s1, miv #) -> case overDimIdx_# (dim `inSpaceOf` x)
              (\ii ss -> case readMutVar# miv ss of
                (# sss, (I# i, v) #) -> writeMutVar# miv
                       ( I# (i +# 1#)
@@ -187,7 +187,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
     ) of (# _, (_, r) #) -> r
   ewfold f v0 x@(ARR_FROMSCALAR scalVal) = case runRW#
     (\s0 -> case newMutVar# v0 s0 of
-        (# s1, miv #) -> case loopS (dim `inSpaceOf` x)
+        (# s1, miv #) -> case overDimIdx_# (dim `inSpaceOf` x)
               (\ii ss -> case readMutVar# miv ss of
                 (# sss, v #) -> writeMutVar# miv
                        ( f ii (EL_CONSTR scalVal) v
@@ -198,7 +198,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
   {-# INLINE ewfold #-}
 
   indexWise f x@(ARR_CONSTR offset n arr)
-      = case loopA (dim `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of
+      = case foldDimIdx (dim `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of
         AU# _ ff -> wr x bs n <$> ff
     where
       g ds (AU# i ff) = AU# ( i +# 1# )
@@ -207,7 +207,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
       bs = n *# EL_SIZE
 
   indexWise f x@(ARR_FROMSCALAR scalVal)
-      = case loopA (dim `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of
+      = case foldDimIdx (dim `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of
         AU# _ ff -> wr x bs n <$> ff
     where
       n = case totalDim x of I# d -> d
@@ -252,30 +252,28 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
               s3 -> unsafeFreezeByteArray# marr s3
         ) of (# _, r #) -> ARR_CONSTR 0# len r
 
-
 instance Dimensions ds
-      => Show (ARR_TYPE ds) where
-  show x
-      | D <- dim @ds = "{ " ++ show (x ! Z) ++ " }"
-      | _ :* D <- dim @ds = ('{' :) . drop 1 $
-                      foldr (\i s -> ", " ++ show (x ! i) ++ s) " }"
-                              [minBound .. maxBound]
-      | (_ :: Proxy n) :* (_ :: Proxy m) :* (_ :: Dim dss) <- dim @ds
-      , DimensionsEvidence <- inferDropNDimensions (Proxy @2) x
-        = let loopInner :: Idx dss -> Idx '[n,m] -> String
+      => Show (ARR_TYPE (ds :: [Nat])) where
+  show x = case dim @ds of
+    D -> "{ " ++ show (x ! Z) ++ " }"
+    Dn :* D -> ('{' :) . drop 1 $
+                    foldr (\i s -> ", " ++ show (x ! i) ++ s) " }"
+                            [minBound .. maxBound]
+    (Dn :: Dim (n :: Nat)) :* (Dn :: Dim (m :: Nat)) :* (_ :: Dim (dss :: [Nat])) ->
+      case inferDropNDimensions @2 @ds of
+        Evidence ->
+          let loopInner :: Idx dss -> Idx '[n,m] -> String
               loopInner ods (n:!m:!_) = ('{' :) . drop 2 $
                               foldr (\i ss -> '\n':
                                       foldr (\j s ->
                                                ", " ++ show (x ! (i :! j :! ods)) ++ s
                                             ) ss [1..m]
                                     ) " }" [1..n]
-              loopOuter :: Idx dss -> String -> String
+              loopOuter ::  Idx dss -> String -> String
               loopOuter Z s  = "\n" ++ loopInner Z maxBound ++ s
               loopOuter ds s = "\n(i j" ++ drop 3 (show ds) ++ "):\n"
                                     ++ loopInner ds maxBound ++ s
           in drop 1 $ foldr loopOuter "" [minBound..maxBound]
-      | otherwise
-        = error "Show ARR_TYPE -- impossible pattern match on Dim!"
 
 instance Eq (ARR_TYPE ds) where
   a == b = accumV2 (\x y r -> r && isTrue# (OP_EQ x y)) a b True
@@ -313,8 +311,8 @@ instance Ord (ARR_TYPE ds) where
 
 
 type instance ElemRep (ARR_TYPE ds) = EL_RUNTIME_REP
-instance Dimensions'' ds => PrimBytes (ARR_TYPE ds) where
-  type ElemPrim (ARR_TYPE ds) = EL_TYPE_PRIM
+type instance ElemPrim (ARR_TYPE ds) = EL_TYPE_PRIM
+instance Dimensions ds => PrimBytes (ARR_TYPE ds) where
   toBytes (ARR_CONSTR off size a) = (# off, size, a #)
   toBytes (ARR_FROMSCALAR x) = case runRW#
      ( \s0 -> case newByteArray# bs s0 of

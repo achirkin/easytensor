@@ -3,37 +3,36 @@
 {-# LANGUAGE KindSignatures   #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators    #-}
+{-# LANGUAGE CPP              #-}
 
 module Main (main) where
 
 import           Numeric.DataFrame
 import           Numeric.Dimensions
+import           Numeric.TypeLits
 
 
 
 main :: IO ()
 main = do
     putStrLn "Hello world!"
-    print (Proxy @3 :* Proxy @2 :* (D :: Dim ('[] :: [Nat])))
-    print $ case (,,,)  <$> someNatVal 3
-                        <*> someNatVal 6
-                        <*> someNatVal 8
-                        <*> someNatVal 4
-                        of
-      Nothing        -> Nothing
-      Just (a,b,c,d) -> xDimVal $ a :? b :? c :? d :? D
-    print (fromList [vec2 1 0, vec2 2 3, vec2 3 4, vec2 5 6] :: DataFrame Int '[N 2, XN])
-    print (fromList [vec4 1 0 2 11, vec4 2 22 3 0, vec4 3 4 0 0] :: DataFrame Double '[N 4, XN])
-    print (fromList [vec2 0 0, vec2 2 22, vec2 2 22] :: DataFrame Float '[N 2, XN])
-    print (fromList [0, 1, 3, 5, 7] :: DataFrame Float '[XN])
-    print (fromList [9, 13, 2] :: DataFrame Float '[N 5, N 2, XN])
+    print (Dn @3 :* Dn @2 :* (D :: Dim ('[] :: [Nat])))
+
+    print (fromList [vec2 1 0, vec2 2 3, vec2 3 4, vec2 5 6] :: DataFrame Int '[N 2, XN 2])
+    print (fromList [vec4 1 0 2 11, vec4 2 22 3 0, vec4 3 4 0 0] :: DataFrame Double '[N 4, XN 2])
+    print (fromList [vec2 0 0, vec2 2 22, vec2 2 22] :: DataFrame Float '[N 2, XN 2])
+    print (fromList [0, 1, 3, 5, 7] :: DataFrame Float '[XN 2])
+#if __GLASGOW_HASKELL__ >= 802
+    print (fromList [9, 13, 2] :: DataFrame Float '[N 5, N 2, XN 2])
+#endif
     print $ vec2 1 1 %* mat22 (vec2 1 1) (vec2 2 (3 :: Float))
+#if __GLASGOW_HASKELL__ >= 802
     print (toList (42 :: DataFrame Int '[4,3,2]))
     -- Seems like I have to specify known dimension explicitly,
     -- because the inference process within the pattern match
     -- cannot escape the case expression.
     -- On the other hand, if I type wrong dimension it will throw a nice type-level error.
-    () <- case fromList [10, 100, 1000] :: DataFrame Double '[N 4, N 2, XN] of
+    () <- case fromList [10, 100, 1000] :: DataFrame Double '[N 4, N 2, XN 2] of
                     -- Amazing inference!
                     -- m :: KnownNat k => DataFrame '[4,2,k]
         SomeDataFrame m -> print $ vec4 1 2.25 3 0.162 %* m
@@ -81,3 +80,4 @@ main = do
     -- Updating existing frames
     print $ update (2:!Z) (scalar 777) rVec
     print $ update (2:!3:!Z) (vec2 999 999) x
+#endif

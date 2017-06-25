@@ -38,21 +38,21 @@ module Numeric.DataFrame.Type
   ) where
 
 import           Data.Int                  (Int16, Int32, Int64, Int8)
-import           Data.Type.Equality        ((:~:) (..))
 import           Data.Word                 (Word16, Word32, Word64, Word8)
 import           Foreign.Storable          (Storable (..))
-import           GHC.Exts                  (Int (..), Ptr (..))
+import           GHC.Exts                  (Int (..), Ptr (..), Float#, Double#, Int#, Word#)
 import           GHC.Prim                  (copyAddrToByteArray#,
                                             copyByteArrayToAddr#, newByteArray#,
                                             plusAddr#, quotInt#,
                                             unsafeFreezeByteArray#, (*#))
-import           GHC.Types                 (Constraint, IO (..), Type)
+import           GHC.Types                 (Constraint, IO (..), Type, RuntimeRep (..))
 
 
 import           Numeric.Array.ElementWise
 import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.Dimensions
+import           Numeric.TypeLits
 
 -- | Keep data in a primitive data frame
 --    and maintain information about Dimensions in the type-system
@@ -143,9 +143,6 @@ deriving instance RealFrac (Array t ds)
                => RealFrac (DataFrame t ds)
 deriving instance RealFloat (Array t ds)
                => RealFloat (DataFrame t ds)
-type instance ElemRep (DataFrame t xs) = ElemRep (Array t xs)
-deriving instance PrimBytes (Array t ds)
-               => PrimBytes (DataFrame t ds)
 instance ( Dimensions ds
          , ElementWise (Idx ds) t (Array t ds)
          ) => ElementWise (Idx ds) t (DataFrame t ds) where
@@ -198,10 +195,67 @@ instance PrimBytes (DataFrame t ds) => Storable (DataFrame t ds) where
 
 
 
+
+type instance ElemRep (DataFrame t xs) = ElemRep (Array t xs)
+type instance ElemPrim (DataFrame Float  ds) = Float#
+type instance ElemPrim (DataFrame Double ds) = Double#
+type instance ElemPrim (DataFrame Int    ds) = Int#
+type instance ElemPrim (DataFrame Int8   ds) = Int#
+type instance ElemPrim (DataFrame Int16  ds) = Int#
+type instance ElemPrim (DataFrame Int32  ds) = Int#
+type instance ElemPrim (DataFrame Int64  ds) = Int#
+type instance ElemPrim (DataFrame Word   ds) = Word#
+type instance ElemPrim (DataFrame Word8  ds) = Word#
+type instance ElemPrim (DataFrame Word16 ds) = Word#
+type instance ElemPrim (DataFrame Word32 ds) = Word#
+type instance ElemPrim (DataFrame Word64 ds) = Word#
+deriving instance ( PrimBytes (Array Float ds)
+                  , ElemPrim (Array Float ds) ~ Float#
+                  , ElemRep (Array Float ds) ~ 'FloatRep) => PrimBytes (DataFrame Float ds)
+deriving instance ( PrimBytes (Array Double ds)
+                  , ElemPrim (Array Double ds) ~ Double#
+                  , ElemRep (Array Double ds) ~ 'DoubleRep) => PrimBytes (DataFrame Double ds)
+deriving instance ( PrimBytes (Array Int ds)
+                  , ElemPrim (Array Int ds) ~ Int#
+                  , ElemRep (Array Int ds) ~ 'IntRep) => PrimBytes (DataFrame Int ds)
+deriving instance ( PrimBytes (Array Int8 ds)
+                  , ElemPrim (Array Int8 ds) ~ Int#
+                  , ElemRep (Array Int8 ds) ~ 'IntRep) => PrimBytes (DataFrame Int8 ds)
+deriving instance ( PrimBytes (Array Int16 ds)
+                  , ElemPrim (Array Int16 ds) ~ Int#
+                  , ElemRep (Array Int16 ds) ~ 'IntRep) => PrimBytes (DataFrame Int16 ds)
+deriving instance ( PrimBytes (Array Int32 ds)
+                  , ElemPrim (Array Int32 ds) ~ Int#
+                  , ElemRep (Array Int32 ds) ~ 'IntRep) => PrimBytes (DataFrame Int32 ds)
+deriving instance ( PrimBytes (Array Int64 ds)
+                  , ElemPrim (Array Int64 ds) ~ Int#
+                  , ElemRep (Array Int64 ds) ~ 'IntRep) => PrimBytes (DataFrame Int64 ds)
+deriving instance ( PrimBytes (Array Word ds)
+                  , ElemPrim (Array Word ds) ~ Word#
+                  , ElemRep (Array Word ds) ~ 'WordRep) => PrimBytes (DataFrame Word ds)
+deriving instance ( PrimBytes (Array Word8 ds)
+                  , ElemPrim (Array Word8 ds) ~ Word#
+                  , ElemRep (Array Word8 ds) ~ 'WordRep) => PrimBytes (DataFrame Word8 ds)
+deriving instance ( PrimBytes (Array Word16 ds)
+                  , ElemPrim (Array Word16 ds) ~ Word#
+                  , ElemRep (Array Word16 ds) ~ 'WordRep) => PrimBytes (DataFrame Word16 ds)
+deriving instance ( PrimBytes (Array Word32 ds)
+                  , ElemPrim (Array Word32 ds) ~ Word#
+                  , ElemRep (Array Word32 ds) ~ 'WordRep) => PrimBytes (DataFrame Word32 ds)
+deriving instance ( PrimBytes (Array Word64 ds)
+                  , ElemPrim (Array Word64 ds) ~ Word#
+                  , ElemRep (Array Word64 ds) ~ 'WordRep) => PrimBytes (DataFrame Word64 ds)
+
+
+
+
+
+
+
 instance Eq (DataFrame t (ds :: [XNat])) where
   SomeDataFrame (a :: DataFrame t nsa) == SomeDataFrame (b :: DataFrame t nsb)
       = case sameDim (dim @nsa) (dim @nsb) of
-          Just Refl -> a == b
+          Just Evidence -> a == b
           Nothing   -> False
 
 instance Show (DataFrame t (ds :: [XNat])) where

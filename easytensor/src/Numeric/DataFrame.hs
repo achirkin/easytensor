@@ -24,7 +24,7 @@ module Numeric.DataFrame
   , module Numeric.DataFrame.Inference
   , module Numeric.DataFrame.Shape
   , ElementWise ()
-  , ArrayInstanceEvidence (..), ArrayInstance (..), getArrayInstance, inferArrayInstance
+  , ArrayInstanceEvidence, ArrayInstance (..), getArrayInstance, inferArrayInstance
   , ArraySizeInference (..), ArraySize (..)
   , ElemTypeInference (..), ElemType (..)
   ) where
