@@ -39,6 +39,8 @@ import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
+import           Numeric.Dimensions.Traverse
+import           Numeric.TypeLits
 import           Numeric.Matrix.Type
 
 #include "MachDeps.h"
@@ -151,7 +153,7 @@ instance Floating (ArrayF ds) where
 
 
 
-instance (KnownNat n, KnownNat m, ArrayF '[n,m] ~ Array Float '[n,m], 2 <= n, 2 <= m)
+instance (KnownDim n, KnownDim m, ArrayF '[n,m] ~ Array Float '[n,m], 2 <= n, 2 <= m)
       => MatrixCalculus Float n m where
   transpose (KnownDataFrame (ArrayF# offs nm arr)) = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
@@ -162,12 +164,12 @@ instance (KnownNat n, KnownNat m, ArrayF '[n,m] ~ Array Float '[n,m], 2 <= n, 2 
              s2 -> unsafeFreezeByteArray# marr s2
      ) of (# _, r #) -> fromBytes (# 0#, nm, r #)
     where
-      n = case fromInteger $ natVal (Proxy @n) of I# np -> np
-      m = case fromInteger $ natVal (Proxy @m) of I# mp -> mp
+      n = case dimVal' @n of I# np -> np
+      m = case dimVal' @m of I# mp -> mp
       bs = n *# m *# SIZEOF_HSFLOAT#
   transpose (KnownDataFrame (FromScalarF# x)) = unsafeCoerce# $ FromScalarF# x
 
-instance ( Dimensions '[n,n], ArrayF '[n,n] ~ Array Float '[n,n] )
+instance ( KnownDim n, ArrayF '[n,n] ~ Array Float '[n,n] )
       => SquareMatrixCalculus Float n where
   eye = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
@@ -178,7 +180,7 @@ instance ( Dimensions '[n,n], ArrayF '[n,n] ~ Array Float '[n,n] )
      ) of (# _, r #) -> fromBytes (# 0#, n *# n,  r #)
     where
       n1 = n +# 1#
-      n = case fromInteger $ natVal (Proxy @n) of I# np -> np
+      n = case dimVal' @n of I# np -> np
       bs = n *# n *# SIZEOF_HSFLOAT#
   {-# INLINE eye #-}
   diag (KnownDataFrame (Scalar (F# v))) = case runRW#
@@ -190,7 +192,7 @@ instance ( Dimensions '[n,n], ArrayF '[n,n] ~ Array Float '[n,n] )
      ) of (# _, r #) -> fromBytes (# 0#, n *# n,  r #)
     where
       n1 = n +# 1#
-      n = case fromInteger $ natVal (Proxy @n) of I# np -> np
+      n = case dimVal' @n of I# np -> np
       bs = n *# n *# SIZEOF_HSFLOAT#
   {-# INLINE diag #-}
 
@@ -215,7 +217,7 @@ instance ( Dimensions '[n,n], ArrayF '[n,n] ~ Array Float '[n,n] )
             in f 0# 1.0# s2
      ) of (# _, r #) -> F# r
     where
-      n = case fromInteger $ natVal (Proxy @n) of I# np -> np
+      n = case dimVal' @n of I# np -> np
       offb = off *# SIZEOF_HSFLOAT#
       bs = nsqr *# SIZEOF_HSFLOAT#
   det (KnownDataFrame (FromScalarF# _)) = 0
@@ -226,13 +228,13 @@ instance ( Dimensions '[n,n], ArrayF '[n,n] ~ Array Float '[n,n] )
   trace (KnownDataFrame (ArrayF# off nsqr a)) = KnownDataFrame (Scalar (F# (loop' 0# 0.0#)))
     where
       n1 = n +# 1#
-      n = case fromInteger $ natVal (Proxy @n) of I# np -> np
+      n = case dimVal' @n of I# np -> np
       loop' i acc | isTrue# (i ># nsqr) = acc
                   | otherwise = loop' (i +# n1)
                          (indexFloatArray# a (off +# i) `plusFloat#` acc)
   trace (KnownDataFrame (FromScalarF# x)) = KnownDataFrame (Scalar (F# (x `timesFloat#` n)))
     where
-      n = case fromInteger $ natVal (Proxy @n) of F# np -> np
+      n = case fromIntegral (dimVal' @n) of F# np -> np
   {-# INLINE trace #-}
 
 
@@ -269,7 +271,7 @@ instance (KnownNat n, ArrayF '[n,n] ~ Array Float '[n,n], 2 <= n) => MatrixInver
      ) of (# _, r #) -> KnownDataFrame (ArrayF# 0# nsqr r)
     where
       nn = 2# *# n
-      n = case fromInteger $ natVal (Proxy @n) of I# np -> np
+      n = case dimVal' @n of I# np -> np
       vs = n *# SIZEOF_HSFLOAT#
       bs = n *# n *# SIZEOF_HSFLOAT#
       offb = offs *# SIZEOF_HSFLOAT#

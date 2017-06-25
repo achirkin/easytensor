@@ -38,6 +38,8 @@ import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
+import           Numeric.Dimensions.Traverse
+import           Numeric.TypeLits
 import           Numeric.Matrix.Type
 
 
@@ -164,7 +166,7 @@ instance (KnownNat n, KnownNat m, ArrayD '[n,m] ~ Array Double '[n,m], 2 <= n, 2
       bs = n *# m *# EL_SIZE
   transpose (KnownDataFrame (FromScalarD# x)) = unsafeCoerce# $ FromScalarD# x
 
-instance ( Dimensions '[n,n], ArrayD '[n,n] ~ Array Double '[n,n] )
+instance ( KnownDim n, ArrayD '[n,n] ~ Array Double '[n,n] )
       => SquareMatrixCalculus Double n where
   eye = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
@@ -175,7 +177,7 @@ instance ( Dimensions '[n,n], ArrayD '[n,n] ~ Array Double '[n,n] )
      ) of (# _, r #) -> fromBytes (# 0#, n *# n,  r #)
     where
       n1 = n +# 1#
-      n = case fromInteger $ natVal (Proxy @n) of I# np -> np
+      n = case dimVal' @n of I# np -> np
       bs = n *# n *# EL_SIZE
   {-# INLINE eye #-}
   diag (KnownDataFrame (Scalar (D# v))) = case runRW#
@@ -187,7 +189,7 @@ instance ( Dimensions '[n,n], ArrayD '[n,n] ~ Array Double '[n,n] )
      ) of (# _, r #) -> fromBytes (# 0#, n *# n,  r #)
     where
       n1 = n +# 1#
-      n = case fromInteger $ natVal (Proxy @n) of I# np -> np
+      n = case dimVal' @n of I# np -> np
       bs = n *# n *# EL_SIZE
   {-# INLINE diag #-}
 
@@ -212,7 +214,7 @@ instance ( Dimensions '[n,n], ArrayD '[n,n] ~ Array Double '[n,n] )
             in f 0# 1.0## s2
      ) of (# _, r #) -> D# r
     where
-      n = case fromInteger $ natVal (Proxy @n) of I# np -> np
+      n = case dimVal' @n of I# np -> np
       offb = off *# EL_SIZE
       bs = nsqr *# EL_SIZE
   det (KnownDataFrame (FromScalarD# _)) = 0
@@ -223,13 +225,13 @@ instance ( Dimensions '[n,n], ArrayD '[n,n] ~ Array Double '[n,n] )
   trace (KnownDataFrame (ArrayD# off nsqr a)) = KnownDataFrame (Scalar (D# (loop' 0# 0.0##)))
     where
       n1 = n +# 1#
-      n = case fromInteger $ natVal (Proxy @n) of I# np -> np
+      n = case dimVal' @n of I# np -> np
       loop' i acc | isTrue# (i ># nsqr) = acc
                   | otherwise = loop' (i +# n1)
                          (indexDoubleArray# a (off +# i) +## acc)
   trace (KnownDataFrame (FromScalarD# x)) = KnownDataFrame (Scalar (D# (x *## n)))
     where
-      n = case fromInteger $ natVal (Proxy @n) of D# np -> np
+      n = case fromIntegral (dimVal' @n) of D# np -> np
   {-# INLINE trace #-}
 
 

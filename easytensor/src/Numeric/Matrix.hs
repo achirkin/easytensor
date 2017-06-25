@@ -37,6 +37,8 @@ import           Numeric.Dimensions            (Nat)
 import           Numeric.Matrix.Type
 import           Numeric.Vector
 
+import           Control.Monad.ST
+import           Numeric.DataFrame.ST
 
 -- Type abbreviations
 
@@ -59,19 +61,30 @@ mat22 :: ( PrimBytes (Vector t 2)
 mat22 = (<::>)
 
 -- | Compose a 3x3D matrix
-mat33 :: ( PrimBytes (Vector t 3)
-         , PrimBytes (Matrix t 3 2)
+mat33 :: ( PrimBytes t
+         , PrimBytes (Vector t 3)
          , PrimBytes (Matrix t 3 3)
          )
       => Vector t 3 -> Vector t 3 -> Vector t 3 -> Matrix t 3 3
-mat33 a b c = a <::> b <+:> c
+mat33 a b c = runST $ do
+  mmat <- newDataFrame
+  copyDataFrame a 1 mmat
+  copyDataFrame b 2 mmat
+  copyDataFrame c 3 mmat
+  unsafeFreezeDataFrame mmat
 
 -- | Compose a 4x4D matrix
 mat44 :: forall (t :: Type)
-       . ( PrimBytes (Vector t (4 :: Nat))
-         , PrimBytes (Matrix t (4 :: Nat) (2 :: Nat))
+       . ( PrimBytes t
+         , PrimBytes (Vector t (4 :: Nat))
          , PrimBytes (Matrix t (4 :: Nat) (4 :: Nat))
          )
       => Vector t (4 :: Nat) -> Vector t (4 :: Nat) -> Vector t (4 :: Nat) -> Vector t (4 :: Nat)
       -> Matrix t (4 :: Nat) (4 :: Nat)
-mat44 a b c d = (a <::>) b <:> (c <::> d)
+mat44 a b c d = runST $ do
+  mmat <- newDataFrame
+  copyDataFrame a 1 mmat
+  copyDataFrame b 2 mmat
+  copyDataFrame c 3 mmat
+  copyDataFrame d 4 mmat
+  unsafeFreezeDataFrame mmat

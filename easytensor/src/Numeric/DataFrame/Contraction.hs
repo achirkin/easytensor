@@ -43,6 +43,7 @@ import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
+import           Numeric.TypeLits
 
 
 class ConcatList as bs asbs
@@ -50,7 +51,7 @@ class ConcatList as bs asbs
                              | asbs as -> bs, asbs bs -> as, as bs -> asbs where
     -- | Generalization of a matrix product: take scalar product over one dimension
     --   and, thus, concatenate other dimesnions
-    contract :: ( KnownNat m
+    contract :: ( KnownDim m
                 , PrimBytes (DataFrame t (as +: m))
                 , PrimBytes (DataFrame t (m :+ bs))
                 , PrimBytes (DataFrame t asbs)
@@ -64,7 +65,7 @@ class ConcatList as bs asbs
 --     3. dot product of two vectors.
 (%*) :: ( ConcatList as bs (as ++ bs)
         , Contraction t as bs asbs
-        , KnownNat m
+        , KnownDim m
         , PrimBytes (DataFrame t (as +: m))
         , PrimBytes (DataFrame t (m :+ bs))
         , PrimBytes (DataFrame t (as ++ bs))
@@ -82,7 +83,7 @@ instance ( ConcatList as bs asbs
          ) => Contraction Float as bs asbs where
     contract x y
         | (pm :: Proxy m) <- getM y
-        , I# m <- fromInteger $ natVal pm
+        , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Float (m : bs) ) :~: 'FloatRep
@@ -101,7 +102,7 @@ instance ( ConcatList as bs asbs
          ) => Contraction Double as bs asbs where
     contract x y
         | (pm :: Proxy m) <- getM y
-        , I# m <- fromInteger $ natVal pm
+        , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Double (m : bs) ) :~: 'DoubleRep
@@ -119,7 +120,7 @@ instance ( ConcatList as bs asbs
          ) => Contraction Int as bs asbs where
     contract x y
         | (pm :: Proxy m) <- getM y
-        , I# m <- fromInteger $ natVal pm
+        , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Int (m : bs) ) :~: 'IntRep
@@ -137,7 +138,7 @@ instance ( ConcatList as bs asbs
          ) => Contraction Int8 as bs asbs where
     contract x y
         | (pm :: Proxy m) <- getM y
-        , I# m <- fromInteger $ natVal pm
+        , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Int8 (m : bs) ) :~: 'IntRep
@@ -155,7 +156,7 @@ instance ( ConcatList as bs asbs
          ) => Contraction Int16 as bs asbs where
     contract x y
         | (pm :: Proxy m) <- getM y
-        , I# m <- fromInteger $ natVal pm
+        , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Int16 (m : bs) ) :~: 'IntRep
@@ -173,7 +174,7 @@ instance ( ConcatList as bs asbs
          ) => Contraction Int32 as bs asbs where
     contract x y
         | (pm :: Proxy m) <- getM y
-        , I# m <- fromInteger $ natVal pm
+        , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Int32 (m : bs) ) :~: 'IntRep
@@ -191,7 +192,7 @@ instance ( ConcatList as bs asbs
          ) => Contraction Int64 as bs asbs where
     contract x y
         | (pm :: Proxy m) <- getM y
-        , I# m <- fromInteger $ natVal pm
+        , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Int64 (m : bs) ) :~: 'IntRep
@@ -212,7 +213,7 @@ instance ( ConcatList as bs asbs
          ) => Contraction Word as bs asbs where
     contract x y
         | (pm :: Proxy m) <- getM y
-        , I# m <- fromInteger $ natVal pm
+        , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Word (m : bs) ) :~: 'WordRep
@@ -230,7 +231,7 @@ instance ( ConcatList as bs asbs
          ) => Contraction Word8 as bs asbs where
     contract x y
         | (pm :: Proxy m) <- getM y
-        , I# m <- fromInteger $ natVal pm
+        , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Word8 (m : bs) ) :~: 'WordRep
@@ -248,7 +249,7 @@ instance ( ConcatList as bs asbs
          ) => Contraction Word16 as bs asbs where
     contract x y
         | (pm :: Proxy m) <- getM y
-        , I# m <- fromInteger $ natVal pm
+        , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Word16 (m : bs) ) :~: 'WordRep
@@ -266,7 +267,7 @@ instance ( ConcatList as bs asbs
          ) => Contraction Word32 as bs asbs where
     contract x y
         | (pm :: Proxy m) <- getM y
-        , I# m <- fromInteger $ natVal pm
+        , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Word32 (m : bs) ) :~: 'WordRep
@@ -284,7 +285,7 @@ instance ( ConcatList as bs asbs
          ) => Contraction Word64 as bs asbs where
     contract x y
         | (pm :: Proxy m) <- getM y
-        , I# m <- fromInteger $ natVal pm
+        , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Word64 (m : bs) ) :~: 'WordRep
@@ -514,7 +515,7 @@ loop2# n m f = loop' 0# 0#
 --              , Dimensions asbs
 --              , Dimensions (as +: m)
 --              , Dimensions (m :+ bs)
---              , KnownNat m
+--              , KnownDim m
 --              , ElementDataType t
 --              )
 --           => DataFrame t (as +: m) -> DataFrame t (m :+ bs) -> DataFrame t asbs

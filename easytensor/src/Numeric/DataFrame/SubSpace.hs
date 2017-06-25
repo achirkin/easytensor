@@ -40,6 +40,8 @@ import qualified Numeric.Array.ElementWise as EW
 import           Numeric.Commons
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
+import           Numeric.Dimensions.Traverse
+import           Numeric.TypeLits
 import           Numeric.Scalar
 
 -- | Operations on DataFrames
@@ -168,7 +170,7 @@ instance {-# OVERLAPPABLE #-}
 
     i !. d = r
         where
-          r = case (# toBytes d, fromIdx i, totalDim r #) of
+          r = case (# toBytes d, fromEnum i, totalDim r #) of
                 (# (# off, _, arr #), I# i#, I# l# #)
                   -> fromBytes (# off +# i# *# l#, l#, arr #)
     {-# INLINE (!.) #-}
@@ -182,7 +184,7 @@ instance {-# OVERLAPPABLE #-}
       , I# lenAS <- totalDim (Proxy @as)
       = case runRW#
           ( \s0 -> case newByteArray# (lenAS *# lenBS *# elS) s0 of
-              (# s1, marr #) -> case loopA
+              (# s1, marr #) -> case foldDimIdx
                   (dim @bs)
                   ( \i (SO# pos s) -> case toBytes $ f i (i !. df) of
                       (# offX, _, arrX #) -> SO#
@@ -199,7 +201,7 @@ instance {-# OVERLAPPABLE #-}
       , elS <- elementByteSize x
       = case runRW#
           ( \s0 -> case newByteArray# (lenASBS *# elS) s0 of
-              (# s1, marr #) -> case loopA (dim @bs)
+              (# s1, marr #) -> case foldDimIdx (dim @bs)
                   ( \_ (SO# pos s) -> SO#
                         (pos +# lenX)
                         (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (lenX *# elS) s)
@@ -212,7 +214,7 @@ instance {-# OVERLAPPABLE #-}
       , elS <- elementByteSize (undefined :: DataFrame t asbs)
       = case runRW#
           ( \s0 -> case newByteArray# (lenASBS *# elS) s0 of
-              (# s1, marr #) -> case loopA (dim @bs)
+              (# s1, marr #) -> case foldDimIdx (dim @bs)
                   ( \i (SO# pos s) -> case toBytes $ f i of
                       (# offX, lenX, arrX #) -> SO#
                         (pos +# lenX)
@@ -230,11 +232,11 @@ instance {-# OVERLAPPABLE #-}
               ( f acc (fromBytes (# pos, step, arr #)) )
 
     iwfoldl f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
-        (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr dimMin x0
+        (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr minBound x0
       where
         go pos lim step arr curI acc
           | isTrue# (pos >=# lim) = acc
-          | otherwise = go (pos +# step) lim step arr (succIdx curI)
+          | otherwise = go (pos +# step) lim step arr (succ curI)
               ( f curI acc (fromBytes (# pos, step, arr #)) )
 
     ewfoldr f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
@@ -246,11 +248,11 @@ instance {-# OVERLAPPABLE #-}
               ( f (fromBytes (# pos, step, arr #)) acc )
 
     iwfoldr f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
-        (# (# off, len, arr #), I# l# #) -> go (off +# len -# l#) off l# arr dimMin x0
+        (# (# off, len, arr #), I# l# #) -> go (off +# len -# l#) off l# arr minBound x0
       where
         go pos lim step arr curI acc
           | isTrue# (pos <# lim) = acc
-          | otherwise = go (pos -# step) lim step arr (succIdx curI)
+          | otherwise = go (pos -# step) lim step arr (succ curI)
               ( f curI (fromBytes (# pos, step, arr #)) acc )
 
     -- implement elementWise in terms of indexWise
@@ -340,13 +342,13 @@ instance {-# OVERLAPPING #-}
     {-# INLINE ewgen #-}
     iwgen f = EW.ewgen (unScalar . f)
     {-# INLINE iwgen #-}
-    ewfoldl f r0 x = loopA (dim @bs) (\i r -> f r (i !. x)) r0
+    ewfoldl f r0 x = foldDimIdx (dim @bs) (\i r -> f r (i !. x)) r0
     {-# INLINE ewfoldl #-}
-    iwfoldl f r0 x = loopA (dim @bs) (\i r -> f i r (i !. x)) r0
+    iwfoldl f r0 x = foldDimIdx (dim @bs) (\i r -> f i r (i !. x)) r0
     {-# INLINE iwfoldl #-}
-    ewfoldr f r0 x = loopReverse (dim @bs) (\i r -> f (i !. x) r) r0
+    ewfoldr f r0 x = foldDimReverseIdx (dim @bs) (\i r -> f (i !. x) r) r0
     {-# INLINE ewfoldr #-}
-    iwfoldr f r0 x = loopReverse (dim @bs) (\i r -> f i (i !. x) r) r0
+    iwfoldr f r0 x = foldDimReverseIdx (dim @bs) (\i r -> f i (i !. x) r) r0
     {-# INLINE iwfoldr #-}
     elementWise = indexWise . const
     {-# INLINE elementWise #-}

@@ -223,8 +223,8 @@ instance Floating FloatX3 where
 
 
 type instance ElemRep FloatX3 = 'FloatRep
+type instance ElemPrim FloatX3 = Float#
 instance PrimBytes FloatX3 where
-  type ElemPrim FloatX3 = Float#
   toBytes (FloatX3# a1 a2 a3) = case runRW#
      ( \s0 -> case newByteArray# (SIZEOF_HSFLOAT# *# 3#) s0 of
          (# s1, marr #) -> case writeFloatArray# marr 0# a1 s1 of

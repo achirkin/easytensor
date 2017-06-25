@@ -24,7 +24,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.Commons
-  ( ElemRep
+  ( ElemRep, ElemPrim
   , PrimBytes (..), FloatBytes, DoubleBytes, IntBytes, WordBytes
   ) where
 
@@ -53,6 +53,20 @@ type instance ElemRep Word16 = 'WordRep
 type instance ElemRep Word32 = 'WordRep
 type instance ElemRep Word64 = 'WordRep
 
+type family ElemPrim a :: TYPE (r :: RuntimeRep)
+type instance ElemPrim Float = Float#
+type instance ElemPrim Double = Double#
+type instance ElemPrim Int = Int#
+type instance ElemPrim Int8 = Int#
+type instance ElemPrim Int16 = Int#
+type instance ElemPrim Int32 = Int#
+type instance ElemPrim Int64 = Int#
+type instance ElemPrim Word = Word#
+type instance ElemPrim Word8 = Word#
+type instance ElemPrim Word16 = Word#
+type instance ElemPrim Word32 = Word#
+type instance ElemPrim Word64 = Word#
+
 type FloatBytes a  = (PrimBytes a, ElemRep a ~ 'FloatRep , ElemPrim a ~ Float#)
 type DoubleBytes a = (PrimBytes a, ElemRep a ~ 'DoubleRep, ElemPrim a ~ Double#)
 type IntBytes a    = (PrimBytes a, ElemRep a ~ 'IntRep   , ElemPrim a ~ Int#)
@@ -63,7 +77,6 @@ type WordBytes a   = (PrimBytes a, ElemRep a ~ 'WordRep  , ElemPrim a ~ Word#)
 --   Therefore one must be really carefull if having a crazy idea of
 --     converting between types of different element sizes.
 class PrimBytes (a :: Type) where
-  type ElemPrim a :: TYPE (r :: RuntimeRep)
   -- | Store content of a data type in a primitive byte array
   --   (ElementOffset, NumberOfElements, ByteArrayContent )
   toBytes :: a -> (# Int# , Int# , ByteArray# #)
@@ -80,7 +93,6 @@ class PrimBytes (a :: Type) where
   ix  :: Int# -> a -> (ElemPrim a :: TYPE (ElemRep a))
 
 instance PrimBytes Float where
-  type ElemPrim Float = Float#
   toBytes v@(F# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeFloatArray# marr 0# x s1 of
@@ -99,7 +111,6 @@ instance PrimBytes Float where
   {-# INLINE ix #-}
 
 instance PrimBytes Double where
-  type ElemPrim Double = Double#
   toBytes v@(D# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeDoubleArray# marr 0# x s1 of
@@ -118,7 +129,6 @@ instance PrimBytes Double where
   {-# INLINE ix #-}
 
 instance PrimBytes Int where
-  type ElemPrim Int = Int#
   toBytes v@(I# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeIntArray# marr 0# x s1 of
@@ -137,7 +147,6 @@ instance PrimBytes Int where
   {-# INLINE ix #-}
 
 instance PrimBytes Int8 where
-  type ElemPrim Int8 = Int#
   toBytes v@(I8# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeInt8Array# marr 0# x s1 of
@@ -156,7 +165,6 @@ instance PrimBytes Int8 where
   {-# INLINE ix #-}
 
 instance PrimBytes Int16 where
-  type ElemPrim Int16 = Int#
   toBytes v@(I16# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeInt16Array# marr 0# x s1 of
@@ -175,7 +183,6 @@ instance PrimBytes Int16 where
   {-# INLINE ix #-}
 
 instance PrimBytes Int32 where
-  type ElemPrim Int32 = Int#
   toBytes v@(I32# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeInt32Array# marr 0# x s1 of
@@ -194,7 +201,6 @@ instance PrimBytes Int32 where
   {-# INLINE ix #-}
 
 instance PrimBytes Int64 where
-  type ElemPrim Int64 = Int#
   toBytes v@(I64# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeInt64Array# marr 0# x s1 of
@@ -213,7 +219,6 @@ instance PrimBytes Int64 where
   {-# INLINE ix #-}
 
 instance PrimBytes Word where
-  type ElemPrim Word = Word#
   toBytes v@(W# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWordArray# marr 0# x s1 of
@@ -232,7 +237,6 @@ instance PrimBytes Word where
   {-# INLINE ix #-}
 
 instance PrimBytes Word8 where
-  type ElemPrim Word8 = Word#
   toBytes v@(W8# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWord8Array# marr 0# x s1 of
@@ -251,7 +255,6 @@ instance PrimBytes Word8 where
   {-# INLINE ix #-}
 
 instance PrimBytes Word16 where
-  type ElemPrim Word16 = Word#
   toBytes v@(W16# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWord16Array# marr 0# x s1 of
@@ -270,7 +273,6 @@ instance PrimBytes Word16 where
   {-# INLINE ix #-}
 
 instance PrimBytes Word32 where
-  type ElemPrim Word32 = Word#
   toBytes v@(W32# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWord32Array# marr 0# x s1 of
@@ -290,7 +292,6 @@ instance PrimBytes Word32 where
 
 
 instance PrimBytes Word64 where
-  type ElemPrim Word64 = Word#
   toBytes v@(W64# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWord64Array# marr 0# x s1 of
