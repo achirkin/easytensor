@@ -43,9 +43,9 @@ module Numeric.Dimensions.Dim
   , Dimensions (..), KnownDim (..), KnownDims
     -- * Type-level programming
     --   Provide type families to work with lists of dimensions (`[Nat]` or `[XNat]`)
-  , AsXDims, AsDims, WrapDims, UnwrapDims, WrapHead, UnwrapHead
+  , AsXDims, AsDims, WrapDims, UnwrapDims
   , ConsDim, NatKind
-  , FixedDim, FixedXDim, type (:<), type (>:)
+  , FixedDim, FixedXDim, WrapNat, type (:<), type (>:)
     -- * Inference of dimension evidence
   , inferDimensions, inferDimKnownDims, inferDimFiniteList
   , inferTailDimensions, inferConcatDimensions
@@ -53,22 +53,18 @@ module Numeric.Dimensions.Dim
   , inferSnocDimensions, inferInitDimensions
   , inferTakeNDimensions, inferDropNDimensions
   , inferReverseDimensions, reifyDimensions
+    -- * Cons and Snoc inference
+    --   Very useful functions when you need some evidence for contraction ops.
+  , inferUnSnocDimensions, SnocDimensions
+  , inferUnConsDimensions, ConsDimensions
   ) where
 
 import           Data.Maybe              (isJust)
-import           Data.Type.Bool          (If)
 import           GHC.Exts                (Constraint, unsafeCoerce#)
+import           Data.Type.Equality      ((:~:)(..))
 
 import           Numeric.Dimensions.List
 import           Numeric.TypeLits
-
-
--- | Either known or unknown at compile-time natural number
-data XNat = XN Nat | N Nat
--- | Unknown natural number, known to be not smaller than the given Nat
-type XN (n::Nat) = 'XN n
--- | Known natural number
-type N (n::Nat) = 'N n
 
 
 -- | Type-level dimensionality
@@ -270,37 +266,27 @@ type family NatKind ks k :: Constraint where
     NatKind  ks    k    = ks ~ [k]
 
 
--- | FixedDim puts very tight constraints on what list of naturals can be.
---   This allows establishing strong relations between [XNat] and [Nat].
+-- | FixedDim tries not to inspect content of `ns` and construct it
+--   based only on `xns` when it is possible.
+--   This means it does not check if `XN m <= n`.
 type family FixedDim (xns :: [XNat]) (ns :: [Nat]) :: [Nat] where
-    FixedDim '[]       ns = '[]
-    FixedDim (x ': xs) ns = UnwrapHead x ns ': FixedDim xs (Tail ns)
+    FixedDim '[]          _  = '[]
+    FixedDim (N n  ': xs) ns = n ': FixedDim xs (Tail ns)
+    FixedDim (XN _ ': xs) ns = Head ns ': FixedDim xs (Tail ns)
 
--- | FixedDim puts very tight constraints on what list of naturals can be.
---   This allows establishing strong relations between [XNat] and [Nat].
+-- | FixedXDim tries not to inspect content of `xns` and construct it
+--   based only on `ns` when it is possible.
+--   This means it does not check if `XN m <= n`.
 type family FixedXDim (xns :: [XNat]) (ns :: [Nat]) :: [XNat] where
-    FixedXDim xs '[]       = '[]
-    FixedXDim xs (n ': ns) = WrapHead n xs ': FixedXDim (Tail xs) ns
+    FixedXDim _  '[]       = '[]
+    FixedXDim xs (n ': ns) = WrapNat (Head xs) n ': FixedXDim (Tail xs) ns
 
-type family WrapHead (n :: Nat) (xs :: [XNat]) :: XNat where
-    WrapHead x (N x ': _)  = N x
-    WrapHead n (XN m ': _) = If (m <=? n) (XN m) (TypeError
-      ('Text "WrapHead -- unknown XNat must be not less than " ':<>: 'ShowType m
-        ':<>: 'Text ", but given Nat is " ':<>: 'ShowType n ':<>: 'Text "."
-      ))
-    WrapHead _ '[]         = TypeError
-      ('Text "WrapHead -- empty type-level list."
-      )
-
-type family UnwrapHead (n :: XNat) (xs :: [Nat]) :: Nat where
-    UnwrapHead (N x) (x ': _) = x
-    UnwrapHead (XN m) (n ': _) = If (m <=? n) n (TypeError
-      ('Text "UnwrapHead -- unknown XNat must be not less than " ':<>: 'ShowType m
-        ':<>: 'Text ", but given Nat is " ':<>: 'ShowType n ':<>: 'Text "."
-      ))
-    UnwrapHead _ '[]         = TypeError
-      ('Text "UnwrapHead -- empty type-level list."
-      )
+-- | WrapNat tries not to inspect content of `xn` and construct it
+--   based only on `n` when it is possible.
+--   This means it does not check if `XN m <= n`.
+type family WrapNat (xn :: XNat) (n :: Nat) :: XNat where
+    WrapNat (XN m) n = XN m
+    WrapNat  _     n = N n
 
 
 
@@ -359,7 +345,6 @@ inferDimFiniteList = inferDimFiniteList' (dim @ds)
     inferDimFiniteList' D = Evidence
     inferDimFiniteList' (Dn :* ds) = case inferDimFiniteList' ds of Evidence -> Evidence
 {-# INLINE inferDimFiniteList #-}
-
 
 
 -- | Infer that tail list is also Dimensions
@@ -422,6 +407,94 @@ inferSnocDimensions = reifyDimensions $ magic (dim @xs)
     magic D         = Dn :* D
     magic (d :* ds) = unsafeCoerce# (d :* magic ds)
 {-# INLINE inferSnocDimensions #-}
+
+-- | Init of the dimension list is also Dimensions,
+--   and the last dimension is KnownDim.
+inferUnSnocDimensions :: forall ds
+                       . Dimensions ds
+                      => Maybe (Evidence (SnocDimensions ds))
+inferUnSnocDimensions = case dim @ds of
+      D  -> Nothing
+      ds -> Just $ case magic ds of
+          (ys, Dn) -> case unsafeSnocDims' @ds of
+            Evidence -> case reifyDimensions  @(Init ds) (unsafeCoerce# ys) of
+              Evidence -> Evidence
+    where
+      magic :: forall (ns :: [Nat]) . Dim ns -> (Dim ns, Dim (Last ns))
+      magic D         = (D, undefined)
+      magic (d :* D)  = (unsafeCoerce# D, d)
+      magic (d :* ds) = case magic ds of
+          (ds', z) -> (d :* ds', unsafeCoerce# z)
+{-# INLINE inferUnSnocDimensions #-}
+
+
+-- | Tail of the dimension list is also Dimensions,
+--   and the head dimension is KnownDim.
+inferUnConsDimensions :: forall ds
+                       . Dimensions ds
+                      => Maybe (Evidence (ConsDimensions ds))
+inferUnConsDimensions = case dim @ds of
+      D  -> Nothing
+      Dn :* ds' -> Just $ case reifyDimensions ds' +!+ unsafeConsDims' @ds of
+            Evidence -> Evidence
+{-# INLINE inferUnConsDimensions #-}
+
+-- | Various evidence for the Snoc operation.
+type SnocDimensions (xs :: [Nat]) =
+    ( xs ~ (Init xs +: Last xs)
+    , xs ~ (Init xs ++ '[Last xs])
+    , IsPrefix  (Init xs) xs ~ 'True
+    , IsSuffix '[Last xs] xs ~ 'True
+    , Suffix    (Init xs) xs ~ '[Last xs]
+    , Prefix   '[Last xs] xs ~   Init xs
+    , Dimensions (Init xs)
+    , KnownDim   (Last xs)
+    )
+
+-- | Various evidence for the Snoc operation.
+type ConsDimensions (xs :: [Nat]) =
+    ( xs ~ (  Head xs  :+ Tail xs)
+    , xs ~ ('[Head xs] ++ Tail xs)
+    , IsPrefix '[Head xs] xs ~ 'True
+    , IsSuffix  (Tail xs) xs ~ 'True
+    , Suffix   '[Head xs] xs ~   Tail xs
+    , Prefix    (Tail xs) xs ~ '[Head xs]
+    , Dimensions (Tail xs)
+    , KnownDim   (Head xs)
+    )
+
+
+unsafeSnocDims' :: forall (xs :: [Nat]) . Evidence
+    ( xs ~ (Init xs +: Last xs)
+    , xs ~ (Init xs ++ '[Last xs])
+    , IsPrefix  (Init xs) xs ~ 'True
+    , IsSuffix '[Last xs] xs ~ 'True
+    , Suffix    (Init xs) xs ~ '[Last xs]
+    , Prefix   '[Last xs] xs ~   Init xs
+    )
+unsafeSnocDims' = case  unsafeEqEvidence @xs @(Init xs +: Last xs)
+                    +!+ unsafeEqEvidence @xs @(Init xs ++ '[Last xs])
+                    +!+ unsafeEqEvidence @(IsPrefix  (Init xs) xs) @'True
+                    +!+ unsafeEqEvidence @(IsSuffix '[Last xs] xs) @'True
+                    +!+ unsafeEqEvidence @(Suffix    (Init xs) xs) @'[Last xs]
+                    +!+ unsafeEqEvidence @(Prefix   '[Last xs] xs) @(Init xs) of
+    Evidence -> Evidence
+
+unsafeConsDims' :: forall (xs :: [Nat]) . Evidence
+    ( xs ~ (  Head xs  :+ Tail xs)
+    , xs ~ ('[Head xs] ++ Tail xs)
+    , IsPrefix '[Head xs] xs ~ 'True
+    , IsSuffix  (Tail xs) xs ~ 'True
+    , Suffix   '[Head xs] xs ~   Tail xs
+    , Prefix    (Tail xs) xs ~ '[Head xs]
+    )
+unsafeConsDims' = case  unsafeEqEvidence @xs @(  Head xs  :+ Tail xs)
+                    +!+ unsafeEqEvidence @xs @('[Head xs] ++ Tail xs)
+                    +!+ unsafeEqEvidence @(IsPrefix '[Head xs] xs) @'True
+                    +!+ unsafeEqEvidence @(IsSuffix  (Tail xs) xs) @'True
+                    +!+ unsafeEqEvidence @(Suffix   '[Head xs] xs) @(Tail xs)
+                    +!+ unsafeEqEvidence @(Prefix    (Tail xs) xs) @'[Head xs] of
+    Evidence -> Evidence
 
 
 -- | Init of the list is also Dimensions
@@ -499,5 +572,5 @@ newtype MagicDims ds r = MagicDims (Dimensions ds => r)
 
 
 unsafeEqEvidence :: forall x y . Evidence (x ~ y)
-unsafeEqEvidence = unsafeCoerce# (Evidence @())
+unsafeEqEvidence = case (unsafeCoerce# Refl :: x :~: y) of Refl -> Evidence
 {-# INLINE unsafeEqEvidence #-}

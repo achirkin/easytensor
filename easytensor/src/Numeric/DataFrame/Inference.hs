@@ -29,7 +29,6 @@ import           Numeric.Array.ElementWise
 import           Numeric.Commons
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
-import           Numeric.TypeLits
 
 
 -- | Evidence for PrimBytes class
@@ -108,7 +107,9 @@ inferNumericFrame :: forall t (ds :: [Nat])
                      , Dimensions ds
                      )
                    => NumericFrameEvidence t ds
-inferNumericFrame = case getArrayInstance @t @ds of
+inferNumericFrame
+  | Evidence <- inferDimKnownDims @ds +!+ inferDimFiniteList @ds
+  = case getArrayInstance @t @ds of
     AIFloatX2  -> Evidence
     AIFloatX3  -> Evidence
     AIFloatX4  -> Evidence

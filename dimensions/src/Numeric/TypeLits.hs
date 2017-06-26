@@ -30,11 +30,12 @@
 -----------------------------------------------------------------------------
 
 module Numeric.TypeLits
-  ( -- * Nats backed by Int
-    SomeIntNat (..), someIntNatVal, intNatVal, reifyDim
+  ( XNat (..), XN, N
+    -- * Nats backed by Int
+  , SomeIntNat (..), someIntNatVal, intNatVal, reifyDim
   , KnownDim (..), KnownDims, dimVal#, Proxy#, proxy#
     -- * Dynamically constructing evidence
-  , Evidence (..), withEvidence, sumEvs
+  , Evidence (..), withEvidence, sumEvs, (+!+)
   , inferPlusKnownDim, inferMinusKnownDim, inferMinusKnownDimM
   , inferTimesKnownDim
     -- * Re-export original GHC TypeLits
@@ -48,6 +49,16 @@ import           GHC.Exts      (Constraint, Proxy#, proxy#)
 import           GHC.TypeLits
 import           GHC.Types     (Type)
 import           Unsafe.Coerce (unsafeCoerce)
+
+
+
+-- | Either known or unknown at compile-time natural number
+data XNat = XN Nat | N Nat
+-- | Unknown natural number, known to be not smaller than the given Nat
+type XN (n::Nat) = 'XN n
+-- | Known natural number
+type N (n::Nat) = 'N n
+
 
 
 -- | Same as SomeNat, but for Dimensions:
@@ -146,6 +157,12 @@ data Evidence :: Constraint -> Type where
 sumEvs :: Evidence a -> Evidence b -> Evidence (a,b)
 sumEvs Evidence Evidence = Evidence
 {-# INLINE sumEvs #-}
+
+infixl 4 +!+
+(+!+) :: Evidence a -> Evidence b -> Evidence (a,b)
+(+!+) = sumEvs
+{-# INLINE (+!+) #-}
+
 
 withEvidence :: Evidence a -> (a => r) -> r
 withEvidence d r = case d of Evidence -> r

@@ -31,7 +31,6 @@ import           Unsafe.Coerce
 import           Numeric.Commons
 import           Numeric.DataFrame
 import           Numeric.Dimensions
-import           Numeric.TypeLits
 
 
 
@@ -50,7 +49,7 @@ unsafeEqProof = unsafeCoerce Refl
 -- | Generating random DataFrames
 newtype SimpleDF (ds :: [Nat] ) = SDF { getDF :: DataFrame Float ds}
 data SomeSimpleDF = forall (ds :: [Nat])
-                  . (Dimensions ds, FiniteList ds, KnownDims ds, NumericFrame Float ds)
+                  . NumericFrame Float ds
                  => SSDF !(SimpleDF ds)
 data SomeSimpleDFNonScalar
     = forall (ds :: [Nat]) (a :: Nat) (as :: [Nat])
@@ -60,9 +59,7 @@ data SomeSimpleDFNonScalar
       )
    => SSDFN !(SimpleDF ds)
 data SomeSimpleDFPair = forall (ds :: [Nat])
-                      . ( Dimensions ds, FiniteList ds, KnownDims ds
-                        , NumericFrame Float ds
-                        )
+                      . NumericFrame Float ds
                      => SSDFP !(SimpleDF ds) !(SimpleDF ds)
 
 instance ( Dimensions ds

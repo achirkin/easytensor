@@ -40,6 +40,7 @@ module Numeric.Dimensions.XDim
 
 
 import           Data.Maybe              (isJust)
+import           Data.Type.Equality      ((:~:)(..))
 import           GHC.Exts                (unsafeCoerce#)
 
 import           Numeric.Dimensions.Dim
@@ -105,5 +106,5 @@ instance Ord (XDim xds) where
 
 
 unsafeEqEvidence :: forall x y . Evidence (x ~ y)
-unsafeEqEvidence = unsafeCoerce# (Evidence @())
+unsafeEqEvidence = case (unsafeCoerce# Refl :: x :~: y) of Refl -> Evidence
 {-# INLINE unsafeEqEvidence #-}

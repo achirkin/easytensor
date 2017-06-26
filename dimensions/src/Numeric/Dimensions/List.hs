@@ -1,4 +1,3 @@
--- {-# OPTIONS_GHC -fplugin Numeric.Dimensions.Inference #-}
 {-# LANGUAGE AllowAmbiguousTypes       #-}
 {-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE DataKinds                 #-}
@@ -20,6 +19,7 @@
 {-# LANGUAGE TypeFamilyDependencies    #-}
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UndecidableInstances      #-}
+{-# LANGUAGE CPP                       #-}
 --------------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.List
@@ -30,16 +30,24 @@
 --
 -- Provides type-level operations on lists.
 --
+-- * Note for GHC 8.0
+-- Due to <https://ghc.haskell.org/trac/ghc/ticket/13538 GHC issue #13538>
+-- some complex type families could not be truly kind-polymorphic before GHC 8.2,
+-- thus I specialized them to work only on `[Nat]` and `[XNat]`.
+--
 --------------------------------------------------------------------------------
 
 module Numeric.Dimensions.List
-  ( type (++), type (:+), type (+:)
+  ( -- * Basic operations
+    type (++), type (:+), type (+:)
   , Empty, Cons, Snoc, Head
-  , Tail, Init, Last, Concat, Reverse, Take, Drop, Suffix, Prefix
-  , IsPrefix, IsSuffix
+  , Tail, Init, Last, Concat, Reverse, Take, Drop
+    -- * Working with concatenations
+  , Suffix, Prefix, IsPrefix, IsSuffix
+    -- * Term level functions
   , ConcatList (..), FiniteList (..), TypeList (..)
+    -- * Term level inference of type-level functions
   , inferConcat, inferSuffix, inferPrefix, ConcatEvidence, FiniteListEvidence
-  , NonEmptyListEvidence, inferNonEmptyList
   , inferKnownLength
   , inferTailFiniteList, inferConcatFiniteList
   , inferPrefixFiniteList, inferSuffixFiniteList
@@ -48,6 +56,7 @@ module Numeric.Dimensions.List
   ) where
 
 import           Data.Proxy       (Proxy (..))
+import           Data.Type.Equality      ((:~:)(..))
 import           Numeric.TypeLits
 import           Unsafe.Coerce    (unsafeCoerce)
 
@@ -146,24 +155,6 @@ type family Last (xs :: [k]) :: k where
      )
 
 
-type NonEmptyList xs = ( xs ~ (Head xs :+ Tail xs)
-                       , xs ~ (Init xs +: Last xs)
-                       , IsPrefix  (Init xs) xs ~ 'True
-                       , IsPrefix '[Head xs] xs ~ 'True
-                       , IsSuffix  (Tail xs) xs ~ 'True
-                       , IsSuffix '[Last xs] xs ~ 'True
-                       , Suffix '[Head xs] xs ~   Tail xs
-                       , Suffix  (Init xs) xs ~ '[Last xs]
-                       , Prefix '[Last xs] xs ~   Init xs
-                       , Prefix  (Tail xs) xs ~ '[Head xs]
-                       , Prefix  (Tail xs) ('[Head xs] ++ Tail xs) ~ '[Head xs]
-                       , Suffix  (Init xs) (Init xs ++ '[Last xs]) ~ '[Last xs]
-                       , IsPrefix '[Head xs] ('[Head xs] ++ Tail xs) ~ 'True
-                       , IsSuffix '[Last xs] (Init xs ++ '[Last xs]) ~ 'True
-                       , xs ~ ('[Head xs] ++ Tail xs)
-                       , xs ~ (Init xs ++ '[Last xs])
-                       )
-
 -- | Represent a triple of lists forming a relation `as ++ bs ~ asbs`
 class ( asbs ~ Concat as bs
       , as   ~ Prefix bs asbs
@@ -230,7 +221,7 @@ instance FiniteList xs => FiniteList (x :+ xs :: [k]) where
 
 
 unsafeEqEvidence :: forall x y . Evidence (x ~ y)
-unsafeEqEvidence = unsafeCoerce (Evidence @())
+unsafeEqEvidence = case (unsafeCoerce Refl :: x :~: y) of Refl -> Evidence
 {-# INLINE unsafeEqEvidence #-}
 
 -- | Length of a finite list is known and equal to `order` of the list
@@ -353,11 +344,6 @@ inferReverseFiniteList = case magic (tList @_ @xs) TLEmpty of
 ---- Constructing evidence for our constraints
 --------------------------------------------------------------------------------
 
--- | Various kinds of proofs to make sure we infer list operations and constrains
---   over simple cons ar snoc
-type NonEmptyListEvidence xs
-  = Evidence (NonEmptyList xs)
-
 -- | Pattern-matching on the constructor of this type
 --   brings an evidence that `as ++ bs ~ asbs`
 type ConcatEvidence (as :: [k]) (bs :: [k]) (asbs :: [k])
@@ -373,11 +359,6 @@ type ConcatEvidence (as :: [k]) (bs :: [k]) (asbs :: [k])
 type FiniteListEvidence (xs :: [k])
   = Evidence (FiniteList xs)
 
-
--- | Various kinds of proofs to make sure we infer list operations and constrains
---   over cons constructor
-inferNonEmptyList ::  forall x xs . NonEmptyListEvidence (x ': xs)
-inferNonEmptyList = unsafeCoerce (Evidence :: NonEmptyListEvidence '[x])
 
 -- | Any two type-level lists can be concatenated,
 --   so we just fool the compiler by unsafeCoercing proxy-like data type.
@@ -416,19 +397,40 @@ data Snocing k = SSingle k | Snocing [k]
 
 type family DoSnoc (xs :: [k]) (z::k) = (ys :: Snocing k) | ys -> xs z where
     DoSnoc '[]       x = 'SSingle x
-    DoSnoc (x :+ xs) y = 'Snocing (x :+ GetSnoc (DoSnoc xs y))
+#if __GLASGOW_HASKELL__ >= 802
+    DoSnoc (x :+ xs :: [k]) (y :: k) = ('Snocing (x :+ GetSnoc (DoSnoc xs y) :: [k]) :: Snocing k)
+#else
+    DoSnoc (x :+ xs :: [Nat]) (y :: Nat) = ('Snocing (x :+ GetSnoc (DoSnoc xs y) :: [Nat]) :: Snocing Nat)
+    DoSnoc (x :+ xs :: [XNat]) (y :: XNat) = ('Snocing (x :+ GetSnoc (DoSnoc xs y) :: [XNat]) :: Snocing XNat)
+#endif
 
 type family GetSnoc (xs :: Snocing k) = (ys :: [k]) | ys -> xs where
     GetSnoc ('SSingle x) = '[x]
+#if __GLASGOW_HASKELL__ >= 802
     GetSnoc ('Snocing (y :+ x :+ xs)) = y :+ x :+ xs
+#else
+    GetSnoc ('Snocing (y :+ x :+ xs) :: Snocing Nat) = (y :+ x :+ xs :: [Nat])
+    GetSnoc ('Snocing (y :+ x :+ xs) :: Snocing XNat) = (y :+ x :+ xs :: [XNat])
+#endif
 
 -- | Another data type to make Reverse injective.
 data Reversing k = REmpty | Reversing [k]
 
 type family Reversed (ts :: Reversing k) = (rs :: [k]) | rs -> ts where
     Reversed 'REmpty = '[]
+#if __GLASGOW_HASKELL__ >= 802
     Reversed ('Reversing (x :+ xs)) = x :+ xs
+#else
+    Reversed ('Reversing (x :+ xs) :: Reversing Nat) = (x :+ xs :: [Nat])
+    Reversed ('Reversing (x :+ xs) :: Reversing XNat) = (x :+ xs :: [XNat])
+#endif
+
 
 type family DoReverse (as :: [k]) = (rs :: Reversing k) | rs -> as where
     DoReverse '[]  = 'REmpty
+#if __GLASGOW_HASKELL__ >= 802
     DoReverse (a :+ as) = 'Reversing (Reversed (DoReverse as) +: a)
+#else
+    DoReverse (a :+ as :: [Nat]) = ('Reversing (Reversed (DoReverse as) +: a :: [Nat]) :: Reversing Nat)
+    DoReverse (a :+ as :: [XNat]) = ('Reversing (Reversed (DoReverse as) +: a :: [XNat]) :: Reversing XNat)
+#endif
