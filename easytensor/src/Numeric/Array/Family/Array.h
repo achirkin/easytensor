@@ -12,16 +12,6 @@ loop1# n f = loop0 0#
 {-# INLINE loop1# #-}
 
 
--- | Do something in a loop for int i from 0 to n-1 and j from 0 to m-1
-loop2# :: Int# -> Int# -> (Int# -> Int#-> State# s -> State# s)
-       -> State# s -> State# s
-loop2# n m f = loop0 0# 0#
-  where
-    loop0 i j s | isTrue# (j ==# m) = s
-                | isTrue# (i ==# n) = loop0 0# (j +# 1#) s
-                | otherwise         = case f i j s of s1 -> loop0 (i +# 1#) j s1
-{-# INLINE loop2# #-}
-
 -- | Do something in a loop for int i from 0 to n
 loop1a# :: Int# -> (Int# -> a -> a) -> a -> a
 loop1a# n f = loop0 0#
