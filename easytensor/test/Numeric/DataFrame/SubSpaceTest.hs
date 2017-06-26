@@ -15,14 +15,13 @@
 {-# LANGUAGE TemplateHaskell     #-}
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE CPP                 #-}
 
 module Numeric.DataFrame.SubSpaceTest (runTests) where
 
 import           Numeric.DataFrame
 import           Numeric.DataFrame.Arbitraries
 import           Numeric.Dimensions
-import           Numeric.TypeLits
+import           Numeric.TypeLits (Proxy (..))
 import           Test.QuickCheck
 
 
@@ -35,14 +34,12 @@ prop_Dims (SSDF (SDF (x :: DataFrame Float xs))) (SSDF (SDF (y :: DataFrame Floa
     = order @_ @(xs ++ ys) == order @_ @xs + order @_ @ys
       && totalDim (Proxy @(xs ++ ys)) == totalDim x * totalDim y
 
--- GHC 8.0.2 panics!
--- prop_Eye :: SomeSimpleDFNonScalar -> Bool
--- prop_Eye (SSDFN (SDF (x :: DataFrame Float (d ': ds))))
---   | Just Evidence <- inferTailDimensions @(d ': ds)
---   , Just Evidence <- inferInitDimensions @(d ': ds)
---   , Evidence <- inferNonEmptyList @d @ds
---   -- , Evidence <- inferLastValidDim @d @ds
---   = eye %* x == x && x == x %* eye
+prop_Eye :: SomeSimpleDFNonScalar -> Bool
+prop_Eye (SSDFN (SDF (x :: DataFrame Float ds)))
+  | Just Evidence <- sumEvs <$> inferUnConsDimensions @ds
+                            <*> inferUnSnocDimensions @ds
+    = eye %* x == x && x == x %* eye
+  | otherwise = False
 
 
 prop_IndexDimMax :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
@@ -57,13 +54,11 @@ prop_IndexCustom1 (SDF x) (SDF _) = (1:!3 !. z) == x
     z = ewgen x :: DataFrame Float '[2,5,4,3,7]
 
 
-#if __GLASGOW_HASKELL__ >= 802
--- GHC 8.0.2 cannot understand that Prefix/Suffix functions have kind Nat here
 prop_IndexCustom2 :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
 prop_IndexCustom2 (SDF x) (SDF _) = (2:!2 !. z) %* eye == x
   where
     z = ewgen x :: DataFrame Float '[2,5,4,3,7]
-#endif
+
 
 prop_Foldlr :: SimpleDF '[2,5,4] -> SimpleDF '[3,7] -> Bool
 prop_Foldlr (SDF x) (SDF _) =

@@ -52,7 +52,6 @@ import           Numeric.Array.ElementWise
 import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.Dimensions
-import           Numeric.TypeLits
 
 -- | Keep data in a primitive data frame
 --    and maintain information about Dimensions in the type-system
@@ -65,8 +64,7 @@ newtype instance Dimensions ns => DataFrame t (ns :: [Nat])
 -- | Partially known at compile time
 data instance DataFrame t (xns :: [XNat])
   = forall (ns :: [Nat])
-  . ( Dimensions ns
-    , FixedDim xns ns ~ ns
+  . ( FixedDim xns ns ~ ns
     , FixedXDim xns ns ~ xns
     , NumericFrame t ns
     )
@@ -84,6 +82,9 @@ type CommonOpFrame t ds
     , ElementWise (Idx ds) t (DataFrame t ds)
     , PrimBytes (DataFrame t ds)
     , ArrayInstanceInference t ds
+    , KnownDims ds
+    , FiniteList ds
+    , Dimensions ds
     )
 
 -- | Allow floating-point operations on data frames

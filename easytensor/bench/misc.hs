@@ -3,13 +3,11 @@
 {-# LANGUAGE KindSignatures   #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators    #-}
-{-# LANGUAGE CPP              #-}
 
 module Main (main) where
 
 import           Numeric.DataFrame
 import           Numeric.Dimensions
-import           Numeric.TypeLits
 
 
 
@@ -22,11 +20,8 @@ main = do
     print (fromList [vec4 1 0 2 11, vec4 2 22 3 0, vec4 3 4 0 0] :: DataFrame Double '[N 4, XN 2])
     print (fromList [vec2 0 0, vec2 2 22, vec2 2 22] :: DataFrame Float '[N 2, XN 2])
     print (fromList [0, 1, 3, 5, 7] :: DataFrame Float '[XN 2])
-#if __GLASGOW_HASKELL__ >= 802
     print (fromList [9, 13, 2] :: DataFrame Float '[N 5, N 2, XN 2])
-#endif
     print $ vec2 1 1 %* mat22 (vec2 1 1) (vec2 2 (3 :: Float))
-#if __GLASGOW_HASKELL__ >= 802
     print (toList (42 :: DataFrame Int '[4,3,2]))
     -- Seems like I have to specify known dimension explicitly,
     -- because the inference process within the pattern match
@@ -80,4 +75,3 @@ main = do
     -- Updating existing frames
     print $ update (2:!Z) (scalar 777) rVec
     print $ update (2:!3:!Z) (vec2 999 999) x
-#endif

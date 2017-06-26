@@ -60,12 +60,12 @@ class ( ConcatList as bs asbs
     -- | Set a new value to an element
     update :: Idx bs -> DataFrame t as -> DataFrame t asbs -> DataFrame t asbs
     -- | Map a function over each element of DataFrame
-    ewmap  :: forall s as' asbs'
+    ewmap  :: forall s (as' :: [Nat]) (asbs' :: [Nat])
             . SubSpace s as' bs asbs'
            => (DataFrame s as' -> DataFrame t as)
            -> DataFrame s asbs' -> DataFrame t asbs
     -- | Map a function over each element with its index of DataFrame
-    iwmap  :: forall s as' asbs'
+    iwmap  :: forall s (as' :: [Nat]) (asbs' :: [Nat])
             . SubSpace s as' bs asbs'
            => (Idx bs -> DataFrame s as' -> DataFrame t as)
            -> DataFrame s asbs' -> DataFrame t asbs
@@ -82,7 +82,7 @@ class ( ConcatList as bs asbs
     -- | Right-associative fold of a DataFrame with an index
     iwfoldr :: (Idx bs -> DataFrame t as -> b -> b) -> b -> DataFrame t asbs -> b
     -- | Apply an applicative functor on each element (Lens-like traversal)
-    elementWise :: forall s as' asbs' f
+    elementWise :: forall s (as' :: [Nat]) (asbs' :: [Nat]) f
                  . ( Applicative f
                    , SubSpace s as' bs asbs'
                    )
@@ -90,7 +90,7 @@ class ( ConcatList as bs asbs
                 -> DataFrame s asbs' -> f (DataFrame t asbs)
     -- | Apply an applicative functor on each element with its index
     --     (Lens-like indexed traversal)
-    indexWise :: forall s as' asbs' f
+    indexWise :: forall s (as' :: [Nat]) (asbs' :: [Nat]) f
                . ( Applicative f
                  , SubSpace s as' bs asbs'
                  )
@@ -99,7 +99,7 @@ class ( ConcatList as bs asbs
 infixr 4 !.
 
 -- | Apply a functor over a single element (simple lens)
-element :: forall t as bs asbs f
+element :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) f
          . (SubSpace t as bs asbs, Applicative f)
         => Idx bs
         -> (DataFrame t as -> f (DataFrame t as))
@@ -108,20 +108,20 @@ element i f df = flip (update i) df <$> f (i !. df)
 {-# INLINE element #-}
 
 -- | Index an element (reverse of !.)
-(!) :: SubSpace t as bs asbs
+(!) :: SubSpace t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
     => DataFrame t asbs -> Idx bs -> DataFrame t as
 (!) = flip (!.)
 infixl 4 !
 {-# INLINE (!) #-}
 
 
-ewfoldMap :: forall t as bs asbs m
+ewfoldMap :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) m
            . (Monoid m, SubSpace t as bs asbs)
           => (DataFrame t as -> m) -> DataFrame t asbs -> m
 ewfoldMap f = ewfoldl (\b -> mappend b . f) mempty
 {-# INLINE ewfoldMap #-}
 
-iwfoldMap :: forall t as bs asbs m
+iwfoldMap :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) m
            . ( Monoid m, SubSpace t as bs asbs)
           => (Idx bs -> DataFrame t as -> m) -> DataFrame t asbs -> m
 iwfoldMap f = iwfoldl (\i b -> mappend b . f i) mempty
@@ -130,7 +130,10 @@ iwfoldMap f = iwfoldl (\i b -> mappend b . f i) mempty
 
 
 -- | Zip two spaces on a specified subspace index-wise (with index)
-iwzip :: ( SubSpace t as bs asbs
+iwzip :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+                s (as' :: [Nat]) (asbs' :: [Nat])
+                r (as'' :: [Nat]) (asbs'' :: [Nat])
+       . ( SubSpace t as bs asbs
          , SubSpace s as' bs asbs'
          , SubSpace r as'' bs asbs''
          )
@@ -144,7 +147,10 @@ iwzip f dft dfs = iwmap g dft
 {-# INLINE iwzip #-}
 
 -- | Zip two spaces on a specified subspace element-wise (without index)
-ewzip :: ( SubSpace t as bs asbs
+ewzip :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+                s (as' :: [Nat]) (asbs' :: [Nat])
+                r (as'' :: [Nat]) (asbs'' :: [Nat])
+       . ( SubSpace t as bs asbs
          , SubSpace s as' bs asbs'
          , SubSpace r as'' bs asbs''
          )
@@ -166,7 +172,7 @@ instance {-# OVERLAPPABLE #-}
          , PrimBytes (DataFrame t asbs)
          , as ~ (a'' ': as'')
          , asbs ~ (a'' ': asbs'')
-         ) => SubSpace t as bs asbs where
+         ) => SubSpace t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) where
 
     i !. d = r
         where
@@ -331,7 +337,7 @@ instance {-# OVERLAPPING #-}
          ( Dimensions bs
          , EW.ElementWise (Idx bs) t (DataFrame t bs)
          , PrimBytes (DataFrame t bs)
-         ) => SubSpace t '[] bs bs where
+         ) => SubSpace t ('[] :: [Nat]) (bs :: [Nat]) (bs :: [Nat]) where
     i !. x =  scalar $ x EW.! i
     {-# INLINE (!.) #-}
     ewmap = iwmap . const
