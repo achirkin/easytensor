@@ -195,7 +195,7 @@ instance DataFrameToList t xz (xns :: [XNat]) where
                                            fromBytes (# pos, step , arr #) :: DataFrame t ns
                                         )
                                       : go p step arr lim (pos +# step)
-
+  toList _ = error "(DataFrameToList.ToList) Impossible happend: DataFrame has rank zero!"
 
 
 fromListN :: forall ns t xns xnsm

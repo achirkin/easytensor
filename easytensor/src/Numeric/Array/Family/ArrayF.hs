@@ -399,3 +399,13 @@ maxInRowRem# n m i mat s0 = loop' i (abs# v) i s1
                         (# s', v' #) -> if isTrue# (abs# v' `gtFloat#` ov)
                                         then loop' k (abs# v') (k +# 1#) s'
                                         else loop' ok ov (k +# 1#) s'
+
+-- | Do something in a loop for int i from 0 to n-1 and j from 0 to m-1
+loop2# :: Int# -> Int# -> (Int# -> Int#-> State# s -> State# s)
+       -> State# s -> State# s
+loop2# n m f = loop0 0# 0#
+  where
+    loop0 i j s | isTrue# (j ==# m) = s
+                | isTrue# (i ==# n) = loop0 0# (j +# 1#) s
+                | otherwise         = case f i j s of s1 -> loop0 (i +# 1#) j s1
+{-# INLINE loop2# #-}
