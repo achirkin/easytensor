@@ -74,7 +74,7 @@ data Dim (ns :: k) where
   -- | List-like concatenation of dimensionality.
   --   NatKind constraint is needed here to infer that
   (:*) :: forall (n::l) (ns::[k]) . NatKind [k] l
-       => !(Dim n) -> Dim ns -> Dim (ConsDim n ns)
+       => !(Dim n) -> !(Dim ns) -> Dim (ConsDim n ns)
   -- | Proxy-like constructor
   Dn :: forall (n :: Nat) . KnownDim n => Dim (n :: Nat)
   -- | Nat known at runtime packed into existential constructor

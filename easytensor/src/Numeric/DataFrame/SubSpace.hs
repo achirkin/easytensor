@@ -205,14 +205,14 @@ instance {-# OVERLAPPABLE #-}
       | (# offX, lenX, arrX #) <- toBytes x
       , I# lenASBS <- totalDim (Proxy @asbs)
       , elS <- elementByteSize x
+      , offXB <- offX *# elS
+      , lenXB <- lenX *# elS
       = case runRW#
           ( \s0 -> case newByteArray# (lenASBS *# elS) s0 of
-              (# s1, marr #) -> case foldDimIdx (dim @bs)
-                  ( \_ (SO# pos s) -> SO#
-                        (pos +# lenX)
-                        (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (lenX *# elS) s)
-                  ) (SO# 0# s1) of
-                (SO# _ s2) -> unsafeFreezeByteArray# marr s2
+              (# s1, marr #) -> case overDimOff_# (dim @bs)
+                  ( \posB -> copyByteArray# arrX offXB marr posB lenXB )
+                  0# lenXB s1 of
+                s2 -> unsafeFreezeByteArray# marr s2
           ) of (# _, r #) -> fromBytes (# 0#, lenASBS, r #)
 
     iwgen f

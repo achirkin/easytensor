@@ -186,7 +186,7 @@ instance ( asbs ~ Concat as bs
 -- | Type level list, used together with FiniteList typeclass
 data TypeList (xs :: [k]) where
     TLEmpty :: TypeList '[]
-    TLCons  :: FiniteList xs => !(Proxy# x) -> TypeList xs -> TypeList (x :+ xs)
+    TLCons  :: FiniteList xs => !(Proxy# x) -> !(TypeList xs) -> TypeList (x :+ xs)
 
 instance Show (TypeList xs) where
     show TLEmpty = "TLEmpty"

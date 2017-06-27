@@ -12,7 +12,7 @@ import           Numeric.DataFrame
 import           Numeric.Dimensions
 
 
-type DList = [6,26,8,10,35,8,12]
+type DList = [6,8,10,7,35,8,12] -- [6,26,8,10,35,8,12]
 
 main :: IO ()
 main = do
@@ -64,4 +64,4 @@ main = do
 
 
     putStrLn "Checking indexes"
-    print $ 1:!1:!3:!1:!1:!1:!Z !. df
+    print $ 1:!1:!3:!1:!Z !. df
