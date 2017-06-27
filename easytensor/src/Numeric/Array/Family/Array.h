@@ -17,7 +17,7 @@ loop1a# :: Int# -> (Int# -> a -> a) -> a -> a
 loop1a# n f = loop0 0#
   where
     loop0 i s | isTrue# (i ==# n) = s
-              | otherwise = case f i s of s1 -> loop0 (i +# 1#) s1
+              | otherwise = s `seq` case f i s of s1 -> s1 `seq` loop0 (i +# 1#) s1
 {-# INLINE loop1a# #-}
 
 
@@ -106,51 +106,36 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
   {-# INLINE broadcast #-}
 
   ewmap f x@(ARR_CONSTR offset n arr) = case runRW#
-     (\s0 -> case newByteArray# bs s0 of
-       (# s1, marr #) -> case newMutVar# 0 s1 of
-         (# s2, mi #) -> case overDimIdx_# (dim `inSpaceOf` x)
-             (\ii ss -> case readMutVar# mi ss of
-               (# sss, I# i #) ->
-                 case f ii (EL_CONSTR (INDEX_ARRAY arr (offset +# i))) of
-                  (EL_CONSTR r) -> writeMutVar# mi (I# (i +# 1#))
-                                            (WRITE_ARRAY marr i r sss)
-             ) s2 of
+     (\s0 -> case newByteArray# (n *# EL_SIZE) s0 of
+       (# s1, marr #) -> case overDim_# (dim `inSpaceOf` x)
+               ( \ii off s -> case f ii (EL_CONSTR (INDEX_ARRAY arr (offset +# off))) of
+                  (EL_CONSTR r) -> WRITE_ARRAY marr off r s
+               ) 0# 1# s1 of
            s3 -> unsafeFreezeByteArray# marr s3
      ) of (# _, r #) -> ARR_CONSTR 0# n r
-    where
-      bs = n *# EL_SIZE
   ewmap f x@(ARR_FROMSCALAR scalVal) = case runRW#
-     (\s0 -> case newByteArray# bs s0 of
-       (# s1, marr #) -> case newMutVar# 0 s1 of
-         (# s2, mi #) -> case overDimIdx_# (dim `inSpaceOf` x)
-             (\ii ss -> case readMutVar# mi ss of
-               (# sss, I# i #) ->
-                 case f ii (EL_CONSTR scalVal) of
-                  (EL_CONSTR r) -> writeMutVar# mi (I# (i +# 1#))
-                                               (WRITE_ARRAY marr i r sss)
-             ) s2 of
+     (\s0 -> case newByteArray# (n *# EL_SIZE) s0 of
+       (# s1, marr #) -> case overDim_# (dim `inSpaceOf` x)
+               ( \ii off s -> case f ii (EL_CONSTR scalVal) of
+                  (EL_CONSTR r) -> WRITE_ARRAY marr off r s
+               ) 0# 1# s1 of
            s3 -> unsafeFreezeByteArray# marr s3
      ) of (# _, r #) -> ARR_CONSTR 0# n r
     where
       n = case totalDim x of I# d -> d
-      bs = n *# EL_SIZE
   {-# INLINE ewmap #-}
 
   ewgen f = case runRW#
-     (\s0 -> case newByteArray# bs s0 of
-       (# s1, marr #) -> case newMutVar# 0 s1 of
-         (# s2, mi #) -> case overDimIdx_# (dim `inSpaceOf` x)
-             (\ii ss -> case readMutVar# mi ss of
-               (# sss, I# i #) -> case f ii of
-                  (EL_CONSTR r) -> writeMutVar# mi (I# (i +# 1#))
-                                               (WRITE_ARRAY marr i r sss)
-             ) s2 of
+     (\s0 -> case newByteArray# (n *# EL_SIZE) s0 of
+       (# s1, marr #) -> case overDim_# (dim `inSpaceOf` x)
+               ( \ii off s -> case f ii of
+                  (EL_CONSTR r) -> WRITE_ARRAY marr off r s
+               ) 0# 1# s1 of
            s3 -> unsafeFreezeByteArray# marr s3
      ) of (# _, r #) -> ARR_CONSTR 0# n r
     where
       x = undefined :: ARR_TYPE ds
       n = case totalDim x of I# d -> d
-      bs = n *# EL_SIZE
   {-# INLINE ewgen #-}
 
   ewgenA f
@@ -164,28 +149,19 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
       n = case totalDim x of I# d -> d
       bs = n *# EL_SIZE
 
-  ewfold f v0 x@(ARR_CONSTR offset _ arr) = case runRW#
-    (\s0 -> case newMutVar# (0,v0) s0 of
-       (# s1, miv #) -> case overDimIdx_# (dim `inSpaceOf` x)
-             (\ii ss -> case readMutVar# miv ss of
-               (# sss, (I# i, v) #) -> writeMutVar# miv
-                      ( I# (i +# 1#)
-                      , f ii (EL_CONSTR (INDEX_ARRAY arr (offset +# i))) v
-                      ) sss
-             ) s1 of
-          s2 -> readMutVar# miv s2
-    ) of (# _, (_, r) #) -> r
-  ewfold f v0 x@(ARR_FROMSCALAR scalVal) = case runRW#
-    (\s0 -> case newMutVar# v0 s0 of
-        (# s1, miv #) -> case overDimIdx_# (dim `inSpaceOf` x)
-              (\ii ss -> case readMutVar# miv ss of
-                (# sss, v #) -> writeMutVar# miv
-                       ( f ii (EL_CONSTR scalVal) v
-                       ) sss
-              ) s1 of
-           s2 -> readMutVar# miv s2
-    ) of (# _, r #) -> r
-  {-# INLINE ewfold #-}
+  ewfoldr f v0 x@(ARR_CONSTR offset _ arr)
+    = foldDimReverse (dim `inSpaceOf` x)
+      (\ii off -> f ii (EL_CONSTR (INDEX_ARRAY arr off))) offset 1# v0
+  ewfoldr f v0 x@(ARR_FROMSCALAR scalVal) = foldDimReverseIdx (dim `inSpaceOf` x)
+      (\ii -> f ii (EL_CONSTR scalVal)) v0
+  {-# INLINE ewfoldr #-}
+
+  ewfoldl f v0 x@(ARR_CONSTR offset _ arr)
+    = foldDim (dim `inSpaceOf` x)
+      (\ii off v -> f ii v (EL_CONSTR (INDEX_ARRAY arr off))) offset 1# v0
+  ewfoldl f v0 x@(ARR_FROMSCALAR scalVal) = foldDimIdx (dim `inSpaceOf` x)
+      (\ii v -> f ii v (EL_CONSTR scalVal)) v0
+  {-# INLINE ewfoldl #-}
 
   indexWise f x@(ARR_CONSTR offset n arr)
       = case foldDimIdx (dim `inSpaceOf` x) g (AU# 0# (pure (\_ s -> s))) of

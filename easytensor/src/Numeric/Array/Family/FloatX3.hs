@@ -273,8 +273,11 @@ instance ElementWise (Idx '[3]) Float FloatX3 where
           <$> f (1:!Z) <*> f (2:!Z) <*> f (3:!Z)
   {-# INLINE ewgenA #-}
 
-  ewfold f x0 (FloatX3# x y z) = f (3:!Z) (F# z) (f (2:!Z) (F# y) (f (1:!Z) (F# x) x0))
-  {-# INLINE ewfold #-}
+  ewfoldl f x0 (FloatX3# x y z) = f (3:!Z) (f (2:!Z) (f (1:!Z) x0 (F# x)) (F# y)) (F# z)
+  {-# INLINE ewfoldl #-}
+
+  ewfoldr f x0 (FloatX3# x y z) = f (1:!Z) (F# x) (f (2:!Z) (F# y) (f (3:!Z) (F# z) x0))
+  {-# INLINE ewfoldr #-}
 
   elementWise f (FloatX3# x y z) = (\(F# a) (F# b) (F# c) -> FloatX3# a b c)
                                  <$> f (F# x) <*> f (F# y) <*> f (F# z)

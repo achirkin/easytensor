@@ -33,7 +33,7 @@ module Numeric.DataFrame.SubSpace
 
 import           GHC.Base                  (runRW#)
 import           GHC.Prim
-import           GHC.Types                 (Int (..), Type, isTrue#)
+import           GHC.Types                 (Int (..), Type)
 
 
 import qualified Numeric.Array.ElementWise as EW
@@ -188,17 +188,15 @@ instance {-# OVERLAPPABLE #-}
       | elS <- elementByteSize (undefined :: DataFrame t asbs)
       , I# lenBS <- totalDim (Proxy @bs)
       , I# lenAS <- totalDim (Proxy @as)
+      , lenASB <- lenAS *# elS
       = case runRW#
           ( \s0 -> case newByteArray# (lenAS *# lenBS *# elS) s0 of
-              (# s1, marr #) -> case foldDimIdx
+              (# s1, marr #) -> case overDim_#
                   (dim @bs)
-                  ( \i (SO# pos s) -> case toBytes $ f i (i !. df) of
-                      (# offX, _, arrX #) -> SO#
-                        (pos +# lenAS)
-                        (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (lenAS *# elS) s)
-                  )
-                  (SO# 0# s1) of
-                (SO# _ s2) -> unsafeFreezeByteArray# marr s2
+                  ( \i pos s -> case toBytes $ f i (i !. df) of
+                      (# offX, _, arrX #) -> copyByteArray# arrX (offX *# elS) marr pos lenASB s
+                  ) 0# lenASB s1 of
+                s2 -> unsafeFreezeByteArray# marr s2
           ) of (# _, r #) -> fromBytes (# 0#, lenAS *# lenBS, r #)
 
     ewgen x
@@ -218,48 +216,36 @@ instance {-# OVERLAPPABLE #-}
     iwgen f
       | I# lenASBS <- totalDim (Proxy @asbs)
       , elS <- elementByteSize (undefined :: DataFrame t asbs)
+      , I# lenAS <- totalDim (Proxy @as)
+      , lenASB <- lenAS *# elS
       = case runRW#
           ( \s0 -> case newByteArray# (lenASBS *# elS) s0 of
-              (# s1, marr #) -> case foldDimIdx (dim @bs)
-                  ( \i (SO# pos s) -> case toBytes $ f i of
-                      (# offX, lenX, arrX #) -> SO#
-                        (pos +# lenX)
-                        (copyByteArray# arrX (offX *# elS) marr (pos *# elS) (lenX *# elS) s)
-                  ) (SO# 0# s1) of
-                (SO# _ s2) -> unsafeFreezeByteArray# marr s2
+              (# s1, marr #) -> case overDim_# (dim @bs)
+                  ( \i pos s -> case toBytes (f i) of
+                      (# offX, _, arrX #) -> copyByteArray# arrX (offX *# elS) marr pos lenASB s
+                  ) 0# lenASB s1 of
+                s2 -> unsafeFreezeByteArray# marr s2
           ) of (# _, r #) -> fromBytes (# 0#, lenASBS, r #)
 
     ewfoldl f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
-        (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr x0
-      where
-        go pos lim step arr acc
-          | isTrue# (pos >=# lim) = acc
-          | otherwise = go (pos +# step) lim step arr
-              ( f acc (fromBytes (# pos, step, arr #)) )
+        (# (# off, _, arr #), I# step #) -> foldDimOff (dim @bs)
+                    (\pos acc -> f acc (fromBytes (# pos, step, arr #)))
+                    off step x0
 
     iwfoldl f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
-        (# (# off, len, arr #), I# l# #) -> go off (off +# len) l# arr minBound x0
-      where
-        go pos lim step arr curI acc
-          | isTrue# (pos >=# lim) = acc
-          | otherwise = go (pos +# step) lim step arr (succ curI)
-              ( f curI acc (fromBytes (# pos, step, arr #)) )
+        (# (# off, _, arr #), I# step #) -> foldDim (dim @bs)
+                    (\i pos acc -> f i acc (fromBytes (# pos, step, arr #)))
+                    off step x0
 
     ewfoldr f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
-        (# (# off, len, arr #), I# l# #) -> go (off +# len -# l#) off l# arr x0
-      where
-        go pos lim step arr acc
-          | isTrue# (pos <# lim) = acc
-          | otherwise = go (pos -# step) lim step arr
-              ( f (fromBytes (# pos, step, arr #)) acc )
+        (# (# off, len, arr #), I# step #) -> foldDimOff (dim @bs)
+                    (\pos acc -> f (fromBytes (# pos, step, arr #))  acc)
+                    (off +# len -# step) (negateInt# step) x0
 
     iwfoldr f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
-        (# (# off, len, arr #), I# l# #) -> go (off +# len -# l#) off l# arr minBound x0
-      where
-        go pos lim step arr curI acc
-          | isTrue# (pos <# lim) = acc
-          | otherwise = go (pos -# step) lim step arr (succ curI)
-              ( f curI (fromBytes (# pos, step, arr #)) acc )
+        (# (# off, _, arr #), I# step #) -> foldDimReverse (dim @bs)
+                    (\i pos acc -> f i (fromBytes (# pos, step, arr #))  acc)
+                    off step x0
 
     -- implement elementWise in terms of indexWise
     elementWise = indexWise . const
@@ -306,7 +292,7 @@ instance {-# OVERLAPPABLE #-}
                -> f (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
                -> DataFrame s as'
                -> f (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
-        applyF idx s dfChunk = updateChunk <$> s <*> f idx dfChunk
+        applyF idx s dfChunk = idx `seq` dfChunk `seq` updateChunk <$> s <*> f idx dfChunk
 
         -- Element byte size of the result DataFrame (byte size of s)
         rezElBSize# = elementByteSize (undefined :: DataFrame t asbs)
@@ -328,8 +314,6 @@ instance {-# OVERLAPPABLE #-}
           ) of (# _, r #) -> fromBytes (# 0#, len, r #)
 
 
--- | This datatype is used to carry compound state in loops
-data StateOffset = SO# Int# (State# RealWorld)
 
 
 -- | Specialized instance of SubSpace for operating on scalars.
@@ -348,13 +332,13 @@ instance {-# OVERLAPPING #-}
     {-# INLINE ewgen #-}
     iwgen f = EW.ewgen (unScalar . f)
     {-# INLINE iwgen #-}
-    ewfoldl f r0 x = foldDimIdx (dim @bs) (\i r -> f r (i !. x)) r0
+    ewfoldl f = EW.ewfoldl (\_ a -> f a . scalar)
     {-# INLINE ewfoldl #-}
-    iwfoldl f r0 x = foldDimIdx (dim @bs) (\i r -> f i r (i !. x)) r0
+    iwfoldl f = EW.ewfoldl (\i a -> f i a . scalar)
     {-# INLINE iwfoldl #-}
-    ewfoldr f r0 x = foldDimReverseIdx (dim @bs) (\i r -> f (i !. x) r) r0
+    ewfoldr f = EW.ewfoldr (\_ x -> f (scalar x))
     {-# INLINE ewfoldr #-}
-    iwfoldr f r0 x = foldDimReverseIdx (dim @bs) (\i r -> f i (i !. x) r) r0
+    iwfoldr f = EW.ewfoldr (\i x -> f i (scalar x))
     {-# INLINE iwfoldr #-}
     elementWise = indexWise . const
     {-# INLINE elementWise #-}

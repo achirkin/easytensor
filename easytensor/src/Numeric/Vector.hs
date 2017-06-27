@@ -50,7 +50,7 @@ type Vec4d = Vector Double 4
          , ElementWise (Idx '[n]) t (Vector t n)
          )
       => Vector t n -> Vector t n -> Vector t n
-(.*.) a b = broadcast . ewfold (const (+)) 0 $ a * b
+(.*.) a b = broadcast . ewfoldl (const (+)) 0 $ a * b
 infixl 7 .*.
 
 -- | Scalar product -- sum of Vecs' components products -- a scalar
@@ -59,7 +59,7 @@ dot :: ( Num t
        , ElementWise (Idx '[n]) t (Vector t n)
        )
     => Vector t n -> Vector t n -> Scalar t
-dot a b = scalar . ewfold (const (+)) 0 $ a * b
+dot a b = scalar . ewfoldl (const (+)) 0 $ a * b
 
 -- | Dot product of two vectors
 infixl 7 ·
@@ -77,28 +77,28 @@ normL1 :: ( Num t
           , ElementWise (Idx '[n]) t (Vector t n)
           )
        => Vector t n -> Scalar t
-normL1 = scalar . ewfold (const (\a -> (abs a +))) 0
+normL1 = scalar . ewfoldr (const (\a -> (abs a +))) 0
 
 -- | hypot function (square root of squares)
 normL2 :: ( Floating t
           , ElementWise (Idx '[n]) t (Vector t n)
           )
        => Vector t n -> Scalar t
-normL2 = scalar . sqrt . ewfold (const (\a -> (a*a +))) 0
+normL2 = scalar . sqrt . ewfoldr (const (\a -> (a*a +))) 0
 
 -- | Maximum of absolute values
 normLPInf :: ( Ord t, Num t
              , ElementWise (Idx '[n]) t (Vector t n)
              )
           => Vector t n -> Scalar t
-normLPInf = scalar . ewfold (const (max . abs)) 0
+normLPInf = scalar . ewfoldr (const (max . abs)) 0
 
 -- | Minimum of absolute values
 normLNInf :: ( Ord t, Num t
              , ElementWise (Idx '[n]) t (Vector t n)
              )
           => Vector t n -> Scalar t
-normLNInf x = scalar $ ewfold (const (min . abs))
+normLNInf x = scalar $ ewfoldr (const (min . abs))
                                  (abs $ x ! (1 :! Z)) x
 
 -- | Norm in Lp space
@@ -106,7 +106,7 @@ normLP :: ( Floating t
           , ElementWise (Idx '[n]) t (Vector t n)
           )
        => Int -> Vector t n -> Scalar t
-normLP i' = scalar . (**ri) . ewfold (const (\a -> (a**i +))) 0
+normLP i' = scalar . (**ri) . ewfoldr (const (\a -> (a**i +))) 0
   where
     i  = fromIntegral i'
     ri = recip i

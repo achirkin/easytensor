@@ -2,6 +2,12 @@
 # This script sets up ghc-mod environment to work with GHC 8.2.1-RC1
 #  while the official ghc-mod support is not here yet
 export PATH=/usr/local/ghc-8.2.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+rm easytensor/cabal.sandbox.config
+rm dimensions/cabal.sandbox.config
+rm cabal.sandbox.config
+rm -rf easytensor/dist
+rm -rf dimensions/dist
+rm -rf .cabal-sandbox
 rm -rf dist
 rm -rf dist-newstyle
 cabal update
