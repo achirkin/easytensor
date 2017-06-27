@@ -119,7 +119,7 @@ foldDimReverseIdx ((Dn :: Dim n) :* ds) f = ds `seq` foldDimReverseIdx ds (loop 
   where
     n = dimVal' @n
     loop i js a | i > n = a
-                | otherwise = case f (i:!js) a of b -> b `seq` loop (i-1) js b
+                | otherwise = js `seq` a `seq` case f (i:!js) a of b -> b `seq` loop (i-1) js b
 
 
 
