@@ -33,7 +33,9 @@ class ElementWise i x t | t -> x i where
   -- | generate data from elements in applicative functor
   ewgenA :: forall f . Applicative f => (i -> f x) -> f t
   -- | fold all element with index
-  ewfold :: (i -> x -> a -> a) -> a -> t -> a
+  ewfoldl :: (i -> a -> x -> a) -> a -> t -> a
+  -- | fold all element with index
+  ewfoldr :: (i -> x -> a -> a) -> a -> t -> a
   -- | Apply an applicative functor on each element (Lens-like traversal)
   elementWise :: forall f . Applicative f => (x -> f x) -> t -> f t
   -- | Apply an applicative functor on each element with its index
@@ -54,8 +56,10 @@ instance ElementWise Int Float Float where
   {-# INLINE ewgen #-}
   ewgenA f  = f 1
   {-# INLINE ewgenA #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
+  ewfoldl f = f 1
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f 1 x x0
+  {-# INLINE ewfoldr #-}
   elementWise = id
   {-# INLINE elementWise #-}
   indexWise f = f 1
@@ -76,8 +80,9 @@ instance ElementWise Int Double Double where
   {-# INLINE ewgen #-}
   ewgenA f  = f 1
   {-# INLINE ewgenA #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
+  ewfoldl f = f 1
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f 1 x x0
   elementWise = id
   {-# INLINE elementWise #-}
   indexWise f = f 1
@@ -97,8 +102,9 @@ instance ElementWise Int Int Int where
   {-# INLINE ewgen #-}
   ewgenA f  = f 1
   {-# INLINE ewgenA #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
+  ewfoldl f = f 1
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f 1 x x0
   elementWise = id
   {-# INLINE elementWise #-}
   indexWise f = f 1
@@ -118,8 +124,9 @@ instance ElementWise Int Int8 Int8 where
   {-# INLINE ewgen #-}
   ewgenA f  = f 1
   {-# INLINE ewgenA #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
+  ewfoldl f = f 1
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f 1 x x0
   elementWise = id
   {-# INLINE elementWise #-}
   indexWise f = f 1
@@ -138,8 +145,9 @@ instance ElementWise Int Int16 Int16 where
   {-# INLINE ewgen #-}
   ewgenA f  = f 1
   {-# INLINE ewgenA #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
+  ewfoldl f = f 1
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f 1 x x0
   elementWise = id
   {-# INLINE elementWise #-}
   indexWise f = f 1
@@ -158,8 +166,9 @@ instance ElementWise Int Int32 Int32 where
   {-# INLINE ewgen #-}
   ewgenA f  = f 1
   {-# INLINE ewgenA #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
+  ewfoldl f = f 1
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f 1 x x0
   elementWise = id
   {-# INLINE elementWise #-}
   indexWise f = f 1
@@ -179,8 +188,9 @@ instance ElementWise Int Int64 Int64 where
   {-# INLINE ewgen #-}
   ewgenA f  = f 1
   {-# INLINE ewgenA #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
+  ewfoldl f = f 1
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f 1 x x0
   elementWise = id
   {-# INLINE elementWise #-}
   indexWise f = f 1
@@ -200,8 +210,9 @@ instance ElementWise Int Word Word where
   {-# INLINE ewgen #-}
   ewgenA f  = f 1
   {-# INLINE ewgenA #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
+  ewfoldl f = f 1
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f 1 x x0
   elementWise = id
   {-# INLINE elementWise #-}
   indexWise f = f 1
@@ -221,8 +232,9 @@ instance ElementWise Int Word8 Word8 where
   {-# INLINE ewgen #-}
   ewgenA f  = f 1
   {-# INLINE ewgenA #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
+  ewfoldl f = f 1
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f 1 x x0
   elementWise = id
   {-# INLINE elementWise #-}
   indexWise f = f 1
@@ -242,8 +254,9 @@ instance ElementWise Int Word16 Word16 where
   {-# INLINE ewgen #-}
   ewgenA f  = f 1
   {-# INLINE ewgenA #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
+  ewfoldl f = f 1
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f 1 x x0
   elementWise = id
   {-# INLINE elementWise #-}
   indexWise f = f 1
@@ -263,8 +276,9 @@ instance ElementWise Int Word32 Word32 where
   {-# INLINE ewgen #-}
   ewgenA f  = f 1
   {-# INLINE ewgenA #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
+  ewfoldl f = f 1
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f 1 x x0
   elementWise = id
   {-# INLINE elementWise #-}
   indexWise f = f 1
@@ -284,8 +298,9 @@ instance ElementWise Int Word64 Word64 where
   {-# INLINE ewgen #-}
   ewgenA f  = f 1
   {-# INLINE ewgenA #-}
-  ewfold f x0 x = f 1 x x0
-  {-# INLINE ewfold #-}
+  ewfoldl f = f 1
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f 1 x x0
   elementWise = id
   {-# INLINE elementWise #-}
   indexWise f = f 1

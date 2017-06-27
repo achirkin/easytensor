@@ -307,8 +307,11 @@ instance ElementWise (Idx '[4]) Float FloatX4 where
           <$> f (1:!Z) <*> f (2:!Z) <*> f (3:!Z) <*> f (4:!Z)
   {-# INLINE ewgenA #-}
 
-  ewfold f x0 (FloatX4# x y z w) = f (4:!Z) (F# w) (f (3:!Z) (F# z) (f (2:!Z) (F# y) (f (1:!Z) (F# x) x0)))
-  {-# INLINE ewfold #-}
+  ewfoldl f x0 (FloatX4# x y z w) = f (4:!Z) (f (3:!Z) (f (2:!Z) (f (1:!Z) x0 (F# x)) (F# y)) (F# z)) (F# w)
+  {-# INLINE ewfoldl #-}
+
+  ewfoldr f x0 (FloatX4# x y z w) = f (1:!Z) (F# x) (f (2:!Z) (F# y) (f (3:!Z) (F# z) (f (4:!Z) (F# w) x0)))
+  {-# INLINE ewfoldr #-}
 
   elementWise f (FloatX4# x y z w) = (\(F# a) (F# b) (F# c) (F# d) -> FloatX4# a b c d)
                                  <$> f (F# x) <*> f (F# y) <*> f (F# z) <*> f (F# w)

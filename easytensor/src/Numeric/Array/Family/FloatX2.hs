@@ -301,8 +301,11 @@ instance ElementWise (Idx '[2]) Float FloatX2 where
   ewgenA f = (\(F# r1) (F# r2) -> FloatX2# r1 r2) <$> f (1:!Z) <*> f (2:!Z)
   {-# INLINE ewgenA #-}
 
-  ewfold f x0 (FloatX2# x y) = f (2:!Z) (F# y) (f (1:!Z) (F# x) x0)
-  {-# INLINE ewfold #-}
+  ewfoldl f x0 (FloatX2# x y) = f (2:!Z) (f (1:!Z) x0 (F# x)) (F# y)
+  {-# INLINE ewfoldl #-}
+
+  ewfoldr f x0 (FloatX2# x y) = f (1:!Z) (F# x) (f (2:!Z) (F# y) x0)
+  {-# INLINE ewfoldr #-}
 
   elementWise f (FloatX2# x y) = (\(F# a) (F# b) -> FloatX2# a b)
                                <$> f (F# x) <*> f (F# y)

@@ -155,8 +155,10 @@ instance ( Dimensions ds
   {-# INLINE ewgen #-}
   ewgenA = fmap KnownDataFrame . ewgenA
   {-# INLINE ewgenA #-}
-  ewfold f x0 = ewfold f x0 . _getDF
-  {-# INLINE ewfold #-}
+  ewfoldl f x0 = ewfoldl f x0 . _getDF
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 = ewfoldr f x0 . _getDF
+  {-# INLINE ewfoldr #-}
   elementWise f = fmap KnownDataFrame . elementWise f . _getDF
   {-# INLINE elementWise #-}
   indexWise f = fmap KnownDataFrame . indexWise f . _getDF

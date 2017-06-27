@@ -112,8 +112,10 @@ instance ElementWise (Idx ('[] :: [Nat])) t (Scalar t) where
   {-# INLINE ewgen #-}
   ewgenA f = Scalar <$> f Z
   {-# INLINE ewgenA #-}
-  ewfold f x0 x = f Z (_unScalar x) x0
-  {-# INLINE ewfold #-}
+  ewfoldl f x0 = f Z x0 . _unScalar
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f Z (_unScalar x) x0
+  {-# INLINE ewfoldr #-}
   elementWise f = fmap Scalar . f . _unScalar
   {-# INLINE elementWise #-}
   indexWise f = fmap Scalar . f Z . _unScalar
