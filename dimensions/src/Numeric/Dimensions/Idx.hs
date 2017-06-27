@@ -30,7 +30,7 @@
 -- Lower indices go first, i.e. assumed enumeration
 --          is i = i1 + i2*n1 + i3*n1*n2 + ... + ik*n1*n2*...*n(k-1).
 -- This is also to encourage column-first matrix enumeration and array layout.
--- 
+--
 -----------------------------------------------------------------------------
 
 module Numeric.Dimensions.Idx
@@ -87,6 +87,7 @@ toIdx ((Dn :: Dim d) :* ds) off = case divMod off (dimVal' @d) of
 fromIdx :: Dim xs -> Idx xs -> Int
 fromIdx _ Z                             = 0
 fromIdx ((Dn :: Dim d) :* ds) (i :! is) = i - 1 + dimVal' @d * fromIdx ds is
+{-# INLINE fromIdx #-}
 
 -- | Offset difference of two indices (first idx - second idx)
 diffIdx :: Dim xs -> Idx xs -> Idx xs -> Int

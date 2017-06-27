@@ -40,11 +40,11 @@ overDim# :: Dim (ds :: [Nat])
          -> a
          -> State# s
          -> (# State# s, a #)
-overDim# ds f off0# step# a0 s0 = case overDim'# ds g off0# a0 s0 of
-                              (# s1, _, a1 #) -> (# s1, a1 #)
+overDim# ds f off0# step# a0 s0 = ds `seq` case overDim'# ds g off0# a0 s0 of
+                              (# s1, _, a1 #) -> a1 `seq` (# s1, a1 #)
   where
-    g i off# a s = case f i off# a s of
-                    (# t, b #) -> (# t, off# +# step#, b #)
+    g i off# a s = i `seq` case f i off# a s of
+                    (# t, b #) -> b `seq` (# t, off# +# step#, b #)
 {-# INLINE overDim# #-}
 
 -- | Fold over all dimensions keeping track of index and offset
@@ -53,10 +53,10 @@ foldDim :: Dim (ds :: [Nat])
         -> Int# -- ^ Initial offset
         -> Int# -- ^ offset step
         -> a -> a
-foldDim ds f off0# step# a0 = case foldDim' ds g off0# a0 of
+foldDim ds f off0# step# a0 = ds `seq` case foldDim' ds g off0# a0 of
                               (# _, a1 #) -> a1
   where
-    g i off# a = (# off# +# step#, f i off# a #)
+    g i off# a = i `seq` (# off# +# step#, f i off# a #)
 {-# INLINE foldDim #-}
 
 -- | Fold over all dimensions in reverse order keeping track of index and offset
@@ -65,10 +65,10 @@ foldDimReverse :: Dim (ds :: [Nat])
                -> Int# -- ^ Initial offset
                -> Int# -- ^ offset step (substracted from initial offset)
                -> a -> a
-foldDimReverse ds f off0# step# a0 = case foldDimReverse' ds g off0# a0 of
+foldDimReverse ds f off0# step# a0 = ds `seq` case foldDimReverse' ds g off0# a0 of
                               (# _, a1 #) -> a1
   where
-    g i off# a = (# off# -# step#, f i off# a #)
+    g i off# a = i `seq` (# off# -# step#, f i off# a #)
 {-# INLINE foldDimReverse #-}
 
 
@@ -79,10 +79,10 @@ overDim_# :: Dim (ds :: [Nat])
           -> Int# -- ^ offset step
           -> State# s
           -> State# s
-overDim_# ds f off0# step# s0 = case overDim_'# ds g off0# s0 of
+overDim_# ds f off0# step# s0 = ds `seq` case overDim_'# ds g off0# s0 of
                               (# s1, _ #) -> s1
   where
-    g i off# s = case f i off# s of t -> (# t, off# +# step# #)
+    g i off# s = i `seq` case f i off# s of t -> (# t, off# +# step# #)
 {-# INLINE overDim_# #-}
 
 -- | Traverse over all dimensions keeping track of indices
@@ -92,7 +92,7 @@ overDimIdx# :: Dim (ds :: [Nat])
             -> State# s
             -> (# State# s, a #)
 overDimIdx# D f = f Z
-overDimIdx# ((Dn :: Dim n) :* ds) f = overDimIdx# ds (loop 1)
+overDimIdx# ((Dn :: Dim n) :* ds) f = ds `seq` overDimIdx# ds (loop 1)
   where
     n = dimVal' @n
     loop i js a s | i > n = (# s,  a #)
@@ -104,7 +104,7 @@ foldDimIdx :: Dim (ds :: [Nat])
             -> (Idx ds -> a -> a)
             -> a -> a
 foldDimIdx D f = f Z
-foldDimIdx ((Dn :: Dim n) :* ds) f = foldDimIdx ds (loop 1)
+foldDimIdx ((Dn :: Dim n) :* ds) f = ds `seq` foldDimIdx ds (loop 1)
   where
     n = dimVal' @n
     loop i js a | i > n = a
@@ -115,7 +115,7 @@ foldDimReverseIdx :: Dim (ds :: [Nat])
                   -> (Idx ds -> a -> a)
                   -> a -> a
 foldDimReverseIdx D f = f Z
-foldDimReverseIdx ((Dn :: Dim n) :* ds) f = foldDimReverseIdx ds (loop n)
+foldDimReverseIdx ((Dn :: Dim n) :* ds) f = ds `seq` foldDimReverseIdx ds (loop n)
   where
     n = dimVal' @n
     loop i js a | i > n = a
@@ -129,7 +129,7 @@ overDimIdx_# :: Dim (ds :: [Nat])
              -> State# s
              -> State# s
 overDimIdx_# D f = f Z
-overDimIdx_# ((Dn :: Dim n) :* ds) f = overDimIdx_# ds (loop 1)
+overDimIdx_# ((Dn :: Dim n) :* ds) f = ds `seq` overDimIdx_# ds (loop 1)
   where
     n = dimVal' @n
     loop i js s | i > n = s
@@ -141,7 +141,7 @@ overDimOff# :: Dim (ds :: [Nat])
             -> Int# -- ^ Initial offset
             -> Int# -- ^ offset step
             -> a -> State# s -> (# State# s, a #)
-overDimOff# ds f off0# step# = loop off0#
+overDimOff# ds f off0# step# = ds `seq` loop off0#
   where
     off1# = case dimVal ds of I# n# -> n# *# step# +# off0#
     cond# = if isTrue# (off1# >=# off0#)
@@ -157,7 +157,7 @@ foldDimOff :: Dim (ds :: [Nat])
            -> Int# -- ^ Initial offset
            -> Int# -- ^ offset step
            -> a -> a
-foldDimOff ds f off0# step# = loop off0#
+foldDimOff ds f off0# step# = ds `seq` loop off0#
   where
     off1# = case dimVal ds of I# n# -> n# *# step# +# off0#
     cond# = if isTrue# (off1# >=# off0#)
@@ -173,7 +173,7 @@ overDimOff_# :: Dim (ds :: [Nat])
              -> Int# -- ^ Initial offset
              -> Int# -- ^ offset step
              -> State# s -> State# s
-overDimOff_# ds f off0# step# = loop off0#
+overDimOff_# ds f off0# step# = ds `seq` loop off0#
   where
     off1# = case dimVal ds of I# n# -> n# *# step# +# off0#
     cond# = if isTrue# (off1# >=# off0#)
@@ -195,7 +195,7 @@ overDimPart# :: forall (ds :: [Nat]) a s
              -> a
              -> State# s
              -> (# State# s, a #)
-overDimPart# imin imax f off0 step = overDimPart'# offs imin imax f off0
+overDimPart# imin imax f off0 step = offs `seq` overDimPart'# offs imin imax f off0
     where
       offs = createOffsets (dim @ds) (I# step)
       createOffsets :: forall (ns :: [Nat]) . Dim ns -> Int -> Idx ns
@@ -214,7 +214,7 @@ overDim'# :: Dim (ds :: [Nat])
           -> State# s
           -> (# State# s, Int#,  a #)
 overDim'# D f = f Z
-overDim'# ((Dn :: Dim n) :* ds) f = overDim'# ds (loop 1)
+overDim'# ((Dn :: Dim n) :* ds) f = ds `seq` overDim'# ds (loop 1)
   where
     n = dimVal' @n
     loop i js off# a s | i > n = (# s, off#, a #)
@@ -228,7 +228,7 @@ foldDim' :: Dim (ds :: [Nat])
          -> Int# -- ^ Initial offset
          -> a -> (# Int#,  a #)
 foldDim' D f = f Z
-foldDim' ((Dn :: Dim n) :* ds) f = foldDim' ds (loop 1)
+foldDim' ((Dn :: Dim n) :* ds) f = ds `seq` foldDim' ds (loop 1)
   where
     n = dimVal' @n
     loop i js off# a | i > n = (#  off#, a #)
@@ -240,7 +240,7 @@ foldDimReverse' :: Dim (ds :: [Nat])
                 -> Int# -- ^ Initial offset
                 -> a -> (# Int#,  a #)
 foldDimReverse' D f = f Z
-foldDimReverse' ((Dn :: Dim n) :* ds) f = foldDim' ds (loop n)
+foldDimReverse' ((Dn :: Dim n) :* ds) f = ds `seq` foldDim' ds (loop n)
   where
     n = dimVal' @n
     loop i js off# a | i <= 0 = (#  off#, a #)
@@ -255,7 +255,7 @@ overDim_'# :: Dim (ds :: [Nat])
            -> State# s
            -> (# State# s, Int# #)
 overDim_'# D f = f Z
-overDim_'# ((Dn :: Dim n) :* ds) f = overDim_'# ds (loop 1)
+overDim_'# ((Dn :: Dim n) :* ds) f = ds `seq` overDim_'# ds (loop 1)
   where
     n = dimVal' @n
     loop i js off# s | i > n = (# s, off# #)
@@ -273,8 +273,8 @@ overDimPart'# :: Idx (ds :: [Nat])
               -> (# State# s, a #)
 overDimPart'# _ Z Z f off0# = f Z off0#
 overDimPart'# (I# iW:!iws) (iMin:!mins) (iMax:!maxs) f off0#
-    | iMax >= iMin = overDimPart'# iws mins maxs (loop iMin) (off0# +# minOff#)
-    | otherwise    = overDimPart'# iws mins maxs (looi iMin) (off0# +# minOff#)
+    | iMax >= iMin = maxs `seq` mins `seq` overDimPart'# iws mins maxs (loop iMin) (off0# +# minOff#)
+    | otherwise    = maxs `seq` mins `seq` overDimPart'# iws mins maxs (looi iMin) (off0# +# minOff#)
   where
     minOff# = case iMin of I# i -> iW *# (i -# 1#)
     loop i js off# a s | i > iMax = (# s, a #)
