@@ -6,6 +6,7 @@
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE UnboxedTuples             #-}
 {-# LANGUAGE BangPatterns              #-}
+{-# LANGUAGE Strict                    #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.Traverse
