@@ -14,6 +14,7 @@
 {-# LANGUAGE UnboxedTuples           #-}
 {-# LANGUAGE UndecidableInstances    #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
+{-# LANGUAGE Strict                  #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.SubSpace
