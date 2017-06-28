@@ -7,8 +7,8 @@ rm dimensions/cabal.sandbox.config
 rm cabal.sandbox.config
 rm -rf easytensor/dist
 rm -rf dimensions/dist
-rm -rf .cabal-sandbox
 rm -rf dist
+rm -rf .cabal-sandbox
 rm -rf dist-newstyle
 cabal update
 cabal sandbox init

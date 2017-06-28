@@ -6,7 +6,8 @@ ghc-options:
   deepseq: -XTypeSynonymInstances
 
 packages:
-  - '.'
+  - easytensor
+  - dimensions
 
 extra-deps: []
 flags: {}

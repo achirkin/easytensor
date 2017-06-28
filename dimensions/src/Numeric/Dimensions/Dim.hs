@@ -89,6 +89,7 @@ fromInt i | i < dimVal' @m = Nothing
   SomeDim (dn :: Dim n) <- someDimVal i
   return $ case unsafeEqEvidence @(m <=? n) @'True of
       Evidence -> Dx dn
+{-# INLINE fromInt #-}
 
 
 
@@ -131,6 +132,7 @@ someDimsVal (x:xs) | 0 > x = Nothing
   SomeDim p <- someDimVal x
   SomeDims ps <- someDimsVal xs
   return $ SomeDims (p :* ps)
+{-# INLINE someDimsVal #-}
 
 dimList :: Dim ds -> String
 dimList  D        = ""
@@ -354,6 +356,7 @@ inferTailDimensions :: forall (ds :: [Nat])
 inferTailDimensions = case dim @ds of
     D         -> Nothing
     Dn :* ds' -> Just $ reifyDimensions ds'
+{-# INLINE inferTailDimensions #-}
 
 
 -- | Infer that concatenation is also Dimensions
@@ -366,6 +369,7 @@ inferConcatDimensions = reifyDimensions $ magic (dim @as) (unsafeCoerce# $ dim @
     magic D ys         = ys
     magic xs D         = unsafeCoerce# xs
     magic (x :* xs) ys = unsafeCoerce# $ x :* magic xs ys
+    {-# NOINLINE magic #-} -- Prevent GHC panic https://ghc.haskell.org/trac/ghc/ticket/13882
 {-# INLINE inferConcatDimensions #-}
 
 
@@ -383,6 +387,7 @@ inferPrefixDimensions = reifyDimensions $ magic (len dasbs - len (dim @bs)) (uns
     magic _ D         = D
     magic 0 _         = unsafeCoerce# D
     magic n (d :* ds) = d :* magic (n-1) ds
+    {-# NOINLINE magic #-} -- Prevent GHC panic https://ghc.haskell.org/trac/ghc/ticket/13882
 {-# INLINE inferPrefixDimensions #-}
 
 -- | Infer that suffix is also Dimensions
@@ -479,6 +484,7 @@ unsafeSnocDims' = case  unsafeEqEvidence @xs @(Init xs +: Last xs)
                     +!+ unsafeEqEvidence @(Suffix    (Init xs) xs) @'[Last xs]
                     +!+ unsafeEqEvidence @(Prefix   '[Last xs] xs) @(Init xs) of
     Evidence -> Evidence
+{-# INLINE unsafeSnocDims' #-}
 
 unsafeConsDims' :: forall (xs :: [Nat]) . Evidence
     ( xs ~ (  Head xs  :+ Tail xs)
@@ -495,6 +501,7 @@ unsafeConsDims' = case  unsafeEqEvidence @xs @(  Head xs  :+ Tail xs)
                     +!+ unsafeEqEvidence @(Suffix   '[Head xs] xs) @(Tail xs)
                     +!+ unsafeEqEvidence @(Prefix    (Tail xs) xs) @'[Head xs] of
     Evidence -> Evidence
+{-# INLINE unsafeConsDims' #-}
 
 
 -- | Init of the list is also Dimensions
@@ -521,6 +528,7 @@ inferTakeNDimensions = reifyDimensions $ magic (dimVal' @n) (dim @xs)
       magic _ D = D
       magic 0 _ = unsafeCoerce# D
       magic n (d :* ds) = unsafeCoerce# $ d :* (unsafeCoerce# $ magic (n-1) ds :: Dim (Tail ns))
+      {-# NOINLINE magic #-} -- Prevent GHC panic https://ghc.haskell.org/trac/ghc/ticket/13882
 {-# INLINE inferTakeNDimensions #-}
 
 -- | Drop KnownDim of the list is also Dimensions
@@ -529,17 +537,18 @@ inferDropNDimensions :: forall n xs
                      => Evidence (Dimensions (Drop n xs))
 inferDropNDimensions = reifyDimensions $ magic (dimVal' @n) (dim @xs)
     where
-      magic :: forall ns . Int -> Dim ns -> Dim (Drop n ns)
+      magic :: forall (ns :: [Nat]) . Int -> Dim ns -> Dim (Drop n ns)
       magic _ D         = D
       magic 0 ds        = unsafeCoerce# ds
       magic n (_ :* ds) = unsafeCoerce# $ magic (n-1) ds
+      {-# NOINLINE magic #-} -- Prevent GHC panic https://ghc.haskell.org/trac/ghc/ticket/13882
 {-# INLINE inferDropNDimensions #-}
 
 -- | Reverse of the list is also Dimensions
 inferReverseDimensions :: forall xs . Dimensions xs => Evidence (Dimensions (Reverse xs))
 inferReverseDimensions = reifyDimensions $ magic (dim @xs) (unsafeCoerce# D)
     where
-      magic :: forall ns . Dim ns -> Dim (Reverse ns) -> Dim (Reverse ns)
+      magic :: forall (ns :: [Nat]) . Dim ns -> Dim (Reverse ns) -> Dim (Reverse ns)
       magic D xs = xs
       magic (p:*sx) xs = magic (unsafeCoerce# sx :: Dim ns)
                                (unsafeCoerce# (p:*xs) :: Dim (Reverse ns))

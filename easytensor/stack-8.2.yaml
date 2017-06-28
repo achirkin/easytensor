@@ -1,4 +1,4 @@
-resolver: lts-8.19
+resolver: lts-8.20
 compiler: ghc-8.2.0.20170507
 compiler-check: match-exact
 allow-newer: true
