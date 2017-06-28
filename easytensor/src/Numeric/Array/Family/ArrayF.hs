@@ -13,6 +13,7 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE BangPatterns          #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 -----------------------------------------------------------------------------
 -- |

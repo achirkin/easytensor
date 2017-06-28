@@ -229,22 +229,22 @@ instance {-# OVERLAPPABLE #-}
 
     ewfoldl f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
         (# (# off, _, arr #), I# step #) -> foldDimOff (dim @bs)
-                    (\pos acc -> f acc (fromBytes (# pos, step, arr #)))
+                    (\pos !acc -> f acc $! fromBytes (# pos, step, arr #))
                     off step x0
 
     iwfoldl f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
         (# (# off, _, arr #), I# step #) -> foldDim (dim @bs)
-                    (\i pos acc -> f i acc (fromBytes (# pos, step, arr #)))
+                    (\i pos !acc -> f i acc $! fromBytes (# pos, step, arr #))
                     off step x0
 
     ewfoldr f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
         (# (# off, len, arr #), I# step #) -> foldDimOff (dim @bs)
-                    (\pos acc -> f (fromBytes (# pos, step, arr #))  acc)
+                    (\pos !acc -> f (fromBytes (# pos, step, arr #)) acc)
                     (off +# len -# step) (negateInt# step) x0
 
     iwfoldr f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
         (# (# off, _, arr #), I# step #) -> foldDimReverse (dim @bs)
-                    (\i pos acc -> f i (fromBytes (# pos, step, arr #))  acc)
+                    (\i pos !acc -> f i (fromBytes (# pos, step, arr #))  acc)
                     off step x0
 
     -- implement elementWise in terms of indexWise
@@ -332,13 +332,13 @@ instance {-# OVERLAPPING #-}
     {-# INLINE ewgen #-}
     iwgen f = EW.ewgen (unScalar . f)
     {-# INLINE iwgen #-}
-    ewfoldl f = EW.ewfoldl (\_ a -> f a . scalar)
+    ewfoldl f = EW.ewfoldl (\_ !a !x -> f a (scalar x))
     {-# INLINE ewfoldl #-}
-    iwfoldl f = EW.ewfoldl (\i a -> f i a . scalar)
+    iwfoldl f = EW.ewfoldl (\i !a !x -> f i a (scalar x))
     {-# INLINE iwfoldl #-}
-    ewfoldr f = EW.ewfoldr (\_ x -> f (scalar x))
+    ewfoldr f = EW.ewfoldr (\_ !x !a -> f (scalar x) a)
     {-# INLINE ewfoldr #-}
-    iwfoldr f = EW.ewfoldr (\i x -> f i (scalar x))
+    iwfoldr f = EW.ewfoldr (\i !x !a -> f i (scalar x) a)
     {-# INLINE iwfoldr #-}
     elementWise = indexWise . const
     {-# INLINE elementWise #-}
