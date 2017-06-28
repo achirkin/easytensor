@@ -36,7 +36,7 @@ library
         ghc-prim >= 0.5
     default-language: Haskell2010
     hs-source-dirs: src
-    ghc-options: -Wall -fwarn-tabs
+    ghc-options: -Wall -fwarn-tabs -O2
 
 
 test-suite dimensions-test
@@ -52,4 +52,4 @@ test-suite dimensions-test
         dimensions -any
     default-language: Haskell2010
     hs-source-dirs: test
-    ghc-options: -Wall -fwarn-tabs
+    ghc-options: -Wall -fwarn-tabs -O2

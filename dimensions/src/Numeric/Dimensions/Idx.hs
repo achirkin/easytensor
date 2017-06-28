@@ -82,6 +82,7 @@ toIdx :: Dim xs -> Int -> Idx xs
 toIdx D _ = Z
 toIdx ((Dn :: Dim d) :* ds) off = case divMod off (dimVal' @d) of
       (off', i) -> i+1 :! toIdx ds off'
+{-# NOINLINE toIdx #-} -- Prevent GHC panic https://ghc.haskell.org/trac/ghc/ticket/13882
 
 -- | Get zero-based offset of current index
 fromIdx :: Dim xs -> Idx xs -> Int
@@ -94,6 +95,7 @@ diffIdx :: Dim xs -> Idx xs -> Idx xs -> Int
 diffIdx _ Z _ = 0
 diffIdx ((Dn :: Dim d) :* ds) (i1:!is1) (i2:!is2) = i1 - i2
           + dimVal' @d * diffIdx ds is1 is2
+{-# INLINE diffIdx #-}
 
 -- | Step dimension index by an Integer offset
 stepIdx :: Dim ds -> Int -> Idx ds -> Idx ds
