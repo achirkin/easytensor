@@ -95,8 +95,8 @@ overDimIdx# :: Dim (ds :: [Nat])
             -> a
             -> State# s
             -> (# State# s, a #)
-overDimIdx# D f a0 s0 = f Z a0 s0
-overDimIdx# ((Dn :: Dim n) :* (!ds)) f a0 s0 = overDimIdx# ds (loop 1) a0 s0
+overDimIdx# D f = f Z
+overDimIdx# ((Dn :: Dim n) :* (!ds)) f = overDimIdx# ds (loop 1)
   where
     n = dimVal' @n
     loop i js a s | i > n = (# s,  a #)
@@ -118,8 +118,8 @@ foldDimIdx ((Dn :: Dim n) :* (!ds)) f = foldDimIdx ds (loop 1)
 foldDimReverseIdx :: Dim (ds :: [Nat])
                   -> (Idx ds -> a -> a)
                   -> a -> a
-foldDimReverseIdx D f a0 = f Z a0
-foldDimReverseIdx ((Dn :: Dim n) :* (!ds)) f a0 = foldDimReverseIdx ds (loop n) a0
+foldDimReverseIdx D f = f Z
+foldDimReverseIdx ((Dn :: Dim n) :* (!ds)) f = foldDimReverseIdx ds (loop n)
   where
     n = dimVal' @n
     loop i js a | i > n = a
@@ -132,8 +132,8 @@ overDimIdx_# :: Dim (ds :: [Nat])
              -> (Idx ds -> State# s -> State# s)
              -> State# s
              -> State# s
-overDimIdx_# D f s0 = f Z s0
-overDimIdx_# ((Dn :: Dim n) :* (!ds)) f s0 = overDimIdx_# ds (loop 1) s0
+overDimIdx_# D f = f Z
+overDimIdx_# ((Dn :: Dim n) :* (!ds)) f = overDimIdx_# ds (loop 1)
   where
     n = dimVal' @n
     loop i js s | i > n = s

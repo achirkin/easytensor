@@ -16,7 +16,7 @@ This library aims at providing fast, simple, and useful geometry types for use i
 
 All geometry types implement standard `Prelude` numerical classes, such as `Num`, `Fractional`, `Floating`,
 favouring element-wise operations:
-functions like `+`, `*`, `/` are all element-wise. 
+functions like `+`, `*`, `/` are all element-wise.
 Common matrix and vector operations are provided separately.
 
 A special care should be taken when using `Ord` instances:
@@ -41,11 +41,10 @@ for example, `Vector t n` implemented as `ByteArray#` is overloaded by a special
 ### Implemenation status and plan
 
   - [x] Basic implementation of generic ns-dimensional dataframes matrices based on type Float
-  - [ ] Basic implementation of generic ns-dimensional dataframes based on other types (Double, Int, Word, Int8.. etc.) - partially
+  - [x] Basic implementation of generic ns-dimensional dataframes based on other types (Double, Int, Word, Int8.. etc.)
   - [ ] Overloaded fast implementation for low-dimensional vectors and matrices: only FloatX2, FloatX3, FloatX4, and Scalar is done.
   - [ ] Overloaded fast SIMD implementation based on fastvec (avx2, foreign import prim and llvm)
   - [ ] `Tensor t [Nat] [Nat]` rank (n,m) flexible tensor wrapper
-  - [ ] Lens-like interfaces - partially
+  - [x] Lens-like interfaces - `Numeric.DataFrame.SubSpace`
   - [x] Flexible inference between statically known and runtime known dimensions `Dim [Nat]` and `Dim [XNat]`
   - [ ] Smart MATLAB- or R-like indexing of rows and columns.
-
