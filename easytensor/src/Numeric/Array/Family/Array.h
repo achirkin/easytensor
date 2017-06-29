@@ -151,16 +151,16 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
 
   ewfoldr f v0 x@(ARR_CONSTR offset _ arr)
     = foldDimReverse (dim `inSpaceOf` x)
-      (\ii off !a -> f ii (EL_CONSTR (INDEX_ARRAY arr off)) a) offset 1# v0
+      (\ii off -> f ii (EL_CONSTR (INDEX_ARRAY arr off))) offset 1# v0
   ewfoldr f v0 x@(ARR_FROMSCALAR scalVal) = foldDimReverseIdx (dim `inSpaceOf` x)
-      (\ii !a -> f ii (EL_CONSTR scalVal) a) v0
+      (\ii -> f ii (EL_CONSTR scalVal)) v0
   {-# INLINE ewfoldr #-}
 
   ewfoldl f v0 x@(ARR_CONSTR offset _ arr)
     = foldDim (dim `inSpaceOf` x)
-      (\ii off !v -> f ii v (EL_CONSTR (INDEX_ARRAY arr off))) offset 1# v0
+      (\ii off v -> f ii v (EL_CONSTR (INDEX_ARRAY arr off))) offset 1# v0
   ewfoldl f v0 x@(ARR_FROMSCALAR scalVal) = foldDimIdx (dim `inSpaceOf` x)
-      (\ii !v -> f ii v (EL_CONSTR scalVal)) v0
+      (\ii v -> f ii v (EL_CONSTR scalVal)) v0
   {-# INLINE ewfoldl #-}
 
   indexWise f x@(ARR_CONSTR offset n arr)
