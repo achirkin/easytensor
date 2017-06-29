@@ -86,7 +86,7 @@ zipV f (ARR_CONSTR offsetA n a)
 wr :: ARR_TYPE (ds :: [Nat]) -> Int# -> Int#
    -> (MutableByteArray# RealWorld -> State# RealWorld -> State# RealWorld)
    -> ARR_TYPE ds
-wr ~_ bs n ff = case runRW#
+wr _ bs n ff = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
                (# s1, marr #) ->  case ff marr s1 of
                  s2 -> unsafeFreezeByteArray# marr s2
@@ -134,7 +134,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
            s3 -> unsafeFreezeByteArray# marr s3
      ) of (# _, r #) -> ARR_CONSTR 0# n r
     where
-      ~x = undefined :: ARR_TYPE ds
+      x = undefined :: ARR_TYPE ds
       n = case totalDim x of I# d -> d
   {-# INLINE ewgen #-}
 
@@ -145,7 +145,7 @@ instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [N
       g ds (AU# i ff) = AU# ( i +# 1# )
                           $ (\(EL_CONSTR z) u a s -> WRITE_ARRAY a i z (u a s))
                            <$> f ds <*> ff
-      ~x = undefined :: ARR_TYPE ds
+      x = undefined :: ARR_TYPE ds
       n = case totalDim x of I# d -> d
       bs = n *# EL_SIZE
 
@@ -293,12 +293,12 @@ instance Dimensions ds => PrimBytes (ARR_TYPE ds) where
   {-# INLINE toBytes #-}
   fromBytes (# off, size, a #) = ARR_CONSTR off size a
   {-# INLINE fromBytes #-}
-  byteSize ~x = case totalDim x of
+  byteSize x = case totalDim x of
      I# d -> EL_SIZE *# d
   {-# INLINE byteSize #-}
-  byteAlign ~_ = EL_ALIGNMENT
+  byteAlign _ = EL_ALIGNMENT
   {-# INLINE byteAlign #-}
-  elementByteSize ~_ = EL_SIZE
+  elementByteSize _ = EL_SIZE
   {-# INLINE elementByteSize #-}
   ix i (ARR_CONSTR off _ a) = INDEX_ARRAY a (off +# i)
   ix _ (ARR_FROMSCALAR x)  = x
