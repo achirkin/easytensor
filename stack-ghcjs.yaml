@@ -1,0 +1,14 @@
+resolver: lts-8.21
+compiler: ghcjs-0.2.1.9008021_ghc-8.0.2
+compiler-check: match-exact
+
+setup-info:
+  ghcjs:
+    source:
+      ghcjs-0.2.1.9008021_ghc-8.0.2:
+           url: https://github.com/achirkin/prepare-ghcjs/releases/download/lts-8.21-20170630/ghcjs-0.2.1.9008021_ghc-8.0.2.tar.gz
+           sha1: 9f932cadd78555fe36d1927a52c9d71c849cc4e0
+
+packages:
+  - dimensions
+  - easytensor
