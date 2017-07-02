@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                       #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
@@ -56,24 +57,40 @@ inferPrimBytes = case getArrayInstance @t @ds of
       ETInt8   -> Evidence
       ETInt16  -> Evidence
       ETInt32  -> Evidence
+#ifdef ghcjs_HOST_OS
+      ETInt64  -> error "Not supported in JS"
+#else
       ETInt64  -> Evidence
+#endif
       ETWord   -> Evidence
       ETWord8  -> Evidence
       ETWord16 -> Evidence
       ETWord32 -> Evidence
-      ETWord64 -> Evidence
+#ifdef ghcjs_HOST_OS
+      ETWord64  -> error "Not supported in JS"
+#else
+      ETWord64  -> Evidence
+#endif
     AIArrayF   -> Evidence
     AIArrayD   -> Evidence
     AIArrayI   -> Evidence
     AIArrayI8  -> Evidence
     AIArrayI16 -> Evidence
     AIArrayI32 -> Evidence
+#ifdef ghcjs_HOST_OS
+    AIArrayI64 -> error "Not supported in JS"
+#else
     AIArrayI64 -> Evidence
+#endif
     AIArrayW   -> Evidence
     AIArrayW8  -> Evidence
     AIArrayW16 -> Evidence
     AIArrayW32 -> Evidence
+#ifdef ghcjs_HOST_OS
+    AIArrayW64 -> error "Not supported in JS"
+#else
     AIArrayW64 -> Evidence
+#endif
     AIFloatX2  -> Evidence
     AIFloatX3  -> Evidence
     AIFloatX4  -> Evidence
@@ -91,12 +108,20 @@ inferElementWise = case getArrayInstance @t @ds of
     AIArrayI8  -> Evidence
     AIArrayI16 -> Evidence
     AIArrayI32 -> Evidence
+#ifdef ghcjs_HOST_OS
+    AIArrayI64 -> error "Not supported in JS"
+#else
     AIArrayI64 -> Evidence
+#endif
     AIArrayW   -> Evidence
     AIArrayW8  -> Evidence
     AIArrayW16 -> Evidence
     AIArrayW32 -> Evidence
+#ifdef ghcjs_HOST_OS
+    AIArrayW64 -> error "Not supported in JS"
+#else
     AIArrayW64 -> Evidence
+#endif
     AIFloatX2  -> Evidence
     AIFloatX3  -> Evidence
     AIFloatX4  -> Evidence
@@ -120,21 +145,37 @@ inferNumericFrame
       ETInt8   -> Evidence
       ETInt16  -> Evidence
       ETInt32  -> Evidence
+#ifdef ghcjs_HOST_OS
+      ETInt64  -> error "Not supported in JS"
+#else
       ETInt64  -> Evidence
+#endif
       ETWord   -> Evidence
       ETWord8  -> Evidence
       ETWord16 -> Evidence
       ETWord32 -> Evidence
-      ETWord64 -> Evidence
+#ifdef ghcjs_HOST_OS
+      ETWord64  -> error "Not supported in JS"
+#else
+      ETWord64  -> Evidence
+#endif
     AIArrayF   -> Evidence
     AIArrayD   -> Evidence
     AIArrayI   -> Evidence
     AIArrayI8  -> Evidence
     AIArrayI16 -> Evidence
     AIArrayI32 -> Evidence
+#ifdef ghcjs_HOST_OS
+    AIArrayI64 -> error "Not supported in JS"
+#else
     AIArrayI64 -> Evidence
+#endif
     AIArrayW   -> Evidence
     AIArrayW8  -> Evidence
     AIArrayW16 -> Evidence
     AIArrayW32 -> Evidence
+#ifdef ghcjs_HOST_OS
+    AIArrayW64 -> error "Not supported in JS"
+#else
     AIArrayW64 -> Evidence
+#endif

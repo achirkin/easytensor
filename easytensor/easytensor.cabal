@@ -16,7 +16,7 @@ description:
 category: Math, Geometry
 author: Artem Chirkin
 extra-source-files:
-    src/Numeric/Array/Family/Array.h
+    src-base/Numeric/Array/Family/Array.h
 
 source-repository head
     type: git
@@ -46,9 +46,31 @@ library
         base >=4.9 && <5,
         ghc-prim >=0.5,
         dimensions -any
+    if impl(ghcjs)
+      build-depends:
+        ghcjs-base >= 0.2.0.0
     default-language: Haskell2010
     hs-source-dirs: src
+    if impl(ghcjs)
+        hs-source-dirs: src-ghcjs
+    else
+        hs-source-dirs: src-base
     other-modules:
+        Numeric.Array.Family
+        Numeric.Array.ElementWise
+        Numeric.Array
+        Numeric.DataFrame.SubSpace
+        Numeric.DataFrame.Contraction
+        Numeric.DataFrame.Mutable
+        Numeric.DataFrame.Type
+        Numeric.DataFrame.Inference
+        Numeric.DataFrame.Shape
+        Numeric.Matrix.Type
+    if impl(ghcjs)
+      other-modules:
+        Numeric.Array.Family.ArrayT
+    else
+      other-modules:
         Numeric.Array.Family.ArrayF
         Numeric.Array.Family.ArrayD
         Numeric.Array.Family.ArrayI
@@ -64,16 +86,8 @@ library
         Numeric.Array.Family.FloatX2
         Numeric.Array.Family.FloatX3
         Numeric.Array.Family.FloatX4
-        Numeric.Array.Family
-        Numeric.Array.ElementWise
-        Numeric.Array
-        Numeric.DataFrame.SubSpace
-        Numeric.DataFrame.Contraction
-        Numeric.DataFrame.Mutable
-        Numeric.DataFrame.Type
-        Numeric.DataFrame.Inference
-        Numeric.DataFrame.Shape
-        Numeric.Matrix.Type
+    js-sources:
+        src-ghcjs/Numeric/Array/Family/ArrayT.js
     ghc-options: -Wall -fwarn-tabs -O2
 
 test-suite et-test
