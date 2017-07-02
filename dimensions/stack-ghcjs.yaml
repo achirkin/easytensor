@@ -10,8 +10,7 @@ setup-info:
            sha1: 13d9bad7ba36c5ea5014afc2b815757ffef77a26
 
 packages:
-  - dimensions
-  - easytensor
+  - '.'
 
 extra-deps: []
 flags: {}

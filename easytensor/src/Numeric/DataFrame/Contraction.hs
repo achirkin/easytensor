@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
@@ -29,10 +30,14 @@ module Numeric.DataFrame.Contraction
   ( Contraction (..), (%*)
   ) where
 
-
+#ifdef ghcjs_HOST_OS
+import           Data.Int               (Int16, Int32, Int8)
+import           Data.Word              (Word16, Word32, Word8)
+#else
 import           Data.Int               (Int16, Int32, Int64, Int8)
-import           Data.Type.Equality     ((:~:) (..))
 import           Data.Word              (Word16, Word32, Word64, Word8)
+#endif
+import           Data.Type.Equality     ((:~:) (..))
 import           GHC.Base               (runRW#)
 import           GHC.Prim
 import           GHC.Types              (Int (..), RuntimeRep (..), Type,
@@ -186,6 +191,7 @@ instance ( ConcatList as bs asbs
         getM :: forall m p . p (m ': bs) -> Proxy m
         getM _ = Proxy
 
+#ifndef ghcjs_HOST_OS
 instance ( ConcatList as bs asbs
          , Dimensions as
          , Dimensions bs
@@ -203,7 +209,7 @@ instance ( ConcatList as bs asbs
       where
         getM :: forall m p . p (m ': bs) -> Proxy m
         getM _ = Proxy
-
+#endif
 
 
 
@@ -279,6 +285,7 @@ instance ( ConcatList as bs asbs
         getM :: forall m p . p (m ': bs) -> Proxy m
         getM _ = Proxy
 
+#ifndef ghcjs_HOST_OS
 instance ( ConcatList as bs asbs
          , Dimensions as
          , Dimensions bs
@@ -296,7 +303,7 @@ instance ( ConcatList as bs asbs
       where
         getM :: forall m p . p (m ': bs) -> Proxy m
         getM _ = Proxy
-
+#endif
 
 
 
@@ -399,7 +406,7 @@ prodI32 n m k x y= case runRW#
       bs = n *# k *# elementByteSize x
 {-# INLINE prodI32 #-}
 
-
+#ifndef ghcjs_HOST_OS
 prodI64 :: (IntBytes a, IntBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
 prodI64 n m k x y= case runRW#
      ( \s0 -> case newByteArray# bs s0 of
@@ -415,6 +422,7 @@ prodI64 n m k x y= case runRW#
     where
       bs = n *# k *# elementByteSize x
 {-# INLINE prodI64 #-}
+#endif
 
 prodW :: (WordBytes a, WordBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
 prodW n m k x y = case runRW#
@@ -481,6 +489,7 @@ prodW32 n m k x y = case runRW#
       bs = n *# k *# elementByteSize x
 {-# INLINE prodW32 #-}
 
+#ifndef ghcjs_HOST_OS
 prodW64 :: (WordBytes a, WordBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
 prodW64 n m k x y = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
@@ -496,7 +505,7 @@ prodW64 n m k x y = case runRW#
     where
       bs = n *# k *# elementByteSize x
 {-# INLINE prodW64 #-}
-
+#endif
 
 -- | Do something in a loop for int i from 0 to n-1 and j from 0 to m-1
 loop2# :: Int# -> Int# -> (Int# -> Int#-> State# s -> State# s) -> State# s -> State# s

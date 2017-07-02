@@ -36,6 +36,7 @@ import           GHC.Int   (Int16 (..), Int32 (..), Int64 (..), Int8 (..))
 import           GHC.Prim
 import           GHC.Types (Double (..), Float (..), Int (..), RuntimeRep (..),
                             Type, Word (..))
+
 import           GHC.Word  (Word16 (..), Word32 (..), Word64 (..), Word8 (..))
 
 
@@ -46,12 +47,20 @@ type instance ElemRep Int    = 'IntRep
 type instance ElemRep Int8   = 'IntRep
 type instance ElemRep Int16  = 'IntRep
 type instance ElemRep Int32  = 'IntRep
+#if SIZEOF_HSWORD < 8
+type instance ElemRep Int64  = 'Int64Rep
+#else
 type instance ElemRep Int64  = 'IntRep
+#endif
 type instance ElemRep Word   = 'WordRep
 type instance ElemRep Word8  = 'WordRep
 type instance ElemRep Word16 = 'WordRep
 type instance ElemRep Word32 = 'WordRep
+#if SIZEOF_HSWORD < 8
+type instance ElemRep Word64 = 'Word64Rep
+#else
 type instance ElemRep Word64 = 'WordRep
+#endif
 
 type family ElemPrim a :: TYPE (r :: RuntimeRep)
 type instance ElemPrim Float = Float#
@@ -60,12 +69,21 @@ type instance ElemPrim Int = Int#
 type instance ElemPrim Int8 = Int#
 type instance ElemPrim Int16 = Int#
 type instance ElemPrim Int32 = Int#
+#if SIZEOF_HSWORD < 8
+type instance ElemPrim Int64 = Int64#
+#else
 type instance ElemPrim Int64 = Int#
+#endif
 type instance ElemPrim Word = Word#
 type instance ElemPrim Word8 = Word#
 type instance ElemPrim Word16 = Word#
 type instance ElemPrim Word32 = Word#
+#if SIZEOF_HSWORD < 8
+type instance ElemPrim Word64 = Word64#
+#else
 type instance ElemPrim Word64 = Word#
+#endif
+
 
 type FloatBytes a  = (PrimBytes a, ElemRep a ~ 'FloatRep , ElemPrim a ~ Float#)
 type DoubleBytes a = (PrimBytes a, ElemRep a ~ 'DoubleRep, ElemPrim a ~ Double#)
@@ -200,6 +218,7 @@ instance PrimBytes Int32 where
   ix _ (I32# x) = x
   {-# INLINE ix #-}
 
+#ifndef ghcjs_HOST_OS
 instance PrimBytes Int64 where
   toBytes v@(I64# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
@@ -217,6 +236,7 @@ instance PrimBytes Int64 where
   {-# INLINE elementByteSize #-}
   ix _ (I64# x) = x
   {-# INLINE ix #-}
+#endif
 
 instance PrimBytes Word where
   toBytes v@(W# x) = case runRW#
@@ -291,6 +311,7 @@ instance PrimBytes Word32 where
   {-# INLINE ix #-}
 
 
+#ifndef ghcjs_HOST_OS
 instance PrimBytes Word64 where
   toBytes v@(W64# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
@@ -308,3 +329,5 @@ instance PrimBytes Word64 where
   {-# INLINE elementByteSize #-}
   ix _ (W64# x) = x
   {-# INLINE ix #-}
+#endif
+
