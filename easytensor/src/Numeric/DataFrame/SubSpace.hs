@@ -73,13 +73,25 @@ class ( ConcatList as bs asbs
     ewgen :: DataFrame t as -> DataFrame t asbs
     -- | Generate a DataFrame by iterating a function (index -> element)
     iwgen :: (Idx bs -> DataFrame t as) -> DataFrame t asbs
-    -- | Left-associative fold of a DataFrame
+    -- | Left-associative fold of a DataFrame.
+    --   The fold is strict, so accumulater is evaluated to WHNF;
+    --   but you'd better make sure that the function is strict enough to not
+    --   produce memory leaks deeply inside the result data type.
     ewfoldl :: (b -> DataFrame t as -> b) -> b -> DataFrame t asbs -> b
     -- | Left-associative fold of a DataFrame with an index
+    --   The fold is strict, so accumulater is evaluated to WHNF;
+    --   but you'd better make sure that the function is strict enough to not
+    --   produce memory leaks deeply inside the result data type.
     iwfoldl :: (Idx bs -> b -> DataFrame t as -> b) -> b -> DataFrame t asbs -> b
     -- | Right-associative fold of a DataFrame
+    --   The fold is strict, so accumulater is evaluated to WHNF;
+    --   but you'd better make sure that the function is strict enough to not
+    --   produce memory leaks deeply inside the result data type.
     ewfoldr :: (DataFrame t as -> b -> b) -> b -> DataFrame t asbs -> b
     -- | Right-associative fold of a DataFrame with an index
+    --   The fold is strict, so accumulater is evaluated to WHNF;
+    --   but you'd better make sure that the function is strict enough to not
+    --   produce memory leaks deeply inside the result data type.
     iwfoldr :: (Idx bs -> DataFrame t as -> b -> b) -> b -> DataFrame t asbs -> b
     -- | Apply an applicative functor on each element (Lens-like traversal)
     elementWise :: forall s (as' :: [Nat]) (asbs' :: [Nat]) f
@@ -229,22 +241,22 @@ instance {-# OVERLAPPABLE #-}
 
     ewfoldl f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
         (# (# off, _, arr #), I# step #) -> foldDimOff (dim @bs)
-                    (\pos !acc -> f acc $! fromBytes (# pos, step, arr #))
+                    (\pos acc -> f acc $! fromBytes (# pos, step, arr #))
                     off step x0
 
     iwfoldl f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
         (# (# off, _, arr #), I# step #) -> foldDim (dim @bs)
-                    (\i pos !acc -> f i acc $! fromBytes (# pos, step, arr #))
+                    (\i pos acc -> f i acc $! fromBytes (# pos, step, arr #))
                     off step x0
 
     ewfoldr f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
         (# (# off, len, arr #), I# step #) -> foldDimOff (dim @bs)
-                    (\pos !acc -> f (fromBytes (# pos, step, arr #)) acc)
+                    (\pos -> f (fromBytes (# pos, step, arr #)))
                     (off +# len -# step) (negateInt# step) x0
 
     iwfoldr f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
         (# (# off, _, arr #), I# step #) -> foldDimReverse (dim @bs)
-                    (\i pos !acc -> f i (fromBytes (# pos, step, arr #))  acc)
+                    (\i pos -> f i (fromBytes (# pos, step, arr #)) )
                     off step x0
 
     -- implement elementWise in terms of indexWise
@@ -332,13 +344,13 @@ instance {-# OVERLAPPING #-}
     {-# INLINE ewgen #-}
     iwgen f = EW.ewgen (unScalar . f)
     {-# INLINE iwgen #-}
-    ewfoldl f = EW.ewfoldl (\_ !a !x -> f a (scalar x))
+    ewfoldl f = EW.ewfoldl (\_ a -> f a . scalar)
     {-# INLINE ewfoldl #-}
-    iwfoldl f = EW.ewfoldl (\i !a !x -> f i a (scalar x))
+    iwfoldl f = EW.ewfoldl (\i a -> f i a . scalar)
     {-# INLINE iwfoldl #-}
-    ewfoldr f = EW.ewfoldr (\_ !x !a -> f (scalar x) a)
+    ewfoldr f = EW.ewfoldr (\_ x  -> f (scalar x))
     {-# INLINE ewfoldr #-}
-    iwfoldr f = EW.ewfoldr (\i !x !a -> f i (scalar x) a)
+    iwfoldr f = EW.ewfoldr (\i x -> f i (scalar x))
     {-# INLINE iwfoldr #-}
     elementWise = indexWise . const
     {-# INLINE elementWise #-}

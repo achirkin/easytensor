@@ -2,6 +2,7 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE Rank2Types             #-}
+{-# LANGUAGE Strict                #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.ElementWise
