@@ -212,7 +212,7 @@ instance ( KnownDim n, ArrayD '[n,n] ~ Array Double '[n,n] )
                                then (# s''', 0.0## #)
                                else f (i +# 1#) (x' *## y) s'''
             in f 0# 1.0## s2
-     ) of (# _, r #) -> D# r
+     ) of (# _, r #) -> KnownDataFrame (Scalar (D# r))
     where
       n = case dimVal' @n of I# np -> np
       offb = off *# EL_SIZE

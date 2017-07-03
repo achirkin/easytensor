@@ -169,7 +169,9 @@ data FloatX4 = FloatX4# Float# Float# Float# Float#
 --   define an instance of `Array t ds` unambiguously.
 
 
--- | Keep information about the element type instance
+-- | Keep information about the element type instance.
+--
+--   Warning! This part of the code is platform and flag dependent.
 data ElemType t
   = t ~ Float  => ETFloat
   | t ~ Double => ETDouble
@@ -185,6 +187,8 @@ data ElemType t
   | t ~ Word64 => ETWord64
 
 -- | Keep information about the array dimensionality
+--
+--   Warning! This part of the code is platform and flag dependent.
 data ArraySize (ds :: [Nat])
   = ds ~ '[]   => ASScalar
   | ds ~ '[2]  => ASX2
@@ -194,6 +198,8 @@ data ArraySize (ds :: [Nat])
   | forall n1 n2 ns . ds ~ (n1 ': n2 ': ns) => ASArray
 
 -- | Keep information about the instance behind Array family
+--
+--   Warning! This part of the code is platform and flag dependent.
 data ArrayInstance t (ds :: [Nat])
   = ( Array t ds ~ Scalar t, ds ~ '[]) => AIScalar
   | forall n ns . ( Array t ds ~ ArrayF   ds, ds ~ (n ': ns), t ~ Float ) => AIArrayF
