@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                    #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE Rank2Types             #-}
@@ -16,8 +17,13 @@ module Numeric.Array.ElementWise
   ( ElementWise (..)
   ) where
 
+#ifdef ghcjs_HOST_OS
+import           Data.Int  (Int16, Int32, Int8)
+import           Data.Word (Word16, Word32, Word8)
+#else
 import           Data.Int  (Int16, Int32, Int64, Int8)
 import           Data.Word (Word16, Word32, Word64, Word8)
+#endif
 
 -- | Access elements.
 --   i is an index type
@@ -179,6 +185,7 @@ instance ElementWise Int Int32 Int32 where
   {-# INLINE update #-}
 
 
+#ifndef ghcjs_HOST_OS
 instance ElementWise Int Int64 Int64 where
   (!) x _ = x
   {-# INLINE (!) #-}
@@ -199,7 +206,7 @@ instance ElementWise Int Int64 Int64 where
   {-# INLINE broadcast #-}
   update _ = const
   {-# INLINE update #-}
-
+#endif
 
 instance ElementWise Int Word Word where
   (!) x _ = x
@@ -289,6 +296,7 @@ instance ElementWise Int Word32 Word32 where
   {-# INLINE update #-}
 
 
+#ifndef ghcjs_HOST_OS
 instance ElementWise Int Word64 Word64 where
   (!) x _ = x
   {-# INLINE (!) #-}
@@ -309,3 +317,4 @@ instance ElementWise Int Word64 Word64 where
   {-# INLINE broadcast #-}
   update _ = const
   {-# INLINE update #-}
+#endif
