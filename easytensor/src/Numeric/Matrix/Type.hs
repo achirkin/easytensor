@@ -40,7 +40,7 @@ class SquareMatrixCalculus t (n :: Nat) where
     -- | Put the same value on the Mat diagonal, 0 otherwise
     diag :: Scalar t -> Matrix t n n
     -- | Determinant of  Mat
-    det :: Matrix t n n -> t
+    det :: Matrix t n n -> Scalar t
     -- | Sum of diagonal elements
     trace :: Matrix t n n -> Scalar t
 

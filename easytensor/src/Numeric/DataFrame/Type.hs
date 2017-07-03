@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
@@ -206,12 +207,18 @@ type instance ElemPrim (DataFrame Int    ds) = Int#
 type instance ElemPrim (DataFrame Int8   ds) = Int#
 type instance ElemPrim (DataFrame Int16  ds) = Int#
 type instance ElemPrim (DataFrame Int32  ds) = Int#
+#ifndef ghcjs_HOST_OS
 type instance ElemPrim (DataFrame Int64  ds) = Int#
+#endif
 type instance ElemPrim (DataFrame Word   ds) = Word#
 type instance ElemPrim (DataFrame Word8  ds) = Word#
 type instance ElemPrim (DataFrame Word16 ds) = Word#
 type instance ElemPrim (DataFrame Word32 ds) = Word#
+#ifdef ghcjs_HOST_OS
+type instance ElemPrim (DataFrame Word8Clamped ds) = Int#
+#else
 type instance ElemPrim (DataFrame Word64 ds) = Word#
+#endif
 deriving instance ( PrimBytes (Array Float ds)
                   , ElemPrim (Array Float ds) ~ Float#
                   , ElemRep (Array Float ds) ~ 'FloatRep) => PrimBytes (DataFrame Float ds)
@@ -230,9 +237,11 @@ deriving instance ( PrimBytes (Array Int16 ds)
 deriving instance ( PrimBytes (Array Int32 ds)
                   , ElemPrim (Array Int32 ds) ~ Int#
                   , ElemRep (Array Int32 ds) ~ 'IntRep) => PrimBytes (DataFrame Int32 ds)
+#ifndef ghcjs_HOST_OS
 deriving instance ( PrimBytes (Array Int64 ds)
                   , ElemPrim (Array Int64 ds) ~ Int#
                   , ElemRep (Array Int64 ds) ~ 'IntRep) => PrimBytes (DataFrame Int64 ds)
+#endif
 deriving instance ( PrimBytes (Array Word ds)
                   , ElemPrim (Array Word ds) ~ Word#
                   , ElemRep (Array Word ds) ~ 'WordRep) => PrimBytes (DataFrame Word ds)
@@ -245,9 +254,15 @@ deriving instance ( PrimBytes (Array Word16 ds)
 deriving instance ( PrimBytes (Array Word32 ds)
                   , ElemPrim (Array Word32 ds) ~ Word#
                   , ElemRep (Array Word32 ds) ~ 'WordRep) => PrimBytes (DataFrame Word32 ds)
+#ifdef ghcjs_HOST_OS
+deriving instance ( PrimBytes (Array Word8Clamped ds)
+                  , ElemPrim (Array Word8Clamped ds) ~ Int#
+                  , ElemRep (Array Word8Clamped ds) ~ 'IntRep) => PrimBytes (DataFrame Word8Clamped ds)
+#else
 deriving instance ( PrimBytes (Array Word64 ds)
                   , ElemPrim (Array Word64 ds) ~ Word#
                   , ElemRep (Array Word64 ds) ~ 'WordRep) => PrimBytes (DataFrame Word64 ds)
+#endif
 
 
 

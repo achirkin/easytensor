@@ -13,6 +13,7 @@
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE UndecidableInstances       #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.Family
@@ -26,18 +27,19 @@
 
 module Numeric.Array.Family
   ( Array
-  , ArrayT (..), MutableArrayT (..), Scalar (..)
+  , ArrayT (..), MutableArrayT (..), Scalar (..), Word8Clamped (..)
   , ArrayInstanceInference, ElemType (..), ArraySize (..)
   , ElemTypeInference (..), ArraySizeInference (..), ArrayInstanceEvidence
   , getArrayInstance, ArrayInstance (..), inferArrayInstance
   ) where
 
 
-import           Data.Int                  (Int16, Int32, Int64, Int8)
+import           Data.Int                  (Int16, Int32, Int8)
 import           Data.Type.Equality        ((:~:) (..))
-import           Data.Word                 (Word16, Word32, Word64, Word8)
+import           Data.Word                 (Word16, Word32, Word8)
 import           GHC.Prim                  (Double#, Float#, Int#,
                                             Word#, unsafeCoerce#)
+import           GHC.Types                 (Int (..))
 import           GHCJS.Types
 
 import           Numeric.Array.ElementWise
@@ -58,6 +60,56 @@ newtype Scalar t = Scalar { _unScalar :: t }
 instance Show t => Show (Scalar t) where
   show (Scalar t) = "{ " ++ show t ++ " }"
 
+
+
+-- | Support for Uint8ClampedArray in JS.
+--   This is backed by an ordinary Int type, but clamped to range 0..255 when used in an array
+newtype Word8Clamped = Clamped { _fromClamped :: Int } deriving
+    (Ord,Num,Eq,Enum,Integral,Real,Show) -- ,Data,Ix,FiniteBits,Bits,Storable)
+instance Bounded Word8Clamped where
+    maxBound = 255
+    {-# INLINE maxBound #-}
+    minBound = 0
+    {-# INLINE minBound #-}
+type instance ElemRep Word8Clamped = ElemRep Int
+type instance ElemPrim Word8Clamped = Int#
+instance PrimBytes Word8Clamped where
+  toBytes (Clamped i) = toBytes (fromIntegral (min 0 (max 255 i)) :: Word8)
+  {-# INLINE toBytes #-}
+  fromBytes bs = fromIntegral (fromBytes bs :: Word8)
+  {-# INLINE fromBytes #-}
+  byteSize _ = 1#
+  {-# INLINE byteSize #-}
+  byteAlign _ = 1#
+  {-# INLINE byteAlign #-}
+  elementByteSize _ = 1#
+  {-# INLINE elementByteSize #-}
+  ix _ (Clamped (I# x)) = x
+  {-# INLINE ix #-}
+
+instance ElementWise (Idx ('[] :: [Nat])) Word8Clamped Word8Clamped where
+  (!) x _ = x
+  {-# INLINE (!) #-}
+  ewmap f = f Z
+  {-# INLINE ewmap #-}
+  ewgen f = f Z
+  {-# INLINE ewgen #-}
+  ewgenA f = f Z
+  {-# INLINE ewgenA #-}
+  ewfoldl f x0 = f Z x0
+  {-# INLINE ewfoldl #-}
+  ewfoldr f x0 x = f Z x x0
+  {-# INLINE ewfoldr #-}
+  elementWise f = f
+  {-# INLINE elementWise #-}
+  indexWise f = f Z
+  {-# INLINE indexWise #-}
+  broadcast = id
+  {-# INLINE broadcast #-}
+  update _ x _ = x
+  {-# INLINE update #-}
+
+
 type instance ElemRep  (Scalar t) = ElemRep t
 type instance ElemPrim (Scalar Float ) = Float#
 type instance ElemPrim (Scalar Double) = Double#
@@ -69,6 +121,7 @@ type instance ElemPrim (Scalar Word  ) = Word#
 type instance ElemPrim (Scalar Word8 ) = Word#
 type instance ElemPrim (Scalar Word16) = Word#
 type instance ElemPrim (Scalar Word32) = Word#
+type instance ElemPrim (Scalar Word8Clamped) = Int#
 
 deriving instance PrimBytes (Scalar Float)
 deriving instance PrimBytes (Scalar Double)
@@ -80,6 +133,7 @@ deriving instance PrimBytes (Scalar Word)
 deriving instance PrimBytes (Scalar Word8)
 deriving instance PrimBytes (Scalar Word16)
 deriving instance PrimBytes (Scalar Word32)
+deriving instance PrimBytes (Scalar Word8Clamped)
 
 -- | Indexing over scalars is trivial...
 instance ElementWise (Idx ('[] :: [Nat])) t (Scalar t) where
@@ -117,6 +171,8 @@ instance IsJSVal (MutableArrayT s t ds)
 
 
 -- | Keep information about the element type instance
+--
+--   Warning! This part of the code is platform and flag dependent.
 data ElemType t
   = t ~ Float  => ETFloat
   | t ~ Double => ETDouble
@@ -124,23 +180,22 @@ data ElemType t
   | t ~ Int8   => ETInt8
   | t ~ Int16  => ETInt16
   | t ~ Int32  => ETInt32
-  | t ~ Int64  => ETInt64
   | t ~ Word   => ETWord
   | t ~ Word8  => ETWord8
   | t ~ Word16 => ETWord16
   | t ~ Word32 => ETWord32
-  | t ~ Word64 => ETWord64
+  | t ~ Word8Clamped => ETWord8C
 
 -- | Keep information about the array dimensionality
+--
+--   Warning! This part of the code is platform and flag dependent.
 data ArraySize (ds :: [Nat])
   = ds ~ '[]   => ASScalar
-  | ds ~ '[2]  => ASX2
-  | ds ~ '[3]  => ASX3
-  | ds ~ '[4]  => ASX4
-  | forall n . (ds ~ '[n], 5 <= n) => ASXN
-  | forall n1 n2 ns . ds ~ (n1 ': n2 ': ns) => ASArray
+  | forall n ns . ds ~ (n ': ns) => ASArray
 
 -- | Keep information about the instance behind Array family
+--
+--   Warning! This part of the code is platform and flag dependent.
 data ArrayInstance t (ds :: [Nat])
   = ( Array t ds ~ Scalar t, ds ~ '[]) => AIScalar
   | forall n ns . ( Array t ds ~ ArrayT t ds, ds ~ (n ': ns), t ~ Float ) => AIArrayF
@@ -149,15 +204,11 @@ data ArrayInstance t (ds :: [Nat])
   | forall n ns . ( Array t ds ~ ArrayT t ds, ds ~ (n ': ns), t ~ Int8  ) => AIArrayI8
   | forall n ns . ( Array t ds ~ ArrayT t ds, ds ~ (n ': ns), t ~ Int16 ) => AIArrayI16
   | forall n ns . ( Array t ds ~ ArrayT t ds, ds ~ (n ': ns), t ~ Int32 ) => AIArrayI32
-  | forall n ns . ( Array t ds ~ ArrayT t ds, ds ~ (n ': ns), t ~ Int64 ) => AIArrayI64
   | forall n ns . ( Array t ds ~ ArrayT t ds, ds ~ (n ': ns), t ~ Word  ) => AIArrayW
   | forall n ns . ( Array t ds ~ ArrayT t ds, ds ~ (n ': ns), t ~ Word8 ) => AIArrayW8
   | forall n ns . ( Array t ds ~ ArrayT t ds, ds ~ (n ': ns), t ~ Word16) => AIArrayW16
   | forall n ns . ( Array t ds ~ ArrayT t ds, ds ~ (n ': ns), t ~ Word32) => AIArrayW32
-  | forall n ns . ( Array t ds ~ ArrayT t ds, ds ~ (n ': ns), t ~ Word64) => AIArrayW64
-  | ( Array t ds ~ ArrayT t ds, ds ~ '[2], t ~ Float) => AIFloatX2
-  | ( Array t ds ~ ArrayT t ds, ds ~ '[3], t ~ Float) => AIFloatX3
-  | ( Array t ds ~ ArrayT t ds, ds ~ '[4], t ~ Float) => AIFloatX4
+  | forall n ns . ( Array t ds ~ ArrayT t ds, ds ~ (n ': ns), t ~ Word8Clamped) => AIArrayW8C
 
 -- | A singleton type used to prove that the given Array family instance
 --   has a known instance
@@ -200,8 +251,6 @@ instance ElemTypeInference Int16 where
     elemTypeInstance = ETInt16
 instance ElemTypeInference Int32 where
     elemTypeInstance = ETInt32
-instance ElemTypeInference Int64 where
-    elemTypeInstance = ETInt64
 instance ElemTypeInference Word where
     elemTypeInstance = ETWord
 instance ElemTypeInference Word8 where
@@ -210,8 +259,8 @@ instance ElemTypeInference Word16 where
     elemTypeInstance = ETWord16
 instance ElemTypeInference Word32 where
     elemTypeInstance = ETWord32
-instance ElemTypeInference Word64 where
-    elemTypeInstance = ETWord64
+instance ElemTypeInference Word8Clamped where
+    elemTypeInstance = ETWord8C
 
 instance ArraySizeInference '[] where
     arraySizeInstance = ASScalar
@@ -227,20 +276,7 @@ instance KnownDim d => ArraySizeInference '[d] where
     arraySizeInstance = case dimVal' @d of
         0 -> unsafeCoerce# ASScalar
         1 -> unsafeCoerce# ASScalar
-        2 -> unsafeCoerce# ASX2
-        3 -> unsafeCoerce# ASX3
-        4 -> unsafeCoerce# ASX4
-        _ -> case (unsafeCoerce# Refl :: (5 <=? d) :~: 'True) of Refl -> ASXN
-    {-# INLINE arraySizeInstance #-}
-    inferSnocArrayInstance _ _ = Evidence
-    {-# INLINE inferSnocArrayInstance #-}
-    inferConsArrayInstance _ _ = Evidence
-    {-# INLINE inferConsArrayInstance #-}
-    inferInitArrayInstance _ = Evidence
-    {-# INLINE inferInitArrayInstance #-}
-
-instance KnownDim d1 => ArraySizeInference '[d1, d2] where
-    arraySizeInstance = ASArray
+        _ -> case (unsafeCoerce# Refl :: (5 <=? d) :~: 'True) of Refl -> ASArray
     {-# INLINE arraySizeInstance #-}
     inferSnocArrayInstance _ _ = Evidence
     {-# INLINE inferSnocArrayInstance #-}
@@ -250,7 +286,7 @@ instance KnownDim d1 => ArraySizeInference '[d1, d2] where
     {-# INLINE inferInitArrayInstance #-}
 
 
-instance ArraySizeInference (d1 ': d2 ': d3 ': ds) where
+instance ArraySizeInference (d1 ': d2 ': ds) where
     arraySizeInstance = ASArray
     {-# INLINE arraySizeInstance #-}
     -- I know that for dimensionality > 2 all instances are the same.
@@ -272,70 +308,7 @@ getArrayInstance :: forall t (ds :: [Nat])
                   . ArrayInstanceInference t ds
                  => ArrayInstance t ds
 getArrayInstance = case (elemTypeInstance @t, arraySizeInstance @ds) of
-    (ETFloat  , ASScalar) -> AIScalar
-    (ETDouble , ASScalar) -> AIScalar
-    (ETInt    , ASScalar) -> AIScalar
-    (ETInt8   , ASScalar) -> AIScalar
-    (ETInt16  , ASScalar) -> AIScalar
-    (ETInt32  , ASScalar) -> AIScalar
-    (ETInt64  , ASScalar) -> AIScalar
-    (ETWord   , ASScalar) -> AIScalar
-    (ETWord8  , ASScalar) -> AIScalar
-    (ETWord16 , ASScalar) -> AIScalar
-    (ETWord32 , ASScalar) -> AIScalar
-    (ETWord64 , ASScalar) -> AIScalar
-
-    (ETFloat  , ASX2) -> AIFloatX2
-    (ETDouble , ASX2) -> AIArrayD
-    (ETInt    , ASX2) -> AIArrayI
-    (ETInt8   , ASX2) -> AIArrayI8
-    (ETInt16  , ASX2) -> AIArrayI16
-    (ETInt32  , ASX2) -> AIArrayI32
-    (ETInt64  , ASX2) -> AIArrayI64
-    (ETWord   , ASX2) -> AIArrayW
-    (ETWord8  , ASX2) -> AIArrayW8
-    (ETWord16 , ASX2) -> AIArrayW16
-    (ETWord32 , ASX2) -> AIArrayW32
-    (ETWord64 , ASX2) -> AIArrayW64
-
-    (ETFloat  , ASX3) -> AIFloatX3
-    (ETDouble , ASX3) -> AIArrayD
-    (ETInt    , ASX3) -> AIArrayI
-    (ETInt8   , ASX3) -> AIArrayI8
-    (ETInt16  , ASX3) -> AIArrayI16
-    (ETInt32  , ASX3) -> AIArrayI32
-    (ETInt64  , ASX3) -> AIArrayI64
-    (ETWord   , ASX3) -> AIArrayW
-    (ETWord8  , ASX3) -> AIArrayW8
-    (ETWord16 , ASX3) -> AIArrayW16
-    (ETWord32 , ASX3) -> AIArrayW32
-    (ETWord64 , ASX3) -> AIArrayW64
-
-    (ETFloat  , ASX4) -> AIFloatX4
-    (ETDouble , ASX4) -> AIArrayD
-    (ETInt    , ASX4) -> AIArrayI
-    (ETInt8   , ASX4) -> AIArrayI8
-    (ETInt16  , ASX4) -> AIArrayI16
-    (ETInt32  , ASX4) -> AIArrayI32
-    (ETInt64  , ASX4) -> AIArrayI64
-    (ETWord   , ASX4) -> AIArrayW
-    (ETWord8  , ASX4) -> AIArrayW8
-    (ETWord16 , ASX4) -> AIArrayW16
-    (ETWord32 , ASX4) -> AIArrayW32
-    (ETWord64 , ASX4) -> AIArrayW64
-
-    (ETFloat  , ASXN) -> unsafeCoerce# (AIArrayF :: ArrayInstance Float '[5])
-    (ETDouble , ASXN) -> AIArrayD
-    (ETInt    , ASXN) -> AIArrayI
-    (ETInt8   , ASXN) -> AIArrayI8
-    (ETInt16  , ASXN) -> AIArrayI16
-    (ETInt32  , ASXN) -> AIArrayI32
-    (ETInt64  , ASXN) -> AIArrayI64
-    (ETWord   , ASXN) -> AIArrayW
-    (ETWord8  , ASXN) -> AIArrayW8
-    (ETWord16 , ASXN) -> AIArrayW16
-    (ETWord32 , ASXN) -> AIArrayW32
-    (ETWord64 , ASXN) -> AIArrayW64
+    (_        , ASScalar) -> AIScalar
 
     (ETFloat  , ASArray) -> AIArrayF
     (ETDouble , ASArray) -> AIArrayD
@@ -343,12 +316,11 @@ getArrayInstance = case (elemTypeInstance @t, arraySizeInstance @ds) of
     (ETInt8   , ASArray) -> AIArrayI8
     (ETInt16  , ASArray) -> AIArrayI16
     (ETInt32  , ASArray) -> AIArrayI32
-    (ETInt64  , ASArray) -> AIArrayI64
     (ETWord   , ASArray) -> AIArrayW
     (ETWord8  , ASArray) -> AIArrayW8
     (ETWord16 , ASArray) -> AIArrayW16
     (ETWord32 , ASArray) -> AIArrayW32
-    (ETWord64 , ASArray) -> AIArrayW64
+    (ETWord8C , ASArray) -> AIArrayW8C
 
 -- | Given element type instance and proper dimension list,
 --   infer a corresponding array instance

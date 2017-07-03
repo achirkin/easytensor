@@ -23,7 +23,7 @@ main = do
     seq t1 putStrLn $ "Created DataFrame, elapsed time is " ++ show (diffUTCTime t1 t0)
 
     putStrLn "\nRunning a ewfoldl on scalar elements..."
-    let rezEwf = ewfoldl @Float @'[] @DList (\a x -> let z = fromMaybe x a + fromMaybe 0 a / (x+1) in z `seq` return z) (Just 1)  df
+    let rezEwf = ewfoldl @Float @'[] @DList (\a x -> return $! fromMaybe x a + fromMaybe 0 a / (x+1)) (Just 1)  df
     t2 <- rezEwf `seq` getCurrentTime
     print rezEwf
     seq t2 putStrLn $ "Done; elapsed time = " ++ show (diffUTCTime t2 t1)
@@ -35,13 +35,13 @@ main = do
     seq t3 putStrLn $ "Done; elapsed time = " ++ show (diffUTCTime t3 t2)
 
     putStrLn "\nRunning a iwfoldr on scalar elements (using fromEnum idx)..."
-    let rezIwf2 = iwfoldr @Float @'[] @DList (\i x a -> let z = fromMaybe 0 a + x / ((1+) . fromIntegral $ fromEnum i) in z `seq` return z) (Just 0) df
+    let rezIwf2 = iwfoldr @Float @'[] @DList (\i x a -> return $! fromMaybe 0 a + x / ((1+) . fromIntegral $ fromEnum i)) (Just 0) df
     t4 <- rezIwf2 `seq` getCurrentTime
     print rezIwf2
     seq t4 putStrLn $ "Done; elapsed time = " ++ show (diffUTCTime t4 t3)
 
     putStrLn "\nRunning a iwfoldl on scalar elements (enforcing idx)..."
-    let rezIwf3 = iwfoldl @Float @'[] @DList (\i a x -> i `seq` let z = fromMaybe 0 a + fromMaybe x a / (x+1) in z `seq` return z) (Just 1) df
+    let rezIwf3 = iwfoldl @Float @'[] @DList (\i a x -> i `seq` return $! fromMaybe 0 a + fromMaybe x a / (x+1)) (Just 1) df
     t5 <- rezIwf3 `seq` getCurrentTime
     print rezIwf3
     seq t5 putStrLn $ "Done; elapsed time = " ++ show (diffUTCTime t5 t4)

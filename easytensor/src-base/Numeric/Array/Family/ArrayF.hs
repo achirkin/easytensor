@@ -216,7 +216,7 @@ instance ( KnownDim n, ArrayF '[n,n] ~ Array Float '[n,n] )
                                then (# s''', 0.0# #)
                                else f (i +# 1#) (timesFloat# x' y) s'''
             in f 0# 1.0# s2
-     ) of (# _, r #) -> F# r
+     ) of (# _, r #) -> KnownDataFrame (Scalar (F# r))
     where
       n = case dimVal' @n of I# np -> np
       offb = off *# SIZEOF_HSFLOAT#
