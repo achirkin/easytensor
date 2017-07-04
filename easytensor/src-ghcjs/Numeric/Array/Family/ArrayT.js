@@ -415,7 +415,6 @@ function h$easytensor_inverseJSM3(mat) {
     }
 }
 
-
 function h$easytensor_inverseJSM2(mat) {
     var det = mat[0]*mat[3] - mat[1]*mat[2];
     if (det === 0) {
@@ -429,3 +428,17 @@ function h$easytensor_inverseJSM2(mat) {
     return rez;
 }
 
+
+function h$easytensor_contract(n,m,k,lhs,rhs) {
+    var t, rez = new lhs.constructor(n*k);
+    for(var i = 0; i < n; i++) {
+        for(var j = 0; j < k; j++) {
+            t = 0;
+            for(var l = 0; l < m; l++) {
+                t += lhs[i+l*n]*rhs[l+j*m];
+            }
+            rez[i+j*n] = t;
+        }
+    }
+    return rez;
+}

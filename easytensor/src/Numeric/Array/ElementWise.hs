@@ -2,7 +2,8 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE Rank2Types             #-}
-{-# LANGUAGE Strict                #-}
+{-# LANGUAGE MagicHash              #-}
+{-# LANGUAGE Strict                 #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.ElementWise
@@ -25,13 +26,16 @@ import           Data.Word (Word16, Word32, Word8)
 import           Data.Int  (Int16, Int32, Int64, Int8)
 import           Data.Word (Word16, Word32, Word64, Word8)
 #endif
+import           GHC.Prim (Int#)
 
 -- | Access elements.
 --   i is an index type
 --   x is an element
 --   t is a container type
 class ElementWise i x t | t -> x i where
-  -- | Index a container
+  -- | Index an element by its offset in the container
+  indexOffset# :: t -> Int# -> x
+  -- | Index an element in the container
   (!)   :: t -> i -> x
   -- | map all elements with index
   ewmap :: (i -> x -> x) -> t -> t
@@ -55,6 +59,8 @@ class ElementWise i x t | t -> x i where
 
 
 instance ElementWise Int Float Float where
+  indexOffset# x _ = x
+  {-# INLINE indexOffset# #-}
   (!) x _ = x
   {-# INLINE (!) #-}
   ewmap f = f 1
@@ -79,6 +85,8 @@ instance ElementWise Int Float Float where
 
 
 instance ElementWise Int Double Double where
+  indexOffset# x _ = x
+  {-# INLINE indexOffset# #-}
   (!) x _ = x
   {-# INLINE (!) #-}
   ewmap f = f 1
@@ -101,6 +109,8 @@ instance ElementWise Int Double Double where
 
 
 instance ElementWise Int Int Int where
+  indexOffset# x _ = x
+  {-# INLINE indexOffset# #-}
   (!) x _ = x
   {-# INLINE (!) #-}
   ewmap f = f 1
@@ -123,6 +133,8 @@ instance ElementWise Int Int Int where
 
 
 instance ElementWise Int Int8 Int8 where
+  indexOffset# x _ = x
+  {-# INLINE indexOffset# #-}
   (!) x _ = x
   {-# INLINE (!) #-}
   ewmap f = f 1
@@ -144,6 +156,8 @@ instance ElementWise Int Int8 Int8 where
   {-# INLINE update #-}
 
 instance ElementWise Int Int16 Int16 where
+  indexOffset# x _ = x
+  {-# INLINE indexOffset# #-}
   (!) x _ = x
   {-# INLINE (!) #-}
   ewmap f = f 1
@@ -165,6 +179,8 @@ instance ElementWise Int Int16 Int16 where
   {-# INLINE update #-}
 
 instance ElementWise Int Int32 Int32 where
+  indexOffset# x _ = x
+  {-# INLINE indexOffset# #-}
   (!) x _ = x
   {-# INLINE (!) #-}
   ewmap f = f 1
@@ -188,6 +204,8 @@ instance ElementWise Int Int32 Int32 where
 
 #ifndef ghcjs_HOST_OS
 instance ElementWise Int Int64 Int64 where
+  indexOffset# x _ = x
+  {-# INLINE indexOffset# #-}
   (!) x _ = x
   {-# INLINE (!) #-}
   ewmap f = f 1
@@ -210,6 +228,8 @@ instance ElementWise Int Int64 Int64 where
 #endif
 
 instance ElementWise Int Word Word where
+  indexOffset# x _ = x
+  {-# INLINE indexOffset# #-}
   (!) x _ = x
   {-# INLINE (!) #-}
   ewmap f = f 1
@@ -232,6 +252,8 @@ instance ElementWise Int Word Word where
 
 
 instance ElementWise Int Word8 Word8 where
+  indexOffset# x _ = x
+  {-# INLINE indexOffset# #-}
   (!) x _ = x
   {-# INLINE (!) #-}
   ewmap f = f 1
@@ -254,6 +276,8 @@ instance ElementWise Int Word8 Word8 where
 
 
 instance ElementWise Int Word16 Word16 where
+  indexOffset# x _ = x
+  {-# INLINE indexOffset# #-}
   (!) x _ = x
   {-# INLINE (!) #-}
   ewmap f = f 1
@@ -276,6 +300,8 @@ instance ElementWise Int Word16 Word16 where
 
 
 instance ElementWise Int Word32 Word32 where
+  indexOffset# x _ = x
+  {-# INLINE indexOffset# #-}
   (!) x _ = x
   {-# INLINE (!) #-}
   ewmap f = f 1
@@ -299,6 +325,8 @@ instance ElementWise Int Word32 Word32 where
 
 #ifndef ghcjs_HOST_OS
 instance ElementWise Int Word64 Word64 where
+  indexOffset# x _ = x
+  {-# INLINE indexOffset# #-}
   (!) x _ = x
   {-# INLINE (!) #-}
   ewmap f = f 1

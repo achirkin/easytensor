@@ -148,6 +148,8 @@ deriving instance RealFloat (Array t ds)
 instance ( Dimensions ds
          , ElementWise (Idx ds) t (Array t ds)
          ) => ElementWise (Idx ds) t (DataFrame t ds) where
+  indexOffset#  = indexOffset# . _getDF
+  {-# INLINE indexOffset# #-}
   (!) = (!) . _getDF
   {-# INLINE (!) #-}
   ewmap f = KnownDataFrame . ewmap f . _getDF

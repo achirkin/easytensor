@@ -104,6 +104,7 @@ deriving instance PrimBytes (Scalar Word64)
 
 -- | Indexing over scalars is trivial...
 instance ElementWise (Idx ('[] :: [Nat])) t (Scalar t) where
+  indexOffset# x _ = _unScalar x
   (!) x _ = _unScalar x
   {-# INLINE (!) #-}
   ewmap f = Scalar . f Z . _unScalar

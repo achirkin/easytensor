@@ -282,6 +282,10 @@ instance PrimBytes FloatX2 where
 
 
 instance ElementWise (Idx '[2]) Float FloatX2 where
+  indexOffset# (FloatX2# a1 _) 0# = F# a1
+  indexOffset# (FloatX2# _ a2) 1# = F# a2
+  indexOffset# _               _  = undefined
+  {-# INLINE indexOffset# #-}
 
   (!) (FloatX2# a1 _) ( 1 :! Z) = F# a1
   (!) (FloatX2# _ a2) ( 2 :! Z) = F# a2

@@ -97,6 +97,9 @@ data ArrayUpdate# (f :: * -> *) s
   = AU# Int# !(f (MutableByteArray# s -> State# s -> State# s))
 
 instance Dimensions ds => ElementWise (Idx ds) EL_TYPE_BOXED (ARR_TYPE (ds :: [Nat])) where
+  indexOffset# (ARR_CONSTR off _ a) j = EL_CONSTR (INDEX_ARRAY a (off +# j))
+  indexOffset# (ARR_FROMSCALAR x) _ = EL_CONSTR x
+  {-# INLINE indexOffset# #-}
   (!) (ARR_CONSTR off _ a) i
        = case fromEnum i of I# j -> EL_CONSTR (INDEX_ARRAY a (off +# j))
   (!) (ARR_FROMSCALAR x) _ = EL_CONSTR x

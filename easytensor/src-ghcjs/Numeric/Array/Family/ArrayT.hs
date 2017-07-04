@@ -533,6 +533,8 @@ wr fma ff = case runRW#
 
 
 instance Dimensions ds => ElementWise (Idx ds) Float (ArrayT Float ds) where
+    indexOffset# x i = js_indexArrayOffsetFloat i x
+    {-# INLINE indexOffset# #-}
     x ! i = case fromEnum i of I# j -> js_indexArrayOffsetFloat j x
     {-# INLINE (!) #-}
     broadcast = js_fillNewFloatArray (totalDim (dim @ds))
@@ -593,6 +595,8 @@ instance Dimensions ds => ElementWise (Idx ds) Float (ArrayT Float ds) where
 
 
 instance Dimensions ds => ElementWise (Idx ds) Double (ArrayT Double ds) where
+    indexOffset# x i = js_indexArrayOffsetDouble i x
+    {-# INLINE indexOffset# #-}
     x ! i = case fromEnum i of I# j -> js_indexArrayOffsetDouble j x
     {-# INLINE (!) #-}
     broadcast = js_fillNewDoubleArray (totalDim (dim @ds))
@@ -653,6 +657,8 @@ instance Dimensions ds => ElementWise (Idx ds) Double (ArrayT Double ds) where
 
 
 instance Dimensions ds => ElementWise (Idx ds) Int32 (ArrayT Int32 ds) where
+    indexOffset# x i = js_indexArrayOffsetInt32 i x
+    {-# INLINE indexOffset# #-}
     x ! i = case fromEnum i of I# j -> js_indexArrayOffsetInt32 j x
     {-# INLINE (!) #-}
     broadcast = js_fillNewInt32Array (totalDim (dim @ds))
@@ -712,6 +718,8 @@ instance Dimensions ds => ElementWise (Idx ds) Int32 (ArrayT Int32 ds) where
           dds = dim @ds
 
 instance Dimensions ds => ElementWise (Idx ds) Int16 (ArrayT Int16 ds) where
+    indexOffset# x i = js_indexArrayOffsetInt16 i x
+    {-# INLINE indexOffset# #-}
     x ! i = case fromEnum i of I# j -> js_indexArrayOffsetInt16 j x
     {-# INLINE (!) #-}
     broadcast = js_fillNewInt16Array (totalDim (dim @ds))
@@ -772,6 +780,8 @@ instance Dimensions ds => ElementWise (Idx ds) Int16 (ArrayT Int16 ds) where
 
 
 instance Dimensions ds => ElementWise (Idx ds) Int8 (ArrayT Int8 ds) where
+    indexOffset# x i = js_indexArrayOffsetInt8 i x
+    {-# INLINE indexOffset# #-}
     x ! i = case fromEnum i of I# j -> js_indexArrayOffsetInt8 j x
     {-# INLINE (!) #-}
     broadcast = js_fillNewInt8Array (totalDim (dim @ds))
@@ -832,6 +842,8 @@ instance Dimensions ds => ElementWise (Idx ds) Int8 (ArrayT Int8 ds) where
 
 
 instance Dimensions ds => ElementWise (Idx ds) Int (ArrayT Int ds) where
+    indexOffset# x i = js_indexArrayOffsetInt i x
+    {-# INLINE indexOffset# #-}
     x ! i = case fromEnum i of I# j -> js_indexArrayOffsetInt j x
     {-# INLINE (!) #-}
     broadcast = js_fillNewIntArray (totalDim (dim @ds))
@@ -894,6 +906,8 @@ instance Dimensions ds => ElementWise (Idx ds) Int (ArrayT Int ds) where
 
 
 instance Dimensions ds => ElementWise (Idx ds) Word32 (ArrayT Word32 ds) where
+    indexOffset# x i = js_indexArrayOffsetWord32 i x
+    {-# INLINE indexOffset# #-}
     x ! i = case fromEnum i of I# j -> js_indexArrayOffsetWord32 j x
     {-# INLINE (!) #-}
     broadcast = js_fillNewWord32Array (totalDim (dim @ds))
@@ -953,6 +967,8 @@ instance Dimensions ds => ElementWise (Idx ds) Word32 (ArrayT Word32 ds) where
           dds = dim @ds
 
 instance Dimensions ds => ElementWise (Idx ds) Word16 (ArrayT Word16 ds) where
+    indexOffset# x i = js_indexArrayOffsetWord16 i x
+    {-# INLINE indexOffset# #-}
     x ! i = case fromEnum i of I# j -> js_indexArrayOffsetWord16 j x
     {-# INLINE (!) #-}
     broadcast = js_fillNewWord16Array (totalDim (dim @ds))
@@ -1013,6 +1029,8 @@ instance Dimensions ds => ElementWise (Idx ds) Word16 (ArrayT Word16 ds) where
 
 
 instance Dimensions ds => ElementWise (Idx ds) Word8 (ArrayT Word8 ds) where
+    indexOffset# x i = js_indexArrayOffsetWord8 i x
+    {-# INLINE indexOffset# #-}
     x ! i = case fromEnum i of I# j -> js_indexArrayOffsetWord8 j x
     {-# INLINE (!) #-}
     broadcast = js_fillNewWord8Array (totalDim (dim @ds))
@@ -1073,6 +1091,8 @@ instance Dimensions ds => ElementWise (Idx ds) Word8 (ArrayT Word8 ds) where
 
 
 instance Dimensions ds => ElementWise (Idx ds) Word (ArrayT Word ds) where
+    indexOffset# x i = js_indexArrayOffsetWord i x
+    {-# INLINE indexOffset# #-}
     x ! i = case fromEnum i of I# j -> js_indexArrayOffsetWord j x
     {-# INLINE (!) #-}
     broadcast = js_fillNewWordArray (totalDim (dim @ds))
@@ -1135,6 +1155,8 @@ instance Dimensions ds => ElementWise (Idx ds) Word (ArrayT Word ds) where
 
 
 instance Dimensions ds => ElementWise (Idx ds) Word8Clamped (ArrayT Word8Clamped ds) where
+    indexOffset# x i = js_indexArrayOffsetWord8Clamped i x
+    {-# INLINE indexOffset# #-}
     x ! i = case fromEnum i of I# j -> js_indexArrayOffsetWord8Clamped j x
     {-# INLINE (!) #-}
     broadcast = js_fillNewWord8ClampedArray (totalDim (dim @ds))
@@ -1402,9 +1424,9 @@ unsafeFreezeArrayT# :: MutableArrayT s t ds -> State# s -> (# State# s, ArrayT t
 unsafeFreezeArrayT# a s = (# s, coerce a #)
 {-# INLINE unsafeFreezeArrayT# #-}
 
-unsafeThawArrayT# :: ArrayT t ds -> State# s -> (#State# s, MutableArrayT s t ds #)
-unsafeThawArrayT# a s = (# s, coerce a #)
-{-# INLINE unsafeThawArrayT# #-}
+--unsafeThawArrayT# :: ArrayT t ds -> State# s -> (#State# s, MutableArrayT s t ds #)
+--unsafeThawArrayT# a s = (# s, coerce a #)
+--{-# INLINE unsafeThawArrayT# #-}
 
 
 foreign import javascript unsafe "$2[$1]" js_indexArrayOffsetFloat#        :: Int# -> ArrayT Float        ds -> Float#
@@ -1448,17 +1470,17 @@ foreign import javascript unsafe "$r = $3.slice(); $r[$1] = $2;" js_setArrayOffs
 
 
 
-foreign import javascript unsafe "$2[$1]" js_readArrayOffsetFloat#        :: Int# -> MutableArrayT s Float        ds -> State# s -> (# State# s, Float# #)
-foreign import javascript unsafe "$2[$1]" js_readArrayOffsetDouble#       :: Int# -> MutableArrayT s Double       ds -> State# s -> (# State# s, Double# #)
-foreign import javascript unsafe "$2[$1]" js_readArrayOffsetInt#          :: Int# -> MutableArrayT s Int          ds -> State# s -> (# State# s, Int# #)
-foreign import javascript unsafe "$2[$1]" js_readArrayOffsetInt8#         :: Int# -> MutableArrayT s Int8         ds -> State# s -> (# State# s, Int# #)
-foreign import javascript unsafe "$2[$1]" js_readArrayOffsetInt16#        :: Int# -> MutableArrayT s Int16        ds -> State# s -> (# State# s, Int# #)
-foreign import javascript unsafe "$2[$1]" js_readArrayOffsetInt32#        :: Int# -> MutableArrayT s Int32        ds -> State# s -> (# State# s, Int# #)
-foreign import javascript unsafe "$2[$1]" js_readArrayOffsetWord#         :: Int# -> MutableArrayT s Word         ds -> State# s -> (# State# s, Word# #)
-foreign import javascript unsafe "$2[$1]" js_readArrayOffsetWord8#        :: Int# -> MutableArrayT s Word8        ds -> State# s -> (# State# s, Word# #)
-foreign import javascript unsafe "$2[$1]" js_readArrayOffsetWord8Clamped# :: Int# -> MutableArrayT s Word8Clamped ds -> State# s -> (# State# s, Int#  #)
-foreign import javascript unsafe "$2[$1]" js_readArrayOffsetWord16#       :: Int# -> MutableArrayT s Word16       ds -> State# s -> (# State# s, Word# #)
-foreign import javascript unsafe "$2[$1]" js_readArrayOffsetWord32#       :: Int# -> MutableArrayT s Word32       ds -> State# s -> (# State# s, Word# #)
+--foreign import javascript unsafe "$2[$1]" js_readArrayOffsetFloat#        :: Int# -> MutableArrayT s Float        ds -> State# s -> (# State# s, Float# #)
+--foreign import javascript unsafe "$2[$1]" js_readArrayOffsetDouble#       :: Int# -> MutableArrayT s Double       ds -> State# s -> (# State# s, Double# #)
+--foreign import javascript unsafe "$2[$1]" js_readArrayOffsetInt#          :: Int# -> MutableArrayT s Int          ds -> State# s -> (# State# s, Int# #)
+--foreign import javascript unsafe "$2[$1]" js_readArrayOffsetInt8#         :: Int# -> MutableArrayT s Int8         ds -> State# s -> (# State# s, Int# #)
+--foreign import javascript unsafe "$2[$1]" js_readArrayOffsetInt16#        :: Int# -> MutableArrayT s Int16        ds -> State# s -> (# State# s, Int# #)
+--foreign import javascript unsafe "$2[$1]" js_readArrayOffsetInt32#        :: Int# -> MutableArrayT s Int32        ds -> State# s -> (# State# s, Int# #)
+--foreign import javascript unsafe "$2[$1]" js_readArrayOffsetWord#         :: Int# -> MutableArrayT s Word         ds -> State# s -> (# State# s, Word# #)
+--foreign import javascript unsafe "$2[$1]" js_readArrayOffsetWord8#        :: Int# -> MutableArrayT s Word8        ds -> State# s -> (# State# s, Word# #)
+--foreign import javascript unsafe "$2[$1]" js_readArrayOffsetWord8Clamped# :: Int# -> MutableArrayT s Word8Clamped ds -> State# s -> (# State# s, Int#  #)
+--foreign import javascript unsafe "$2[$1]" js_readArrayOffsetWord16#       :: Int# -> MutableArrayT s Word16       ds -> State# s -> (# State# s, Word# #)
+--foreign import javascript unsafe "$2[$1]" js_readArrayOffsetWord32#       :: Int# -> MutableArrayT s Word32       ds -> State# s -> (# State# s, Word# #)
 
 
 foreign import javascript unsafe "$3[$1] = $2;" js_writeArrayOffsetFloat#        :: Int# -> Float#  -> MutableArrayT s Float        ds -> State# s -> State# s
@@ -1489,28 +1511,28 @@ foreign import javascript unsafe "$3[$1] = $2;" js_writeArrayOffsetWord32#      
 
 foreign import javascript unsafe "$1.length"     js_length     :: ArrayT t ds -> Int#
 foreign import javascript unsafe "$1.byteOffset" js_byteOffset :: ArrayT t ds -> Int#
-foreign import javascript unsafe "$1.byteLength" js_byteLength :: ArrayT t ds -> Int#
+--foreign import javascript unsafe "$1.byteLength" js_byteLength :: ArrayT t ds -> Int#
 
 
-foreign import javascript unsafe "$1.length"     js_lengthM     :: MutableArrayT s t ds -> State# s -> (# State# s, Int# #)
-foreign import javascript unsafe "$1.byteOffset" js_byteOffsetM :: MutableArrayT s t ds -> State# s -> (# State# s, Int# #)
-foreign import javascript unsafe "$1.byteLength" js_byteLengthM :: MutableArrayT s t ds -> State# s -> (# State# s, Int# #)
+--foreign import javascript unsafe "$1.length"     js_lengthM     :: MutableArrayT s t ds -> State# s -> (# State# s, Int# #)
+--foreign import javascript unsafe "$1.byteOffset" js_byteOffsetM :: MutableArrayT s t ds -> State# s -> (# State# s, Int# #)
+--foreign import javascript unsafe "$1.byteLength" js_byteLengthM :: MutableArrayT s t ds -> State# s -> (# State# s, Int# #)
 
 foreign import javascript unsafe "h$wrapBuffer($1.buffer)" js_wrapArrayT        :: ArrayT t ds -> ByteArray#
-foreign import javascript unsafe "h$wrapBuffer($1.buffer)" js_wrapMutableArrayT :: MutableArrayT s t ds -> State# s -> (# State# s, MutableByteArray# s #)
-
-
-foreign import javascript unsafe "$1.f3 || new Float32Array($1.buf)"      js_unwrapFloatArray        :: ByteArray# -> ArrayT Float ds
-foreign import javascript unsafe "$1.f6 || new Float64Array($1.buf)"      js_unwrapDoubleArray       :: ByteArray# -> ArrayT Double ds
-foreign import javascript unsafe "$1.i3 || new Int32Array($1.buf)"        js_unwrapIntArray          :: ByteArray# -> ArrayT Int ds
-foreign import javascript unsafe "$1.i3 || new Int32Array($1.buf)"        js_unwrapInt32Array        :: ByteArray# -> ArrayT Int32 ds
-foreign import javascript unsafe "$1.i1 || new Int16Array($1.buf)"        js_unwrapInt16Array        :: ByteArray# -> ArrayT Int16 ds
-foreign import javascript unsafe "$1.i8 || new Int8Array($1.buf)"         js_unwrapInt8Array         :: ByteArray# -> ArrayT Int8 ds
-foreign import javascript unsafe "$1.u3 || new Uint32Array($1.buf)"       js_unwrapWordArray         :: ByteArray# -> ArrayT Word ds
-foreign import javascript unsafe "$1.u3 || new Uint32Array($1.buf)"       js_unwrapWord32Array       :: ByteArray# -> ArrayT Word32 ds
-foreign import javascript unsafe "$1.u1 || new Uint16Array($1.buf)"       js_unwrapWord16Array       :: ByteArray# -> ArrayT Word16 ds
-foreign import javascript unsafe "$1.u8 || new Uint8Array($1.buf)"        js_unwrapWord8Array        :: ByteArray# -> ArrayT Word8 ds
-foreign import javascript unsafe "$1.uc || new Uint8ClampedArray($1.buf)" js_unwrapWord8ClampedArray :: ByteArray# -> ArrayT Word8Clamped ds
+--foreign import javascript unsafe "h$wrapBuffer($1.buffer)" js_wrapMutableArrayT :: MutableArrayT s t ds -> State# s -> (# State# s, MutableByteArray# s #)
+--
+--
+--foreign import javascript unsafe "$1.f3 || new Float32Array($1.buf)"      js_unwrapFloatArray        :: ByteArray# -> ArrayT Float ds
+--foreign import javascript unsafe "$1.f6 || new Float64Array($1.buf)"      js_unwrapDoubleArray       :: ByteArray# -> ArrayT Double ds
+--foreign import javascript unsafe "$1.i3 || new Int32Array($1.buf)"        js_unwrapIntArray          :: ByteArray# -> ArrayT Int ds
+--foreign import javascript unsafe "$1.i3 || new Int32Array($1.buf)"        js_unwrapInt32Array        :: ByteArray# -> ArrayT Int32 ds
+--foreign import javascript unsafe "$1.i1 || new Int16Array($1.buf)"        js_unwrapInt16Array        :: ByteArray# -> ArrayT Int16 ds
+--foreign import javascript unsafe "$1.i8 || new Int8Array($1.buf)"         js_unwrapInt8Array         :: ByteArray# -> ArrayT Int8 ds
+--foreign import javascript unsafe "$1.u3 || new Uint32Array($1.buf)"       js_unwrapWordArray         :: ByteArray# -> ArrayT Word ds
+--foreign import javascript unsafe "$1.u3 || new Uint32Array($1.buf)"       js_unwrapWord32Array       :: ByteArray# -> ArrayT Word32 ds
+--foreign import javascript unsafe "$1.u1 || new Uint16Array($1.buf)"       js_unwrapWord16Array       :: ByteArray# -> ArrayT Word16 ds
+--foreign import javascript unsafe "$1.u8 || new Uint8Array($1.buf)"        js_unwrapWord8Array        :: ByteArray# -> ArrayT Word8 ds
+--foreign import javascript unsafe "$1.uc || new Uint8ClampedArray($1.buf)" js_unwrapWord8ClampedArray :: ByteArray# -> ArrayT Word8Clamped ds
 
 
 
@@ -1527,17 +1549,17 @@ foreign import javascript unsafe "new Uint8Array($1.buf, $2, $3)"        js_unwr
 foreign import javascript unsafe "new Uint8ClampedArray($1.buf, $2, $3)" js_unwrapWord8ClampedArrayOffLen :: ByteArray# -> Int# -> Int# -> ArrayT Word8Clamped ds
 
 
-foreign import javascript unsafe "$1.i3 || new Int32Array($1.buf)"        js_unwrapMutableIntArray          :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Int ds #)
-foreign import javascript unsafe "$1.i3 || new Int32Array($1.buf)"        js_unwrapMutableInt32Array        :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Int32 ds #)
-foreign import javascript unsafe "$1.i1 || new Int16Array($1.buf)"        js_unwrapMutableInt16Array        :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Int16 ds #)
-foreign import javascript unsafe "$1.i8 || new Int8Array($1.buf)"         js_unwrapMutableInt8Array         :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Int8 ds #)
-foreign import javascript unsafe "$1.u3 || new Uint32Array($1.buf)"       js_unwrapMutableWordArray         :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Word ds #)
-foreign import javascript unsafe "$1.u3 || new Uint32Array($1.buf)"       js_unwrapMutableWord32Array       :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Word32 ds #)
-foreign import javascript unsafe "$1.u1 || new Uint16Array($1.buf)"       js_unwrapMutableWord16Array       :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Word16 ds #)
-foreign import javascript unsafe "$1.u8 || new Uint8Array($1.buf)"        js_unwrapMutableWord8Array        :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Word8 ds #)
-foreign import javascript unsafe "$1.f3 || new Float32Array($1.buf)"      js_unwrapMutableFloatArray        :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Float ds #)
-foreign import javascript unsafe "$1.f6 || new Float64Array($1.buf)"      js_unwrapMutableDoubleArray       :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Double ds #)
-foreign import javascript unsafe "$1.uc || new Uint8ClampedArray($1.buf)" js_unwrapMutableWord8ClampedArray :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Word8Clamped ds #)
+--foreign import javascript unsafe "$1.i3 || new Int32Array($1.buf)"        js_unwrapMutableIntArray          :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Int ds #)
+--foreign import javascript unsafe "$1.i3 || new Int32Array($1.buf)"        js_unwrapMutableInt32Array        :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Int32 ds #)
+--foreign import javascript unsafe "$1.i1 || new Int16Array($1.buf)"        js_unwrapMutableInt16Array        :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Int16 ds #)
+--foreign import javascript unsafe "$1.i8 || new Int8Array($1.buf)"         js_unwrapMutableInt8Array         :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Int8 ds #)
+--foreign import javascript unsafe "$1.u3 || new Uint32Array($1.buf)"       js_unwrapMutableWordArray         :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Word ds #)
+--foreign import javascript unsafe "$1.u3 || new Uint32Array($1.buf)"       js_unwrapMutableWord32Array       :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Word32 ds #)
+--foreign import javascript unsafe "$1.u1 || new Uint16Array($1.buf)"       js_unwrapMutableWord16Array       :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Word16 ds #)
+--foreign import javascript unsafe "$1.u8 || new Uint8Array($1.buf)"        js_unwrapMutableWord8Array        :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Word8 ds #)
+--foreign import javascript unsafe "$1.f3 || new Float32Array($1.buf)"      js_unwrapMutableFloatArray        :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Float ds #)
+--foreign import javascript unsafe "$1.f6 || new Float64Array($1.buf)"      js_unwrapMutableDoubleArray       :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Double ds #)
+--foreign import javascript unsafe "$1.uc || new Uint8ClampedArray($1.buf)" js_unwrapMutableWord8ClampedArray :: MutableByteArray# s -> State# s -> (# State# s, MutableArrayT s Word8Clamped ds #)
 
 
 
