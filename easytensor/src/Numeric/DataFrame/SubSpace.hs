@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                     #-}
 {-# LANGUAGE BangPatterns            #-}
 {-# LANGUAGE DataKinds               #-}
 {-# LANGUAGE FlexibleContexts        #-}
@@ -14,6 +15,10 @@
 {-# LANGUAGE UnboxedTuples           #-}
 {-# LANGUAGE UndecidableInstances    #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
+#ifdef ghcjs_HOST_OS
+{-# LANGUAGE JavaScriptFFI           #-}
+{-# LANGUAGE UnliftedFFITypes        #-}
+#endif
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.SubSpace
@@ -35,6 +40,10 @@ import           GHC.Base                  (runRW#)
 import           GHC.Prim
 import           GHC.Types                 (Int (..), Type)
 
+#ifdef ghcjs_HOST_OS
+import           GHCJS.Types (JSVal)
+import           Unsafe.Coerce (unsafeCoerce)
+#endif
 
 import qualified Numeric.Array.ElementWise as EW
 import           Numeric.Commons
@@ -45,9 +54,12 @@ import           Numeric.TypeLits
 import           Numeric.Scalar
 
 -- | Operations on DataFrames
--- as is an element dimensionality
--- bs is an indexing dimensionality
--- t is an underlying data type (i.e. Float, Int, Double)
+--
+-- @as@ is an element dimensionality
+--
+-- @bs@ is an indexing dimensionality
+--
+-- @t@ is an underlying data type (i.e. Float, Int, Double)
 --
 class ( ConcatList as bs asbs
       , Dimensions as
@@ -55,8 +67,18 @@ class ( ConcatList as bs asbs
       , Dimensions asbs
       ) => SubSpace (t :: Type) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
                     | asbs as -> bs, asbs bs -> as, as bs -> asbs where
-    -- | Get an element
+    -- | Unsafely get a sub-dataframe by its primitive element subset.
+    --   The offset is not checked to be aligned to the space structure or for bounds.
+    --   Arguments are zero-based element offset and element size (aka `totalDim` of sub dataframe)
+    --
+    --   Normal indexing can be expressed in terms of `indexOffset#`:
+    --
+    --   > i !. x = case (# dimVal (dim @as), fromEnum i #) of (# I# n, I# j #) -> indexOffset# (n *# j) n x
+    indexOffset# :: Int# -> Int# -> DataFrame t asbs -> DataFrame t as
+    -- | Get an element by its index in the dataframe
     (!.) :: Idx bs -> DataFrame t asbs -> DataFrame t as
+    (!.) i = case (# dimVal (dim @as), fromEnum i #) of (# I# n, I# j #) -> indexOffset# (n *# j) n
+    {-# INLINE (!.) #-}
     -- | Set a new value to an element
     update :: Idx bs -> DataFrame t as -> DataFrame t asbs -> DataFrame t asbs
     -- | Map a function over each element of DataFrame
@@ -174,6 +196,9 @@ ewzip = iwzip . const
 {-# INLINE ewzip #-}
 
 
+#ifdef ghcjs_HOST_OS
+foreign import javascript unsafe "$3.subarray($1,$1 + $2)" js_subarray        :: Int# -> Int# -> JSVal -> JSVal
+#endif
 
 instance {-# OVERLAPPABLE #-}
          ( ConcatList as bs asbs
@@ -185,15 +210,28 @@ instance {-# OVERLAPPABLE #-}
          , as ~ (a'' ': as'')
          , asbs ~ (a'' ': asbs'')
          ) => SubSpace t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) where
+#ifdef ghcjs_HOST_OS
+    indexOffset# i l = unsafeCoerce . js_subarray i l . unsafeCoerce
+#else
+    indexOffset# i l d = case toBytes d of
+        (# off, _, arr #) -> fromBytes (# off +# i, l, arr #)
+#endif
+    {-# INLINE indexOffset# #-}
 
-    i !. d = r
-        where
-          r = case (# toBytes d, fromEnum i, totalDim r #) of
-                (# (# off, _, arr #), I# i#, I# l# #)
-                  -> fromBytes (# off +# i# *# l#, l#, arr #)
-    {-# INLINE (!.) #-}
-
-    ewmap = iwmap . const
+    ewmap f df
+      | elS <- elementByteSize (undefined :: DataFrame t asbs)
+      , I# lenBS <- totalDim (Proxy @bs)
+      , I# lenAS <- totalDim (Proxy @as)
+      , lenASB <- lenAS *# elS
+      = case runRW#
+          ( \s0 -> case newByteArray# (lenAS *# lenBS *# elS) s0 of
+              (# s1, marr #) -> case overDimOff_#
+                  (dim @bs)
+                  ( \pos s -> case toBytes $ f (indexOffset# pos lenAS df) of
+                      (# offX, _, arrX #) -> copyByteArray# arrX (offX *# elS) marr (pos *# elS) lenASB s
+                  ) 0# lenAS s1 of
+                s2 -> unsafeFreezeByteArray# marr s2
+          ) of (# _, r #) -> fromBytes (# 0#, lenAS *# lenBS, r #)
     {-# INLINE ewmap #-}
 
     iwmap f df
@@ -205,9 +243,9 @@ instance {-# OVERLAPPABLE #-}
           ( \s0 -> case newByteArray# (lenAS *# lenBS *# elS) s0 of
               (# s1, marr #) -> case overDim_#
                   (dim @bs)
-                  ( \i pos s -> case toBytes $ f i (i !. df) of
-                      (# offX, _, arrX #) -> copyByteArray# arrX (offX *# elS) marr pos lenASB s
-                  ) 0# lenASB s1 of
+                  ( \i pos s -> case toBytes $ f i (indexOffset# pos lenAS df) of
+                      (# offX, _, arrX #) -> copyByteArray# arrX (offX *# elS) marr (pos *# elS) lenASB s
+                  ) 0# lenAS s1 of
                 s2 -> unsafeFreezeByteArray# marr s2
           ) of (# _, r #) -> fromBytes (# 0#, lenAS *# lenBS, r #)
 
@@ -334,6 +372,8 @@ instance {-# OVERLAPPING #-}
          , EW.ElementWise (Idx bs) t (DataFrame t bs)
          , PrimBytes (DataFrame t bs)
          ) => SubSpace t ('[] :: [Nat]) (bs :: [Nat]) (bs :: [Nat]) where
+    indexOffset# i _ x = scalar (EW.indexOffset# x i)
+    {-# INLINE indexOffset# #-}
     i !. x =  scalar $ x EW.! i
     {-# INLINE (!.) #-}
     ewmap = iwmap . const

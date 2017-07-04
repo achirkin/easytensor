@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP                    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
@@ -11,6 +10,7 @@
 {-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UnboxedTuples          #-}
 {-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE InstanceSigs           #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Contraction
@@ -30,13 +30,9 @@ module Numeric.DataFrame.Contraction
   ( Contraction (..), (%*)
   ) where
 
-#ifdef ghcjs_HOST_OS
-import           Data.Int               (Int16, Int32, Int8)
-import           Data.Word              (Word16, Word32, Word8)
-#else
+
 import           Data.Int               (Int16, Int32, Int64, Int8)
 import           Data.Word              (Word16, Word32, Word64, Word8)
-#endif
 import           Data.Type.Equality     ((:~:) (..))
 import           GHC.Base               (runRW#)
 import           GHC.Prim
@@ -49,6 +45,7 @@ import           Numeric.Commons
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
 import           Numeric.TypeLits
+
 
 
 class ConcatList as bs asbs
@@ -191,7 +188,7 @@ instance ( ConcatList as bs asbs
         getM :: forall m p . p (m ': bs) -> Proxy m
         getM _ = Proxy
 
-#ifndef ghcjs_HOST_OS
+
 instance ( ConcatList as bs asbs
          , Dimensions as
          , Dimensions bs
@@ -209,7 +206,6 @@ instance ( ConcatList as bs asbs
       where
         getM :: forall m p . p (m ': bs) -> Proxy m
         getM _ = Proxy
-#endif
 
 
 
@@ -285,7 +281,6 @@ instance ( ConcatList as bs asbs
         getM :: forall m p . p (m ': bs) -> Proxy m
         getM _ = Proxy
 
-#ifndef ghcjs_HOST_OS
 instance ( ConcatList as bs asbs
          , Dimensions as
          , Dimensions bs
@@ -303,8 +298,6 @@ instance ( ConcatList as bs asbs
       where
         getM :: forall m p . p (m ': bs) -> Proxy m
         getM _ = Proxy
-#endif
-
 
 
 
@@ -406,7 +399,6 @@ prodI32 n m k x y= case runRW#
       bs = n *# k *# elementByteSize x
 {-# INLINE prodI32 #-}
 
-#ifndef ghcjs_HOST_OS
 prodI64 :: (IntBytes a, IntBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
 prodI64 n m k x y= case runRW#
      ( \s0 -> case newByteArray# bs s0 of
@@ -422,7 +414,7 @@ prodI64 n m k x y= case runRW#
     where
       bs = n *# k *# elementByteSize x
 {-# INLINE prodI64 #-}
-#endif
+
 
 prodW :: (WordBytes a, WordBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
 prodW n m k x y = case runRW#
@@ -489,7 +481,6 @@ prodW32 n m k x y = case runRW#
       bs = n *# k *# elementByteSize x
 {-# INLINE prodW32 #-}
 
-#ifndef ghcjs_HOST_OS
 prodW64 :: (WordBytes a, WordBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
 prodW64 n m k x y = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
@@ -505,7 +496,6 @@ prodW64 n m k x y = case runRW#
     where
       bs = n *# k *# elementByteSize x
 {-# INLINE prodW64 #-}
-#endif
 
 -- | Do something in a loop for int i from 0 to n-1 and j from 0 to m-1
 loop2# :: Int# -> Int# -> (Int# -> Int#-> State# s -> State# s) -> State# s -> State# s
@@ -517,28 +507,3 @@ loop2# n m f = loop' 0# 0#
 {-# INLINE loop2# #-}
 
 
--- contract' :: forall (t :: Type) (m :: Nat) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
---            . ( ToList asbs ~ SimplifyList ('Concat (ToList as) (ToList bs))
---              , ToList as   ~ SimplifyList ('Prefix (ToList bs) (ToList asbs))
---              , ToList bs   ~ SimplifyList ('Suffix (ToList as) (ToList asbs))
---              , Dimensions asbs
---              , Dimensions (as +: m)
---              , Dimensions (m :+ bs)
---              , KnownDim m
---              , ElementDataType t
---              )
---           => DataFrame t (as +: m) -> DataFrame t (m :+ bs) -> DataFrame t asbs
--- contract' x y = case dim @asbs of
---   D -> case ( unsafeCoerce Refl :: as :~: '[]
---             , unsafeCoerce Refl :: bs :~: '[]
---             ) of
---     (Refl, Refl) -> case edtRefl (Proxy @t) of
---         EDTFloat -> contract x y
---   _ :* (sbs :: Dim (sbs :: [Nat])) -> case edtRefl (Proxy @t) of
---       EDTFloat -> contract x y
-    --    case ( unsafeCoerce Refl :: EvalConsNat (SimplifyList (ToListNat sbs)) :~: sbs
-    --         , unsafeCoerce Refl :: SimplifyList (ToListNat bs) :~: ToListNat bs
-    --         , unsafeCoerce Refl :: ToList (as +: m) :~: SimplifyList (ToList (as +: m))
-    --         ) of
-    -- (Refl, Refl, Refl) -> case edtRefl (Proxy @t) of
-    --     EDTFloat -> contract x y

@@ -88,6 +88,8 @@ instance PrimBytes Word8Clamped where
   {-# INLINE ix #-}
 
 instance ElementWise (Idx ('[] :: [Nat])) Word8Clamped Word8Clamped where
+  indexOffset# x _ = x
+  {-# INLINE indexOffset# #-}
   (!) x _ = x
   {-# INLINE (!) #-}
   ewmap f = f Z
@@ -137,6 +139,8 @@ deriving instance PrimBytes (Scalar Word8Clamped)
 
 -- | Indexing over scalars is trivial...
 instance ElementWise (Idx ('[] :: [Nat])) t (Scalar t) where
+  indexOffset# x _ = _unScalar x
+  {-# INLINE indexOffset# #-}
   (!) x _ = _unScalar x
   {-# INLINE (!) #-}
   ewmap f = Scalar . f Z . _unScalar
