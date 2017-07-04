@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                       #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
@@ -17,7 +18,7 @@
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
--- Mutable DataFrames living in IO.
+---- Mutable DataFrames living in IO.
 --
 -----------------------------------------------------------------------------
 
@@ -33,6 +34,9 @@ module Numeric.DataFrame.IO
 import           GHC.Prim               (RealWorld)
 import           GHC.Types              (Int (..), IO (..))
 
+#ifdef ghcjs_HOST_OS
+import           Numeric.Array.Family (ElemTypeInference, ArraySizeInference, ArrayInstanceInference)
+#endif
 import           Numeric.Commons
 import           Numeric.DataFrame.Type
 import           Numeric.DataFrame.Mutable
@@ -46,17 +50,24 @@ newtype IODataFrame t (ns :: [Nat]) = IODataFrame (MDataFrame RealWorld t (ns ::
 
 -- | Create a new mutable DataFrame.
 newDataFrame :: forall t (ns :: [Nat])
+#ifdef ghcjs_HOST_OS
+               . ( ElemTypeInference t, Dimensions ns)
+#else
                . ( PrimBytes t, Dimensions ns)
+#endif
               => IO (IODataFrame t ns)
 newDataFrame = IODataFrame <$> IO (newDataFrame# @t @ns)
 {-# INLINE newDataFrame #-}
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
 copyDataFrame :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-                . ( PrimBytes (DataFrame t as)
-                  , ConcatList as bs asbs
-                  , Dimensions bs
-                  )
+               . ( ConcatList as bs asbs, Dimensions bs
+#ifdef ghcjs_HOST_OS
+                 , ArraySizeInference as
+#else
+                 , PrimBytes (DataFrame t as)
+#endif
+                 )
                => DataFrame t as -> Idx bs -> IODataFrame t asbs -> IO ()
 copyDataFrame df ei (IODataFrame mdf) = IO (copyDataFrame# df ei mdf)
 {-# INLINE copyDataFrame #-}
@@ -75,7 +86,11 @@ copyMutableDataFrame (IODataFrame mdfA) ei (IODataFrame mdfB)
 
 -- | Make a mutable DataFrame immutable, without copying.
 unsafeFreezeDataFrame :: forall t (ns :: [Nat])
-                        . PrimBytes (DataFrame t ns)
+#ifdef ghcjs_HOST_OS
+                  . (MutableFrame t ns, ArraySizeInference ns)
+#else
+                  . PrimBytes (DataFrame t ns)
+#endif
                        => IODataFrame t ns -> IO (DataFrame t ns)
 unsafeFreezeDataFrame (IODataFrame mdf) = IO (unsafeFreezeDataFrame# mdf)
 {-# INLINE unsafeFreezeDataFrame #-}
@@ -83,14 +98,22 @@ unsafeFreezeDataFrame (IODataFrame mdf) = IO (unsafeFreezeDataFrame# mdf)
 
 -- | Copy content of a mutable DataFrame into a new immutable DataFrame.
 freezeDataFrame :: forall t (ns :: [Nat])
-                  . PrimBytes (DataFrame t ns)
-                 => IODataFrame t ns -> IO (DataFrame t ns)
+#ifdef ghcjs_HOST_OS
+                 . (MutableFrame t ns, ArraySizeInference ns)
+#else
+                 . PrimBytes (DataFrame t ns)
+#endif
+                => IODataFrame t ns -> IO (DataFrame t ns)
 freezeDataFrame (IODataFrame mdf) = IO (freezeDataFrame# mdf)
 {-# INLINE freezeDataFrame #-}
 
 -- | Create a new mutable DataFrame and copy content of immutable one in there.
 thawDataFrame :: forall t (ns :: [Nat])
-                . PrimBytes (DataFrame t ns)
+#ifdef ghcjs_HOST_OS
+               . (MutableFrame t ns, ArrayInstanceInference t ns)
+#else
+               . PrimBytes (DataFrame t ns)
+#endif
                => DataFrame t ns -> IO (IODataFrame t ns)
 thawDataFrame df = IODataFrame <$> IO (thawDataFrame# df)
 {-# INLINE thawDataFrame #-}
