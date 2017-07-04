@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                       #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
@@ -27,6 +28,12 @@ module Numeric.Matrix
   , mat22, mat33, mat44
   , (%*)
   ) where
+
+
+
+#ifdef ghcjs_HOST_OS
+import           Numeric.Array.Family (ElemTypeInference)
+#endif
 
 import           GHC.Types                     (Type)
 
@@ -61,9 +68,14 @@ mat22 :: ( PrimBytes (Vector t 2)
 mat22 = (<::>)
 
 -- | Compose a 3x3D matrix
-mat33 :: ( PrimBytes t
+mat33 :: (
+#ifdef ghcjs_HOST_OS
+           ElemTypeInference t, MutableFrame t '[3,3]
+#else
+           PrimBytes t
          , PrimBytes (Vector t 3)
          , PrimBytes (Matrix t 3 3)
+#endif
          )
       => Vector t 3 -> Vector t 3 -> Vector t 3 -> Matrix t 3 3
 mat33 a b c = runST $ do
@@ -75,9 +87,14 @@ mat33 a b c = runST $ do
 
 -- | Compose a 4x4D matrix
 mat44 :: forall (t :: Type)
-       . ( PrimBytes t
+       . (
+#ifdef ghcjs_HOST_OS
+           ElemTypeInference t, MutableFrame t '[4,4]
+#else
+           PrimBytes t
          , PrimBytes (Vector t (4 :: Nat))
          , PrimBytes (Matrix t (4 :: Nat) (4 :: Nat))
+#endif
          )
       => Vector t (4 :: Nat) -> Vector t (4 :: Nat) -> Vector t (4 :: Nat) -> Vector t (4 :: Nat)
       -> Matrix t (4 :: Nat) (4 :: Nat)

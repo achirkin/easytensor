@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                       #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
@@ -34,6 +35,9 @@ module Numeric.DataFrame.ST
 import           GHC.Types              (Int (..))
 import           GHC.ST                 (ST(..))
 
+#ifdef ghcjs_HOST_OS
+import           Numeric.Array.Family (ElemTypeInference, ArraySizeInference, ArrayInstanceInference)
+#endif
 import           Numeric.Commons
 import           Numeric.DataFrame.Type
 import           Numeric.DataFrame.Mutable
@@ -48,17 +52,24 @@ newtype STDataFrame s t (ns :: [Nat]) = STDataFrame (MDataFrame s t (ns :: [Nat]
 
 -- | Create a new mutable DataFrame.
 newDataFrame :: forall t (ns :: [Nat]) s
+#ifdef ghcjs_HOST_OS
+               . ( ElemTypeInference t, Dimensions ns)
+#else
                . ( PrimBytes t, Dimensions ns)
+#endif
               => ST s (STDataFrame s t ns)
 newDataFrame = STDataFrame <$> ST (newDataFrame# @t @ns)
 {-# INLINE newDataFrame #-}
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
 copyDataFrame :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
-                . ( PrimBytes (DataFrame t as)
-                  , ConcatList as bs asbs
-                  , Dimensions bs
-                  )
+               . ( ConcatList as bs asbs, Dimensions bs
+#ifdef ghcjs_HOST_OS
+                 , ArraySizeInference as
+#else
+                 , PrimBytes (DataFrame t as)
+#endif
+                 )
                => DataFrame t as -> Idx bs -> STDataFrame s t asbs -> ST s ()
 copyDataFrame df ei (STDataFrame mdf) = ST (copyDataFrame# df ei mdf)
 {-# INLINE copyDataFrame #-}
@@ -77,7 +88,11 @@ copyMutableDataFrame (STDataFrame mdfA) ei (STDataFrame mdfB)
 
 -- | Make a mutable DataFrame immutable, without copying.
 unsafeFreezeDataFrame :: forall t (ns :: [Nat]) s
-                        . PrimBytes (DataFrame t ns)
+#ifdef ghcjs_HOST_OS
+                  . (MutableFrame t ns, ArraySizeInference ns)
+#else
+                  . PrimBytes (DataFrame t ns)
+#endif
                        => STDataFrame s t ns -> ST s (DataFrame t ns)
 unsafeFreezeDataFrame (STDataFrame mdf) = ST (unsafeFreezeDataFrame# mdf)
 {-# INLINE unsafeFreezeDataFrame #-}
@@ -85,14 +100,22 @@ unsafeFreezeDataFrame (STDataFrame mdf) = ST (unsafeFreezeDataFrame# mdf)
 
 -- | Copy content of a mutable DataFrame into a new immutable DataFrame.
 freezeDataFrame :: forall t (ns :: [Nat]) s
+#ifdef ghcjs_HOST_OS
+                  . (MutableFrame t ns, ArraySizeInference ns)
+#else
                   . PrimBytes (DataFrame t ns)
+#endif
                  => STDataFrame s t ns -> ST s (DataFrame t ns)
 freezeDataFrame (STDataFrame mdf) = ST (freezeDataFrame# mdf)
 {-# INLINE freezeDataFrame #-}
 
 -- | Create a new mutable DataFrame and copy content of immutable one in there.
 thawDataFrame :: forall t (ns :: [Nat]) s
-                . PrimBytes (DataFrame t ns)
+#ifdef ghcjs_HOST_OS
+               . (MutableFrame t ns, ArrayInstanceInference t ns)
+#else
+               . PrimBytes (DataFrame t ns)
+#endif
                => DataFrame t ns -> ST s (STDataFrame s t ns)
 thawDataFrame df = STDataFrame <$> ST (thawDataFrame# df)
 {-# INLINE thawDataFrame #-}
