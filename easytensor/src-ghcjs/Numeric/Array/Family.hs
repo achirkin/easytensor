@@ -14,6 +14,8 @@
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE JavaScriptFFI              #-}
+{-# LANGUAGE UnliftedFFITypes           #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.Family
@@ -38,7 +40,7 @@ import           Data.Int                  (Int16, Int32, Int8)
 import           Data.Type.Equality        ((:~:) (..))
 import           Data.Word                 (Word16, Word32, Word8)
 import           GHC.Prim                  (Double#, Float#, Int#,
-                                            Word#, unsafeCoerce#)
+                                            Word#, unsafeCoerce#, ByteArray#)
 import           GHC.Types                 (Int (..))
 import           GHCJS.Types
 
@@ -74,9 +76,9 @@ instance Bounded Word8Clamped where
 type instance ElemRep Word8Clamped = ElemRep Int
 type instance ElemPrim Word8Clamped = Int#
 instance PrimBytes Word8Clamped where
-  toBytes (Clamped i) = toBytes (fromIntegral (min 0 (max 255 i)) :: Word8)
+  toBytes v = (# 0#, 1#, js_wrapWord8Clamped v #)
   {-# INLINE toBytes #-}
-  fromBytes bs = fromIntegral (fromBytes bs :: Word8)
+  fromBytes (# off, _, arr #) = js_unwrapWord8Clamped arr off
   {-# INLINE fromBytes #-}
   byteSize _ = 1#
   {-# INLINE byteSize #-}
@@ -86,6 +88,8 @@ instance PrimBytes Word8Clamped where
   {-# INLINE elementByteSize #-}
   ix _ (Clamped (I# x)) = x
   {-# INLINE ix #-}
+foreign import javascript unsafe "h$wrapBuffer((new Uint8ClampedArray([$1])).buffer)" js_wrapWord8Clamped :: Word8Clamped -> ByteArray#
+foreign import javascript unsafe "($1.uc || new Uint8ClampedArray($1.buf))[$2]" js_unwrapWord8Clamped :: ByteArray# -> Int# -> Word8Clamped
 
 instance ElementWise (Idx ('[] :: [Nat])) Word8Clamped Word8Clamped where
   indexOffset# x _ = x

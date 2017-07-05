@@ -29,13 +29,26 @@ module Numeric.DataFrame.IO
     , freezeDataFrame, thawDataFrame
     , writeDataFrame, readDataFrame
     , writeDataFrameOff, readDataFrameOff
+#ifdef ghcjs_HOST_OS
+      -- * JavaScript-specific functions
+    , MutableArrayBuffer
+    , newArrayBuffer, arrayBuffer, viewFloatArray, viewDoubleArray
+    , viewIntArray, viewInt32Array, viewInt16Array, viewInt8Array
+    , viewWordArray, viewWord32Array, viewWord16Array, viewWord8Array, viewWord8ClampedArray
+#endif
     ) where
 
 import           GHC.Prim               (RealWorld)
 import           GHC.Types              (Int (..), IO (..))
 
+
 #ifdef ghcjs_HOST_OS
-import           Numeric.Array.Family (ElemTypeInference, ArraySizeInference, ArrayInstanceInference)
+import           Numeric.Array.Family (ElemTypeInference, ArraySizeInference, ArrayInstanceInference,Word8Clamped)
+import           JavaScript.TypedArray.ArrayBuffer
+import           GHC.Prim
+import           Data.Int
+import           Data.Word
+import           GHCJS.Types
 #endif
 import           Numeric.Commons
 import           Numeric.DataFrame.Type
@@ -149,3 +162,47 @@ readDataFrameOff :: forall t (ns :: [Nat])
                => IODataFrame t ns -> Int -> IO (Scalar t)
 readDataFrameOff (IODataFrame mdf) (I# i) = scalar <$> IO (readDataFrameOff# mdf i)
 {-# INLINE readDataFrameOff #-}
+
+
+#ifdef ghcjs_HOST_OS
+newArrayBuffer :: Int -> IO MutableArrayBuffer
+newArrayBuffer n = unsafeCoerce# <$> IO (newArrayBuffer# n)
+
+viewFloatArray :: MutableArrayBuffer -> IO (IODataFrame Float ds)
+viewFloatArray = fmap IODataFrame . IO . viewFloatArray# . jsval
+
+viewDoubleArray :: MutableArrayBuffer -> IO (IODataFrame Double ds)
+viewDoubleArray = fmap IODataFrame . IO . viewDoubleArray# . jsval
+
+viewIntArray :: MutableArrayBuffer -> IO (IODataFrame Int ds)
+viewIntArray = fmap IODataFrame . IO . viewIntArray# . jsval
+
+viewInt32Array :: MutableArrayBuffer -> IO (IODataFrame Int32 ds)
+viewInt32Array = fmap IODataFrame . IO . viewInt32Array# . jsval
+
+viewInt16Array :: MutableArrayBuffer -> IO (IODataFrame Int16 ds)
+viewInt16Array = fmap IODataFrame . IO . viewInt16Array# . jsval
+
+viewInt8Array :: MutableArrayBuffer -> IO (IODataFrame Int8 ds)
+viewInt8Array = fmap IODataFrame . IO . viewInt8Array# . jsval
+
+viewWordArray :: MutableArrayBuffer -> IO (IODataFrame Word ds)
+viewWordArray = fmap IODataFrame . IO . viewWordArray# . jsval
+
+viewWord32Array :: MutableArrayBuffer -> IO (IODataFrame Word32 ds)
+viewWord32Array = fmap IODataFrame . IO . viewWord32Array# . jsval
+
+viewWord16Array :: MutableArrayBuffer -> IO (IODataFrame Word16 ds)
+viewWord16Array = fmap IODataFrame . IO . viewWord16Array# . jsval
+
+viewWord8Array :: MutableArrayBuffer -> IO (IODataFrame Word8 ds)
+viewWord8Array = fmap IODataFrame . IO . viewWord8Array# . jsval
+
+viewWord8ClampedArray :: MutableArrayBuffer -> IO (IODataFrame Word8Clamped ds)
+viewWord8ClampedArray = fmap IODataFrame . IO . viewWord8ClampedArray# . jsval
+
+arrayBuffer :: IODataFrame t ds ->  IO MutableArrayBuffer
+arrayBuffer (IODataFrame x) = unsafeCoerce# <$> IO (arrayBuffer# x)
+
+#endif
+
