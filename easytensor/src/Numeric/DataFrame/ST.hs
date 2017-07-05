@@ -10,6 +10,10 @@
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE UnboxedTuples             #-}
+#ifdef ghcjs_HOST_OS
+{-# LANGUAGE JavaScriptFFI             #-}
+{-# LANGUAGE UnliftedFFITypes          #-}
+#endif
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.ST
@@ -29,6 +33,13 @@ module Numeric.DataFrame.ST
     , freezeDataFrame, thawDataFrame
     , writeDataFrame, readDataFrame
     , writeDataFrameOff, readDataFrameOff
+#ifdef ghcjs_HOST_OS
+      -- * JavaScript-specific functions
+    , STArrayBuffer
+    , newArrayBuffer, arrayBuffer, viewFloatArray, viewDoubleArray
+    , viewIntArray, viewInt32Array, viewInt16Array, viewInt8Array
+    , viewWordArray, viewWord32Array, viewWord16Array, viewWord8Array, viewWord8ClampedArray
+#endif
     ) where
 
 
@@ -36,7 +47,12 @@ import           GHC.Types              (Int (..))
 import           GHC.ST                 (ST(..))
 
 #ifdef ghcjs_HOST_OS
-import           Numeric.Array.Family (ElemTypeInference, ArraySizeInference, ArrayInstanceInference)
+import           Numeric.Array.Family (ElemTypeInference, ArraySizeInference, ArrayInstanceInference,Word8Clamped)
+import           JavaScript.TypedArray.ArrayBuffer.ST
+import           GHC.Prim
+import           Data.Int
+import           Data.Word
+import           GHCJS.Types
 #endif
 import           Numeric.Commons
 import           Numeric.DataFrame.Type
@@ -151,3 +167,46 @@ readDataFrameOff :: forall t (ns :: [Nat]) s
                => STDataFrame s t ns -> Int -> ST s (Scalar t)
 readDataFrameOff (STDataFrame mdf) (I# i) = scalar <$> ST (readDataFrameOff# mdf i)
 {-# INLINE readDataFrameOff #-}
+
+
+#ifdef ghcjs_HOST_OS
+newArrayBuffer :: Int -> ST s (STArrayBuffer s)
+newArrayBuffer n = unsafeCoerce# <$> ST (newArrayBuffer# n)
+
+viewFloatArray :: STArrayBuffer s -> ST s (STDataFrame s Float ds)
+viewFloatArray = fmap STDataFrame . ST . viewFloatArray# . jsval
+
+viewDoubleArray :: STArrayBuffer s -> ST s (STDataFrame s Double ds)
+viewDoubleArray = fmap STDataFrame . ST . viewDoubleArray# . jsval
+
+viewIntArray :: STArrayBuffer s -> ST s (STDataFrame s Int ds)
+viewIntArray = fmap STDataFrame . ST . viewIntArray# . jsval
+
+viewInt32Array :: STArrayBuffer s -> ST s (STDataFrame s Int32 ds)
+viewInt32Array = fmap STDataFrame . ST . viewInt32Array# . jsval
+
+viewInt16Array :: STArrayBuffer s -> ST s (STDataFrame s Int16 ds)
+viewInt16Array = fmap STDataFrame . ST . viewInt16Array# . jsval
+
+viewInt8Array :: STArrayBuffer s -> ST s (STDataFrame s Int8 ds)
+viewInt8Array = fmap STDataFrame . ST . viewInt8Array# . jsval
+
+viewWordArray :: STArrayBuffer s -> ST s (STDataFrame s Word ds)
+viewWordArray = fmap STDataFrame . ST . viewWordArray# . jsval
+
+viewWord32Array :: STArrayBuffer s -> ST s (STDataFrame s Word32 ds)
+viewWord32Array = fmap STDataFrame . ST . viewWord32Array# . jsval
+
+viewWord16Array :: STArrayBuffer s -> ST s (STDataFrame s Word16 ds)
+viewWord16Array = fmap STDataFrame . ST . viewWord16Array# . jsval
+
+viewWord8Array :: STArrayBuffer s -> ST s (STDataFrame s Word8 ds)
+viewWord8Array = fmap STDataFrame . ST . viewWord8Array# . jsval
+
+viewWord8ClampedArray :: STArrayBuffer s -> ST s (STDataFrame s Word8Clamped ds)
+viewWord8ClampedArray = fmap STDataFrame . ST . viewWord8ClampedArray# . jsval
+
+arrayBuffer :: STDataFrame s t ds ->  ST s (STArrayBuffer s)
+arrayBuffer (STDataFrame x) = unsafeCoerce# <$> ST (arrayBuffer# x)
+
+#endif

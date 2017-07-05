@@ -12,6 +12,10 @@
 {-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
+#ifdef ghcjs_HOST_OS
+{-# LANGUAGE JavaScriptFFI              #-}
+{-# LANGUAGE UnliftedFFITypes           #-}
+#endif
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Commons
@@ -31,7 +35,9 @@ module Numeric.Commons
 #include "MachDeps.h"
 #include "HsBaseConfig.h"
 
+#ifndef ghcjs_HOST_OS
 import           GHC.Base  (runRW#)
+#endif
 import           GHC.Int   (Int16 (..), Int32 (..), Int64 (..), Int8 (..))
 import           GHC.Prim
 import           GHC.Types (Double (..), Float (..), Int (..), RuntimeRep (..),
@@ -111,6 +117,12 @@ class PrimBytes (a :: Type) where
   ix  :: Int# -> a -> (ElemPrim a :: TYPE (ElemRep a))
 
 instance PrimBytes Float where
+#ifdef ghcjs_HOST_OS
+  toBytes v = (# 0#, 1#, js_wrapFloat v #)
+  {-# INLINE toBytes #-}
+  fromBytes (# off, _, arr #) = js_unwrapFloat arr off
+  {-# INLINE fromBytes #-}
+#else
   toBytes v@(F# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeFloatArray# marr 0# x s1 of
@@ -119,6 +131,7 @@ instance PrimBytes Float where
   {-# INLINE toBytes #-}
   fromBytes (# off, _, arr #) = F# (indexFloatArray# arr off)
   {-# INLINE fromBytes #-}
+#endif
   byteSize _ = SIZEOF_HSFLOAT#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_HSFLOAT#
@@ -129,6 +142,12 @@ instance PrimBytes Float where
   {-# INLINE ix #-}
 
 instance PrimBytes Double where
+#ifdef ghcjs_HOST_OS
+  toBytes v = (# 0#, 1#, js_wrapDouble v #)
+  {-# INLINE toBytes #-}
+  fromBytes (# off, _, arr #) = js_unwrapDouble arr off
+  {-# INLINE fromBytes #-}
+#else
   toBytes v@(D# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeDoubleArray# marr 0# x s1 of
@@ -137,6 +156,7 @@ instance PrimBytes Double where
   {-# INLINE toBytes #-}
   fromBytes (# off, _, arr #) = D# (indexDoubleArray# arr off)
   {-# INLINE fromBytes #-}
+#endif
   byteSize _ = SIZEOF_HSDOUBLE#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_HSDOUBLE#
@@ -147,6 +167,12 @@ instance PrimBytes Double where
   {-# INLINE ix #-}
 
 instance PrimBytes Int where
+#ifdef ghcjs_HOST_OS
+  toBytes v = (# 0#, 1#, js_wrapInt v #)
+  {-# INLINE toBytes #-}
+  fromBytes (# off, _, arr #) = js_unwrapInt arr off
+  {-# INLINE fromBytes #-}
+#else
   toBytes v@(I# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeIntArray# marr 0# x s1 of
@@ -155,6 +181,7 @@ instance PrimBytes Int where
   {-# INLINE toBytes #-}
   fromBytes (# off, _, arr #) = I# (indexIntArray# arr off)
   {-# INLINE fromBytes #-}
+#endif
   byteSize _ = SIZEOF_HSINT#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_HSINT#
@@ -165,6 +192,12 @@ instance PrimBytes Int where
   {-# INLINE ix #-}
 
 instance PrimBytes Int8 where
+#ifdef ghcjs_HOST_OS
+  toBytes v = (# 0#, 1#, js_wrapInt8 v #)
+  {-# INLINE toBytes #-}
+  fromBytes (# off, _, arr #) = js_unwrapInt8 arr off
+  {-# INLINE fromBytes #-}
+#else
   toBytes v@(I8# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeInt8Array# marr 0# x s1 of
@@ -173,6 +206,7 @@ instance PrimBytes Int8 where
   {-# INLINE toBytes #-}
   fromBytes (# off, _, arr #) = I8# (indexInt8Array# arr off)
   {-# INLINE fromBytes #-}
+#endif
   byteSize _ = SIZEOF_INT8#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_INT8#
@@ -183,6 +217,12 @@ instance PrimBytes Int8 where
   {-# INLINE ix #-}
 
 instance PrimBytes Int16 where
+#ifdef ghcjs_HOST_OS
+  toBytes v = (# 0#, 1#, js_wrapInt16 v #)
+  {-# INLINE toBytes #-}
+  fromBytes (# off, _, arr #) = js_unwrapInt16 arr off
+  {-# INLINE fromBytes #-}
+#else
   toBytes v@(I16# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeInt16Array# marr 0# x s1 of
@@ -191,6 +231,7 @@ instance PrimBytes Int16 where
   {-# INLINE toBytes #-}
   fromBytes (# off, _, arr #) = I16# (indexInt16Array# arr off)
   {-# INLINE fromBytes #-}
+#endif
   byteSize _ = SIZEOF_INT16#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_INT16#
@@ -201,6 +242,12 @@ instance PrimBytes Int16 where
   {-# INLINE ix #-}
 
 instance PrimBytes Int32 where
+#ifdef ghcjs_HOST_OS
+  toBytes v = (# 0#, 1#, js_wrapInt32 v #)
+  {-# INLINE toBytes #-}
+  fromBytes (# off, _, arr #) = js_unwrapInt32 arr off
+  {-# INLINE fromBytes #-}
+#else
   toBytes v@(I32# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeInt32Array# marr 0# x s1 of
@@ -209,6 +256,7 @@ instance PrimBytes Int32 where
   {-# INLINE toBytes #-}
   fromBytes (# off, _, arr #) = I32# (indexInt32Array# arr off)
   {-# INLINE fromBytes #-}
+#endif
   byteSize _ = SIZEOF_INT32#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_INT32#
@@ -239,6 +287,12 @@ instance PrimBytes Int64 where
 #endif
 
 instance PrimBytes Word where
+#ifdef ghcjs_HOST_OS
+  toBytes v = (# 0#, 1#, js_wrapWord v #)
+  {-# INLINE toBytes #-}
+  fromBytes (# off, _, arr #) = js_unwrapWord arr off
+  {-# INLINE fromBytes #-}
+#else
   toBytes v@(W# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWordArray# marr 0# x s1 of
@@ -247,6 +301,7 @@ instance PrimBytes Word where
   {-# INLINE toBytes #-}
   fromBytes (# off, _, arr #) = W# (indexWordArray# arr off)
   {-# INLINE fromBytes #-}
+#endif
   byteSize _ = SIZEOF_HSWORD#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_HSWORD#
@@ -257,6 +312,12 @@ instance PrimBytes Word where
   {-# INLINE ix #-}
 
 instance PrimBytes Word8 where
+#ifdef ghcjs_HOST_OS
+  toBytes v = (# 0#, 1#, js_wrapWord8 v #)
+  {-# INLINE toBytes #-}
+  fromBytes (# off, _, arr #) = js_unwrapWord8 arr off
+  {-# INLINE fromBytes #-}
+#else
   toBytes v@(W8# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWord8Array# marr 0# x s1 of
@@ -265,6 +326,7 @@ instance PrimBytes Word8 where
   {-# INLINE toBytes #-}
   fromBytes (# off, _, arr #) = W8# (indexWord8Array# arr off)
   {-# INLINE fromBytes #-}
+#endif
   byteSize _ = SIZEOF_WORD8#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_WORD8#
@@ -275,6 +337,12 @@ instance PrimBytes Word8 where
   {-# INLINE ix #-}
 
 instance PrimBytes Word16 where
+#ifdef ghcjs_HOST_OS
+  toBytes v = (# 0#, 1#, js_wrapWord16 v #)
+  {-# INLINE toBytes #-}
+  fromBytes (# off, _, arr #) = js_unwrapWord16 arr off
+  {-# INLINE fromBytes #-}
+#else
   toBytes v@(W16# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWord16Array# marr 0# x s1 of
@@ -283,6 +351,7 @@ instance PrimBytes Word16 where
   {-# INLINE toBytes #-}
   fromBytes (# off, _, arr #) = W16# (indexWord16Array# arr off)
   {-# INLINE fromBytes #-}
+#endif
   byteSize _ = SIZEOF_WORD16#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_WORD16#
@@ -293,6 +362,12 @@ instance PrimBytes Word16 where
   {-# INLINE ix #-}
 
 instance PrimBytes Word32 where
+#ifdef ghcjs_HOST_OS
+  toBytes v = (# 0#, 1#, js_wrapWord32 v #)
+  {-# INLINE toBytes #-}
+  fromBytes (# off, _, arr #) = js_unwrapWord32 arr off
+  {-# INLINE fromBytes #-}
+#else
   toBytes v@(W32# x) = case runRW#
      ( \s0 -> case newByteArray# (byteSize v) s0 of
          (# s1, marr #) -> case writeWord32Array# marr 0# x s1 of
@@ -301,6 +376,7 @@ instance PrimBytes Word32 where
   {-# INLINE toBytes #-}
   fromBytes (# off, _, arr #) = W32# (indexWord32Array# arr off)
   {-# INLINE fromBytes #-}
+#endif
   byteSize _ = SIZEOF_WORD32#
   {-# INLINE byteSize #-}
   byteAlign _ = ALIGNMENT_WORD32#
@@ -331,3 +407,28 @@ instance PrimBytes Word64 where
   {-# INLINE ix #-}
 #endif
 
+#ifdef ghcjs_HOST_OS
+foreign import javascript unsafe "h$wrapBuffer((new Float32Array([$1])).buffer)"      js_wrapFloat        :: Float -> ByteArray#
+foreign import javascript unsafe "h$wrapBuffer((new Float64Array([$1])).buffer)"      js_wrapDouble       :: Double -> ByteArray#
+foreign import javascript unsafe "h$wrapBuffer((new Int32Array([$1])).buffer)"        js_wrapInt          :: Int -> ByteArray#
+foreign import javascript unsafe "h$wrapBuffer((new Int32Array([$1])).buffer)"        js_wrapInt32        :: Int32 -> ByteArray#
+foreign import javascript unsafe "h$wrapBuffer((new Int16Array([$1])).buffer)"        js_wrapInt16        :: Int16 -> ByteArray#
+foreign import javascript unsafe "h$wrapBuffer((new Int8Array([$1])).buffer)"         js_wrapInt8         :: Int8 -> ByteArray#
+foreign import javascript unsafe "h$wrapBuffer((new Uint32Array([$1])).buffer)"       js_wrapWord         :: Word -> ByteArray#
+foreign import javascript unsafe "h$wrapBuffer((new Uint32Array([$1])).buffer)"       js_wrapWord32       :: Word32 -> ByteArray#
+foreign import javascript unsafe "h$wrapBuffer((new Uint16Array([$1])).buffer)"       js_wrapWord16       :: Word16 -> ByteArray#
+foreign import javascript unsafe "h$wrapBuffer((new Uint8Array([$1])).buffer)"        js_wrapWord8        :: Word8 -> ByteArray#
+
+
+
+foreign import javascript unsafe "($1.f3 || new Float32Array($1.buf))[$2]"      js_unwrapFloat        :: ByteArray# -> Int# -> Float
+foreign import javascript unsafe "($1.f6 || new Float64Array($1.buf))[$2]"      js_unwrapDouble       :: ByteArray# -> Int# -> Double
+foreign import javascript unsafe "($1.i3 || new Int32Array($1.buf))[$2]"        js_unwrapInt          :: ByteArray# -> Int# -> Int
+foreign import javascript unsafe "($1.i3 || new Int32Array($1.buf))[$2]"        js_unwrapInt32        :: ByteArray# -> Int# -> Int32
+foreign import javascript unsafe "($1.i1 || new Int16Array($1.buf))[$2]"        js_unwrapInt16        :: ByteArray# -> Int# -> Int16
+foreign import javascript unsafe "($1.i8 || new Int8Array($1.buf))[$2]"         js_unwrapInt8         :: ByteArray# -> Int# -> Int8
+foreign import javascript unsafe "($1.u3 || new Uint32Array($1.buf))[$2]"       js_unwrapWord         :: ByteArray# -> Int# -> Word
+foreign import javascript unsafe "($1.u3 || new Uint32Array($1.buf))[$2]"       js_unwrapWord32       :: ByteArray# -> Int# -> Word32
+foreign import javascript unsafe "($1.u1 || new Uint16Array($1.buf))[$2]"       js_unwrapWord16       :: ByteArray# -> Int# -> Word16
+foreign import javascript unsafe "($1.u8 || new Uint8Array($1.buf))[$2]"        js_unwrapWord8        :: ByteArray# -> Int# -> Word8
+#endif

@@ -29,7 +29,11 @@ module Numeric.DataFrame.Mutable
     , newDataFrame#, copyDataFrame#, copyMDataFrame#, unsafeFreezeDataFrame#
     , freezeDataFrame#, thawDataFrame#
     , writeDataFrame#, readDataFrame#
+    , newArrayBuffer#, arrayBuffer#, viewFloatArray#, viewDoubleArray#
+    , viewIntArray#, viewInt32Array#, viewInt16Array#, viewInt8Array#
+    , viewWordArray#, viewWord32Array#, viewWord16Array#, viewWord8Array#, viewWord8ClampedArray#
     ) where
+
 
 
 import           GHCJS.Types            (IsJSVal(), JSVal)
@@ -272,3 +276,18 @@ foreign import javascript unsafe "new Uint8ClampedArray($1)" js_copyMDataFrame :
 foreign import javascript unsafe "$1.slice()" js_freeze :: MDataFrame s t as -> State# s -> (# State# s, ArrayT t ds #)
 foreign import javascript unsafe "$1.slice()" js_thaw   :: ArrayT t as       -> State# s -> (# State# s, MDataFrame s t ds #)
 
+
+
+foreign import javascript unsafe "new ArrayBuffer($1)"       newArrayBuffer#        :: Int -> State# s -> (# State# s, JSVal #)
+foreign import javascript unsafe "new Float32Array($1)"      viewFloatArray#        :: JSVal -> State# s -> (# State# s, MDataFrame s Float ds #)
+foreign import javascript unsafe "new Float64Array($1)"      viewDoubleArray#       :: JSVal -> State# s -> (# State# s, MDataFrame s Double ds #)
+foreign import javascript unsafe "new Int32Array($1)"        viewIntArray#          :: JSVal -> State# s -> (# State# s, MDataFrame s Int ds #)
+foreign import javascript unsafe "new Int32Array($1)"        viewInt32Array#        :: JSVal -> State# s -> (# State# s, MDataFrame s Int32 ds #)
+foreign import javascript unsafe "new Int16Array($1)"        viewInt16Array#        :: JSVal -> State# s -> (# State# s, MDataFrame s Int16 ds #)
+foreign import javascript unsafe "new Int8Array($1)"         viewInt8Array#         :: JSVal -> State# s -> (# State# s, MDataFrame s Int8 ds #)
+foreign import javascript unsafe "new Uint32Array($1)"       viewWordArray#         :: JSVal -> State# s -> (# State# s, MDataFrame s Word ds #)
+foreign import javascript unsafe "new Uint32Array($1)"       viewWord32Array#       :: JSVal -> State# s -> (# State# s, MDataFrame s Word32 ds #)
+foreign import javascript unsafe "new Uint16Array($1)"       viewWord16Array#       :: JSVal -> State# s -> (# State# s, MDataFrame s Word16 ds #)
+foreign import javascript unsafe "new Uint8Array($1)"        viewWord8Array#        :: JSVal -> State# s -> (# State# s, MDataFrame s Word8 ds #)
+foreign import javascript unsafe "new Uint8ClampedArray($1)" viewWord8ClampedArray# :: JSVal -> State# s -> (# State# s, MDataFrame s Word8Clamped ds #)
+foreign import javascript unsafe "$1.buffer"                 arrayBuffer#           :: MDataFrame s t ds -> State# s -> (# State# s, JSVal #)

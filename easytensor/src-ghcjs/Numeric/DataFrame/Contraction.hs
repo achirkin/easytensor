@@ -11,6 +11,9 @@
 {-# LANGUAGE UnboxedTuples          #-}
 {-# LANGUAGE UndecidableInstances   #-}
 {-# LANGUAGE InstanceSigs           #-}
+{-# LANGUAGE UnliftedFFITypes       #-}
+{-# LANGUAGE JavaScriptFFI          #-}
+{-# LANGUAGE GHCForeignImportPrim   #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Contraction
@@ -62,17 +65,30 @@ class ConcatList as bs asbs
 {-# INLINE (%*) #-}
 infixl 7 %*
 
-instance ( ConcatList as bs asbs
+instance {-# OVERLAPPABLE #-}
+         ( ConcatList as bs asbs
          , Dimensions as
          , Dimensions bs
+         , asbs ~ (a' ': sbs')
          ) => Contraction t as bs asbs where
     contract :: forall m . KnownDim m => DataFrame t (as +: m) -> DataFrame t (m :+ bs) -> DataFrame t asbs
     contract dx dy
         | Refl <- unsafeCoerce Refl :: Array t asbs :~: ArrayT t asbs
         , Refl <- unsafeCoerce Refl :: Array t (as +: m) :~: ArrayT t (as +: m)
         , Evidence <- inferConcatDimensions @as @bs
-        = KnownDataFrame $ js_conctract @t @as @m @bs (dimVal (dim @as)) (dimVal' @m) (dimVal (dim @bs)) (coerce dx) (coerce dy)
+        = KnownDataFrame $ js_contract @t @as @m @bs (dimVal (dim @as)) (dimVal' @m) (dimVal (dim @bs)) (coerce dx) (coerce dy)
 
 
 foreign import javascript unsafe "h$easytensor_contract($1,$2,$3,$4,$5)"
-    js_conctract  :: forall t as m bs . Int -> Int -> Int -> ArrayT t (as +: m) -> ArrayT t (m :+ bs) -> ArrayT t (as ++ bs)
+    js_contract  :: forall t as m bs . Int -> Int -> Int -> ArrayT t (as +: m) -> ArrayT t (m :+ bs) -> ArrayT t (as ++ bs)
+
+instance {-# OVERLAPPING #-}
+         Contraction t '[] '[] '[] where
+    contract :: forall m . KnownDim m => DataFrame t '[m] -> DataFrame t '[m] -> DataFrame t ('[] :: [Nat])
+    contract dx dy
+        = KnownDataFrame $ unsafeCoerce (js_contract0 (coerce dx) (coerce dy))
+
+foreign import javascript unsafe "$1.reduce(function (r, e, i) { return e*$2[i] + r;}, 0)"
+    js_contract0  :: ArrayT t '[m] -> ArrayT t '[m] -> Any
+
+

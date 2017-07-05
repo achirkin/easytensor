@@ -442,3 +442,4 @@ function h$easytensor_contract(n,m,k,lhs,rhs) {
     }
     return rez;
 }
+
