@@ -73,8 +73,7 @@ instance {-# OVERLAPPABLE #-}
          ) => Contraction t as bs asbs where
     contract :: forall m . KnownDim m => DataFrame t (as +: m) -> DataFrame t (m :+ bs) -> DataFrame t asbs
     contract dx dy
-        | Refl <- unsafeCoerce Refl :: Array t asbs :~: ArrayT t asbs
-        , Refl <- unsafeCoerce Refl :: Array t (as +: m) :~: ArrayT t (as +: m)
+        | Refl <- unsafeCoerce Refl :: Array t (as +: m) :~: ArrayT t (as +: m)
         , Evidence <- inferConcatDimensions @as @bs
         = KnownDataFrame $ js_contract @t @as @m @bs (dimVal (dim @as)) (dimVal' @m) (dimVal (dim @bs)) (coerce dx) (coerce dy)
 
