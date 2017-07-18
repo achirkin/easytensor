@@ -6,8 +6,8 @@ setup-info:
   ghcjs:
     source:
       ghcjs-0.2.1.9008021_ghc-8.0.2:
-           url: https://github.com/achirkin/prepare-ghcjs/releases/download/lts-8.21-20170630/ghcjs-0.2.1.9008021_ghc-8.0.2.tar.gz
-           sha1: 13d9bad7ba36c5ea5014afc2b815757ffef77a26
+        url: https://github.com/achirkin/prepare-ghcjs/releases/download/lts-8.21-20170716/ghcjs-0.2.1.9008021_ghc-8.0.2.tar.gz
+        sha1: c38434ee74c840525e14b494a1ecf565322c7153
 
 packages:
   - '.'
