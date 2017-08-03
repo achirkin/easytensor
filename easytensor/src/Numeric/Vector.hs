@@ -22,6 +22,7 @@ module Numeric.Vector
     , normL1, normL2, normLPInf, normLNInf, normLP
     , vec2, vec3, vec4
     , det2, cross, (×)
+    , unpackV2, unpackV3, unpackV4
     ) where
 
 import           Numeric.Array.ElementWise
@@ -169,3 +170,22 @@ vec4 a b c d = ewgen f
     f (2 :! Z) = b
     f (3 :! Z) = c
     f _        = d
+
+
+unpackV2 :: ElementWise (Idx '[2]) t (Vector t 2)
+         => Vector t 2 -> (t, t)
+unpackV2 v = (v ! 1, v ! 2)
+{-# INLINE unpackV2 #-}
+
+
+unpackV3 :: ElementWise (Idx '[3]) t (Vector t 3)
+         => Vector t 3 -> (t, t, t)
+unpackV3 v = (v ! 1, v ! 2, v ! 3)
+{-# INLINE unpackV3 #-}
+
+
+unpackV4 :: ElementWise (Idx '[4]) t (Vector t 4)
+         => Vector t 4 -> (t, t, t, t)
+unpackV4 v = (v ! 1, v ! 2, v ! 3, v ! 4)
+{-# INLINE unpackV4 #-}
+
