@@ -42,6 +42,7 @@ library
         Numeric.Matrix
         Numeric.Vector
         Numeric.Scalar
+        Numeric.Quaternion
     build-depends:
         base >=4.9 && <5,
         ghc-prim >=0.5,
@@ -66,6 +67,8 @@ library
         Numeric.DataFrame.Inference
         Numeric.DataFrame.Shape
         Numeric.Matrix.Type
+        Numeric.Quaternion.Class
+        Numeric.Quaternion.QDouble
     if impl(ghcjs)
       other-modules:
         Numeric.Array.Family.ArrayT
@@ -88,6 +91,7 @@ library
         Numeric.Array.Family.FloatX4
     js-sources:
         src-ghcjs/Numeric/Array/Family/ArrayT.js
+        src-ghcjs/Numeric/Quaternion/Quaternion.js
     ghc-options: -Wall -fwarn-tabs -O2
 
 test-suite et-test
