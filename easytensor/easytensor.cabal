@@ -69,6 +69,7 @@ library
         Numeric.Matrix.Type
         Numeric.Quaternion.Class
         Numeric.Quaternion.QDouble
+        Numeric.Quaternion.QFloat
     if impl(ghcjs)
       other-modules:
         Numeric.Array.Family.ArrayT
@@ -92,16 +93,17 @@ library
     js-sources:
         src-ghcjs/Numeric/Array/Family/ArrayT.js
         src-ghcjs/Numeric/Quaternion/Quaternion.js
-    ghc-options: -Wall -fwarn-tabs -O2
+    ghc-options: -Wall -fwarn-tabs -fwarn-unused-do-bind -fwarn-monomorphism-restriction -O2
 
 test-suite et-test
 
-    type: detailed-0.9
-    test-module: Spec
+    type: exitcode-stdio-1.0
+    main-is: Spec.hs
     other-modules:
         Numeric.DataFrame.Arbitraries
         Numeric.DataFrame.SubSpaceTest
         Numeric.DataFrame.BasicTest
+        Numeric.QuaternionTest
     build-depends:
         base -any,
         Cabal >=1.20,
