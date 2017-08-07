@@ -125,7 +125,7 @@ function h$easytensor_qlog(q) {
         return [Math.PI,0,0,Math.log(-q[3])];
       }
     }
-    var mq = Math.sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
+    var mq = Math.sqrt(mv + q[3]*q[3]);
     mv = Math.sqrt(mv);
     var l = Math.atan2( mv, q[3] ) / mv;
     return [q[0]*l,q[1]*l,q[2]*l,Math.log(mq)];
@@ -180,7 +180,7 @@ function h$easytensor_qsinh(q) {
     var l = Math.cosh(q[3]) * Math.sin(mv) / mv;
     return [q[0]*l,q[1]*l,q[2]*l, Math.sinh(q[3])*Math.cos(mv)];
 }
-function h$easytensor_cosh(q) {
+function h$easytensor_qcosh(q) {
     'use strict';
     var mv = q[0]*q[0] + q[1]*q[1] + q[2]*q[2];
     if(mv === 0) {return [0,0,0,Math.cosh(q[3])];}
@@ -188,7 +188,7 @@ function h$easytensor_cosh(q) {
     var l = - Math.sinh(q[3]) * Math.sin(mv) / mv;
     return [q[0]*l,q[1]*l,q[2]*l, Math.cosh(q[3])*Math.cos(mv)];
 }
-function h$easytensor_tanh(q) {
+function h$easytensor_qtanh(q) {
     'use strict';
     var mv = q[0]*q[0] + q[1]*q[1] + q[2]*q[2];
     if(mv === 0) {return [0,0,0,Math.tanh(q[3])];}

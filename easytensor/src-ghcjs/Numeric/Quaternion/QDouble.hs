@@ -23,8 +23,8 @@ type QDouble = Quater Double
 
 instance Quaternion Double where
     newtype Quater Double = QDouble (ArrayT Double '[4])
-    {-# INLINE setQ #-}
-    setQ = js_setQ
+    {-# INLINE packQ #-}
+    packQ = js_packQ
     {-# INLINE fromVecNum #-}
     fromVecNum = js_fromVecNum
     {-# INLINE fromVec4 #-}
@@ -70,7 +70,7 @@ instance Quaternion Double where
 
 
 foreign import javascript unsafe "new Float64Array([$1,$2,$3,$4])"
-    js_setQ :: Double -> Double -> Double -> Double -> QDouble
+    js_packQ :: Double -> Double -> Double -> Double -> QDouble
 
 foreign import javascript unsafe "new Float64Array([$1[0],$1[1],$1[2],$2])"
     js_fromVecNum :: Vector Double 3 -> Double -> QDouble
@@ -169,11 +169,18 @@ foreign import javascript unsafe "new Float64Array(\
 foreign import javascript unsafe "new Float64Array([0,0,0,Math.hypot($1[0],$1[1],$1[2],$1[3])])"
     js_abs :: QDouble -> QDouble
 
-foreign import javascript unsafe "var l = 1 / Math.hypot($1[0],$1[1],$1[2],$1[3]); $r = $1.map(function (e) {return e * l;})"
+foreign import javascript unsafe "var l = Math.hypot($1[0],$1[1],$1[2],$1[3]); $r = (l == 0) ? (new Float64Array(4)) : $1.map(function (e) {return e/l;})"
     js_signum :: QDouble -> QDouble
 
-foreign import javascript unsafe "new Float64Array([0,0,0,$1])"
+foreign import javascript unsafe "$r = new Float64Array(4); $r[3] = $1;"
     js_toQuaternion :: Double -> QDouble
+
+{-# RULES
+"realToFrac/DoubleQDouble"  realToFrac = js_toQuaternion
+"realToFrac/aQDouble"       realToFrac = js_toQuaternion . realToFrac
+"fromIntegral/aQDouble"   fromIntegral = js_toQuaternion . fromIntegral
+  #-}
+
 
 --------------------------------------------------------------------------
 -- Fractional
