@@ -16,7 +16,6 @@ module Numeric.Quaternion.QFloat
     ( QFloat, Quater (..)
     ) where
 
-
 import Data.JSString (JSString, unpack')
 import Data.Coerce (coerce)
 
@@ -238,9 +237,11 @@ instance  Floating QFloat where
     {-# INLINE acos #-}
     acos q = pi/2 - asin q
     {-# INLINE atan #-}
-    atan q = i/2 * (log (1 - iq) - log (1 + iq))
-        where i = signum . im $ q
-              iq = i*q
+    atan q = if square imq == 0
+             then js_toQuaternion (atan $ taker q)
+             else i / 2 * log ( (i + q) / (i - q) )
+        where i = signum imq
+              imq = im q
     {-# INLINE asinh #-}
     asinh q = log (q + sqrt (q*q + 1))
     {-# INLINE acosh #-}
@@ -248,24 +249,15 @@ instance  Floating QFloat where
     {-# INLINE atanh #-}
     atanh q = 0.5 * log ((1+q)/(1-q))
 
-foreign import javascript unsafe "new Float32Array(h$easytensor_qexp($1))"
-    js_exp :: QFloat -> QFloat
-foreign import javascript unsafe "new Float32Array(h$easytensor_qlog($1))"
-    js_log :: QFloat -> QFloat
-foreign import javascript unsafe "new Float32Array(h$easytensor_qsqrt($1))"
-    js_sqrt :: QFloat -> QFloat
-foreign import javascript unsafe "new Float32Array(h$easytensor_qsin($1))"
-    js_sin :: QFloat -> QFloat
-foreign import javascript unsafe "new Float32Array(h$easytensor_qcos($1))"
-    js_cos :: QFloat -> QFloat
-foreign import javascript unsafe "new Float32Array(h$easytensor_qtan($1))"
-    js_tan :: QFloat -> QFloat
-foreign import javascript unsafe "new Float32Array(h$easytensor_qsinh($1))"
-    js_sinh :: QFloat -> QFloat
-foreign import javascript unsafe "new Float32Array(h$easytensor_qcosh($1))"
-    js_cosh :: QFloat -> QFloat
-foreign import javascript unsafe "new Float32Array(h$easytensor_qtanh($1))"
-    js_tanh :: QFloat -> QFloat
+foreign import javascript unsafe "new Float32Array(h$easytensor_qexp($1))"  js_exp  :: QFloat -> QFloat
+foreign import javascript unsafe "new Float32Array(h$easytensor_qlog($1))"  js_log  :: QFloat -> QFloat
+foreign import javascript unsafe "new Float32Array(h$easytensor_qsqrt($1))" js_sqrt :: QFloat -> QFloat
+foreign import javascript unsafe "new Float32Array(h$easytensor_qsin($1))"  js_sin  :: QFloat -> QFloat
+foreign import javascript unsafe "new Float32Array(h$easytensor_qcos($1))"  js_cos  :: QFloat -> QFloat
+foreign import javascript unsafe "new Float32Array(h$easytensor_qtan($1))"  js_tan  :: QFloat -> QFloat
+foreign import javascript unsafe "new Float32Array(h$easytensor_qsinh($1))" js_sinh :: QFloat -> QFloat
+foreign import javascript unsafe "new Float32Array(h$easytensor_qcosh($1))" js_cosh :: QFloat -> QFloat
+foreign import javascript unsafe "new Float32Array(h$easytensor_qtanh($1))" js_tanh :: QFloat -> QFloat
 
 
 --------------------------------------------------------------------------

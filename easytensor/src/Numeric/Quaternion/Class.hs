@@ -22,7 +22,9 @@ class Quaternion t where
     fromVec4 :: Vector t 4 -> Quater t
     -- | Transform the quaternion to 4D vector in format (x,y,z,w)
     toVec4 :: Quater t -> Vector t 4
-    -- | Get scalar square of the quaternion
+    -- | Get scalar square of the quaternion.
+    --
+    --   >> realToFrac (square q) == q * conjugate q
     square :: Quater t -> t
     -- | Imagine part of quaternion (orientation vector)
     im :: Quater t -> Quater t
