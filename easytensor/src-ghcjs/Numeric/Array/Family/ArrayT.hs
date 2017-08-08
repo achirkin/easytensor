@@ -15,7 +15,6 @@
 {-# LANGUAGE JavaScriptFFI         #-}
 {-# LANGUAGE GHCForeignImportPrim  #-}
 {-# LANGUAGE UnliftedFFITypes      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Strict                #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 module Numeric.Array.Family.ArrayT () where
@@ -35,7 +34,7 @@ import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
 import           Numeric.Dimensions.Traverse
 import           Numeric.TypeLits
-import           Numeric.Matrix.Type
+import           Numeric.Matrix.Class
 
 
 type instance ElemRep  (ArrayT t      ds) = ElemRep t

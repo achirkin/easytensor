@@ -40,7 +40,7 @@ import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
 import           Numeric.Dimensions.Traverse
 import           Numeric.TypeLits
-import           Numeric.Matrix.Type
+import           Numeric.Matrix.Class
 
 
 #include "MachDeps.h"

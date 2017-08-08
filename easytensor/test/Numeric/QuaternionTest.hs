@@ -83,7 +83,9 @@ prop_CosAcos q = cos (acos q') =~= q'
       q' = signum q
 
 prop_TanAtan :: QDouble -> Bool
-prop_TanAtan q = tan (atan q) =~= q
+prop_TanAtan q = tan (atan q') =~= q'
+    where -- protect agains big numbers and rounding errors
+      q' = if square q >= 1e6 then signum q else q
 
 
 prop_SinhAsinh :: QDouble -> Bool
@@ -97,7 +99,9 @@ prop_CoshAcosh q = cosh (acosh q') =~= q'
       q' = if square q >= 1e6 then signum q else q
 
 prop_TanhAtanh :: QDouble -> Bool
-prop_TanhAtanh q = tanh (atanh q) =~= q
+prop_TanhAtanh q = tanh (atanh q') =~= q'
+    where -- protect agains big numbers and rounding errors
+      q' = if square q >= 1e6 then signum q else q
 
 prop_SinCos :: QDouble -> Bool
 prop_SinCos q = sin q' * sin q' + cos q' * cos q' =~= 1

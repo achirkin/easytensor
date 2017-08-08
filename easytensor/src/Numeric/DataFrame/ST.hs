@@ -26,7 +26,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.ST
-    ( MutableFrame (), STDataFrame ()
+    ( MutableFrame (), STDataFrame (), SomeSTDataFrame (..)
     , newDataFrame, copyDataFrame, copyMutableDataFrame
     , unsafeFreezeDataFrame
     , freezeDataFrame, thawDataFrame
