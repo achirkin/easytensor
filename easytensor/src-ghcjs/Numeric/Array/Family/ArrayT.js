@@ -170,6 +170,7 @@ if (typeof Float64Array !== 'undefined') {
 
 
 function h$easytensor_transpose(n, mat) {
+    'use strict';
     var nmat = new mat.constructor(mat.length),
         m = Math.round(mat.length / n);
     for(var i = 0; i < n; i++) {
@@ -181,99 +182,119 @@ function h$easytensor_transpose(n, mat) {
 }
 
 function h$easytensor_eyeFloat32(n) {
-    var mat = new Float32Array(n*n).fill(0);
+    'use strict';
+    var mat = new Float32Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=1;}
     return mat;
 }
 function h$easytensor_eyeFloat64(n) {
-    var mat = new Float64Array(n*n).fill(0);
+    'use strict';
+    var mat = new Float64Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=1;}
     return mat;
 }
 function h$easytensor_eyeInt8(n) {
-    var mat = new Int8Array(n*n).fill(0);
+    'use strict';
+    var mat = new Int8Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=1;}
     return mat;
 }
 function h$easytensor_eyeInt16(n) {
-    var mat = new Int16Array(n*n).fill(0);
+    'use strict';
+    var mat = new Int16Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=1;}
     return mat;
 }
 function h$easytensor_eyeInt32(n) {
-    var mat = new Int32Array(n*n).fill(0);
+    'use strict';
+    var mat = new Int32Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=1;}
     return mat;
 }
 function h$easytensor_eyeUint8(n) {
-    var mat = new Uint8Array(n*n).fill(0);
+    'use strict';
+    var mat = new Uint8Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=1;}
     return mat;
 }
 function h$easytensor_eyeUint8Clamped(n) {
-    var mat = new Uint8ClampedArray(n*n).fill(0);
+    'use strict';
+    var mat = new Uint8ClampedArray(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=1;}
     return mat;
 }
 function h$easytensor_eyeUint16(n) {
-    var mat = new Uint16Array(n*n).fill(0);
+    'use strict';
+    var mat = new Uint16Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=1;}
     return mat;
 }
 function h$easytensor_eyeUint32(n) {
-    var mat = new Uint32Array(n*n).fill(0);
+    'use strict';
+    var mat = new Uint32Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=1;}
     return mat;
 }
 
 
 function h$easytensor_diagFloat32(n,x) {
-    var mat = new Float32Array(n*n).fill(0);
+    'use strict';
+    'use strict';
+    var mat = new Float32Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=x;}
     return mat;
 }
 function h$easytensor_diagFloat64(n,x) {
-    var mat = new Float64Array(n*n).fill(0);
+    'use strict';
+    var mat = new Float64Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=x;}
     return mat;
 }
 function h$easytensor_diagInt8(n,x) {
-    var mat = new Int8Array(n*n).fill(0);
+    'use strict';
+    var mat = new Int8Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=x;}
     return mat;
 }
 function h$easytensor_diagInt16(n,x) {
-    var mat = new Int16Array(n*n).fill(0);
+    'use strict';
+    var mat = new Int16Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=x;}
     return mat;
 }
 function h$easytensor_diagInt32(n,x) {
-    var mat = new Int32Array(n*n).fill(0);
+    'use strict';
+    var mat = new Int32Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=x;}
     return mat;
 }
 function h$easytensor_diagUint8(n,x) {
-    var mat = new Uint8Array(n*n).fill(0);
+    'use strict';
+    var mat = new Uint8Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=x;}
     return mat;
 }
 function h$easytensor_diagUint8Clamped(n,x) {
-    var mat = new Uint8ClampedArray(n*n).fill(0);
+    'use strict';
+    var mat = new Uint8ClampedArray(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=x;}
     return mat;
 }
 function h$easytensor_diagUint16(n,x) {
-    var mat = new Uint16Array(n*n).fill(0);
+    'use strict';
+    var mat = new Uint16Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=x;}
     return mat;
 }
 function h$easytensor_diagUint32(n,x) {
-    var mat = new Uint32Array(n*n).fill(0);
+    'use strict';
+    var mat = new Uint32Array(n*n);
     for(var i = 0; i < n*n; i += n + 1){mat[i]=x;}
     return mat;
 }
 
 function h$easytensor_trace(mat, n) {
+    'use strict';
     var r = 0;
     for(var i = 0; i < n*n; i += n + 1){r+=mat[i];}
     return r;
@@ -281,6 +302,7 @@ function h$easytensor_trace(mat, n) {
 
 
 function h$easytensor_det(mat, n) {
+    'use strict';
     switch (n) {
     case 1:
         return mat[0];
@@ -296,10 +318,12 @@ function h$easytensor_det(mat, n) {
 }
 
 function h$easytensor_detJSMat2(mat) {
+    'use strict';
     return (mat[0]*mat[3] - mat[1]*mat[2]);
 }
 
 function h$easytensor_detJSMat3(mat) {
+    'use strict';
     return (
           mat[0]*(mat[4]*mat[8]-mat[5]*mat[7])
         - mat[1]*(mat[3]*mat[8]-mat[5]*mat[6])
@@ -308,6 +332,7 @@ function h$easytensor_detJSMat3(mat) {
 }
 
 function h$easytensor_detJSMat4(mat) {
+    'use strict';
     var n11 = mat[ 0 ], n12 = mat[ 4 ], n13 = mat[ 8 ], n14 = mat[ 12 ];
     var n21 = mat[ 1 ], n22 = mat[ 5 ], n23 = mat[ 9 ], n24 = mat[ 13 ];
     var n31 = mat[ 2 ], n32 = mat[ 6 ], n33 = mat[ 10 ], n34 = mat[ 14 ];
@@ -353,6 +378,7 @@ function h$easytensor_detJSMat4(mat) {
 
 
 function h$easytensor_inverse(mat, n) {
+    'use strict';
     switch (n) {
     case 1:
         return 1 / mat[0];
@@ -369,6 +395,7 @@ function h$easytensor_inverse(mat, n) {
 
 
 function h$easytensor_inverseJSM4(mat) {
+    'use strict';
     var rez = new mat.constructor(16);
     rez[0]  = mat[13]*(mat[ 6]*mat[11]-mat[10]*mat[ 7])+mat[ 9]*(mat[14]*mat[ 7]-mat[ 6]*mat[15])+mat[ 5]*(mat[10]*mat[15]-mat[14]*mat[11]);
     rez[4]  = mat[12]*(mat[10]*mat[ 7]-mat[ 6]*mat[11])+mat[ 8]*(mat[ 6]*mat[15]-mat[14]*mat[ 7])+mat[ 4]*(mat[14]*mat[11]-mat[10]*mat[15]);
@@ -390,12 +417,13 @@ function h$easytensor_inverseJSM4(mat) {
     if (det === 0) {
         return undefined;
     } else {
-        for(var i = 0; i < 16; i++) {rez[i] !== det;}
+        for(var i = 0; i < 16; i++) {rez[i] /= det;}
         return rez;
     }
 }
 
 function h$easytensor_inverseJSM3(mat) {
+    'use strict';
     var rez = new mat.constructor(9);
     rez[0] = mat[4]*mat[8] - mat[7]*mat[5];
     rez[3] = mat[6]*mat[5] - mat[3]*mat[8];
@@ -410,12 +438,13 @@ function h$easytensor_inverseJSM3(mat) {
     if (det === 0) {
         return undefined;
     } else {
-        for(var i = 0; i < 9; i++) {rez[i] !== det;}
+        for(var i = 0; i < 9; i++) {rez[i] /= det;}
         return rez;
     }
 }
 
 function h$easytensor_inverseJSM2(mat) {
+    'use strict';
     var det = mat[0]*mat[3] - mat[1]*mat[2];
     if (det === 0) {
         return undefined;
@@ -430,6 +459,7 @@ function h$easytensor_inverseJSM2(mat) {
 
 
 function h$easytensor_contract(n,m,k,lhs,rhs) {
+    'use strict';
     var t, rez = new lhs.constructor(n*k);
     for(var i = 0; i < n; i++) {
         for(var j = 0; j < k; j++) {
@@ -442,4 +472,11 @@ function h$easytensor_contract(n,m,k,lhs,rhs) {
     }
     return rez;
 }
+
+
+function h$easytensor_dot(lhs, rhs) {
+    'use strict';
+    return lhs.reduce(function (r, e, i) { return r + e*rhs[i];}, 0);
+}
+
 

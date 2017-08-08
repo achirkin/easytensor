@@ -66,7 +66,9 @@ library
         Numeric.DataFrame.Type
         Numeric.DataFrame.Inference
         Numeric.DataFrame.Shape
-        Numeric.Matrix.Type
+        Numeric.Matrix.Class
+        Numeric.Matrix.Mat44d
+        Numeric.Matrix.Mat44f
         Numeric.Quaternion.Class
         Numeric.Quaternion.QDouble
         Numeric.Quaternion.QFloat
@@ -93,6 +95,7 @@ library
     js-sources:
         src-ghcjs/Numeric/Array/Family/ArrayT.js
         src-ghcjs/Numeric/Quaternion/Quaternion.js
+        src-ghcjs/Numeric/Matrix/Mat44.js
     ghc-options: -Wall -fwarn-tabs -fwarn-unused-do-bind -fwarn-monomorphism-restriction -O2
 
 test-suite et-test

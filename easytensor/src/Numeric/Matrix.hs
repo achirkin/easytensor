@@ -21,10 +21,14 @@ module Numeric.Matrix
   ( MatrixCalculus (..)
   , SquareMatrixCalculus (..)
   , MatrixInverse (..)
+  , HomTransform4 (..)
   , Matrix
   , Mat22f, Mat23f, Mat24f
   , Mat32f, Mat33f, Mat34f
   , Mat42f, Mat43f, Mat44f
+  , Mat22d, Mat23d, Mat24d
+  , Mat32d, Mat33d, Mat34d
+  , Mat42d, Mat43d, Mat44d
   , mat22, mat33, mat44
   , (%*)
   ) where
@@ -41,23 +45,14 @@ import           Numeric.Commons
 import           Numeric.DataFrame.Contraction ((%*))
 import           Numeric.DataFrame.Shape
 import           Numeric.Dimensions            (Nat)
-import           Numeric.Matrix.Type
+import           Numeric.Matrix.Class
+import           Numeric.Matrix.Mat44d         ()
+import           Numeric.Matrix.Mat44f         ()
 import           Numeric.Vector
 
 import           Control.Monad.ST
 import           Numeric.DataFrame.ST
 
--- Type abbreviations
-
-type Mat22f = Matrix Float 2 2
-type Mat32f = Matrix Float 3 2
-type Mat42f = Matrix Float 4 2
-type Mat23f = Matrix Float 2 3
-type Mat33f = Matrix Float 3 3
-type Mat43f = Matrix Float 4 3
-type Mat24f = Matrix Float 2 4
-type Mat34f = Matrix Float 3 4
-type Mat44f = Matrix Float 4 4
 
 
 -- | Compose a 2x2D matrix
