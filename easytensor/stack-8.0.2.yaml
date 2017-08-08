@@ -1,0 +1,8 @@
+resolver: lts-8.21
+packages:
+  - '.'
+  - location: ../dimensions
+    extra-dep: true
+
+extra-deps: []
+flags: {}
