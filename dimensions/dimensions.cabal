@@ -41,8 +41,8 @@ library
 
 test-suite dimensions-test
 
-    type: detailed-0.9
-    test-module: Spec
+    type: exitcode-stdio-1.0
+    main-is: Spec.hs
     other-modules:
         Numeric.Dimensions.ListTest
     build-depends:
