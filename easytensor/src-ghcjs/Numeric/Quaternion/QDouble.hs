@@ -229,9 +229,11 @@ instance  Floating QDouble where
     {-# INLINE acos #-}
     acos q = pi/2 - asin q
     {-# INLINE atan #-}
-    atan q = i/2 * (log (1 - iq) - log (1 + iq))
-        where i = signum . im $ q
-              iq = i*q
+    atan q = if square imq == 0
+             then js_toQuaternion (atan $ taker q)
+             else i / 2 * log ( (i + q) / (i - q) )
+        where i = signum imq
+              imq = im q
     {-# INLINE asinh #-}
     asinh q = log (q + sqrt (q*q + 1))
     {-# INLINE acosh #-}
@@ -239,24 +241,15 @@ instance  Floating QDouble where
     {-# INLINE atanh #-}
     atanh q = 0.5 * log ((1+q)/(1-q))
 
-foreign import javascript unsafe "new Float64Array(h$easytensor_qexp($1))"
-    js_exp :: QDouble -> QDouble
-foreign import javascript unsafe "new Float64Array(h$easytensor_qlog($1))"
-    js_log :: QDouble -> QDouble
-foreign import javascript unsafe "new Float64Array(h$easytensor_qsqrt($1))"
-    js_sqrt :: QDouble -> QDouble
-foreign import javascript unsafe "new Float64Array(h$easytensor_qsin($1))"
-    js_sin :: QDouble -> QDouble
-foreign import javascript unsafe "new Float64Array(h$easytensor_qcos($1))"
-    js_cos :: QDouble -> QDouble
-foreign import javascript unsafe "new Float64Array(h$easytensor_qtan($1))"
-    js_tan :: QDouble -> QDouble
-foreign import javascript unsafe "new Float64Array(h$easytensor_qsinh($1))"
-    js_sinh :: QDouble -> QDouble
-foreign import javascript unsafe "new Float64Array(h$easytensor_qcosh($1))"
-    js_cosh :: QDouble -> QDouble
-foreign import javascript unsafe "new Float64Array(h$easytensor_qtanh($1))"
-    js_tanh :: QDouble -> QDouble
+foreign import javascript unsafe "new Float64Array(h$easytensor_qexp($1))"  js_exp  :: QDouble -> QDouble
+foreign import javascript unsafe "new Float64Array(h$easytensor_qlog($1))"  js_log  :: QDouble -> QDouble
+foreign import javascript unsafe "new Float64Array(h$easytensor_qsqrt($1))" js_sqrt :: QDouble -> QDouble
+foreign import javascript unsafe "new Float64Array(h$easytensor_qsin($1))"  js_sin  :: QDouble -> QDouble
+foreign import javascript unsafe "new Float64Array(h$easytensor_qcos($1))"  js_cos  :: QDouble -> QDouble
+foreign import javascript unsafe "new Float64Array(h$easytensor_qtan($1))"  js_tan  :: QDouble -> QDouble
+foreign import javascript unsafe "new Float64Array(h$easytensor_qsinh($1))" js_sinh :: QDouble -> QDouble
+foreign import javascript unsafe "new Float64Array(h$easytensor_qcosh($1))" js_cosh :: QDouble -> QDouble
+foreign import javascript unsafe "new Float64Array(h$easytensor_qtanh($1))" js_tanh :: QDouble -> QDouble
 
 
 --------------------------------------------------------------------------

@@ -10,9 +10,6 @@ import Numeric.Quaternion
 import Numeric.Vector
 
 
-import Debug.Trace
-
-
 instance (Quaternion t, Arbitrary t) => Arbitrary (Quater t) where
   arbitrary = packQ <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
   shrink q | (x,y,z,t) <- unpackQ q = packQ <$> shrink x <*> shrink y  <*> shrink z <*> shrink t
@@ -22,20 +19,11 @@ instance Arbitrary Vec3d where
   shrink v | (x,y,z) <- unpackV3 v = vec3 <$> shrink x <*> shrink y  <*> shrink z
 
 
-
-(====) :: (Quaternion a, Num a, Ord a, Num (Quater a), Fractional a, Show (Quater a))
-       => Quater a -> Quater a -> Bool
-(====) a b = traceShow (a,b) $ taker (abs (a - b)) <= eps
-    where
-      s = max 0.0001 $ max (taker (abs a)) (taker (abs b))
-      eps = s * 0.000001
-infix 4 ====
-
 (=~=) :: (Quaternion a, Num a, Ord a, Num (Quater a), Fractional a) => Quater a -> Quater a -> Bool
 (=~=) a b = taker (abs (a - b)) <= eps
     where
-      s = max 0.0001 $ max (taker (abs a)) (taker (abs b))
-      eps = s * 0.000001
+      s = max 1e-6 $ max (taker (abs a)) (taker (abs b))
+      eps = s * 1e-6
 infix 4 =~=
 
 
@@ -95,33 +83,31 @@ prop_CosAcos q = cos (acos q') =~= q'
       q' = signum q
 
 prop_TanAtan :: QDouble -> Bool
-prop_TanAtan q = tan (atan q') =~= q'
-    where
-      q' = signum q
+prop_TanAtan q = tan (atan q) =~= q
+
 
 prop_SinhAsinh :: QDouble -> Bool
-prop_SinhAsinh q = sin (asin q') =~= q'
-    where
-      q' = signum q
+prop_SinhAsinh q = sinh (asinh q') =~= q'
+    where -- protect agains big numbers and rounding errors
+      q' = if square q >= 1e6 then signum q else q
 
 prop_CoshAcosh :: QDouble -> Bool
 prop_CoshAcosh q = cosh (acosh q') =~= q'
-    where
-      q' = signum q
+    where -- protect agains big numbers and rounding errors
+      q' = if square q >= 1e6 then signum q else q
 
 prop_TanhAtanh :: QDouble -> Bool
-prop_TanhAtanh q = tanh (atanh q') =~= q'
-    where
-      q' = signum q
+prop_TanhAtanh q = tanh (atanh q) =~= q
 
 prop_SinCos :: QDouble -> Bool
 prop_SinCos q = sin q' * sin q' + cos q' * cos q' =~= 1
     where
       q' = signum q
 
-
--- TODO arithmetic ops are not tested enough!
-
+prop_SinhCosh :: QDouble -> Bool
+prop_SinhCosh q = cosh q' * cosh q' - sinh q' * sinh q' =~= 1
+    where
+      q' = signum q
 
 return []
 runTests :: IO Bool

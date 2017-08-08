@@ -146,6 +146,11 @@ function h$easytensor_qsqrt(q) {
     var sina = Math.sqrt(0.5 - tq) * l2 / Math.sqrt(mv);
     return [q[0]*sina,q[1]*sina,q[2]*sina,Math.sqrt(0.5 + tq) * l2];
 }
+
+// A good tutorial on complex number trigonometric functions is available here
+//  http://www.milefoot.com/math/complex/functionsofi.htm
+// I extend it to complex numbers by replacing complex i with quaternion vector ijk
+
 function h$easytensor_qsin(q) {
     'use strict';
     var mv = q[0]*q[0] + q[1]*q[1] + q[2]*q[2];
@@ -168,9 +173,9 @@ function h$easytensor_qtan(q) {
     if(mv === 0) {return [0,0,0,Math.tan(q[3])];}
     mv = Math.sqrt(mv);
     var chv = Math.cosh(mv), shv = Math.sinh(mv), ct = Math.cos(q[3]), st = Math.sin(q[3]);
-    var cq = 1 / Math.sqrt(ct*ct*chv*chv + st*st*shv*shv);
-    var l = chv*shv / cq;
-    return [q[0]*l,q[1]*l,q[2]*l, Math.sin(2*q[3])* cq * 0.5];
+    var cq = 1 / (ct*ct*chv*chv + st*st*shv*shv);
+    var l = chv * shv * cq / mv;
+    return [q[0]*l,q[1]*l,q[2]*l, ct * st * cq];
 }
 function h$easytensor_qsinh(q) {
     'use strict';
@@ -185,7 +190,7 @@ function h$easytensor_qcosh(q) {
     var mv = q[0]*q[0] + q[1]*q[1] + q[2]*q[2];
     if(mv === 0) {return [0,0,0,Math.cosh(q[3])];}
     mv = Math.sqrt(mv);
-    var l = - Math.sinh(q[3]) * Math.sin(mv) / mv;
+    var l = Math.sinh(q[3]) * Math.sin(mv) / mv;
     return [q[0]*l,q[1]*l,q[2]*l, Math.cosh(q[3])*Math.cos(mv)];
 }
 function h$easytensor_qtanh(q) {
@@ -193,8 +198,8 @@ function h$easytensor_qtanh(q) {
     var mv = q[0]*q[0] + q[1]*q[1] + q[2]*q[2];
     if(mv === 0) {return [0,0,0,Math.tanh(q[3])];}
     mv = Math.sqrt(mv);
-    var chv = Math.cos(mv), shv = Math.sin(mv), ct = Math.cosh(q[3]), st = Math.sinh(q[3]);
-    var cq = 1 / Math.sqrt(ct*ct*chv*chv + st*st*shv*shv);
-    var l = chv*shv/cq;
-    return [q[0]*l,q[1]*l,q[2]*l, Math.sinh(2*q[3]) * cq * 0.5];
+    var cv = Math.cos(mv), sv = Math.sin(mv), cht = Math.cosh(q[3]), sht = Math.sinh(q[3]);
+    var cq = 1 / (cht*cht*cv*cv + sht*sht*sv*sv);
+    var l = cv * sv * cq / mv;
+    return [q[0]*l,q[1]*l,q[2]*l, cht * sht * cq];
 }
