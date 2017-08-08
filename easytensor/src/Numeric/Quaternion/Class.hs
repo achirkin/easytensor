@@ -43,9 +43,10 @@ class Quaternion t where
     -- | Conjugate quaternion (negate imaginary part)
     conjugate :: Quater t -> Quater t
     -- | Rotates and scales vector in 3D using quaternion.
-    --   Let @q = (cos (a/2), sin (a/2) * v)@; then rotation angle is @a@, and axis of rotation is @v@.
-    --   Scaling is proportional to @|V|^2@
-    --   this is equivalent to q * x * (conjugate q)
+    --   Let @q = (cos (a\/2), sin (a\/2) * v)@; then the rotation angle is @a@, and the axis of rotation is @v@.
+    --   Scaling is proportional to @|v|^2@.
+    --
+    --   >>> rotScale q x == q * x * (conjugate q)
     rotScale :: Quater t -> Vector t 3 -> Vector t 3
     -- | Creates a quaternion @q@ from two vectors @a@ and @b@.
     --   @rotScale q a == b@
