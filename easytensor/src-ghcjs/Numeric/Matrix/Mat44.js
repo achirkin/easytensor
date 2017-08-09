@@ -1,6 +1,6 @@
 function h$easytensor_m4fromHom(v) {
     'use strict';
-    var r = new v.slice(0,3), t = v[3];
+    var r = v.slice(0,3), t = v[3];
     if (t !== 0) {
       r[0] /= t; r[1] /= t; r[2] /= t;
     }
