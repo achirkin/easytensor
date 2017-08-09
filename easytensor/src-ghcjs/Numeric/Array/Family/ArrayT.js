@@ -479,4 +479,10 @@ function h$easytensor_dot(lhs, rhs) {
     return lhs.reduce(function (r, e, i) { return r + e*rhs[i];}, 0);
 }
 
-
+function h$easytensor_cross(a, b) {
+    'use strict';
+    return [ a[1]*b[2]-a[2]*b[1]
+           , a[2]*b[0]-a[0]*b[2]
+           , a[0]*b[1]-a[1]*b[0]
+           ];
+}
