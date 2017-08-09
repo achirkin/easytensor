@@ -69,13 +69,13 @@ function h$easytensor_m4rotateEuler(x, y, z) {
 
 function h$easytensor_m4lookAt(up,camera,point) {
     'use strict';
-    var zDir = minusJSVec(camera,point);
+    var zDir = [ camera[0] - point[0], camera[1] - point[1], camera[2] - point[2] ];
     var t = Math.hypot.apply(null,zDir);
     zDir = zDir.map(function (e){return e / t;});
-    var xDir = cross(up,zDir);
+    var xDir = h$easytensor_cross(up,zDir);
     t = Math.hypot.apply(null,xDir);
     xDir = xDir.map(function (e){return e / t;});
-    var yDir = cross(zDir,xDir);
+    var yDir = h$easytensor_cross(zDir,xDir);
     return [ xDir[0], yDir[0], zDir[0], 0
            , xDir[1], yDir[1], zDir[1], 0
            , xDir[2], yDir[2], zDir[2], 0
