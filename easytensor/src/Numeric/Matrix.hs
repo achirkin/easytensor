@@ -44,7 +44,7 @@ import           GHC.Types                     (Type)
 import           Numeric.Commons
 import           Numeric.DataFrame.Contraction ((%*))
 import           Numeric.DataFrame.Shape
-import           Numeric.Dimensions            (Nat)
+import           Numeric.Dimensions            (Nat, Idx (..))
 import           Numeric.Matrix.Class
 import           Numeric.Matrix.Mat44d         ()
 import           Numeric.Matrix.Mat44f         ()
@@ -75,9 +75,9 @@ mat33 :: (
       => Vector t 3 -> Vector t 3 -> Vector t 3 -> Matrix t 3 3
 mat33 a b c = runST $ do
   mmat <- newDataFrame
-  copyDataFrame a 1 mmat
-  copyDataFrame b 2 mmat
-  copyDataFrame c 3 mmat
+  copyDataFrame a (1:!1:!Z) mmat
+  copyDataFrame b (1:!2:!Z) mmat
+  copyDataFrame c (1:!3:!Z) mmat
   unsafeFreezeDataFrame mmat
 
 -- | Compose a 4x4D matrix
@@ -95,8 +95,8 @@ mat44 :: forall (t :: Type)
       -> Matrix t (4 :: Nat) (4 :: Nat)
 mat44 a b c d = runST $ do
   mmat <- newDataFrame
-  copyDataFrame a 1 mmat
-  copyDataFrame b 2 mmat
-  copyDataFrame c 3 mmat
-  copyDataFrame d 4 mmat
+  copyDataFrame a (1:!1:!Z) mmat
+  copyDataFrame b (1:!2:!Z) mmat
+  copyDataFrame c (1:!3:!Z) mmat
+  copyDataFrame d (1:!4:!Z) mmat
   unsafeFreezeDataFrame mmat

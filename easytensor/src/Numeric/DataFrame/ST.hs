@@ -10,9 +10,7 @@
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE UnboxedTuples             #-}
-#ifdef ghcjs_HOST_OS
 {-# LANGUAGE TypeOperators             #-}
-#endif
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.ST
@@ -42,6 +40,7 @@ module Numeric.DataFrame.ST
     ) where
 
 
+import           GHC.TypeLits           (type (<=))
 import           GHC.Types              (Int (..))
 import           GHC.ST                 (ST(..))
 
@@ -86,25 +85,26 @@ newDataFrame = STDataFrame <$> ST (newDataFrame# @t @ns)
 {-# INLINE newDataFrame #-}
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
-copyDataFrame :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
-               . ( ConcatList as bs asbs, Dimensions bs
+copyDataFrame :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat]) s
+               . ( ConcatList as (b :+ bs) asbs, Dimensions (b :+ bs), b' <= b
 #ifdef ghcjs_HOST_OS
-                 , ArraySizeInference as
+                 , ArraySizeInference (as +: b')
 #else
-                 , PrimBytes (DataFrame t as)
+                 , PrimBytes (DataFrame t (as +: b'))
 #endif
                  )
-               => DataFrame t as -> Idx bs -> STDataFrame s t asbs -> ST s ()
+               => DataFrame t (as +: b') -> Idx (b :+ bs) -> STDataFrame s t asbs -> ST s ()
 copyDataFrame df ei (STDataFrame mdf) = ST (copyDataFrame# df ei mdf)
 {-# INLINE copyDataFrame #-}
 
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
-copyMutableDataFrame :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+copyMutableDataFrame :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat]) s
                 . ( PrimBytes t
-                  , ConcatList as bs asbs
-                  , Dimensions bs
+                  , ConcatList as (b :+ bs) asbs
+                  , Dimensions (b :+ bs)
+                  , b' <= b
                   )
-               => STDataFrame s t as -> Idx bs -> STDataFrame s t asbs -> ST s ()
+               => STDataFrame s t (as +: b') -> Idx (b :+ bs) -> STDataFrame s t asbs -> ST s ()
 copyMutableDataFrame (STDataFrame mdfA) ei (STDataFrame mdfB)
     = ST (copyMDataFrame# mdfA ei mdfB)
 {-# INLINE copyMutableDataFrame #-}

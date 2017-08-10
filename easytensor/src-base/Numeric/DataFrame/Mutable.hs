@@ -9,6 +9,7 @@
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE UnboxedTuples             #-}
+{-# LANGUAGE TypeOperators             #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Mutable
@@ -32,6 +33,7 @@ module Numeric.DataFrame.Mutable
 import           GHC.Int                (Int16 (..), Int32 (..), Int64 (..),
                                          Int8 (..))
 import           GHC.Prim
+import           GHC.TypeLits           (type (<=))
 import           GHC.Types              (Double (..), Float (..), Int (..),
                                          Word (..))
 import           GHC.Word               (Word16 (..), Word32 (..), Word64 (..),
@@ -58,12 +60,13 @@ newDataFrame# s0
 {-# INLINE newDataFrame# #-}
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
-copyDataFrame# :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
-                . ( PrimBytes (DataFrame t as)
-                  , ConcatList as bs asbs
-                  , Dimensions bs
+copyDataFrame# :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat]) s
+                . ( PrimBytes (DataFrame t (as +: b'))
+                  , ConcatList as (b :+ bs) asbs
+                  , Dimensions (b :+ bs)
+                  , b' <= b
                   )
-               => DataFrame t as -> Idx bs -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
+               => DataFrame t (as +: b') -> Idx (b :+ bs) -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
 copyDataFrame# df ei (MDataFrame# offM _ arrM) s
     | (# offA, lenA, arrA #) <- toBytes df
     , elS <- elementByteSize df
@@ -72,12 +75,13 @@ copyDataFrame# df ei (MDataFrame# offM _ arrM) s
 {-# INLINE copyDataFrame# #-}
 
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
-copyMDataFrame# :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+copyMDataFrame# :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat]) s
                 . ( PrimBytes t
-                  , ConcatList as bs asbs
-                  , Dimensions bs
+                  , ConcatList as (b :+ bs) asbs
+                  , Dimensions (b :+ bs)
+                  , b' <= b
                   )
-               => MDataFrame s t as -> Idx bs -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
+               => MDataFrame s t (as +: b') -> Idx (b :+ bs) -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
 copyMDataFrame# (MDataFrame# offA lenA arrA) ei (MDataFrame# offM _ arrM) s
     | elS <- elementByteSize (undefined :: t)
     , I# i <- fromEnum ei
