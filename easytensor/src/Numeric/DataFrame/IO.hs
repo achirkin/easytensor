@@ -10,9 +10,7 @@
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE UnboxedTuples             #-}
-#ifdef ghcjs_HOST_OS
 {-# LANGUAGE TypeOperators             #-}
-#endif
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.IO
@@ -42,6 +40,7 @@ module Numeric.DataFrame.IO
     ) where
 
 import           GHC.Prim               (RealWorld)
+import           GHC.TypeLits           (type (<=))
 import           GHC.Types              (Int (..), IO (..))
 
 
@@ -85,25 +84,27 @@ newDataFrame = IODataFrame <$> IO (newDataFrame# @t @ns)
 {-# INLINE newDataFrame #-}
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
-copyDataFrame :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-               . ( ConcatList as bs asbs, Dimensions bs
+copyDataFrame :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat])
+               . ( ConcatList as (b :+ bs) asbs, Dimensions (b :+ bs), b' <= b
 #ifdef ghcjs_HOST_OS
-                 , ArraySizeInference as
+                 , ArraySizeInference (as +: b')
 #else
-                 , PrimBytes (DataFrame t as)
+                 , PrimBytes (DataFrame t (as +: b'))
 #endif
                  )
-               => DataFrame t as -> Idx bs -> IODataFrame t asbs -> IO ()
+               => DataFrame t (as +: b') -> Idx (b :+ bs) -> IODataFrame t asbs -> IO ()
 copyDataFrame df ei (IODataFrame mdf) = IO (copyDataFrame# df ei mdf)
 {-# INLINE copyDataFrame #-}
 
+
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
-copyMutableDataFrame :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+copyMutableDataFrame :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat])
                 . ( PrimBytes t
-                  , ConcatList as bs asbs
-                  , Dimensions bs
+                  , ConcatList as (b :+ bs) asbs
+                  , Dimensions (b :+ bs)
+                  , b' <= b
                   )
-               => IODataFrame t as -> Idx bs -> IODataFrame t asbs -> IO ()
+               => IODataFrame t (as +: b') -> Idx (b :+ bs) -> IODataFrame t asbs -> IO ()
 copyMutableDataFrame (IODataFrame mdfA) ei (IODataFrame mdfB)
     = IO (copyMDataFrame# mdfA ei mdfB)
 {-# INLINE copyMutableDataFrame #-}
@@ -339,4 +340,3 @@ unsafeForceFixedDims :: forall ds n
 unsafeForceFixedDims = unsafeCoerce# (Evidence :: Evidence ( (ds +: n) ~  (ds +: n) ,  (ds +: n) ~  (ds +: n) ))
 
 #endif
-
