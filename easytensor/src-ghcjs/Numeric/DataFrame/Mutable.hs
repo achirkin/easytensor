@@ -270,8 +270,8 @@ foreign import javascript unsafe "$1[$2] = $3;" js_writeArrayOffsetWord32#      
 foreign import javascript unsafe "$1[$2] = $3;" js_writeArrayOffsetJSVal#        :: MDataFrame s t            ds -> Int  -> JSVal        -> State# s -> State# s
 
 
-foreign import javascript unsafe "new Uint8ClampedArray($1)" js_copyDataFrame  :: ArrayT t as -> Int -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
-foreign import javascript unsafe "new Uint8ClampedArray($1)" js_copyMDataFrame :: MDataFrame s t as -> Int -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
+foreign import javascript unsafe "$3.set($1, $2);" js_copyDataFrame  :: ArrayT t as -> Int -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
+foreign import javascript unsafe "$3.set($1, $2);" js_copyMDataFrame :: MDataFrame s t as -> Int -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
 
 
 foreign import javascript unsafe "$1.slice()" js_freeze :: MDataFrame s t as -> State# s -> (# State# s, ArrayT t ds #)
