@@ -40,7 +40,6 @@ module Numeric.DataFrame.Mutable
 import           GHCJS.Types            (IsJSVal(), JSVal)
 import           GHC.Int                (Int16 (..), Int32 (..),Int8 (..))
 import           GHC.Prim
-import           GHC.TypeLits           (type (<=))
 import           GHC.Types              (Double (..), Float (..), Int (..), Word (..))
 import           GHC.Word               (Word16 (..), Word32 (..), Word8 (..))
 import           Unsafe.Coerce          (unsafeCoerce)
@@ -81,7 +80,6 @@ copyDataFrame# :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (a
                 . ( ArraySizeInference (as +: b')
                   , ConcatList as (b :+ bs) asbs
                   , Dimensions (b :+ bs)
-                  , b' <= b
                   )
                => DataFrame t (as +: b') -> Idx (b :+ bs) -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
 copyDataFrame# df i mdf s0 = case arraySizeInstance @(as +: b') of
