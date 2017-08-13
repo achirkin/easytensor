@@ -79,12 +79,13 @@ newDataFrame# = case elemTypeInstance @t of
 copyDataFrame# :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat]) s
                 . ( ArraySizeInference (as +: b')
                   , ConcatList as (b :+ bs) asbs
+                  , Dimensions as
                   , Dimensions (b :+ bs)
                   )
                => DataFrame t (as +: b') -> Idx (b :+ bs) -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
 copyDataFrame# df i mdf s0 = case arraySizeInstance @(as +: b') of
     ASScalar -> df `seq` (# js_writeArrayOffsetJSVal# mdf (fromEnum i) (unsafeCoerce df) s0, () #)
-    ASArray -> js_copyDataFrame (coerce df) (fromEnum i) mdf s0
+    ASArray -> js_copyDataFrame (coerce df) (fromEnum i * dimVal (dim @as)) mdf s0
 {-# INLINE copyDataFrame# #-}
 
 
@@ -92,10 +93,11 @@ copyDataFrame# df i mdf s0 = case arraySizeInstance @(as +: b') of
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
 copyMDataFrame# :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat]) s
                 . ( ConcatList as (b :+ bs) asbs
+                  , Dimensions as
                   , Dimensions (b :+ bs)
                   )
                => MDataFrame s t (as +: b') -> Idx (b :+ bs) -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
-copyMDataFrame# d = js_copyMDataFrame d . fromEnum
+copyMDataFrame# d i = js_copyMDataFrame d (fromEnum i * dimVal (dim @as))
 {-# INLINE copyMDataFrame# #-}
 
 
