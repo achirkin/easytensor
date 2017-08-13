@@ -40,7 +40,6 @@ module Numeric.DataFrame.IO
     ) where
 
 import           GHC.Prim               (RealWorld)
-import           GHC.TypeLits           (type (<=))
 import           GHC.Types              (Int (..), IO (..))
 
 
@@ -85,7 +84,7 @@ newDataFrame = IODataFrame <$> IO (newDataFrame# @t @ns)
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
 copyDataFrame :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat])
-               . ( ConcatList as (b :+ bs) asbs, Dimensions (b :+ bs), b' <= b
+               . ( ConcatList as (b :+ bs) asbs, Dimensions (b :+ bs)
 #ifdef ghcjs_HOST_OS
                  , ArraySizeInference (as +: b')
 #else
@@ -102,7 +101,6 @@ copyMutableDataFrame :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Na
                 . ( PrimBytes t
                   , ConcatList as (b :+ bs) asbs
                   , Dimensions (b :+ bs)
-                  , b' <= b
                   )
                => IODataFrame t (as +: b') -> Idx (b :+ bs) -> IODataFrame t asbs -> IO ()
 copyMutableDataFrame (IODataFrame mdfA) ei (IODataFrame mdfB)
