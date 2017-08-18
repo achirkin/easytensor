@@ -26,7 +26,7 @@
 module Numeric.DataFrame.ST
     (
 #ifdef ghcjs_HOST_OS
-      MutableFrame (), STDataFrame (..), MDataFrame (..)
+      MutableFrame (), STDataFrame (..), MDataFrame (..), MutableArrayT (..)
 #else
       MutableFrame (), STDataFrame ()
 #endif

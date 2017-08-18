@@ -26,7 +26,7 @@
 module Numeric.DataFrame.IO
     (
 #ifdef ghcjs_HOST_OS
-      MutableFrame (), IODataFrame (..), MDataFrame (..)
+      MutableFrame (), IODataFrame (..), MDataFrame (..), MutableArrayT (..)
 #else
       MutableFrame (), IODataFrame ()
 #endif
