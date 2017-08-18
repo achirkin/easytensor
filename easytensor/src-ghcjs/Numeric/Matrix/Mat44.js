@@ -10,7 +10,7 @@ function h$easytensor_m4fromHom(v) {
 
 function h$easytensor_m4translate(v) {
     'use strict';
-    m = new v.constructor(16);
+    var m = new v.constructor(16);
     m.set(v, 12);
     m[0] = 1;
     m[5] = 1;

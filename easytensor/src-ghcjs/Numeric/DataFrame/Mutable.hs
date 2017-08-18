@@ -40,7 +40,6 @@ module Numeric.DataFrame.Mutable
 import           GHCJS.Types            (IsJSVal(), JSVal)
 import           GHC.Int                (Int16 (..), Int32 (..),Int8 (..))
 import           GHC.Prim
-import           GHC.TypeLits           (type (<=))
 import           GHC.Types              (Double (..), Float (..), Int (..), Word (..))
 import           GHC.Word               (Word16 (..), Word32 (..), Word8 (..))
 import           Unsafe.Coerce          (unsafeCoerce)
@@ -80,13 +79,13 @@ newDataFrame# = case elemTypeInstance @t of
 copyDataFrame# :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat]) s
                 . ( ArraySizeInference (as +: b')
                   , ConcatList as (b :+ bs) asbs
+                  , Dimensions as
                   , Dimensions (b :+ bs)
-                  , b' <= b
                   )
                => DataFrame t (as +: b') -> Idx (b :+ bs) -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
 copyDataFrame# df i mdf s0 = case arraySizeInstance @(as +: b') of
     ASScalar -> df `seq` (# js_writeArrayOffsetJSVal# mdf (fromEnum i) (unsafeCoerce df) s0, () #)
-    ASArray -> js_copyDataFrame (coerce df) (fromEnum i) mdf s0
+    ASArray -> js_copyDataFrame (coerce df) (fromEnum i * dimVal (dim @as)) mdf s0
 {-# INLINE copyDataFrame# #-}
 
 
@@ -94,10 +93,11 @@ copyDataFrame# df i mdf s0 = case arraySizeInstance @(as +: b') of
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
 copyMDataFrame# :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat]) s
                 . ( ConcatList as (b :+ bs) asbs
+                  , Dimensions as
                   , Dimensions (b :+ bs)
                   )
                => MDataFrame s t (as +: b') -> Idx (b :+ bs) -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
-copyMDataFrame# d = js_copyMDataFrame d . fromEnum
+copyMDataFrame# d i = js_copyMDataFrame d (fromEnum i * dimVal (dim @as))
 {-# INLINE copyMDataFrame# #-}
 
 
@@ -272,8 +272,8 @@ foreign import javascript unsafe "$1[$2] = $3;" js_writeArrayOffsetWord32#      
 foreign import javascript unsafe "$1[$2] = $3;" js_writeArrayOffsetJSVal#        :: MDataFrame s t            ds -> Int  -> JSVal        -> State# s -> State# s
 
 
-foreign import javascript unsafe "new Uint8ClampedArray($1)" js_copyDataFrame  :: ArrayT t as -> Int -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
-foreign import javascript unsafe "new Uint8ClampedArray($1)" js_copyMDataFrame :: MDataFrame s t as -> Int -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
+foreign import javascript unsafe "$3.set($1, $2);" js_copyDataFrame  :: ArrayT t as -> Int -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
+foreign import javascript unsafe "$3.set($1, $2);" js_copyMDataFrame :: MDataFrame s t as -> Int -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
 
 
 foreign import javascript unsafe "$1.slice()" js_freeze :: MDataFrame s t as -> State# s -> (# State# s, ArrayT t ds #)

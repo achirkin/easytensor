@@ -33,7 +33,6 @@ module Numeric.DataFrame.Mutable
 import           GHC.Int                (Int16 (..), Int32 (..), Int64 (..),
                                          Int8 (..))
 import           GHC.Prim
-import           GHC.TypeLits           (type (<=))
 import           GHC.Types              (Double (..), Float (..), Int (..),
                                          Word (..))
 import           GHC.Word               (Word16 (..), Word32 (..), Word64 (..),
@@ -64,7 +63,6 @@ copyDataFrame# :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (a
                 . ( PrimBytes (DataFrame t (as +: b'))
                   , ConcatList as (b :+ bs) asbs
                   , Dimensions (b :+ bs)
-                  , b' <= b
                   )
                => DataFrame t (as +: b') -> Idx (b :+ bs) -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
 copyDataFrame# df ei (MDataFrame# offM _ arrM) s
@@ -79,7 +77,6 @@ copyMDataFrame# :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (
                 . ( PrimBytes t
                   , ConcatList as (b :+ bs) asbs
                   , Dimensions (b :+ bs)
-                  , b' <= b
                   )
                => MDataFrame s t (as +: b') -> Idx (b :+ bs) -> MDataFrame s t asbs -> State# s -> (# State# s, () #)
 copyMDataFrame# (MDataFrame# offA lenA arrA) ei (MDataFrame# offM _ arrM) s
