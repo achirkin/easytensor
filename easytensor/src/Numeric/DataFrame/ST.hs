@@ -46,7 +46,6 @@ module Numeric.DataFrame.ST
     ) where
 
 
-import           GHC.TypeLits           (type (<=))
 import           GHC.Types              (Int (..))
 import           GHC.ST                 (ST(..))
 
@@ -95,9 +94,9 @@ newDataFrame = STDataFrame <$> ST (newDataFrame# @t @ns)
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
 copyDataFrame :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat]) s
-               . ( ConcatList as (b :+ bs) asbs, Dimensions (b :+ bs), b' <= b
+               . ( ConcatList as (b :+ bs) asbs, Dimensions (b :+ bs)
 #ifdef ghcjs_HOST_OS
-                 , ArraySizeInference (as +: b')
+                 , ArraySizeInference (as +: b'), Dimensions as
 #else
                  , PrimBytes (DataFrame t (as +: b'))
 #endif
@@ -111,7 +110,9 @@ copyMutableDataFrame :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Na
                 . ( PrimBytes t
                   , ConcatList as (b :+ bs) asbs
                   , Dimensions (b :+ bs)
-                  , b' <= b
+#ifdef ghcjs_HOST_OS
+                  , Dimensions as
+#endif
                   )
                => STDataFrame s t (as +: b') -> Idx (b :+ bs) -> STDataFrame s t asbs -> ST s ()
 copyMutableDataFrame (STDataFrame mdfA) ei (STDataFrame mdfB)
