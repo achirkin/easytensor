@@ -24,7 +24,13 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.IO
-    ( MutableFrame (), IODataFrame (), SomeIODataFrame (..)
+    (
+#ifdef ghcjs_HOST_OS
+      MutableFrame (), IODataFrame (..), MDataFrame (..)
+#else
+      MutableFrame (), IODataFrame ()
+#endif
+    , SomeIODataFrame (..)
     , newDataFrame, copyDataFrame, copyMutableDataFrame
     , unsafeFreezeDataFrame
     , freezeDataFrame, thawDataFrame
@@ -63,6 +69,9 @@ import           Numeric.Scalar
 -- | Mutable DataFrame that lives in IO.
 --   Internal representation is always a ByteArray.
 newtype IODataFrame t (ns :: [Nat]) = IODataFrame (MDataFrame RealWorld t (ns :: [Nat]))
+#ifdef ghcjs_HOST_OS
+instance IsJSVal (IODataFrame t ds)
+#endif
 -- | Mutable DataFrame of unknown dimensionality
 data SomeIODataFrame t (xns :: [XNat])
   = forall (ns :: [Nat])
