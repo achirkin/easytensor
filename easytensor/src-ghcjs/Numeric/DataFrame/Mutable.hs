@@ -26,7 +26,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.Mutable
-    ( MutableFrame (..), MDataFrame ()
+    ( MutableFrame (..), MDataFrame (..)
     , newDataFrame#, copyDataFrame#, copyMDataFrame#, unsafeFreezeDataFrame#
     , freezeDataFrame#, thawDataFrame#
     , writeDataFrame#, readDataFrame#

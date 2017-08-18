@@ -24,7 +24,13 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.ST
-    ( MutableFrame (), STDataFrame (), SomeSTDataFrame (..)
+    (
+#ifdef ghcjs_HOST_OS
+      MutableFrame (), STDataFrame (..), MDataFrame (..)
+#else
+      MutableFrame (), STDataFrame ()
+#endif
+    , SomeSTDataFrame (..)
     , newDataFrame, copyDataFrame, copyMutableDataFrame
     , unsafeFreezeDataFrame
     , freezeDataFrame, thawDataFrame
@@ -64,6 +70,9 @@ import           Numeric.Scalar
 -- | Mutable DataFrame that lives in ST.
 --   Internal representation is always a ByteArray.
 newtype STDataFrame s t (ns :: [Nat]) = STDataFrame (MDataFrame s t (ns :: [Nat]))
+#ifdef ghcjs_HOST_OS
+instance IsJSVal (STDataFrame s t ds)
+#endif
 -- | Mutable DataFrame of unknown dimensionality
 data SomeSTDataFrame s t (xns :: [XNat])
   = forall (ns :: [Nat])
