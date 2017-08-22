@@ -254,11 +254,15 @@ instance Ord (ArrayT t ds) where
         1 -> GT
         0 -> EQ
         _ -> LT
+    max  = js_arrayMax
+    min  = js_arrayMin
 foreign import javascript unsafe "$1.every(function (e, i) { return e <  $2[i]; })" js_arrayTLT  :: ArrayT t ds -> ArrayT t ds -> Bool
 foreign import javascript unsafe "$1.every(function (e, i) { return e <= $2[i]; })" js_arrayTLE  :: ArrayT t ds -> ArrayT t ds -> Bool
 foreign import javascript unsafe "$1.every(function (e, i) { return e >  $2[i]; })" js_arrayTGT  :: ArrayT t ds -> ArrayT t ds -> Bool
 foreign import javascript unsafe "$1.every(function (e, i) { return e >= $2[i]; })" js_arrayTGE  :: ArrayT t ds -> ArrayT t ds -> Bool
 foreign import javascript unsafe "$1.reduce(function (r, e, i) { return r === 0 ? (e > $2[i] ? 1 : (e < $2[i] ? -1 : 0)) : r;}, 0)" js_arrayTCmp :: ArrayT t ds -> ArrayT t ds -> Int
+foreign import javascript unsafe "$1.map(function (e, i) { return Math.max(e,$2[i]); })" js_arrayMax     :: ArrayT t ds -> ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(function (e, i) { return Math.min(e,$2[i]); })" js_arrayMin     :: ArrayT t ds -> ArrayT t ds -> ArrayT t ds
 
 
 instance Dimensions ds => Num (ArrayT Float ds) where
