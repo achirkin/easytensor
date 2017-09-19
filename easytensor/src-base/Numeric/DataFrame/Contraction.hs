@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
@@ -399,7 +400,11 @@ prodI32 n m k x y= case runRW#
       bs = n *# k *# elementByteSize x
 {-# INLINE prodI32 #-}
 
+
 prodI64 :: (IntBytes a, IntBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
+#if SIZEOF_HSWORD < 8
+prodI64 = undefined
+#else
 prodI64 n m k x y= case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) ->
@@ -414,7 +419,7 @@ prodI64 n m k x y= case runRW#
     where
       bs = n *# k *# elementByteSize x
 {-# INLINE prodI64 #-}
-
+#endif
 
 prodW :: (WordBytes a, WordBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
 prodW n m k x y = case runRW#
@@ -482,6 +487,9 @@ prodW32 n m k x y = case runRW#
 {-# INLINE prodW32 #-}
 
 prodW64 :: (WordBytes a, WordBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
+#if SIZEOF_HSWORD < 8
+prodW64 = undefined
+#else
 prodW64 n m k x y = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) ->
@@ -496,6 +504,7 @@ prodW64 n m k x y = case runRW#
     where
       bs = n *# k *# elementByteSize x
 {-# INLINE prodW64 #-}
+#endif
 
 -- | Do something in a loop for int i from 0 to n-1 and j from 0 to m-1
 loop2# :: Int# -> Int# -> (Int# -> Int#-> State# s -> State# s) -> State# s -> State# s
