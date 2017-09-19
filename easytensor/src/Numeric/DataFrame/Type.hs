@@ -38,6 +38,7 @@ module Numeric.DataFrame.Type
   , FPFRame, IntegralFrame, NumericVariantFrame, CommonOpFrame
   ) where
 
+#include "MachDeps.h"
 import           Data.Int                  (Int16, Int32, Int64, Int8)
 import           Data.Word                 (Word16, Word32, Word64, Word8)
 import           Foreign.Storable          (Storable (..))
@@ -210,7 +211,11 @@ type instance ElemPrim (DataFrame Int8   ds) = Int#
 type instance ElemPrim (DataFrame Int16  ds) = Int#
 type instance ElemPrim (DataFrame Int32  ds) = Int#
 #ifndef ghcjs_HOST_OS
+#if WORD_SIZE_IN_BITS < 64
+type instance ElemPrim (DataFrame Int64  ds) = Int64#
+#else
 type instance ElemPrim (DataFrame Int64  ds) = Int#
+#endif
 #endif
 type instance ElemPrim (DataFrame Word   ds) = Word#
 type instance ElemPrim (DataFrame Word8  ds) = Word#
@@ -219,7 +224,11 @@ type instance ElemPrim (DataFrame Word32 ds) = Word#
 #ifdef ghcjs_HOST_OS
 type instance ElemPrim (DataFrame Word8Clamped ds) = Int#
 #else
+#if WORD_SIZE_IN_BITS < 64
+type instance ElemPrim (DataFrame Word64 ds) = Word64#
+#else
 type instance ElemPrim (DataFrame Word64 ds) = Word#
+#endif
 #endif
 deriving instance ( PrimBytes (Array Float ds)
                   , ElemPrim (Array Float ds) ~ Float#
@@ -241,8 +250,14 @@ deriving instance ( PrimBytes (Array Int32 ds)
                   , ElemRep (Array Int32 ds) ~ 'IntRep) => PrimBytes (DataFrame Int32 ds)
 #ifndef ghcjs_HOST_OS
 deriving instance ( PrimBytes (Array Int64 ds)
+#if WORD_SIZE_IN_BITS < 64
+                  , ElemPrim (Array Int64 ds) ~ Int64#
+                  , ElemRep (Array Int64 ds) ~ 'Int64Rep
+#else
                   , ElemPrim (Array Int64 ds) ~ Int#
-                  , ElemRep (Array Int64 ds) ~ 'IntRep) => PrimBytes (DataFrame Int64 ds)
+                  , ElemRep (Array Int64 ds) ~ 'IntRep
+#endif
+                  ) => PrimBytes (DataFrame Int64 ds)
 #endif
 deriving instance ( PrimBytes (Array Word ds)
                   , ElemPrim (Array Word ds) ~ Word#
@@ -262,8 +277,14 @@ deriving instance ( PrimBytes (Array Word8Clamped ds)
                   , ElemRep (Array Word8Clamped ds) ~ 'IntRep) => PrimBytes (DataFrame Word8Clamped ds)
 #else
 deriving instance ( PrimBytes (Array Word64 ds)
+#if WORD_SIZE_IN_BITS < 64
+                  , ElemPrim (Array Word64 ds) ~ Word64#
+                  , ElemRep (Array Word64 ds) ~ 'Word64Rep
+#else
                   , ElemPrim (Array Word64 ds) ~ Word#
-                  , ElemRep (Array Word64 ds) ~ 'WordRep) => PrimBytes (DataFrame Word64 ds)
+                  , ElemRep (Array Word64 ds) ~ 'WordRep
+#endif
+                  ) => PrimBytes (DataFrame Word64 ds)
 #endif
 
 
