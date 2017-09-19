@@ -29,11 +29,10 @@
 
 module Numeric.Commons
   ( ElemRep, ElemPrim
-  , PrimBytes (..), FloatBytes, DoubleBytes, IntBytes, WordBytes
+  , PrimBytes (..)
   ) where
 
 #include "MachDeps.h"
-#include "HsBaseConfig.h"
 
 #ifndef ghcjs_HOST_OS
 import           GHC.Base  (runRW#)
@@ -53,7 +52,7 @@ type instance ElemRep Int    = 'IntRep
 type instance ElemRep Int8   = 'IntRep
 type instance ElemRep Int16  = 'IntRep
 type instance ElemRep Int32  = 'IntRep
-#if SIZEOF_HSWORD < 8
+#if WORD_SIZE_IN_BITS < 64
 type instance ElemRep Int64  = 'Int64Rep
 #else
 type instance ElemRep Int64  = 'IntRep
@@ -62,7 +61,7 @@ type instance ElemRep Word   = 'WordRep
 type instance ElemRep Word8  = 'WordRep
 type instance ElemRep Word16 = 'WordRep
 type instance ElemRep Word32 = 'WordRep
-#if SIZEOF_HSWORD < 8
+#if WORD_SIZE_IN_BITS < 64
 type instance ElemRep Word64 = 'Word64Rep
 #else
 type instance ElemRep Word64 = 'WordRep
@@ -75,7 +74,7 @@ type instance ElemPrim Int = Int#
 type instance ElemPrim Int8 = Int#
 type instance ElemPrim Int16 = Int#
 type instance ElemPrim Int32 = Int#
-#if SIZEOF_HSWORD < 8
+#if WORD_SIZE_IN_BITS < 64
 type instance ElemPrim Int64 = Int64#
 #else
 type instance ElemPrim Int64 = Int#
@@ -84,17 +83,12 @@ type instance ElemPrim Word = Word#
 type instance ElemPrim Word8 = Word#
 type instance ElemPrim Word16 = Word#
 type instance ElemPrim Word32 = Word#
-#if SIZEOF_HSWORD < 8
+#if WORD_SIZE_IN_BITS < 64
 type instance ElemPrim Word64 = Word64#
 #else
 type instance ElemPrim Word64 = Word#
 #endif
 
-
-type FloatBytes a  = (PrimBytes a, ElemRep a ~ 'FloatRep , ElemPrim a ~ Float#)
-type DoubleBytes a = (PrimBytes a, ElemRep a ~ 'DoubleRep, ElemPrim a ~ Double#)
-type IntBytes a    = (PrimBytes a, ElemRep a ~ 'IntRep   , ElemPrim a ~ Int#)
-type WordBytes a   = (PrimBytes a, ElemRep a ~ 'WordRep  , ElemPrim a ~ Word#)
 
 -- | Facilities to convert to and from raw byte array.
 --   Warning! offsets and sizes are in elements, not in bytes!

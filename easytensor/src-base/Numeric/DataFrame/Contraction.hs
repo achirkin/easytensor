@@ -31,6 +31,7 @@ module Numeric.DataFrame.Contraction
   ( Contraction (..), (%*)
   ) where
 
+#include "MachDeps.h"
 
 import           Data.Int               (Int16, Int32, Int64, Int8)
 import           Data.Word              (Word16, Word32, Word64, Word8)
@@ -301,8 +302,10 @@ instance ( ConcatList as bs asbs
         getM _ = Proxy
 
 
-
-prodF :: (FloatBytes a, FloatBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
+prodF :: (PrimBytes a, PrimBytes b, PrimBytes c
+         , ElemPrim a ~ Float#, ElemRep a ~ 'FloatRep
+         , ElemPrim b ~ Float#, ElemRep b ~ 'FloatRep
+         ) => Int# -> Int# -> Int# -> a -> b -> c
 prodF n m k x y = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) ->
@@ -318,7 +321,10 @@ prodF n m k x y = case runRW#
       bs = n *# k *# elementByteSize x
 {-# INLINE prodF #-}
 
-prodD :: (DoubleBytes a, DoubleBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
+prodD :: (PrimBytes a, PrimBytes b, PrimBytes c
+         , ElemPrim a ~ Double#, ElemRep a ~ 'DoubleRep
+         , ElemPrim b ~ Double#, ElemRep b ~ 'DoubleRep
+         ) => Int# -> Int# -> Int# -> a -> b -> c
 prodD n m k x y= case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) ->
@@ -334,7 +340,10 @@ prodD n m k x y= case runRW#
       bs = n *# k *# elementByteSize x
 {-# INLINE prodD #-}
 
-prodI :: (IntBytes a, IntBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
+prodI :: (PrimBytes a, PrimBytes b, PrimBytes c
+         , ElemPrim a ~ Int#, ElemRep a ~ 'IntRep
+         , ElemPrim b ~ Int#, ElemRep b ~ 'IntRep
+         ) => Int# -> Int# -> Int# -> a -> b -> c
 prodI n m k x y= case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) ->
@@ -350,7 +359,10 @@ prodI n m k x y= case runRW#
       bs = n *# k *# elementByteSize x
 {-# INLINE prodI #-}
 
-prodI8 :: (IntBytes a, IntBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
+prodI8 :: (PrimBytes a, PrimBytes b, PrimBytes c
+         , ElemPrim a ~ Int#, ElemRep a ~ 'IntRep
+         , ElemPrim b ~ Int#, ElemRep b ~ 'IntRep
+         ) => Int# -> Int# -> Int# -> a -> b -> c
 prodI8 n m k x y= case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) ->
@@ -367,7 +379,10 @@ prodI8 n m k x y= case runRW#
 {-# INLINE prodI8 #-}
 
 
-prodI16 :: (IntBytes a, IntBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
+prodI16 :: ( PrimBytes a, PrimBytes b, PrimBytes c
+           , ElemPrim a ~ Int#, ElemRep a ~ 'IntRep
+           , ElemPrim b ~ Int#, ElemRep b ~ 'IntRep
+           ) => Int# -> Int# -> Int# -> a -> b -> c
 prodI16 n m k x y= case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) ->
@@ -384,7 +399,10 @@ prodI16 n m k x y= case runRW#
 {-# INLINE prodI16 #-}
 
 
-prodI32 :: (IntBytes a, IntBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
+prodI32 :: ( PrimBytes a, PrimBytes b, PrimBytes c
+           , ElemPrim a ~ Int#, ElemRep a ~ 'IntRep
+           , ElemPrim b ~ Int#, ElemRep b ~ 'IntRep
+           ) => Int# -> Int# -> Int# -> a -> b -> c
 prodI32 n m k x y= case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) ->
@@ -401,8 +419,11 @@ prodI32 n m k x y= case runRW#
 {-# INLINE prodI32 #-}
 
 
-prodI64 :: (IntBytes a, IntBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
-#if SIZEOF_HSWORD < 8
+prodI64 :: ( PrimBytes a, PrimBytes b, PrimBytes c
+           , ElemPrim a ~ Int#, ElemRep a ~ 'IntRep
+           , ElemPrim b ~ Int#, ElemRep b ~ 'IntRep
+           ) => Int# -> Int# -> Int# -> a -> b -> c
+#if WORD_SIZE_IN_BITS < 64
 prodI64 = undefined
 #else
 prodI64 n m k x y= case runRW#
@@ -421,7 +442,10 @@ prodI64 n m k x y= case runRW#
 {-# INLINE prodI64 #-}
 #endif
 
-prodW :: (WordBytes a, WordBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
+prodW :: ( PrimBytes a, PrimBytes b, PrimBytes c
+         , ElemPrim a ~ Word#, ElemRep a ~ 'WordRep
+         , ElemPrim b ~ Word#, ElemRep b ~ 'WordRep
+         ) => Int# -> Int# -> Int# -> a -> b -> c
 prodW n m k x y = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) ->
@@ -437,7 +461,10 @@ prodW n m k x y = case runRW#
       bs = n *# k *# elementByteSize x
 {-# INLINE prodW #-}
 
-prodW8 :: (WordBytes a, WordBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
+prodW8 :: ( PrimBytes a, PrimBytes b, PrimBytes c
+          , ElemPrim a ~ Word#, ElemRep a ~ 'WordRep
+          , ElemPrim b ~ Word#, ElemRep b ~ 'WordRep
+          ) => Int# -> Int# -> Int# -> a -> b -> c
 prodW8 n m k x y = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) ->
@@ -454,7 +481,10 @@ prodW8 n m k x y = case runRW#
 {-# INLINE prodW8 #-}
 
 
-prodW16 :: (WordBytes a, WordBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
+prodW16 :: ( PrimBytes a, PrimBytes b, PrimBytes c
+           , ElemPrim a ~ Word#, ElemRep a ~ 'WordRep
+           , ElemPrim b ~ Word#, ElemRep b ~ 'WordRep
+           ) => Int# -> Int# -> Int# -> a -> b -> c
 prodW16 n m k x y = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) ->
@@ -470,7 +500,10 @@ prodW16 n m k x y = case runRW#
       bs = n *# k *# elementByteSize x
 {-# INLINE prodW16 #-}
 
-prodW32 :: (WordBytes a, WordBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
+prodW32 :: ( PrimBytes a, PrimBytes b, PrimBytes c
+           , ElemPrim a ~ Word#, ElemRep a ~ 'WordRep
+           , ElemPrim b ~ Word#, ElemRep b ~ 'WordRep
+           ) => Int# -> Int# -> Int# -> a -> b -> c
 prodW32 n m k x y = case runRW#
      ( \s0 -> case newByteArray# bs s0 of
          (# s1, marr #) ->
@@ -486,8 +519,11 @@ prodW32 n m k x y = case runRW#
       bs = n *# k *# elementByteSize x
 {-# INLINE prodW32 #-}
 
-prodW64 :: (WordBytes a, WordBytes b, PrimBytes c) => Int# -> Int# -> Int# -> a -> b -> c
-#if SIZEOF_HSWORD < 8
+prodW64 :: ( PrimBytes a, PrimBytes b, PrimBytes c
+           , ElemPrim a ~ Word#, ElemRep a ~ 'WordRep
+           , ElemPrim b ~ Word#, ElemRep b ~ 'WordRep
+           ) => Int# -> Int# -> Int# -> a -> b -> c
+#if WORD_SIZE_IN_BITS < 64
 prodW64 = undefined
 #else
 prodW64 n m k x y = case runRW#
@@ -514,5 +550,3 @@ loop2# n m f = loop' 0# 0#
                 | isTrue# (i ==# n) = loop' 0# (j +# 1#) s
                 | otherwise         = case f i j s of s1 -> loop' (i +# 1#) j s1
 {-# INLINE loop2# #-}
-
-
