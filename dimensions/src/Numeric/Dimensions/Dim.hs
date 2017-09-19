@@ -267,33 +267,20 @@ type family NatKind ks k :: Constraint where
     NatKind [XNat] XNat = ()
     NatKind  ks    k    = ks ~ [k]
 
-
 -- | FixedDim tries not to inspect content of `ns` and construct it
 --   based only on `xns` when it is possible.
 --   This means it does not check if `XN m <= n`.
 type family FixedDim (xns :: [XNat]) (ns :: [Nat]) :: [Nat] where
-    FixedDim '[]          '[]  = '[]
-    FixedDim (N n  ': xs) (_ ': ns) = n ': FixedDim xs ns
-    FixedDim (XN _ ': xs) (n ': ns) = n ': FixedDim xs ns
-    FixedDim xs ns = TypeError (
-           'Text "FixedDim mismatch:"
-           ':$$:
-           'ShowType ns ':<>: 'Text " does not fit " ':<>: 'ShowType xs
-      )
-
+    FixedDim '[]          _  = '[]
+    FixedDim (N n  ': xs) ns = n ': FixedDim xs (Tail ns)
+    FixedDim (XN _ ': xs) ns = Head ns ': FixedDim xs (Tail ns)
 
 -- | FixedXDim tries not to inspect content of `xns` and construct it
 --   based only on `ns` when it is possible.
 --   This means it does not check if `XN m <= n`.
 type family FixedXDim (xns :: [XNat]) (ns :: [Nat]) :: [XNat] where
-    FixedXDim '[]  '[]       = '[]
-    FixedXDim (XN m ': xs) (_ ': ns) = XN m ': FixedXDim xs ns
-    FixedXDim (N  _ ': xs) (n ': ns) = N  n ': FixedXDim xs ns
-    FixedXDim xs ns = TypeError (
-           'Text "FixedXDim mismatch:"
-           ':$$:
-           'ShowType xs ':<>: 'Text " does not fit " ':<>: 'ShowType ns
-      )
+    FixedXDim _  '[]       = '[]
+    FixedXDim xs (n ': ns) = WrapNat (Head xs) n ': FixedXDim (Tail xs) ns
 
 -- | WrapNat tries not to inspect content of `xn` and construct it
 --   based only on `n` when it is possible.
