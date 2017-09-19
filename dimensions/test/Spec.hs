@@ -1,5 +1,6 @@
 module Main (tests, main) where
 
+import           System.Exit
 import           Distribution.TestSuite
 
 import qualified Numeric.Dimensions.ListTest
@@ -15,15 +16,15 @@ tests = return
 
 
 -- | Run tests as exitcode-stdio-1.0
-main :: IO Int
+main :: IO ()
 main = do
     ts <- tests
     trs <- mapM (\(Test ti) ->(,) (name ti) <$> run ti) ts
     case filter (not . isGood) trs of
-       [] -> return 0
+       [] -> exitSuccess
        xs -> do
         putStrLn $ "Failed tests: " ++ unwords (fmap fst xs)
-        return 1
+        exitFailure
   where
     isGood (_, Finished Pass) = True
     isGood _ = False
