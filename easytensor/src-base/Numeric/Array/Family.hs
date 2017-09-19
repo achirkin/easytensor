@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE ExistentialQuantification  #-}
@@ -40,8 +41,9 @@ module Numeric.Array.Family
 import           Data.Int                  (Int16, Int32, Int64, Int8)
 import           Data.Type.Equality        ((:~:) (..))
 import           Data.Word                 (Word16, Word32, Word64, Word8)
-import           GHC.Prim                  (ByteArray#, Double#, Float#, Int#,
-                                            Word#, unsafeCoerce#)
+import           GHC.Prim                  (ByteArray#, Double#, Float#, Int#,Int64#,Word64#
+                                           ,Word#, unsafeCoerce#)
+import           GHC.Exts                  (RuntimeRep(..))
 
 import           Numeric.Array.ElementWise
 import           Numeric.Commons
@@ -75,19 +77,43 @@ newtype Scalar t = Scalar { _unScalar :: t }
 instance Show t => Show (Scalar t) where
   show (Scalar t) = "{ " ++ show t ++ " }"
 
+#if SIZEOF_HSWORD < 8
+type instance ElemRep (Scalar Float ) = 'FloatRep
+type instance ElemRep (Scalar Double) = 'DoubleRep
+type instance ElemRep (Scalar Int   ) = 'IntRep
+type instance ElemRep (Scalar Int8  ) = 'IntRep
+type instance ElemRep (Scalar Int16 ) = 'IntRep
+type instance ElemRep (Scalar Int32 ) = 'IntRep
+type instance ElemRep (Scalar Int64 ) = 'Int64Rep
+type instance ElemRep (Scalar Word  ) = 'WordRep
+type instance ElemRep (Scalar Word8 ) = 'WordRep
+type instance ElemRep (Scalar Word16) = 'WordRep
+type instance ElemRep (Scalar Word32) = 'WordRep
+type instance ElemRep (Scalar Word64) = 'Word64Rep
+#else
 type instance ElemRep  (Scalar t) = ElemRep t
+#endif
+
 type instance ElemPrim (Scalar Float ) = Float#
 type instance ElemPrim (Scalar Double) = Double#
 type instance ElemPrim (Scalar Int   ) = Int#
 type instance ElemPrim (Scalar Int8  ) = Int#
 type instance ElemPrim (Scalar Int16 ) = Int#
 type instance ElemPrim (Scalar Int32 ) = Int#
+#if SIZEOF_HSWORD < 8
+type instance ElemPrim (Scalar Int64 ) = Int64#
+#else
 type instance ElemPrim (Scalar Int64 ) = Int#
+#endif
 type instance ElemPrim (Scalar Word  ) = Word#
 type instance ElemPrim (Scalar Word8 ) = Word#
 type instance ElemPrim (Scalar Word16) = Word#
 type instance ElemPrim (Scalar Word32) = Word#
+#if SIZEOF_HSWORD < 8
+type instance ElemPrim (Scalar Word64) = Word64#
+#else
 type instance ElemPrim (Scalar Word64) = Word#
+#endif
 
 deriving instance PrimBytes (Scalar Float)
 deriving instance PrimBytes (Scalar Double)
@@ -146,8 +172,13 @@ data ArrayI16 (ds :: [Nat]) = ArrayI16# Int# Int# ByteArray#
                             | FromScalarI16# Int#
 data ArrayI32 (ds :: [Nat]) = ArrayI32# Int# Int# ByteArray#
                             | FromScalarI32# Int#
+#if SIZEOF_HSWORD < 8
+data ArrayI64 (ds :: [Nat]) = ArrayI64# Int# Int# ByteArray#
+                            | FromScalarI64# Int64#
+#else
 data ArrayI64 (ds :: [Nat]) = ArrayI64# Int# Int# ByteArray#
                             | FromScalarI64# Int#
+#endif
 data ArrayW   (ds :: [Nat]) = ArrayW# Int# Int# ByteArray#
                             | FromScalarW# Word#
 data ArrayW8  (ds :: [Nat]) = ArrayW8# Int# Int# ByteArray#
@@ -156,8 +187,13 @@ data ArrayW16 (ds :: [Nat]) = ArrayW16# Int# Int# ByteArray#
                             | FromScalarW16# Word#
 data ArrayW32 (ds :: [Nat]) = ArrayW32# Int# Int# ByteArray#
                             | FromScalarW32# Word#
+#if SIZEOF_HSWORD < 8
+data ArrayW64 (ds :: [Nat]) = ArrayW64# Int# Int# ByteArray#
+                            | FromScalarW64# Word64#
+#else
 data ArrayW64 (ds :: [Nat]) = ArrayW64# Int# Int# ByteArray#
                             | FromScalarW64# Word#
+#endif
 
 -- * Specialized types
 --   More efficient data types for small fixed-size tensors

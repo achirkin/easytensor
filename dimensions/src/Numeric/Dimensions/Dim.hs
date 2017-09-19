@@ -272,16 +272,28 @@ type family NatKind ks k :: Constraint where
 --   based only on `xns` when it is possible.
 --   This means it does not check if `XN m <= n`.
 type family FixedDim (xns :: [XNat]) (ns :: [Nat]) :: [Nat] where
-    FixedDim '[]          _  = '[]
-    FixedDim (N n  ': xs) ns = n ': FixedDim xs (Tail ns)
-    FixedDim (XN _ ': xs) ns = Head ns ': FixedDim xs (Tail ns)
+    FixedDim '[]          '[]  = '[]
+    FixedDim (N n  ': xs) (_ ': ns) = n ': FixedDim xs ns
+    FixedDim (XN _ ': xs) (n ': ns) = n ': FixedDim xs ns
+    FixedDim xs ns = TypeError (
+           'Text "FixedDim mismatch:"
+           ':$$:
+           'ShowType ns ':<>: 'Text " does not fit " ':<>: 'ShowType xs
+      )
+
 
 -- | FixedXDim tries not to inspect content of `xns` and construct it
 --   based only on `ns` when it is possible.
 --   This means it does not check if `XN m <= n`.
 type family FixedXDim (xns :: [XNat]) (ns :: [Nat]) :: [XNat] where
-    FixedXDim _  '[]       = '[]
-    FixedXDim xs (n ': ns) = WrapNat (Head xs) n ': FixedXDim (Tail xs) ns
+    FixedXDim '[]  '[]       = '[]
+    FixedXDim (XN m ': xs) (_ ': ns) = XN m ': FixedXDim xs ns
+    FixedXDim (N  _ ': xs) (n ': ns) = N  n ': FixedXDim xs ns
+    FixedXDim xs ns = TypeError (
+           'Text "FixedXDim mismatch:"
+           ':$$:
+           'ShowType xs ':<>: 'Text " does not fit " ':<>: 'ShowType ns
+      )
 
 -- | WrapNat tries not to inspect content of `xn` and construct it
 --   based only on `n` when it is possible.
@@ -290,10 +302,8 @@ type family WrapNat (xn :: XNat) (n :: Nat) :: XNat where
     WrapNat (XN m) n = XN m
     WrapNat  _     n = N n
 
-
-
 -- | Synonym for (:+) that treats Nat values 0 and 1 in a special way:
---   it preserves the property that all dimensions is greater than 1.
+--   it preserves the property that all dimensions are greater than 1.
 type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
     0 :< _  = '[]
     1 :< ns = ns
@@ -301,7 +311,7 @@ type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
 infixr 6 :<
 
 -- | Synonym for (+:) that treats Nat values 0 and 1 in a special way:
---   it preserves the property that all dimensions is greater than 1.
+--   it preserves the property that all dimensions are greater than 1.
 type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
     _  >: 0 = '[]
     ns >: 1 = ns

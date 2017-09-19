@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                       #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
@@ -24,6 +25,7 @@ module Numeric.DataFrame.Inference
     , NumericFrameEvidence, inferNumericFrame
     ) where
 
+import           Data.Int
 import           Numeric.Array
 import           Numeric.Array.ElementWise
 import           Numeric.Commons
@@ -56,12 +58,12 @@ inferPrimBytes = case getArrayInstance @t @ds of
       ETInt8   -> Evidence
       ETInt16  -> Evidence
       ETInt32  -> Evidence
-      ETInt64  -> Evidence
+      ETInt64  -> (Evidence :: Evidence (PrimBytes (DataFrame Int64 ('[] :: [Nat]))))
       ETWord   -> Evidence
       ETWord8  -> Evidence
       ETWord16 -> Evidence
       ETWord32 -> Evidence
-      ETWord64  -> Evidence
+      ETWord64 -> Evidence
     AIArrayF   -> Evidence
     AIArrayD   -> Evidence
     AIArrayI   -> Evidence
