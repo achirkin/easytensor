@@ -200,10 +200,17 @@ instance ( ConcatList as bs asbs
         , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
+#if WORD_SIZE_IN_BITS < 64
+        , Refl <- unsafeCoerce Refl :: ElemRep  (Array Int64 (m : bs) ) :~: 'Int64Rep
+        , Refl <- unsafeCoerce Refl :: ElemPrim (Array Int64 (m : bs) ) :~:  Int64#
+        , Refl <- unsafeCoerce Refl :: ElemRep  (Array Int64 (as +: m)) :~: 'Int64Rep
+        , Refl <- unsafeCoerce Refl :: ElemPrim (Array Int64 (as +: m)) :~:  Int64#
+#else
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Int64 (m : bs) ) :~: 'IntRep
         , Refl <- unsafeCoerce Refl :: ElemPrim (Array Int64 (m : bs) ) :~:  Int#
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Int64 (as +: m)) :~: 'IntRep
         , Refl <- unsafeCoerce Refl :: ElemPrim (Array Int64 (as +: m)) :~:  Int#
+#endif
         = prodI64 n m k x y
       where
         getM :: forall m p . p (m ': bs) -> Proxy m
@@ -292,10 +299,17 @@ instance ( ConcatList as bs asbs
         , I# m <- intNatVal pm
         , I# n <- totalDim (Proxy @as)
         , I# k <- totalDim (Proxy @bs)
+#if WORD_SIZE_IN_BITS < 64
+        , Refl <- unsafeCoerce Refl :: ElemRep  (Array Word64 (m : bs) ) :~: 'Word64Rep
+        , Refl <- unsafeCoerce Refl :: ElemPrim (Array Word64 (m : bs) ) :~:  Word64#
+        , Refl <- unsafeCoerce Refl :: ElemRep  (Array Word64 (as +: m)) :~: 'Word64Rep
+        , Refl <- unsafeCoerce Refl :: ElemPrim (Array Word64 (as +: m)) :~:  Word64#
+#else
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Word64 (m : bs) ) :~: 'WordRep
         , Refl <- unsafeCoerce Refl :: ElemPrim (Array Word64 (m : bs) ) :~:  Word#
         , Refl <- unsafeCoerce Refl :: ElemRep  (Array Word64 (as +: m)) :~: 'WordRep
         , Refl <- unsafeCoerce Refl :: ElemPrim (Array Word64 (as +: m)) :~:  Word#
+#endif
         = prodW64 n m k x y
       where
         getM :: forall m p . p (m ': bs) -> Proxy m
@@ -420,8 +434,13 @@ prodI32 n m k x y= case runRW#
 
 
 prodI64 :: ( PrimBytes a, PrimBytes b, PrimBytes c
+#if WORD_SIZE_IN_BITS < 64
+           , ElemPrim a ~ Int64#, ElemRep a ~ 'Int64Rep
+           , ElemPrim b ~ Int64#, ElemRep b ~ 'Int64Rep
+#else
            , ElemPrim a ~ Int#, ElemRep a ~ 'IntRep
            , ElemPrim b ~ Int#, ElemRep b ~ 'IntRep
+#endif
            ) => Int# -> Int# -> Int# -> a -> b -> c
 #if WORD_SIZE_IN_BITS < 64
 prodI64 = undefined
@@ -520,8 +539,13 @@ prodW32 n m k x y = case runRW#
 {-# INLINE prodW32 #-}
 
 prodW64 :: ( PrimBytes a, PrimBytes b, PrimBytes c
+#if WORD_SIZE_IN_BITS < 64
+           , ElemPrim a ~ Word64#, ElemRep a ~ 'Word64Rep
+           , ElemPrim b ~ Word64#, ElemRep b ~ 'Word64Rep
+#else
            , ElemPrim a ~ Word#, ElemRep a ~ 'WordRep
            , ElemPrim b ~ Word#, ElemRep b ~ 'WordRep
+#endif
            ) => Int# -> Int# -> Int# -> a -> b -> c
 #if WORD_SIZE_IN_BITS < 64
 prodW64 = undefined

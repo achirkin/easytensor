@@ -42,7 +42,11 @@ module Numeric.DataFrame.Type
 import           Data.Int                  (Int16, Int32, Int64, Int8)
 import           Data.Word                 (Word16, Word32, Word64, Word8)
 import           Foreign.Storable          (Storable (..))
-import           GHC.Exts                  (Int (..), Ptr (..), Float#, Double#, Int#, Word#)
+import           GHC.Exts                  (Int (..), Ptr (..), Float#, Double#, Int#, Word#
+#if WORD_SIZE_IN_BITS < 64
+                                           , Int64#, Word64#
+#endif
+                                           )
 import           GHC.Prim                  (copyAddrToByteArray#,
                                             copyByteArrayToAddr#, newByteArray#,
                                             plusAddr#, quotInt#,
