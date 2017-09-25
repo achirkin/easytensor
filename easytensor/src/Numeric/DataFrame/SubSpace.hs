@@ -69,7 +69,7 @@ class ( ConcatList as bs asbs
                     | asbs as -> bs, asbs bs -> as, as bs -> asbs where
     -- | Unsafely get a sub-dataframe by its primitive element subset.
     --   The offset is not checked to be aligned to the space structure or for bounds.
-    --   Arguments are zero-based element offset and element size (aka `totalDim` of sub dataframe)
+    --   Arguments are zero-based primitive element offset and subset ("as" element) size (aka `totalDim` of sub dataframe)
     --
     --   Normal indexing can be expressed in terms of `indexOffset#`:
     --
@@ -218,34 +218,44 @@ instance {-# OVERLAPPABLE #-}
 #endif
     {-# INLINE indexOffset# #-}
 
+    ewmap  :: forall s (as' :: [Nat]) (asbs' :: [Nat])
+            . SubSpace s as' bs asbs'
+           => (DataFrame s as' -> DataFrame t as)
+           -> DataFrame s asbs' -> DataFrame t asbs
     ewmap f df
       | elS <- elementByteSize (undefined :: DataFrame t asbs)
       , I# lenBS <- totalDim (Proxy @bs)
       , I# lenAS <- totalDim (Proxy @as)
+      , I# lenAS' <- totalDim (Proxy @as')
       , lenASB <- lenAS *# elS
       = case runRW#
           ( \s0 -> case newByteArray# (lenAS *# lenBS *# elS) s0 of
               (# s1, marr #) -> case overDimOff_#
                   (dim @bs)
-                  ( \pos s -> case toBytes $ f (indexOffset# pos lenAS df) of
-                      (# offX, _, arrX #) -> copyByteArray# arrX (offX *# elS) marr (pos *# elS) lenASB s
-                  ) 0# lenAS s1 of
+                  ( \pos s -> case toBytes $ f (indexOffset# (pos *# lenAS') lenAS' df) of
+                      (# offX, _, arrX #) -> copyByteArray# arrX (offX *# elS) marr (pos *# lenASB) lenASB s
+                  ) 0# 1# s1 of
                 s2 -> unsafeFreezeByteArray# marr s2
           ) of (# _, r #) -> fromBytes (# 0#, lenAS *# lenBS, r #)
     {-# INLINE ewmap #-}
 
+    iwmap  :: forall s (as' :: [Nat]) (asbs' :: [Nat])
+            . SubSpace s as' bs asbs'
+           => (Idx bs -> DataFrame s as' -> DataFrame t as)
+           -> DataFrame s asbs' -> DataFrame t asbs
     iwmap f df
       | elS <- elementByteSize (undefined :: DataFrame t asbs)
       , I# lenBS <- totalDim (Proxy @bs)
       , I# lenAS <- totalDim (Proxy @as)
+      , I# lenAS' <- totalDim (Proxy @as')
       , lenASB <- lenAS *# elS
       = case runRW#
           ( \s0 -> case newByteArray# (lenAS *# lenBS *# elS) s0 of
               (# s1, marr #) -> case overDim_#
                   (dim @bs)
-                  ( \i pos s -> case toBytes $ f i (indexOffset# pos lenAS df) of
-                      (# offX, _, arrX #) -> copyByteArray# arrX (offX *# elS) marr (pos *# elS) lenASB s
-                  ) 0# lenAS s1 of
+                  ( \i pos s -> case toBytes $ f i (indexOffset# (pos *# lenAS') lenAS' df) of
+                      (# offX, _, arrX #) -> copyByteArray# arrX (offX *# elS) marr (pos *# lenASB) lenASB s
+                  ) 0# 1# s1 of
                 s2 -> unsafeFreezeByteArray# marr s2
           ) of (# _, r #) -> fromBytes (# 0#, lenAS *# lenBS, r #)
 
