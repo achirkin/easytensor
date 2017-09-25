@@ -20,6 +20,7 @@ module Numeric.Vector
       -- * Common operations
     , (.*.), dot, (·)
     , normL1, normL2, normLPInf, normLNInf, normLP
+    , normalized
     , vec2, vec3, vec4
     , det2, cross, (×)
     , unpackV2, unpackV3, unpackV4
@@ -86,6 +87,16 @@ normL2 :: ( Floating t
           )
        => Vector t n -> Scalar t
 normL2 = scalar . sqrt . ewfoldr (const (\a -> (a*a +))) 0
+
+-- | Normalize vector w.r.t. Euclidean metric (L2).
+normalized :: ( Floating t
+              , Fractional (Vector t n)
+              , ElementWise (Idx '[n]) t (Vector t n)
+              )
+           => Vector t n -> Vector t n
+normalized v = v / n
+  where
+    n = broadcast . sqrt $ ewfoldr (const (\a -> (a*a +))) 0 v
 
 -- | Maximum of absolute values
 normLPInf :: ( Ord t, Num t
@@ -188,4 +199,3 @@ unpackV4 :: ElementWise (Idx '[4]) t (Vector t 4)
          => Vector t 4 -> (t, t, t, t)
 unpackV4 v = (v ! 1, v ! 2, v ! 3, v ! 4)
 {-# INLINE unpackV4 #-}
-
