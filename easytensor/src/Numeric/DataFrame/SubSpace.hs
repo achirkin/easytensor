@@ -152,13 +152,13 @@ infixl 4 !
 ewfoldMap :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) m
            . (Monoid m, SubSpace t as bs asbs)
           => (DataFrame t as -> m) -> DataFrame t asbs -> m
-ewfoldMap f = ewfoldl (\b -> mappend b . f) mempty
+ewfoldMap f = ewfoldl (\m b -> m `seq` (mappend m $! f b)) mempty
 {-# INLINE ewfoldMap #-}
 
 iwfoldMap :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) m
            . ( Monoid m, SubSpace t as bs asbs)
           => (Idx bs -> DataFrame t as -> m) -> DataFrame t asbs -> m
-iwfoldMap f = iwfoldl (\i b -> mappend b . f i) mempty
+iwfoldMap f = iwfoldl (\i m b -> m `seq` (mappend m $! f i b)) mempty
 {-# INLINE iwfoldMap #-}
 
 
