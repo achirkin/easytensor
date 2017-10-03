@@ -43,6 +43,7 @@ library
         Numeric.Vector
         Numeric.Scalar
         Numeric.Quaternion
+        Numeric.Semigroup
     build-depends:
         base >=4.9 && <5,
         ghc-prim >=0.5,
