@@ -14,16 +14,19 @@ import Data.Coerce (coerce)
 
 import Numeric.Array
 import Numeric.DataFrame.Type
---import Numeric.Vector
---import Numeric.Matrix
+import Numeric.Commons
+import Numeric.Dimensions
+import Numeric.Scalar
+import Numeric.Vector
+import Numeric.Matrix
+import qualified Numeric.DataFrame.ST as ST
+import qualified Numeric.Dimensions.Traverse.ST as ST
+import qualified Control.Monad.ST as ST
 
 import Numeric.Quaternion.Class
 
 
 type QFloat = Quater Float
-
-notYet :: a
-notYet = error "Sorry, this function is not implemented for current platform yet."
 
 instance Quaternion Float where
     newtype Quater Float = QFloat FloatX4
@@ -59,28 +62,195 @@ instance Quaternion Float where
                                                 (negateFloat# y)
                                                 (negateFloat# z) w)
     {-# INLINE rotScale #-}
-    rotScale = notYet
+    rotScale (QFloat (FloatX4# i j k t))
+             (KnownDataFrame (FloatX3# x y z))
+      = let l = t*%t -% i*%i -% j*%j -% k*%k
+            d = 2.0# *% ( i*%x +% j*%y +% k*%z)
+            t2 = t *% 2.0#
+        in KnownDataFrame
+            ( FloatX3#
+                (l*%x +% d*%i +% t2 *% (z*%j -% y*%k))
+                (l*%y +% d*%j +% t2 *% (x*%k -% z*%i))
+                (l*%z +% d*%k +% t2 *% (y*%i -% x*%j))
+            )
     {-# INLINE getRotScale #-}
-    getRotScale = notYet
+    getRotScale _ (KnownDataFrame (FloatX3# 0.0# 0.0# 0.0#))
+      = QFloat (FloatX4# 0.0# 0.0# 0.0# 0.0#)
+    getRotScale (KnownDataFrame (FloatX3# 0.0# 0.0# 0.0#)) _
+      = case infty of F# x -> QFloat (FloatX4# x x x x)
+    getRotScale a@(KnownDataFrame (FloatX3# a1 a2 a3))
+                b@(KnownDataFrame (FloatX3# b1 b2 b3))
+      = let ma = sqrtFloat# (a1*%a1 +% a2*%a2 +% a3*%a3)
+            mb = sqrtFloat# (b1*%b1 +% b2*%b2 +% b3*%b3)
+            d  = a1*%b1 +% a2*%b2 +% a3*%b3
+            c  = sqrtFloat# (ma*%mb +% d)
+            ma2 = ma *% sqrtFloat# 2.0#
+            r  = 1.0# /% (ma2 *% c)
+        in case cross a b of
+          KnownDataFrame (FloatX3# 0.0# 0.0# 0.0#) ->
+            if isTrue# (gtFloat# d 0.0#)
+            then QFloat (FloatX4#  0.0# 0.0# 0.0# (sqrtFloat# (mb /% ma)))
+                 -- Shall we move result from k to i component?
+            else QFloat (FloatX4#  0.0# 0.0# (sqrtFloat# (mb /% ma)) 0.0#)
+          KnownDataFrame (FloatX3# t1 t2 t3) -> QFloat
+                ( FloatX4#
+                    (t1 *% r)
+                    (t2 *% r)
+                    (t3 *% r)
+                    (c /% ma2)
+                )
     {-# INLINE axisRotation #-}
-    axisRotation = notYet
+    axisRotation (KnownDataFrame (FloatX3# 0.0# 0.0# 0.0#)) _
+      = QFloat (FloatX4# 0.0# 0.0# 0.0# 1.0#)
+    axisRotation (KnownDataFrame (FloatX3# x y z)) (F# a)
+      = let c = cosFloat# (a *% 0.5#)
+            s = sinFloat# (a *% 0.5#)
+                /% sqrtFloat# (x*%x +% y*%y +% z*%z)
+        in QFloat
+              ( FloatX4#
+                  (x *% s)
+                  (y *% s)
+                  (z *% s)
+                  c
+              )
     {-# INLINE qArg #-}
-    qArg = notYet
+    qArg (QFloat (FloatX4# x y z w))
+       = case atan2 (F# (sqrtFloat# (x*%x +% y*%y +% z*%z)))
+                    (F# w) of
+           F# a -> F# (a *% 2.0#)
     {-# INLINE fromMatrix33 #-}
-    fromMatrix33 = notYet
+    fromMatrix33 m
+      = let d = powerFloat#
+              (  ix 0# m *% ( ix 4# m *% ix 8# m -% ix 5# m *% ix 7# m )
+              -% ix 1# m *% ( ix 3# m *% ix 8# m -% ix 5# m *% ix 6# m )
+              +% ix 2# m *% ( ix 3# m *% ix 7# m -% ix 4# m *% ix 6# m )
+              ) 0.33333333333333333333333333333333#
+        in QFloat
+           ( FloatX4#
+            (sqrtFloat# (max# 0.0# (d +% ix 0# m -% ix 4# m -% ix 8# m )) *% sign# (ix 5# m -% ix 7# m) *% 0.5#)
+            (sqrtFloat# (max# 0.0# (d -% ix 0# m +% ix 4# m -% ix 8# m )) *% sign# (ix 6# m -% ix 2# m) *% 0.5#)
+            (sqrtFloat# (max# 0.0# (d -% ix 0# m -% ix 4# m +% ix 8# m )) *% sign# (ix 1# m -% ix 3# m) *% 0.5#)
+            (sqrtFloat# (max# 0.0# (d +% ix 0# m +% ix 4# m +% ix 8# m )) *% 0.5#)
+           )
     {-# INLINE fromMatrix44 #-}
-    fromMatrix44 = notYet
+    fromMatrix44 m
+      = let d = powerFloat#
+              (  ix 0# m *% ( ix 5# m *% ix 10# m -% ix 6# m *% ix 9# m )
+              -% ix 1# m *% ( ix 4# m *% ix 10# m -% ix 6# m *% ix 8# m )
+              +% ix 2# m *% ( ix 4# m *% ix  9# m -% ix 5# m *% ix 8# m )
+              ) 0.33333333333333333333333333333333#
+            c = 0.5# /% ix 15# m
+        in QFloat
+           ( FloatX4#
+            (sqrtFloat# (max# 0.0# (d +% ix 0# m -% ix 5# m -% ix 10# m )) *% sign# (ix 6# m -% ix 9# m) *% c)
+            (sqrtFloat# (max# 0.0# (d -% ix 0# m +% ix 5# m -% ix 10# m )) *% sign# (ix 8# m -% ix 2# m) *% c)
+            (sqrtFloat# (max# 0.0# (d -% ix 0# m -% ix 5# m +% ix 10# m )) *% sign# (ix 1# m -% ix 4# m) *% c)
+            (sqrtFloat# (max# 0.0# (d +% ix 0# m +% ix 5# m +% ix 10# m )) *% c)
+           )
     {-# INLINE toMatrix33 #-}
-    toMatrix33 = notYet
+    toMatrix33 (QFloat (FloatX4# 0.0# 0.0# 0.0# w)) = diag (scalar (F# (w *% w)))
+    toMatrix33 (QFloat (FloatX4# x' y' z' w')) =
+      let x = scalar (F# x')
+          y = scalar (F# y')
+          z = scalar (F# z')
+          w = scalar (F# w')
+          x2 = x * x
+          y2 = y * y
+          z2 = z * z
+          w2 = w * w
+          l2 = x2 + y2 + z2 + w2
+      in ST.runST $ do
+        df <- ST.newDataFrame
+        ST.writeDataFrameOff df 0 $ l2 - 2*(z2 + y2)
+        ST.writeDataFrameOff df 1 $ 2*(x*y + z*w)
+        ST.writeDataFrameOff df 2 $ 2*(x*z - y*w)
+        ST.writeDataFrameOff df 3 $ 2*(x*y - z*w)
+        ST.writeDataFrameOff df 4 $ l2 - 2*(z2 + x2)
+        ST.writeDataFrameOff df 5 $ 2*(y*z + x*w)
+        ST.writeDataFrameOff df 6 $ 2*(x*z + y*w)
+        ST.writeDataFrameOff df 7 $ 2*(y*z - x*w)
+        ST.writeDataFrameOff df 8 $ l2 - 2*(y2 + x2)
+        ST.unsafeFreezeDataFrame df
     {-# INLINE toMatrix44 #-}
-    toMatrix44 = notYet
+    toMatrix44 (QFloat (FloatX4# 0.0# 0.0# 0.0# w)) = ST.runST $ do
+      df <- ST.newDataFrame
+      ST.overDimOff_ (dim :: Dim '[4,4]) (\i -> ST.writeDataFrameOff df (I# i) 0) 0# 1#
+      let w2 = scalar (F# (w *% w))
+      ST.writeDataFrameOff df 0 w2
+      ST.writeDataFrameOff df 5 w2
+      ST.writeDataFrameOff df 10 w2
+      ST.writeDataFrameOff df 15 1
+      ST.unsafeFreezeDataFrame df
+    toMatrix44 (QFloat (FloatX4# x' y' z' w')) =
+      let x = scalar (F# x')
+          y = scalar (F# y')
+          z = scalar (F# z')
+          w = scalar (F# w')
+          x2 = x * x
+          y2 = y * y
+          z2 = z * z
+          w2 = w * w
+          l2 = x2 + y2 + z2 + w2
+      in ST.runST $ do
+        df <- ST.newDataFrame
+        ST.writeDataFrameOff df 0 $ l2 - 2*(z2 + y2)
+        ST.writeDataFrameOff df 1 $ 2*(x*y + z*w)
+        ST.writeDataFrameOff df 2 $ 2*(x*z - y*w)
+        ST.writeDataFrameOff df 3 0
+        ST.writeDataFrameOff df 4 $ 2*(x*y - z*w)
+        ST.writeDataFrameOff df 5 $ l2 - 2*(z2 + x2)
+        ST.writeDataFrameOff df 6 $ 2*(y*z + x*w)
+        ST.writeDataFrameOff df 7 0
+        ST.writeDataFrameOff df 8 $ 2*(x*z + y*w)
+        ST.writeDataFrameOff df 9 $ 2*(y*z - x*w)
+        ST.writeDataFrameOff df 10 $ l2 - 2*(y2 + x2)
+        ST.writeDataFrameOff df 11 0
+        ST.writeDataFrameOff df 12 0
+        ST.writeDataFrameOff df 13 0
+        ST.writeDataFrameOff df 14 0
+        ST.writeDataFrameOff df 15 1
+        ST.unsafeFreezeDataFrame df
 
 qdot :: QFloat -> Float#
-qdot (QFloat (FloatX4# x y z w)) = timesFloat# x x `plusFloat#`
-                                   timesFloat# y y `plusFloat#`
-                                   timesFloat# z z `plusFloat#`
-                                   timesFloat# w w
+qdot (QFloat (FloatX4# x y z w)) = (x *% x) +%
+                                   (y *% y) +%
+                                   (z *% z) +%
+                                   (w *% w)
 {-# INLINE qdot #-}
+
+(*%) :: Float# -> Float# -> Float#
+(*%) = timesFloat#
+{-# INLINE (*%) #-}
+infixl 7 *%
+
+(-%) :: Float# -> Float# -> Float#
+(-%) = minusFloat#
+{-# INLINE (-%) #-}
+infixl 6 -%
+
+(+%) :: Float# -> Float# -> Float#
+(+%) = plusFloat#
+{-# INLINE (+%) #-}
+infixl 6 +%
+
+(/%) :: Float# -> Float# -> Float#
+(/%) = divideFloat#
+{-# INLINE (/%) #-}
+infixl 7 /%
+
+infty :: Float
+infty = read "Infinity"
+
+max# :: Float# -> Float# -> Float#
+max# a b | isTrue# (gtFloat# a b) = a
+         | otherwise = b
+{-# INLINE max# #-}
+
+sign# :: Float# -> Float#
+sign# a | isTrue# (gtFloat# a 0.0#) = 1.0#
+        | isTrue# (ltFloat# a 0.0#) = negateFloat# 1.0#
+        | otherwise = 0.0#
+{-# INLINE sign# #-}
 
 --------------------------------------------------------------------------
 -- Num
@@ -96,25 +266,25 @@ instance Num QFloat where
     QFloat (FloatX4# a1 a2 a3 a4) * QFloat (FloatX4# b1 b2 b3 b4)
       = QFloat
          ( FloatX4#
-           (timesFloat# a4 b1 `plusFloat#`
-            timesFloat# a1 b4 `plusFloat#`
-            timesFloat# a2 b3 `minusFloat#`
-            timesFloat# a3 b2
+           ((a4 *% b1) +%
+            (a1 *% b4) +%
+            (a2 *% b3) -%
+            (a3 *% b2)
             )
-           (timesFloat# a4 b2 `minusFloat#`
-            timesFloat# a1 b3 `plusFloat#`
-            timesFloat# a2 b4 `plusFloat#`
-            timesFloat# a3 b1
+           ((a4 *% b2) -%
+            (a1 *% b3) +%
+            (a2 *% b4) +%
+            (a3 *% b1)
             )
-           (timesFloat# a4 b3 `plusFloat#`
-            timesFloat# a1 b2 `minusFloat#`
-            timesFloat# a2 b1 `plusFloat#`
-            timesFloat# a3 b4
+           ((a4 *% b3) +%
+            (a1 *% b2) -%
+            (a2 *% b1) +%
+            (a3 *% b4)
             )
-           (timesFloat# a4 b4 `minusFloat#`
-            timesFloat# a1 b1 `minusFloat#`
-            timesFloat# a2 b2 `minusFloat#`
-            timesFloat# a3 b3
+           ((a4 *% b4) -%
+            (a1 *% b1) -%
+            (a2 *% b2) -%
+            (a3 *% b3)
             )
          )
     {-# INLINE (*) #-}
@@ -125,13 +295,13 @@ instance Num QFloat where
     signum q@(QFloat (FloatX4# x y z w))
       = case qdot q of
           0.0# -> QFloat (FloatX4# 0.0# 0.0# 0.0# 0.0#)
-          qd -> case 1.0# `divideFloat#` sqrtFloat# qd of
+          qd -> case 1.0# /% sqrtFloat# qd of
              s -> QFloat
                ( FloatX4#
-                (timesFloat# x s)
-                (timesFloat# y s)
-                (timesFloat# z s)
-                (timesFloat# w s)
+                (x *% s)
+                (y *% s)
+                (z *% s)
+                (w *% s)
                )
     {-# INLINE signum #-}
     fromInteger n = case fromInteger n of
@@ -146,13 +316,13 @@ instance Num QFloat where
 
 instance Fractional QFloat where
     {-# INLINE recip #-}
-    recip q@(QFloat (FloatX4# x y z w)) = case -1.0# `divideFloat#` qdot q of
+    recip q@(QFloat (FloatX4# x y z w)) = case -1.0# /% qdot q of
       c -> QFloat
         ( FloatX4#
-         (timesFloat# x c)
-         (timesFloat# y c)
-         (timesFloat# z c)
-         (negateFloat# (timesFloat# w c))
+         (x *% c)
+         (y *% c)
+         (z *% c)
+         (negateFloat# (w *% c))
         )
     {-# INLINE (/) #-}
     a / b = a * recip b
@@ -170,101 +340,99 @@ instance  Floating QFloat where
                           3.141592653589793#)
     {-# INLINE exp #-}
     exp (QFloat (FloatX4# x y z w))
-      = case (# timesFloat# x x `plusFloat#`
-                timesFloat# y y `plusFloat#`
-                timesFloat# z z
+      = case (# (x *% x) +%
+                (y *% y) +%
+                (z *% z)
              , expFloat# w
              #) of
         (# 0.0#, et #) -> QFloat (FloatX4# 0.0# 0.0# 0.0# et)
         (# mv2, et #) -> case sqrtFloat# mv2 of
-          mv -> case et `timesFloat#` sinFloat# mv
-                        `divideFloat#` mv of
+          mv -> case et *% sinFloat# mv
+                        /% mv of
             l -> QFloat
               ( FloatX4#
-               (timesFloat# x l)
-               (timesFloat# y l)
-               (timesFloat# z l)
-               (et `timesFloat#` cosFloat# mv)
+               (x *% l)
+               (y *% l)
+               (z *% l)
+               (et *% cosFloat# mv)
               )
     {-# INLINE log #-}
     log (QFloat (FloatX4# x y z w))
-      = case timesFloat# x x `plusFloat#`
-             timesFloat# y y `plusFloat#`
-             timesFloat# z z of
+      = case (x *% x) +%
+             (y *% y) +%
+             (z *% z) of
         0.0# -> if isTrue# (w `geFloat#` 0.0#)
                 then QFloat (FloatX4# 0.0# 0.0# 0.0# (logFloat# w))
                 else QFloat (FloatX4# 3.141592653589793# 0.0# 0.0#
                                      (logFloat# (negateFloat# w)))
-        mv2 -> case (# sqrtFloat# (mv2 `plusFloat#` timesFloat# w w)
+        mv2 -> case (# sqrtFloat# (mv2 +% (w *% w))
                      , sqrtFloat# mv2
                     #) of
           (# mq, mv #) -> case atan2 (F# mv) (F# w) / F# mv of
             F# l -> QFloat
               ( FloatX4#
-               (timesFloat# x l)
-               (timesFloat# y l)
-               (timesFloat# z l)
+               (x *% l)
+               (y *% l)
+               (z *% l)
                (logFloat# mq)
               )
     {-# INLINE sqrt #-}
     sqrt (QFloat (FloatX4# x y z w))
-      = case timesFloat# x x `plusFloat#`
-             timesFloat# y y `plusFloat#`
-             timesFloat# z z of
+      = case (x *% x) +%
+             (y *% y) +%
+             (z *% z) of
         0.0# -> if isTrue# (w `geFloat#` 0.0#)
                 then QFloat (FloatX4# 0.0# 0.0# 0.0# (sqrtFloat# w))
                 else QFloat (FloatX4# (sqrtFloat# (negateFloat# w)) 0.0# 0.0# 0.0#)
-        mv2 -> case sqrtFloat# (mv2 `plusFloat#` timesFloat# w w) of
-          mq -> case (# sqrtFloat# mq
-                     ,  w `divideFloat#` timesFloat# mq 2.0#
-                     #) of
-            (# l2, tq #) -> case sqrtFloat# (minusFloat# 0.5# tq)
-                                `timesFloat#` l2
-                                `divideFloat#` sqrtFloat# mv2 of
-              sina -> QFloat
+        mv2 ->
+          let mq = sqrtFloat# (mv2 +% w *% w)
+              l2 = sqrtFloat# mq
+              tq = w /% (mq *% 2.0#)
+              sina = sqrtFloat# (0.5# -% tq) *% l2 /% sqrtFloat# mv2
+          in QFloat
                 ( FloatX4#
-                 (timesFloat# x sina)
-                 (timesFloat# y sina)
-                 (timesFloat# z sina)
-                 (sqrtFloat# (plusFloat# 0.5# tq) `timesFloat#` l2)
+                 (x *% sina)
+                 (y *% sina)
+                 (z *% sina)
+                 (sqrtFloat# (0.5# +% tq) *% l2)
                 )
     {-# INLINE sin #-}
     sin (QFloat (FloatX4# x y z w))
-      = case timesFloat# x x `plusFloat#`
-             timesFloat# y y `plusFloat#`
-             timesFloat# z z of
+      = case (x *% x) +%
+             (y *% y) +%
+             (z *% z) of
         0.0# -> QFloat (FloatX4# 0.0# 0.0# 0.0# (sinFloat# w))
         mv2 -> case sqrtFloat# mv2 of
-          mv -> case cosFloat# w `timesFloat#` sinhFloat# mv
-                                 `divideFloat#` mv of
+          mv -> case cosFloat# w *% sinhFloat# mv
+                                 /% mv of
             l -> QFloat
               ( FloatX4#
-               (timesFloat# x l)
-               (timesFloat# y l)
-               (timesFloat# z l)
-               (sinFloat# w `timesFloat#` coshFloat# mv)
+               (x *% l)
+               (y *% l)
+               (z *% l)
+               (sinFloat# w *% coshFloat# mv)
               )
     {-# INLINE cos #-}
     cos (QFloat (FloatX4# x y z w))
-      = case timesFloat# x x `plusFloat#`
-             timesFloat# y y `plusFloat#`
-             timesFloat# z z of
+      = case (x *% x) +%
+             (y *% y) +%
+             (z *% z) of
         0.0# -> QFloat (FloatX4# 0.0# 0.0# 0.0# (cosFloat# w))
         mv2 -> case sqrtFloat# mv2 of
-          mv -> case sinFloat# w `timesFloat#` sinhFloat# mv
-                                 `divideFloat#` negateFloat# mv of
+          mv -> case sinFloat# w *% sinhFloat# mv
+                                 /% negateFloat# mv of
             l -> QFloat
               ( FloatX4#
-               (timesFloat# x l)
-               (timesFloat# y l)
-               (timesFloat# z l)
-               (cosFloat# w `timesFloat#` coshFloat# mv)
+               (x *% l)
+               (y *% l)
+               (z *% l)
+               (cosFloat# w *% coshFloat# mv)
               )
     {-# INLINE tan #-}
     tan (QFloat (FloatX4# x y z w))
-      = case timesFloat# x x `plusFloat#`
-             timesFloat# y y `plusFloat#`
-             timesFloat# z z of
+      = case (x *% x) +%
+             (y *% y) +%
+             (z *% z) of
         0.0# -> QFloat (FloatX4# 0.0# 0.0# 0.0# (tanFloat# w))
         mv2 ->
           let mv = sqrtFloat# mv2
@@ -272,57 +440,57 @@ instance  Floating QFloat where
               shv = sinhFloat# mv
               ct = cosFloat# w
               st = sinFloat# w
-              cq = 1.0# `divideFloat#`
-                  ( (ct `timesFloat#` ct `timesFloat#` chv `timesFloat#` chv)
-                    `plusFloat#`
-                    (st `timesFloat#` st `timesFloat#` shv `timesFloat#` shv)
+              cq = 1.0# /%
+                  ( (ct *% ct *% chv *% chv)
+                    +%
+                    (st *% st *% shv *% shv)
                   )
-              l = chv `timesFloat#` shv `timesFloat#` cq
-                      `divideFloat#` mv
+              l = chv *% shv *% cq
+                      /% mv
           in QFloat
             ( FloatX4#
-             (timesFloat# x l)
-             (timesFloat# y l)
-             (timesFloat# z l)
-             (ct `timesFloat#` st `timesFloat#` cq)
+             (x *% l)
+             (y *% l)
+             (z *% l)
+             (ct *% st *% cq)
             )
     {-# INLINE sinh #-}
     sinh (QFloat (FloatX4# x y z w))
-      = case timesFloat# x x `plusFloat#`
-             timesFloat# y y `plusFloat#`
-             timesFloat# z z of
+      = case (x *% x) +%
+             (y *% y) +%
+             (z *% z) of
         0.0# -> QFloat (FloatX4# 0.0# 0.0# 0.0# (sinhFloat# w))
         mv2 -> case sqrtFloat# mv2 of
-          mv -> case coshFloat# w `timesFloat#` sinFloat# mv
-                                  `divideFloat#` mv of
+          mv -> case coshFloat# w *% sinFloat# mv
+                                  /% mv of
             l -> QFloat
               ( FloatX4#
-               (timesFloat# x l)
-               (timesFloat# y l)
-               (timesFloat# z l)
-               (sinhFloat# w `timesFloat#` cosFloat# mv)
+               (x *% l)
+               (y *% l)
+               (z *% l)
+               (sinhFloat# w *% cosFloat# mv)
               )
     {-# INLINE cosh #-}
     cosh (QFloat (FloatX4# x y z w))
-      = case timesFloat# x x `plusFloat#`
-             timesFloat# y y `plusFloat#`
-             timesFloat# z z of
+      = case (x *% x) +%
+             (y *% y) +%
+             (z *% z) of
         0.0# -> QFloat (FloatX4# 0.0# 0.0# 0.0# (coshFloat# w))
         mv2 -> case sqrtFloat# mv2 of
-          mv -> case sinhFloat# w `timesFloat#` sinFloat# mv
-                                  `divideFloat#` mv of
+          mv -> case sinhFloat# w *% sinFloat# mv
+                                  /% mv of
             l -> QFloat
               ( FloatX4#
-               (timesFloat# x l)
-               (timesFloat# y l)
-               (timesFloat# z l)
-               (coshFloat# w `timesFloat#` cosFloat# mv)
+               (x *% l)
+               (y *% l)
+               (z *% l)
+               (coshFloat# w *% cosFloat# mv)
               )
     {-# INLINE tanh #-}
     tanh (QFloat (FloatX4# x y z w))
-      = case timesFloat# x x `plusFloat#`
-             timesFloat# y y `plusFloat#`
-             timesFloat# z z of
+      = case (x *% x) +%
+             (y *% y) +%
+             (z *% z) of
         0.0# -> QFloat (FloatX4# 0.0# 0.0# 0.0# (tanhFloat# w))
         mv2 ->
           let mv = sqrtFloat# mv2
@@ -330,19 +498,19 @@ instance  Floating QFloat where
               sv = sinFloat# mv
               cht = coshFloat# w
               sht = sinhFloat# w
-              cq = 1.0# `divideFloat#`
-                  ( (cht `timesFloat#` cht `timesFloat#` cv `timesFloat#` cv)
-                    `plusFloat#`
-                    (sht `timesFloat#` sht `timesFloat#` sv `timesFloat#` sv)
+              cq = 1.0# /%
+                  ( (cht *% cht *% cv *% cv)
+                    +%
+                    (sht *% sht *% sv *% sv)
                   )
-              l = cv `timesFloat#` sv `timesFloat#` cq
-                      `divideFloat#` mv
+              l = cv *% sv *% cq
+                      /% mv
           in QFloat
             ( FloatX4#
-             (timesFloat# x l)
-             (timesFloat# y l)
-             (timesFloat# z l)
-             (cht `timesFloat#` sht `timesFloat#` cq)
+             (x *% l)
+             (y *% l)
+             (z *% l)
+             (cht *% sht *% cq)
             )
     {-# INLINE asin #-}
     asin q = -i * log (i*q + sqrt (1 - q*q))
