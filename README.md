@@ -42,7 +42,8 @@ for example, `Vector t n` implemented as `ByteArray#` is overloaded by a special
 
   - [x] Basic implementation of generic ns-dimensional dataframes matrices based on type Float
   - [x] Basic implementation of generic ns-dimensional dataframes based on other types (Double, Int, Word, Int8.. etc.)
-  - [ ] Overloaded fast implementation for low-dimensional vectors and matrices: only FloatX2, FloatX3, FloatX4, and Scalar is done.
+  - [ ] Overloaded fast implementation for low-dimensional vectors and matrices: only FloatX2, FloatX3, FloatX4, DoubleX2, DoubleX3, DoubleX4, and Scalar is done.
+  - [x] Quaternions
   - [ ] Overloaded fast SIMD implementation based on fastvec (avx2, foreign import prim and llvm)
   - [ ] `Tensor t [Nat] [Nat]` rank (n,m) flexible tensor wrapper
   - [x] Lens-like interfaces - `Numeric.DataFrame.SubSpace`

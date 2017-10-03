@@ -78,6 +78,9 @@ inferPrimBytes = case getArrayInstance @t @ds of
     AIFloatX2  -> Evidence
     AIFloatX3  -> Evidence
     AIFloatX4  -> Evidence
+    AIDoubleX2 -> Evidence
+    AIDoubleX3 -> Evidence
+    AIDoubleX4 -> Evidence
 
 inferElementWise :: forall t (ds :: [Nat])
                 . ( ArrayInstanceInference t ds
@@ -101,6 +104,9 @@ inferElementWise = case getArrayInstance @t @ds of
     AIFloatX2  -> Evidence
     AIFloatX3  -> Evidence
     AIFloatX4  -> Evidence
+    AIDoubleX2 -> Evidence
+    AIDoubleX3 -> Evidence
+    AIDoubleX4 -> Evidence
 
 
 inferNumericFrame :: forall t (ds :: [Nat])
@@ -114,6 +120,9 @@ inferNumericFrame
     AIFloatX2  -> Evidence
     AIFloatX3  -> Evidence
     AIFloatX4  -> Evidence
+    AIDoubleX2 -> Evidence
+    AIDoubleX3 -> Evidence
+    AIDoubleX4 -> Evidence
     AIScalar   -> case elemTypeInstance @t of
       ETFloat  -> Evidence
       ETDouble -> Evidence

@@ -9,6 +9,10 @@ module Main (main) where
 import           Numeric.DataFrame
 import           Numeric.Dimensions
 
+import qualified Control.Monad.ST as ST
+import qualified Numeric.DataFrame.ST as ST
+-- import qualified Numeric.Dimensions.Traverse.ST as ST
+
 
 
 main :: IO ()
@@ -83,3 +87,11 @@ main = do
     print (ewmap (<+:> scalar 111) matX :: DataFrame Int '[3,5,4])
     print matY
     print (ewmap fromScalar matY :: DataFrame Int '[3,5,4])
+
+    -- Working with mutable frames
+    print $ ST.runST $ do
+      sdf <- ST.thawDataFrame matY
+      ST.writeDataFrame sdf (1:!1:!Z) 900101
+      ST.writeDataFrame sdf (3:!3:!Z) 900303
+      ST.writeDataFrame sdf (5:!3:!Z) 900503
+      ST.unsafeFreezeDataFrame sdf

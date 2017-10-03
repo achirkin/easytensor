@@ -46,6 +46,12 @@ prop_Square q = q * conjugate q  =~= realToFrac (square q)
 prop_RotScale :: QDouble -> Vec3d -> Bool
 prop_RotScale q v = fromVecNum (rotScale q v) 0 =~= q * fromVecNum v 0 * conjugate q
 
+prop_GetRotScale :: Vec3d -> Vec3d -> Bool
+prop_GetRotScale a b = fromVecNum (rotScale q a) 0 =~= fromVecNum b 0
+  where
+    q = getRotScale a b
+
+
 prop_InverseRotScale :: QDouble -> Vec3d -> Bool
 prop_InverseRotScale q v | q /= 0    = fromVecNum (rotScale (1/q) (rotScale q v)) 0 =~= fromVecNum v 0
                          | otherwise = True

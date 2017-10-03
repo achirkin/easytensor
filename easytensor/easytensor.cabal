@@ -92,6 +92,9 @@ library
         Numeric.Array.Family.FloatX2
         Numeric.Array.Family.FloatX3
         Numeric.Array.Family.FloatX4
+        Numeric.Array.Family.DoubleX2
+        Numeric.Array.Family.DoubleX3
+        Numeric.Array.Family.DoubleX4
     js-sources:
         src-ghcjs/Numeric/Array/Family/ArrayT.js
         src-ghcjs/Numeric/Quaternion/Quaternion.js
