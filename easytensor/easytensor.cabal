@@ -2,7 +2,7 @@ name: easytensor
 version: 0.3.1.0
 cabal-version: >=1.20
 build-type: Simple
-license: MIT
+license: BSD3
 license-file: LICENSE
 copyright: (c) Artem Chirkin
 maintainer: chirkin@arch.ethz.ch
