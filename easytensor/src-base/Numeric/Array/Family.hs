@@ -32,6 +32,7 @@ module Numeric.Array.Family
   , ArrayW (..), ArrayW8 (..), ArrayW16 (..), ArrayW32 (..), ArrayW64 (..)
   , Scalar (..)
   , FloatX2 (..), FloatX3 (..), FloatX4 (..)
+  , DoubleX2 (..), DoubleX3 (..), DoubleX4 (..)
   , ArrayInstanceInference, ElemType (..), ArraySize (..)
   , ElemTypeInference (..), ArraySizeInference (..), ArrayInstanceEvidence
   , getArrayInstance, ArrayInstance (..), inferArrayInstance
@@ -60,6 +61,9 @@ type family Array t (ds :: [Nat]) = v | v -> t ds where
   Array Float  '[2]         = FloatX2
   Array Float  '[3]         = FloatX3
   Array Float  '[4]         = FloatX4
+  Array Double '[2]         = DoubleX2
+  Array Double '[3]         = DoubleX3
+  Array Double '[4]         = DoubleX4
   Array Float  (d ': ds)    = ArrayF   (d ': ds)
   Array Double (d ': ds)    = ArrayD   (d ': ds)
   Array Int    (d ': ds)    = ArrayI   (d ': ds)
@@ -209,6 +213,10 @@ data FloatX2 = FloatX2# Float# Float#
 data FloatX3 = FloatX3# Float# Float# Float#
 data FloatX4 = FloatX4# Float# Float# Float# Float#
 
+data DoubleX2 = DoubleX2# Double# Double#
+data DoubleX3 = DoubleX3# Double# Double# Double#
+data DoubleX4 = DoubleX4# Double# Double# Double# Double#
+
 -- * Recovering type instances at runtime
 --   A combination of `ElemType t` and `ArraySize ds` should
 --   define an instance of `Array t ds` unambiguously.
@@ -262,6 +270,9 @@ data ArrayInstance t (ds :: [Nat])
   | ( Array t ds ~ FloatX2, ds ~ '[2], t ~ Float) => AIFloatX2
   | ( Array t ds ~ FloatX3, ds ~ '[3], t ~ Float) => AIFloatX3
   | ( Array t ds ~ FloatX4, ds ~ '[4], t ~ Float) => AIFloatX4
+  | ( Array t ds ~ DoubleX2, ds ~ '[2], t ~ Double) => AIDoubleX2
+  | ( Array t ds ~ DoubleX3, ds ~ '[3], t ~ Double) => AIDoubleX3
+  | ( Array t ds ~ DoubleX4, ds ~ '[4], t ~ Double) => AIDoubleX4
 
 -- | A singleton type used to prove that the given Array family instance
 --   has a known instance
@@ -390,7 +401,7 @@ getArrayInstance = case (elemTypeInstance @t, arraySizeInstance @ds) of
     (ETWord64 , ASScalar) -> AIScalar
 
     (ETFloat  , ASX2) -> AIFloatX2
-    (ETDouble , ASX2) -> AIArrayD
+    (ETDouble , ASX2) -> AIDoubleX2
     (ETInt    , ASX2) -> AIArrayI
     (ETInt8   , ASX2) -> AIArrayI8
     (ETInt16  , ASX2) -> AIArrayI16
@@ -403,7 +414,7 @@ getArrayInstance = case (elemTypeInstance @t, arraySizeInstance @ds) of
     (ETWord64 , ASX2) -> AIArrayW64
 
     (ETFloat  , ASX3) -> AIFloatX3
-    (ETDouble , ASX3) -> AIArrayD
+    (ETDouble , ASX3) -> AIDoubleX3
     (ETInt    , ASX3) -> AIArrayI
     (ETInt8   , ASX3) -> AIArrayI8
     (ETInt16  , ASX3) -> AIArrayI16
@@ -416,7 +427,7 @@ getArrayInstance = case (elemTypeInstance @t, arraySizeInstance @ds) of
     (ETWord64 , ASX3) -> AIArrayW64
 
     (ETFloat  , ASX4) -> AIFloatX4
-    (ETDouble , ASX4) -> AIArrayD
+    (ETDouble , ASX4) -> AIDoubleX4
     (ETInt    , ASX4) -> AIArrayI
     (ETInt8   , ASX4) -> AIArrayI8
     (ETInt16  , ASX4) -> AIArrayI16
@@ -429,7 +440,7 @@ getArrayInstance = case (elemTypeInstance @t, arraySizeInstance @ds) of
     (ETWord64 , ASX4) -> AIArrayW64
 
     (ETFloat  , ASXN) -> unsafeCoerce# (AIArrayF :: ArrayInstance Float '[5])
-    (ETDouble , ASXN) -> AIArrayD
+    (ETDouble , ASXN) -> unsafeCoerce# (AIArrayD :: ArrayInstance Double '[5])
     (ETInt    , ASXN) -> AIArrayI
     (ETInt8   , ASXN) -> AIArrayI8
     (ETInt16  , ASXN) -> AIArrayI16

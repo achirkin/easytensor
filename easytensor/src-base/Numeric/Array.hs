@@ -31,3 +31,7 @@ import           Numeric.Array.Family.ArrayW64  ()
 import           Numeric.Array.Family.FloatX2   ()
 import           Numeric.Array.Family.FloatX3   ()
 import           Numeric.Array.Family.FloatX4   ()
+
+import           Numeric.Array.Family.DoubleX2  ()
+import           Numeric.Array.Family.DoubleX3  ()
+import           Numeric.Array.Family.DoubleX4  ()

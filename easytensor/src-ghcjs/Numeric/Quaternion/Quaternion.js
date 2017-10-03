@@ -20,7 +20,7 @@ function h$easytensor_getRotScale(a, b) {
     'use strict';
     if (b[0] === 0 && b[1] === 0 && b[2] === 0) { return [0,0,0,0];}
     if (a[0] === 0 && a[1] === 0 && a[2] === 0) { return [Infinity,Infinity,Infinity,Infinity];}
-    var t = cross(a, b);
+    var t = h$easytensor_cross(a, b);
     var ma = Math.hypot(a[0],a[1],a[2]);
     var mb = Math.hypot(b[0],b[1],b[2]);
     var dot = a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
@@ -30,9 +30,9 @@ function h$easytensor_getRotScale(a, b) {
     }
     var c = Math.sqrt(ma*mb + dot);
     ma *= Math.SQRT2;
-    return [ (a[1]*b[2] - a[2]*b[1])/(ma*c)
-           , (a[2]*b[0] - a[0]*b[2])/(ma*c)
-           , (a[0]*b[1] - a[1]*b[0])/(ma*c)
+    return [ t[0]/(ma*c)
+           , t[1]/(ma*c)
+           , t[2]/(ma*c)
            , c/ma
            ];
 }

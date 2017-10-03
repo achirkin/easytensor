@@ -283,5 +283,3 @@ foreign import javascript unsafe "$1[3].toPrecision(8)\
                                  \ + ($1[1] >= 0 ? ' + ' :  ' - ') + Math.abs($1[1]).toPrecision(8) + 'j'\
                                  \ + ($1[2] >= 0 ? ' + ' :  ' - ') + Math.abs($1[2]).toPrecision(8) + 'k'"
     js_show:: QDouble -> JSString
-
-
