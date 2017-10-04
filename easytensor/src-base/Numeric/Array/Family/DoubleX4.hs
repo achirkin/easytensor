@@ -33,7 +33,12 @@ import           Numeric.Commons
 import           Numeric.Dimensions
 
 
+instance Bounded DoubleX4 where
+  maxBound = case infty of D# x -> DoubleX4# x x x x
+  minBound = case negate infty of D# x -> DoubleX4# x x x x
 
+infty :: Double
+infty = read "Infinity"
 
 
 instance Show DoubleX4 where

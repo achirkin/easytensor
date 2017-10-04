@@ -32,7 +32,12 @@ import           Numeric.Array.Family
 import           Numeric.Commons
 import           Numeric.Dimensions
 
+instance Bounded FloatX3 where
+  maxBound = case infty of F# x -> FloatX3# x x x
+  minBound = case negate infty of F# x -> FloatX3# x x x
 
+infty :: Float
+infty = read "Infinity"
 
 
 
