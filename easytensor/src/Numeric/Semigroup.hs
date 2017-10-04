@@ -126,7 +126,7 @@ minMax :: a -> MinMax a
 minMax !a = MinMax a a
 
 mmDiff :: Num a => MinMax a -> a
-mmDiff (MinMax !x !y) = max 0 (y - x)
+mmDiff (MinMax !x !y) = y - x
 
 mmAvg :: Fractional a => MinMax a -> a
 mmAvg (MinMax !x !y) = 0.5 * (x+y)
