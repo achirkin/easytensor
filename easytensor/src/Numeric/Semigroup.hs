@@ -126,7 +126,7 @@ minMax :: a -> MinMax a
 minMax !a = MinMax a a
 
 mmDiff :: Num a => MinMax a -> a
-mmDiff (MinMax !x !y) = y - x
+mmDiff (MinMax !x !y) = max 0 (y - x)
 
 mmAvg :: Fractional a => MinMax a -> a
 mmAvg (MinMax !x !y) = 0.5 * (x+y)
@@ -144,7 +144,9 @@ instance Ord a => Semigroup (MinMax a) where
 
 
 instance (Ord a, Bounded a) => Monoid (MinMax a) where
-  mempty = strictMinMax minBound maxBound
+  -- | Empty instance of minmax is an invalid value @min >= max@.
+  --   However, this gives a good monoid append behavior.
+  mempty = strictMinMax maxBound minBound
   mappend = (<>)
 
 
