@@ -70,6 +70,12 @@ import           Numeric.Matrix.Class
 #define OP_NEGATE                negateDouble#
 #include "Array.h"
 
+instance Bounded (ArrayD ds) where
+  maxBound = broadcastArray infty
+  minBound = broadcastArray $ negate infty
+
+infty :: Double
+infty = read "Infinity"
 
 instance Num (ArrayD ds) where
   (+) = zipV (+##)

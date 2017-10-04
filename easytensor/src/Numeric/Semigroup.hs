@@ -49,6 +49,8 @@ module Numeric.Semigroup
     , Arg(..)
     , ArgMin
     , ArgMax
+    , MinMax (..)
+    , minMax, mmDiff, mmAvg
     ) where
 
 import Data.Semigroup hiding (Option (..), option)
@@ -108,3 +110,81 @@ instance Semigroup a => Semigroup (Option a) where
 instance Semigroup a => Monoid (Option a) where
   mappend = (<>)
   mempty  = Option Nothing
+
+
+
+-- | Evaluate minimum and maximum at the same time.
+--   Arithmetics and semigroup operations are eager,
+--   functorial operations are lazy.
+--
+--   This data type is especially useful for calculating bounds
+--   of foldable containers with numeric data using @foldMap minMax@.
+data MinMax a = MinMax a a
+  deriving (Eq, Read, Show, Data, Typeable, Generic, Generic1)
+
+minMax :: a -> MinMax a
+minMax !a = MinMax a a
+
+mmDiff :: Num a => MinMax a -> a
+mmDiff (MinMax !x !y) = y - x
+
+mmAvg :: Fractional a => MinMax a -> a
+mmAvg (MinMax !x !y) = 0.5 * (x+y)
+
+strictMinMax :: a -> a -> MinMax a
+strictMinMax !a !b = MinMax a b
+
+instance Ord a => Semigroup (MinMax a) where
+  (MinMax !x1 !y1) <> (MinMax !x2 !y2) = strictMinMax (min x1 x2) (max y1 y2)
+
+  -- 'MinMax' is idempotent.
+  -- Also we don't care if @n@ is not positive.
+  stimes _ (MinMax !x !y) = MinMax x y
+
+
+
+instance (Ord a, Bounded a) => Monoid (MinMax a) where
+  mempty = strictMinMax minBound maxBound
+  mappend = (<>)
+
+
+instance Functor MinMax where
+  fmap f (MinMax a b) = MinMax (f a) (f b)
+
+instance Applicative MinMax where
+  pure a = MinMax a a
+  MinMax f g <*> MinMax a b = MinMax (f a) (g b)
+
+instance Monad MinMax where
+  return = pure
+  MinMax a b >>= m = case (m a, m b) of
+      (MinMax x _, MinMax _ y) -> MinMax x y
+
+instance MonadFix MinMax where
+  mfix mf = let MinMax x _ = mf x
+                MinMax _ y = mf y
+            in MinMax x y
+
+instance Bounded a => Bounded (MinMax a) where
+  minBound = strictMinMax minBound minBound
+  maxBound = strictMinMax maxBound maxBound
+
+-- | MinMax checks whether bounds overlap
+instance Ord a => Ord (MinMax a) where
+  MinMax _ y1 < MinMax x2 _ = y1 < x2
+  MinMax x1 _ > MinMax _ y2 = x1 > y2
+  MinMax _ y1 <= MinMax _ y2 = y1 <= y2
+  MinMax x1 _ >= MinMax x2 _ = x1 >= x2
+  compare = undefined
+  min (MinMax !x1 !y1) (MinMax !x2 !y2) = strictMinMax (min x1 x2) (min y1 y2)
+  max (MinMax !x1 !y1) (MinMax !x2 !y2) = strictMinMax (max x1 x2) (max y1 y2)
+
+instance (Num a, Ord a) => Num (MinMax a) where
+  (MinMax !x1 !y1) + (MinMax !x2 !y2) = strictMinMax (x1+x2) (y1+y2)
+  (MinMax !x1 !y1) - (MinMax !x2 !y2) = strictMinMax (x1-y2) (y1-x2)
+  (MinMax !x1 !y1) * (MinMax !x2 !y2) = strictMinMax (x1*x2) (y1*y2)
+  abs (MinMax !x !y) = case (abs x, abs y) of
+      (!ax, !ay) -> strictMinMax (min ax ay) (max ax ay)
+  negate (MinMax !x !y) = strictMinMax (negate y) (negate x)
+  signum (MinMax !x !y) = strictMinMax (signum x) (signum y)
+  fromInteger = minMax . fromInteger
