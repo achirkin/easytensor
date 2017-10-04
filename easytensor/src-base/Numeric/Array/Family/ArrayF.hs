@@ -71,6 +71,12 @@ import           Numeric.Matrix.Class
 #define OP_NEGATE                negateFloat#
 #include "Array.h"
 
+instance Bounded (ArrayF ds) where
+  maxBound = broadcastArray infty
+  minBound = broadcastArray $ negate infty
+
+infty :: Float
+infty = read "Infinity"
 
 instance Num (ArrayF ds) where
   (+) = zipV plusFloat#
