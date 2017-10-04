@@ -33,7 +33,12 @@ import           Numeric.Commons
 import           Numeric.Dimensions
 
 
+instance Bounded FloatX4 where
+  maxBound = case infty of F# x -> FloatX4# x x x x
+  minBound = case negate infty of F# x -> FloatX4# x x x x
 
+infty :: Float
+infty = read "Infinity"
 
 
 instance Show FloatX4 where
