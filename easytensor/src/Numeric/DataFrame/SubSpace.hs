@@ -34,6 +34,7 @@ module Numeric.DataFrame.SubSpace
   ( SubSpace (..), (!), element
   , ewfoldMap, iwfoldMap
   , ewzip, iwzip
+  , indexWise_, elementWise_
   ) where
 
 import           GHC.Base                  (runRW#)
@@ -131,6 +132,22 @@ class ( ConcatList as bs asbs
               => (Idx bs -> DataFrame s as' -> f (DataFrame t as))
               -> DataFrame s asbs' -> f (DataFrame t asbs)
 infixr 4 !.
+
+-- | Apply an applicative functor on each element with its index
+--     (Lens-like indexed traversal)
+indexWise_ :: forall t as bs asbs f b
+            . (SubSpace t as bs asbs, Applicative f)
+           => (Idx bs -> DataFrame t as -> f b)
+           -> DataFrame t asbs -> f ()
+indexWise_ f = iwfoldr (\i -> (*>) . f i) (pure ())
+
+-- | Apply an applicative functor on each element (Lens-like traversal)
+elementWise_ :: forall t as bs asbs f b
+              . (SubSpace t as bs asbs, Applicative f)
+             => (DataFrame t as -> f b)
+             -> DataFrame t asbs -> f ()
+elementWise_ f = ewfoldr ((*>) . f) (pure ())
+
 
 -- | Apply a functor over a single element (simple lens)
 element :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) f
