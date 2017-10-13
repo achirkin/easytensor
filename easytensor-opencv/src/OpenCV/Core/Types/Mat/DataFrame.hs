@@ -12,7 +12,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE CPP #-}
-
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module OpenCV.Core.Types.Mat.DataFrame
     ( SChMatDF (..)
     , MChMatDF (..)
@@ -23,6 +23,7 @@ import qualified Language.C.Inline.Unsafe as CU
 import qualified Language.C.Inline.Cpp as C
 import OpenCV.Internal.C.Inline ( openCvCtx )
 import OpenCV.Internal.C.Types (fromPtr)
+import OpenCV.Internal.Core.Types.Mat (withMatData)
 import OpenCV.Core.Types.Mat
 import OpenCV.TypeLevel
 import Foreign.Storable
@@ -33,6 +34,7 @@ import Unsafe.Coerce (unsafeCoerce)
 
 import Numeric.DataFrame
 import Numeric.Dimensions
+import Numeric.Dimensions.XDim
 import Numeric.TypeLits
 
 C.context openCvCtx
@@ -93,6 +95,7 @@ openCVType ETWord64 _        = return 0
 
 instance NumericFrame t ds
        => ToMat (SChMatDF t (ds :: [Nat])) where
+  {-# NOINLINE toMat #-}
   toMat (SChMatDF df) = unsafePerformIO . fromPtr
                              . allocaArray dimN $ \sizesPtr ->
                                alloca $ \dataPtr -> do
@@ -111,6 +114,7 @@ instance ToMat (SChMatDF t (xds :: [XNat])) where
 
 instance NumericFrame t (d ': ds)
        => ToMat (MChMatDF t d (ds :: [Nat])) where
+  {-# NOINLINE toMat #-}
   toMat (MChMatDF df)
     | Just Evidence <- inferUnConsDimensions @(d ': ds)
     = unsafePerformIO . fromPtr
@@ -135,3 +139,25 @@ instance ToMat (MChMatDF t xd (xds :: [XNat])) where
 writeDim :: forall (xs :: [k]) . Ptr C.CInt -> Int -> Dim xs -> IO ()
 writeDim _ _ Numeric.Dimensions.D = return ()
 writeDim p i (d :* ds) = pokeElemOff p i (fromIntegral $ dimVal d) >> writeDim p (i+1) ds
+
+instance Storable (DataFrame t ds)
+      => FromMat (DataFrame t (ds :: [Nat])) where
+    {-# NOINLINE fromMat #-}
+    fromMat m = unsafePerformIO . withMatData m $ \_ -> peek . unsafeCoerce
+
+instance ( XDimensions xds, ElemTypeInference t)
+      => FromMat (DataFrame t (xds :: [XNat])) where
+    {-# NOINLINE fromMat #-}
+    fromMat m = unsafePerformIO . withMatData m $ \dims ptr ->
+      case someDimsVal $ map fromIntegral dims of
+        Nothing -> error "fromMat: Could not create runtime-known Dim."
+        Just (SomeDims ds) -> case xDimVal <$> wrapDim @xds ds of
+          Nothing -> error "fromMat: Mat dimensions do not agree with the specified XDim"
+          Just (XDim (dds :: Dim ds) :: XDim xds) -> case reifyDimensions dds of
+              Evidence -> case inferDimKnownDims @ds
+                           +!+ inferDimFiniteList @ds of
+                Evidence -> case inferArrayInstance @t @ds of
+                  Evidence -> case inferNumericFrame @t @ds of
+                    Evidence -> do
+                      df <- peek (unsafeCoerce ptr) :: IO (DataFrame t ds)
+                      return $ SomeDataFrame df
