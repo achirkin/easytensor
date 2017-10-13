@@ -24,13 +24,14 @@ import qualified Language.C.Inline as C
 import qualified Language.C.Inline.Unsafe as CU
 import qualified Language.C.Inline.Cpp as C
 import OpenCV.Internal.C.Inline ( openCvCtx )
-import OpenCV.Internal.C.Types (fromPtr)
+import OpenCV.Internal.C.Types (C'Mat)
 import OpenCV.Internal.Core.Types.Mat (withMatData, Mat (..), unmarshalFlags)
 import OpenCV.Core.Types.Mat
 import OpenCV.TypeLevel
 import Foreign.Storable
 import Foreign.Ptr
-import Foreign.ForeignPtr
+import Foreign.ForeignPtr (withForeignPtr)
+import Foreign.Concurrent (newForeignPtr)
 import Foreign.Marshal
 import System.IO.Unsafe
 import Unsafe.Coerce (unsafeCoerce)
@@ -104,18 +105,20 @@ openCVType ETWord16 channels = [CU.exp| int { CV_16UC($(int channels)) } |]
 openCVType ETWord32 _        = return 0
 openCVType ETWord64 _        = return 0
 
+finMatPtr :: Ptr C'Mat -> IO ()
+finMatPtr rPtr = [CU.exp| void { delete $(Mat * rPtr) }|]
 
 instance NumericFrame t ds
        => ToMat (SChMatDF t (ds :: [Nat])) where
   {-# NOINLINE toMat #-}
-  toMat (SChMatDF df) = unsafePerformIO . fromPtr
-                             . allocaArray dimN $ \sizesPtr ->
-                               alloca $ \dataPtr -> do
+  toMat (SChMatDF df) = unsafePerformIO . allocaArray dimN $ \sizesPtr -> do
+      dataPtr <- malloc
       poke dataPtr df
       writeDim sizesPtr 0 (dim @ds)
       cvType <- openCVType (elemTypeInstance @t) 1
       let ptr' = unsafeCoerce dataPtr :: Ptr ()
-      [CU.exp| Mat * { new cv::Mat( $(int cdimN), $(int * sizesPtr), $(int cvType), $(void * ptr')) } |]
+      rPtr <- [CU.exp| Mat * { new cv::Mat( $(int cdimN), $(int * sizesPtr), $(int cvType), $(void * ptr')) } |]
+      Mat <$> newForeignPtr rPtr (finMatPtr rPtr >> free dataPtr)
     where
       dimN = order @Nat @ds
       cdimN = fromIntegral dimN :: C.CInt
@@ -129,14 +132,14 @@ instance NumericFrame t (d ': ds)
   {-# NOINLINE toMat #-}
   toMat (MChMatDF df)
     | Just Evidence <- inferUnConsDimensions @(d ': ds)
-    = unsafePerformIO . fromPtr
-                             . allocaArray dimN $ \sizesPtr ->
-                               alloca $ \dataPtr -> do
+    = unsafePerformIO . allocaArray dimN $ \sizesPtr -> do
+      dataPtr <- malloc
       poke dataPtr df
       writeDim sizesPtr 0 (dim @ds)
       cvType <- openCVType (elemTypeInstance @t) (fromIntegral $ dimVal' @d )
       let ptr' = unsafeCoerce dataPtr :: Ptr ()
-      [CU.exp| Mat * { new cv::Mat( $(int cdimN), $(int * sizesPtr), $(int cvType), $(void * ptr')) } |]
+      rPtr <- [CU.exp| Mat * { new cv::Mat( $(int cdimN), $(int * sizesPtr), $(int cvType), $(void * ptr')) } |]
+      Mat <$> newForeignPtr rPtr (finMatPtr rPtr >> free dataPtr)
     where
       dimN = order @Nat @(d ': ds) - 1
       cdimN = fromIntegral dimN :: C.CInt
