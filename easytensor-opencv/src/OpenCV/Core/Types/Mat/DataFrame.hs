@@ -111,17 +111,20 @@ instance ToMat (SChMatDF t (xds :: [XNat])) where
 
 instance NumericFrame t (d ': ds)
        => ToMat (MChMatDF t d (ds :: [Nat])) where
-  toMat (MChMatDF df) = unsafePerformIO . fromPtr
+  toMat (MChMatDF df)
+    | Just Evidence <- inferUnConsDimensions @(d ': ds)
+    = unsafePerformIO . fromPtr
                              . allocaArray dimN $ \sizesPtr ->
                                alloca $ \dataPtr -> do
       poke dataPtr df
-      writeDim sizesPtr 0 (dim @(d ': ds))
+      writeDim sizesPtr 0 (dim @ds)
       cvType <- openCVType (elemTypeInstance @t) (fromIntegral $ dimVal' @d )
       let ptr' = unsafeCoerce dataPtr :: Ptr ()
       [CU.exp| Mat * { new cv::Mat( $(int cdimN), $(int * sizesPtr), $(int cvType), $(void * ptr')) } |]
     where
       dimN = order @Nat @(d ': ds) - 1
       cdimN = fromIntegral dimN :: C.CInt
+  toMat _ = error "Impossible happened: toMat was called on scalar as a multichannel matrix"
 
 instance ToMat (MChMatDF t xd (xds :: [XNat])) where
   toMat (MChMatDF (SomeDataFrame (df :: DataFrame t ds)))
