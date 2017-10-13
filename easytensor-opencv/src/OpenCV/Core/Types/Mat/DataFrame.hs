@@ -210,18 +210,20 @@ class DataFrameOpenCVMat shape channels t where
             -> DataFrame t (DSToXNat ('S channels ': shape) :: [DSToXNatKind shape])
 
 
-instance ( FromMat (SChMatDF t (DSToXNat shape :: [DSToXNatKind shape]))
+instance {-# OVERLAPPING #-}
+         ( FromMat (SChMatDF t (DSToXNat shape :: [DSToXNatKind shape]))
          )
       => DataFrameOpenCVMat shape 1 t where
     matToDF m
       | m' <- unsafeCoerce m
       = unSChMatDF $ fromMat m'
 
-instance ( FromMat ( MChMatDF t
+instance {-# OVERLAPPABLE #-}
+         ( FromMat ( MChMatDF t
                         (Head (DSToXNat ('S c ': shape)))
                         (DSToXNat shape :: [DSToXNatKind shape])
                     )
-         , (2 <=? c) ~ 'True
+         , 2 <= c
          )
       => DataFrameOpenCVMat shape c t where
     matToDF m
