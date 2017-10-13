@@ -58,29 +58,37 @@ data XDim (xns :: [XNat])
 
 
 class XDimensions (xds :: [XNat]) where
-    wrapDim :: FixedXDim xds ds ~ xds => Dim ds -> Dim xds
+    wrapDim :: Dim (ds :: [Nat]) -> Maybe (Dim xds)
 
 
 instance XDimensions '[] where
-    wrapDim D = D
+    wrapDim D = Just D
+    wrapDim _ = Nothing
     {-# INLINE wrapDim #-}
 
-instance XDimensions xs => XDimensions (XN m ': xs) where
-  wrapDim ((d@Dn :: Dim d) :* ds)
-    | Evidence <- unsafeEqEvidence @(m <=? d) @'True
-    = Dx d :* wrapDim ds
+instance (XDimensions xs, KnownDim m) => XDimensions (XN m ': xs) where
+    wrapDim D = Nothing
+    wrapDim ((d@Dn :: Dim d) :* ds) =
+      if dimVal d >= dimVal' @m
+      then case (wrapDim @xs ds, unsafeEqEvidence @(m <=? d) @'True) of
+            (Just xds, Evidence) -> Just (Dx d :* xds)
+            (Nothing, _) -> Nothing
+      else Nothing
 
-instance XDimensions xs => XDimensions (N n ': xs) where
-  wrapDim ((Dn :: Dim d) :* ds)
-    | Evidence <- unsafeEqEvidence @n @d
-    = Dn @d :* wrapDim ds
+instance (XDimensions xs, KnownDim n) => XDimensions (N n ': xs) where
+  wrapDim D = Nothing
+  wrapDim ((Dn :: Dim d) :* ds) =
+    if dimVal' @d == dimVal' @n
+    then case (wrapDim @xs ds, unsafeEqEvidence @n @d) of
+          (Just xds, Evidence) -> Just (Dn @d :* xds)
+          (Nothing, _) -> Nothing
+    else Nothing
 
 
 -- | Loose compile-time information about dimensionalities
 xdim :: forall (ds :: [Nat]) (xds :: [XNat])
       . ( Dimensions ds
-        , XDimensions xds
-        , FixedXDim xds ds ~ xds) => Dim xds
+        , XDimensions xds) => Maybe (Dim xds)
 xdim = wrapDim @xds @ds (dim @ds)
 {-# INLINE xdim #-}
 
