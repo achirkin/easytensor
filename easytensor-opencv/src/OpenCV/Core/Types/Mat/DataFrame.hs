@@ -8,14 +8,16 @@
 {-# language TemplateHaskell #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE CPP #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 module OpenCV.Core.Types.Mat.DataFrame
     ( SChMatDF (..)
     , MChMatDF (..)
+    , DataFrameOpenCVMat (..)
+    , XNatToDS, DSToXNat, DSToXNatKind
     ) where
 
 import qualified Language.C.Inline as C
@@ -23,14 +25,16 @@ import qualified Language.C.Inline.Unsafe as CU
 import qualified Language.C.Inline.Cpp as C
 import OpenCV.Internal.C.Inline ( openCvCtx )
 import OpenCV.Internal.C.Types (fromPtr)
-import OpenCV.Internal.Core.Types.Mat (withMatData)
+import OpenCV.Internal.Core.Types.Mat (withMatData, Mat (..), unmarshalFlags)
 import OpenCV.Core.Types.Mat
 import OpenCV.TypeLevel
 import Foreign.Storable
 import Foreign.Ptr
+import Foreign.ForeignPtr
 import Foreign.Marshal
 import System.IO.Unsafe
 import Unsafe.Coerce (unsafeCoerce)
+import Data.Int
 
 import Numeric.DataFrame
 import Numeric.Dimensions
@@ -44,10 +48,12 @@ C.include "opencv2/core.hpp"
 C.using "namespace cv"
 
 -- | DataFrame as a Single Channel Matrix
-newtype SChMatDF t (ds :: [k]) = SChMatDF (DataFrame t ds)
+newtype SChMatDF t (ds :: [k])
+  = SChMatDF { unSChMatDF :: DataFrame t ds }
 
 -- | DataFrame as a Single Channel Matrix
-newtype MChMatDF t (d :: k) (ds :: [k]) = MChMatDF (DataFrame t (d ': ds))
+newtype MChMatDF t (d :: k) (ds :: [k])
+  = MChMatDF { unMChMatDF :: DataFrame t (d ': ds) }
 
 
 type family XNatToDS (xs :: [XNat]) :: [DS Nat] where
@@ -56,10 +62,16 @@ type family XNatToDS (xs :: [XNat]) :: [DS Nat] where
   XNatToDS ('XN _ ': xs) = 'OpenCV.TypeLevel.D ': XNatToDS xs
 
 
-type family DSToXNat (xs :: [DS Nat]) = (ys :: [XNat]) | ys -> xs where
-  DSToXNat '[] = '[]
-  DSToXNat ('S n ': xs) = 'N n ': DSToXNat xs
-  DSToXNat ('OpenCV.TypeLevel.D ': xs) = 'XN 0 ': DSToXNat xs
+type family DSToXNat (xs :: [DS Nat]) :: [k] where
+  DSToXNat '[] = ('[] :: [Nat])
+  DSToXNat ('S 1 ': xs) = DSToXNat xs
+  DSToXNat ('S n ': xs) = ConsDim n (DSToXNat xs)
+  DSToXNat ('OpenCV.TypeLevel.D ': xs) = ConsDim ('XN 1) (DSToXNat xs)
+
+type family DSToXNatKind (xs :: [DS Nat]) :: k where
+  DSToXNatKind '[] = Nat
+  DSToXNatKind ('S _ ': xs) = DSToXNatKind xs
+  DSToXNatKind ('OpenCV.TypeLevel.D ': _) = XNat
 
 
 type instance MatShape (SChMatDF t (ds :: [Nat])) = 'S (DSNats ds)
@@ -141,12 +153,18 @@ writeDim _ _ Numeric.Dimensions.D = return ()
 writeDim p i (d :* ds) = pokeElemOff p i (fromIntegral $ dimVal d) >> writeDim p (i+1) ds
 
 instance Storable (DataFrame t ds)
-      => FromMat (DataFrame t (ds :: [Nat])) where
+      => FromMat (SChMatDF t (ds :: [Nat])) where
     {-# NOINLINE fromMat #-}
-    fromMat m = unsafePerformIO . withMatData m $ \_ -> peek . unsafeCoerce
+    fromMat m = unsafePerformIO . withMatData m $ \_ -> fmap SChMatDF . peek . unsafeCoerce
+
+instance Storable (DataFrame t (d ': ds))
+      => FromMat (MChMatDF t d (ds :: [Nat])) where
+    {-# NOINLINE fromMat #-}
+    fromMat m = unsafePerformIO . withMatData m $ \_ -> fmap MChMatDF . peek . unsafeCoerce
+
 
 instance ( XDimensions xds, ElemTypeInference t)
-      => FromMat (DataFrame t (xds :: [XNat])) where
+      => FromMat (SChMatDF t (xds :: [XNat])) where
     {-# NOINLINE fromMat #-}
     fromMat m = unsafePerformIO . withMatData m $ \dims ptr ->
       case someDimsVal $ map fromIntegral dims of
@@ -160,4 +178,65 @@ instance ( XDimensions xds, ElemTypeInference t)
                   Evidence -> case inferNumericFrame @t @ds of
                     Evidence -> do
                       df <- peek (unsafeCoerce ptr) :: IO (DataFrame t ds)
-                      return $ SomeDataFrame df
+                      return $ SChMatDF (SomeDataFrame df)
+
+
+instance ( XDimensions (xd ': xds), ElemTypeInference t)
+      => FromMat (MChMatDF t xd (xds :: [XNat])) where
+    {-# NOINLINE fromMat #-}
+    fromMat m = unsafePerformIO $ do
+      ch <- withForeignPtr (unMat m) $ \matPtr -> alloca $ \(flagsPtr :: Ptr Int32) -> do
+        [CU.block|void {
+          *$(int32_t *   const flagsPtr) = $(Mat * matPtr)->flags;
+        }|]
+        snd . unmarshalFlags <$> peek flagsPtr
+      withMatData m $ \dims ptr ->
+        case someDimsVal $ map fromIntegral (if ch >= 2 then fromIntegral ch : dims else dims) of
+          Nothing -> error "fromMat: Could not create runtime-known Dim."
+          Just (SomeDims ds) -> case xDimVal <$> wrapDim @(xd ': xds) ds of
+            Nothing -> error "fromMat: Mat dimensions do not agree with the specified XDim"
+            Just (XDim (dds :: Dim ds) :: XDim (xd ': xds)) -> case reifyDimensions dds of
+                Evidence -> case inferDimKnownDims @ds
+                             +!+ inferDimFiniteList @ds of
+                  Evidence -> case inferArrayInstance @t @ds of
+                    Evidence -> case inferNumericFrame @t @ds of
+                      Evidence -> do
+                        df <- peek (unsafeCoerce ptr) :: IO (DataFrame t ds)
+                        return $ MChMatDF (SomeDataFrame df)
+
+
+class DataFrameOpenCVMat shape channels t where
+    matToDF :: Mat ('S shape) ('S channels) ('S t)
+            -> DataFrame t (DSToXNat ('S channels ': shape) :: [DSToXNatKind shape])
+
+
+instance ( FromMat (SChMatDF t (DSToXNat shape :: [DSToXNatKind shape]))
+         )
+      => DataFrameOpenCVMat shape 1 t where
+    matToDF m
+      | m' <- unsafeCoerce m
+      = unSChMatDF $ fromMat m'
+
+instance ( FromMat ( MChMatDF t
+                        (Head (DSToXNat ('S c ': shape)))
+                        (DSToXNat shape :: [DSToXNatKind shape])
+                    )
+         , (2 <=? c) ~ 'True
+         )
+      => DataFrameOpenCVMat shape c t where
+    matToDF m
+      | (Evidence :: Evidence (DSToXNat ('S c ': shape) ~ (d ': ds :: [DSToXNatKind shape])))
+           <- unsafeCoerce (Evidence :: Evidence (DSToXNat ('S c ': shape) ~ DSToXNat ('S c ': shape)))
+      , (Evidence :: Evidence (DSToXNat shape ~ (ds :: [DSToXNatKind shape])))
+           <- unsafeCoerce (Evidence :: Evidence (DSToXNat shape ~ DSToXNat shape))
+      , (Evidence :: Evidence (MatShape (MChMatDF t d ds) ~ 'S shape))
+           <- unsafeCoerce (Evidence :: Evidence ('S shape ~ 'S shape))
+      , (Evidence :: Evidence (MatChannels (MChMatDF t (Head (DSToXNat ('S c ': shape))) ds) ~ 'S c))
+           <- unsafeCoerce (Evidence :: Evidence ('S c ~ 'S c))
+      = case fromMat m of
+          MChMatDF (df :: DataFrame t (d ': ds)) -> df
+
+--
+--
+-- matToDF :: Mat ('S shape) channels ('S t) -> DataFrame t (channels :< shape)
+-- matToDF m = undefined
