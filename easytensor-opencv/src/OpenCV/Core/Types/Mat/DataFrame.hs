@@ -218,8 +218,11 @@ instance {-# OVERLAPPING #-}
          )
       => DataFrameOpenCVMat shape 1 t where
     matToDF m
-      | m' <- unsafeCoerce m
-      = unSChMatDF $ fromMat m'
+      | (Evidence :: Evidence (DSToXNat shape ~ (ds :: [DSToXNatKind shape])))
+           <- unsafeCoerce (Evidence :: Evidence (DSToXNat shape ~ DSToXNat shape))
+      , (Evidence :: Evidence (MatShape (SChMatDF t ds) ~ 'S shape))
+           <- unsafeCoerce (Evidence :: Evidence ('S shape ~ 'S shape))
+      = unSChMatDF $ fromMat m
 
 instance {-# OVERLAPPABLE #-}
          ( FromMat ( MChMatDF t
