@@ -112,7 +112,7 @@ type family ShapeChannelsToDims (shape :: [DS Nat]) (channels :: DS Nat) :: [Sha
 
 type family SnocShapeDim (ds :: [k]) (x :: DS Nat) :: [l] where
     SnocShapeDim ('[]          :: [Nat] ) ('S x) = ( '[x] :: [Nat] )
-    SnocShapeDim ('[]          :: [XNat]) ('S x) = ( '[x] :: [Nat] )
+    SnocShapeDim ('[]          :: [XNat]) ('S x) = ( '[N x] :: [XNat] )
     SnocShapeDim ((n    ': ns) :: [Nat] ) ('S x) = ( n    ': SnocShapeDim ns ('S x) :: [Nat]  )
     SnocShapeDim ((N  n ': ns) :: [XNat]) ('S x) = ( N  n ': SnocShapeDim ns ('S x) :: [XNat] )
     SnocShapeDim ((XN m ': ns) :: [XNat]) ('S x) = ( XN m ': SnocShapeDim ns ('S x) :: [XNat] )
@@ -252,13 +252,18 @@ instance ( XDimensions (xd ': xds), ElemTypeInference t)
       = unsafePerformIO . withMatData' m $ \dims -> fmap MChMatDF . readMatData @t (xDimVal dims)
 
 
-class DataFrameOpenCVMat shape channels t k (ds :: [k]) | ds channels -> shape
-                                                        , ds shape -> channels
-                                                        where
+class ( ShapeChannelsToDimsKind shape channels ~ k
+      , ShapeChannelsToDims shape channels ~~ ds
+      )
+      => DataFrameOpenCVMat shape channels t k (ds :: [k]) | ds channels -> shape
+                                                           , ds shape -> channels
+                                                           , shape channels k -> ds
+                                                           where
     matToDF :: Mat ('S shape) channels ('S t)
             -> DataFrame t (ds :: [k])
 
-instance ( Storable (DataFrame t ds)
+instance {-# OVERLAPS #-}
+         ( Storable (DataFrame t ds)
          , ShapeChannelsToDimsKind shape channels ~ Nat
          , ShapeChannelsToDims shape channels ~~ ds
          )
@@ -266,7 +271,8 @@ instance ( Storable (DataFrame t ds)
     matToDF m = unsafePerformIO . withMatData m $ \_ -> peek . unsafeCoerce
 
 
-instance ( XDimensions xds
+instance {-# OVERLAPS #-}
+         ( XDimensions xds
          , ShapeChannelsToDimsKind shape channels ~ XNat
          , ShapeChannelsToDims shape channels ~~ xds
          , ElemTypeInference t
