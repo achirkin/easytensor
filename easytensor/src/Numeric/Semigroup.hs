@@ -171,13 +171,20 @@ instance Bounded a => Bounded (MinMax a) where
   minBound = strictMinMax minBound minBound
   maxBound = strictMinMax maxBound maxBound
 
--- | MinMax checks whether bounds overlap
+-- | MinMax checks whether bounds overlap.
+--   A contraversal decision was made here: implementing `compare` operation.
+--   `compare` returns GT or LT only if bounds do not overlap and returns EQ otherwise.
 instance Ord a => Ord (MinMax a) where
   MinMax _ y1 < MinMax x2 _ = y1 < x2
   MinMax x1 _ > MinMax _ y2 = x1 > y2
   MinMax _ y1 <= MinMax _ y2 = y1 <= y2
   MinMax x1 _ >= MinMax x2 _ = x1 >= x2
-  compare = undefined
+  -- |  A contraversal decision was made here: implementing `compare` operation.
+  --    `compare` returns GT or LT only if bounds do not overlap and returns EQ otherwise.
+  compare (MinMax !x1 !y1) (MinMax !x2 !y2) = case (compare x1 y2, compare y1 x2) of
+     (GT, _ ) -> GT
+     (_ , LT) -> LT
+     (_ , _ ) -> EQ
   min (MinMax !x1 !y1) (MinMax !x2 !y2) = strictMinMax (min x1 x2) (min y1 y2)
   max (MinMax !x1 !y1) (MinMax !x2 !y2) = strictMinMax (max x1 x2) (max y1 y2)
 
