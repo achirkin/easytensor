@@ -57,15 +57,16 @@ type family Array t (ds :: [Nat]) = v | v -> t ds where
 
 -- | Specialize scalar type without any arrays
 newtype Scalar t = Scalar { _unScalar :: t }
-  deriving ( Bounded, Enum, Eq, Integral
+  deriving ( Enum, Eq, Integral
            , Num, Fractional, Floating, Ord, Read, Real, RealFrac, RealFloat, IsJSVal)
 instance Show t => Show (Scalar t) where
   show (Scalar t) = "{ " ++ show t ++ " }"
 
-instance Bounded (Scalar Double) where
+deriving instance {-# OVERLAPPABLE #-} Bounded t => Bounded (Scalar t)
+instance {-# OVERLAPPING #-} Bounded (Scalar Double) where
   maxBound = Scalar inftyD
   minBound = Scalar $ negate inftyD
-instance Bounded (Scalar Float) where
+instance {-# OVERLAPPING #-} Bounded (Scalar Float) where
   maxBound = Scalar inftyF
   minBound = Scalar $ negate inftyF
 inftyD :: Double
