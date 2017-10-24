@@ -202,7 +202,7 @@ type instance ElemRep DoubleX2 = 'DoubleRep
 type instance ElemPrim DoubleX2 = Double#
 instance PrimBytes DoubleX2 where
   toBytes (DoubleX2# a1 a2) = case runRW#
-     ( \s0 -> case newByteArray# (SIZEOF_HSFLOAT# *# 2#) s0 of
+     ( \s0 -> case newByteArray# (SIZEOF_HSDOUBLE# *# 2#) s0 of
          (# s1, marr #) -> case writeDoubleArray# marr 0# a1 s1 of
            s2 -> case writeDoubleArray# marr 1# a2 s2 of
              s3 -> unsafeFreezeByteArray# marr s3
@@ -212,11 +212,11 @@ instance PrimBytes DoubleX2 where
     (indexDoubleArray# arr off)
     (indexDoubleArray# arr (off +# 1#))
   {-# INLINE fromBytes #-}
-  byteSize _ = SIZEOF_HSFLOAT# *# 2#
+  byteSize _ = SIZEOF_HSDOUBLE# *# 2#
   {-# INLINE byteSize #-}
-  byteAlign _ = ALIGNMENT_HSFLOAT#
+  byteAlign _ = ALIGNMENT_HSDOUBLE#
   {-# INLINE byteAlign #-}
-  elementByteSize _ = SIZEOF_HSFLOAT#
+  elementByteSize _ = SIZEOF_HSDOUBLE#
   {-# INLINE elementByteSize #-}
   ix 0# (DoubleX2# a1 _) = a1
   ix 1# (DoubleX2# _ a2) = a2
