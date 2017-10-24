@@ -172,21 +172,23 @@ instance Bounded a => Bounded (MinMax a) where
   maxBound = strictMinMax maxBound maxBound
 
 -- | MinMax checks whether bounds overlap.
---   A contraversal decision was made here: implementing `compare` operation.
---   `compare` returns GT or LT only if bounds do not overlap and returns EQ otherwise.
+--
+--    * Strict inequality means that intervals do not overlap.
+--    * Non-strict inequality means non-strict inequality in both constructor arguments.
+--    * `EQ` means intervals overlap
 instance Ord a => Ord (MinMax a) where
-  MinMax _ y1 < MinMax x2 _ = y1 < x2
-  MinMax x1 _ > MinMax _ y2 = x1 > y2
-  MinMax _ y1 <= MinMax _ y2 = y1 <= y2
-  MinMax x1 _ >= MinMax x2 _ = x1 >= x2
+  MinMax _ amax < MinMax bmin _ = amax < bmin
+  MinMax amin _ > MinMax _ bmax = amin > bmax
+  MinMax amin amax <= MinMax bmin bmax = amin <= bmin && amax <= bmax
+  MinMax amin amax >= MinMax bmin bmax = amin >= bmin && amax >= bmax
   -- |  A contraversal decision was made here: implementing `compare` operation.
   --    `compare` returns GT or LT only if bounds do not overlap and returns EQ otherwise.
-  compare (MinMax !x1 !y1) (MinMax !x2 !y2) = case (compare x1 y2, compare y1 x2) of
-     (GT, _ ) -> GT
-     (_ , LT) -> LT
-     (_ , _ ) -> EQ
-  min (MinMax !x1 !y1) (MinMax !x2 !y2) = strictMinMax (min x1 x2) (min y1 y2)
-  max (MinMax !x1 !y1) (MinMax !x2 !y2) = strictMinMax (max x1 x2) (max y1 y2)
+  compare (MinMax amin amax) (MinMax bmin bmax)
+    | amin > bmax = GT
+    | bmin > amax = LT
+    | otherwise   = EQ
+  min (MinMax amin amax) (MinMax bmin bmax) = strictMinMax (min amin bmin) (min amax bmax)
+  max (MinMax amin amax) (MinMax bmin bmax) = strictMinMax (max amin bmin) (max amax bmax)
 
 instance (Num a, Ord a) => Num (MinMax a) where
   (MinMax !x1 !y1) + (MinMax !x2 !y2) = strictMinMax (x1+x2) (y1+y2)

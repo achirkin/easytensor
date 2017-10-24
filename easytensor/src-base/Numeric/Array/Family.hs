@@ -85,6 +85,17 @@ newtype Scalar t = Scalar { _unScalar :: t }
 instance Show t => Show (Scalar t) where
   show (Scalar t) = "{ " ++ show t ++ " }"
 
+instance Bounded (Scalar Double) where
+  maxBound = Scalar inftyD
+  minBound = Scalar $ negate inftyD
+instance Bounded (Scalar Float) where
+  maxBound = Scalar inftyF
+  minBound = Scalar $ negate inftyF
+inftyD :: Double
+inftyD = read "Infinity"
+inftyF :: Float
+inftyF = read "Infinity"
+
 type instance ElemRep (Scalar Float ) = 'FloatRep
 type instance ElemRep (Scalar Double) = 'DoubleRep
 type instance ElemRep (Scalar Int   ) = 'IntRep

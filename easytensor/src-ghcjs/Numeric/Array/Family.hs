@@ -62,6 +62,16 @@ newtype Scalar t = Scalar { _unScalar :: t }
 instance Show t => Show (Scalar t) where
   show (Scalar t) = "{ " ++ show t ++ " }"
 
+instance Bounded (Scalar Double) where
+  maxBound = Scalar inftyD
+  minBound = Scalar $ negate inftyD
+instance Bounded (Scalar Float) where
+  maxBound = Scalar inftyF
+  minBound = Scalar $ negate inftyF
+inftyD :: Double
+inftyD = read "Infinity"
+inftyF :: Float
+inftyF = read "Infinity"
 
 
 -- | Support for Uint8ClampedArray in JS.
