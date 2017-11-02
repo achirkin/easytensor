@@ -1,5 +1,5 @@
 name: easytensor
-version: 0.3.1.0
+version: 0.3.2.0
 cabal-version: >=1.20
 build-type: Simple
 license: BSD3
@@ -26,7 +26,7 @@ source-repository head
 
 flag unsafeindices
     description:
-        Disable bound checks when accessing elements of a tensor/matrix/vector.
+        Disable bound checks when accessing elements of a tensor, matrix, or vector.
     default: False
 
 
@@ -44,6 +44,7 @@ library
         Numeric.Scalar
         Numeric.Quaternion
         Numeric.Semigroup
+        Numeric.Semigroup.StrictTuple
     build-depends:
         base >=4.9 && <5,
         ghc-prim >=0.5,

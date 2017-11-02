@@ -25,6 +25,7 @@ module Numeric.Semigroup
     , stimesIdempotent
     , stimesIdempotentMonoid
     , mtimesDefault
+    , foldMap'
     -- * Semigroups
     , Min(..)
     , Max(..)
@@ -54,6 +55,7 @@ module Numeric.Semigroup
     ) where
 
 import Data.Semigroup hiding (Option (..), option)
+import Data.Foldable (foldl')
 import Data.Data
 import Control.Applicative
 import Control.Monad.Fix
@@ -199,3 +201,19 @@ instance (Num a, Ord a) => Num (MinMax a) where
   negate (MinMax !x !y) = strictMinMax (negate y) (negate x)
   signum (MinMax !x !y) = strictMinMax (signum x) (signum y)
   fromInteger = minMax . fromInteger
+
+
+-- | Map each element of the structure to a monoid,
+--   and combine the results.
+--
+--   This function differs from @Data.Foldable.foldMap@ in that uses @foldl'@
+--   instead of @foldr@ inside.
+--   This makes this function suitable for Monoids with strict `mappend` operation.
+--   For example,
+--
+--   > foldMap' Sum $ take 1000000000 ([1..] :: [Int])
+--
+--   runs in constant memory, whereas normal @foldMap@ would cause a memory leak there.
+foldMap' :: (Foldable t, Monoid m) => (a -> m) -> t a -> m
+foldMap' f = foldl' (flip $ mappend . f) mempty
+{-# INLINE foldMap' #-}
