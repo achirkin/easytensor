@@ -1,5 +1,5 @@
 name: easytensor
-version: 0.3.2.0
+version: 0.4.0.0
 cabal-version: >=1.20
 build-type: Simple
 license: BSD3
@@ -44,7 +44,7 @@ library
         Numeric.Scalar
         Numeric.Quaternion
         Numeric.Semigroup
-        Numeric.Semigroup.StrictTuple
+        Numeric.Tuple
     build-depends:
         base >=4.9 && <5,
         ghc-prim >=0.5,
@@ -142,6 +142,19 @@ benchmark et-bench-spfolds
 
     type: exitcode-stdio-1.0
     main-is: subspacefolds.hs
+    build-depends:
+        base -any,
+        easytensor -any,
+        dimensions -any,
+        time -any
+    default-language: Haskell2010
+    hs-source-dirs: bench
+    ghc-options: -Wall -fwarn-tabs -O2
+
+benchmark et-tuple
+
+    type: exitcode-stdio-1.0
+    main-is: tuple.hs
     build-depends:
         base -any,
         easytensor -any,
