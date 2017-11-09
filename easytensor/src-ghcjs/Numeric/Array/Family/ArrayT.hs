@@ -358,8 +358,8 @@ foreign import javascript unsafe "$1.map(function (e, i) { return e + $2[i]; })"
 foreign import javascript unsafe "$1.map(function (e, i) { return e - $2[i]; })" js_arrayTMinus  :: ArrayT t ds -> ArrayT t ds -> ArrayT t ds
 foreign import javascript unsafe "$1.map(function (e, i) { return e * $2[i]; })" js_arrayTTimes  :: ArrayT t ds -> ArrayT t ds -> ArrayT t ds
 foreign import javascript unsafe "$1.map(function (e) { return -e; })"           js_arrayTNegate :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.abs(e); })"  js_arrayTAbs    :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.sign(e); })" js_arrayTSignum :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.abs)"  js_arrayTAbs    :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.sign)" js_arrayTSignum :: ArrayT t ds -> ArrayT t ds
 
 
 
@@ -453,21 +453,21 @@ instance Dimensions ds => Floating (ArrayT Double ds) where
   {-# INLINE atanh #-}
 
 
-foreign import javascript unsafe "$1.map(function (e) { return Math.exp(e); })"   js_arrayTexp :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.log(e); })"   js_arrayTlog :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.sqrt(e); })"  js_arrayTsqrt :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.sin(e); })"   js_arrayTsin :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.cos(e); })"   js_arrayTcos :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.tan(e); })"   js_arrayTtan :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.asin(e); })"  js_arrayTasin :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.acos(e); })"  js_arrayTacos :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.atan(e); })"  js_arrayTatan :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.sinh(e); })"  js_arrayTsinh :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.cosh(e); })"  js_arrayTcosh :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.tanh(e); })"  js_arrayTtanh :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.asinh(e); })" js_arrayTasinh :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.acosh(e); })" js_arrayTacosh :: ArrayT t ds -> ArrayT t ds
-foreign import javascript unsafe "$1.map(function (e) { return Math.atanh(e); })" js_arrayTatanh :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.exp)"   js_arrayTexp   :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.log)"   js_arrayTlog   :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.sqrt)"  js_arrayTsqrt  :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.sin)"   js_arrayTsin   :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.cos)"   js_arrayTcos   :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.tan)"   js_arrayTtan   :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.asin)"  js_arrayTasin  :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.acos)"  js_arrayTacos  :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.atan)"  js_arrayTatan  :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.sinh)"  js_arrayTsinh  :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.cosh)"  js_arrayTcosh  :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.tanh)"  js_arrayTtanh  :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.asinh)" js_arrayTasinh :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.acosh)" js_arrayTacosh :: ArrayT t ds -> ArrayT t ds
+foreign import javascript unsafe "$1.map(Math.atanh)" js_arrayTatanh :: ArrayT t ds -> ArrayT t ds
 foreign import javascript unsafe "$1.map(function (e,i) { return Math.log($2[i])/Math.log(e); })" js_arrayTlogBase :: ArrayT t ds -> ArrayT t ds -> ArrayT t ds
 foreign import javascript unsafe "$1.map(function (e,i) { return Math.pow(e,$2[i]); })" js_arrayTpower :: ArrayT t ds -> ArrayT t ds -> ArrayT t ds
 
