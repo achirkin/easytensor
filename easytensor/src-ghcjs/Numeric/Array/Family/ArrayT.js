@@ -389,7 +389,7 @@ function h$easytensor_inverse(mat, n) {
     case 4:
         return h$easytensor_inverseJSM4(mat);
     default:
-        throw "Inverse for n = " + n + " is not implemented or does not make sense.";
+        return undefined;
     }
 }
 

@@ -1406,9 +1406,13 @@ foreign import javascript unsafe "h$easytensor_eyeUint8Clamped($1)" js_eyeWord8C
 
 
 instance (Fractional t, KnownNat n, ArrayT t '[n,n] ~ Array t '[n,n], 2 <= n) => MatrixInverse t n where
-    inverse (KnownDataFrame m) = KnownDataFrame $ js_inverse m (dimVal' @n)
+    inverse (KnownDataFrame m) = case js_inverse m (dimVal' @n) of
+      (# _, False #) -> undefined
+      (# v, True  #) -> KnownDataFrame v
 
-foreign import javascript unsafe "h$easytensor_inverse($1, $2)"   js_inverse :: ArrayT t '[n,n] -> Int -> ArrayT t '[n,n]
+foreign import javascript unsafe
+    "$r1 = h$easytensor_inverse($1, $2); $r2 = ($r1 !== undefined);"
+    js_inverse :: ArrayT t '[n,n] -> Int -> (# ArrayT t '[n,n], Bool #)
 
 
 
