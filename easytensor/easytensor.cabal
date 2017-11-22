@@ -101,7 +101,9 @@ library
         src-ghcjs/Numeric/Array/Family/ArrayT.js
         src-ghcjs/Numeric/Quaternion/Quaternion.js
         src-ghcjs/Numeric/Matrix/Mat44.js
-    ghc-options: -Wall -fwarn-tabs -fwarn-unused-do-bind -fwarn-monomorphism-restriction -O2
+    ghc-options: -Wall -fwarn-tabs -fwarn-unused-do-bind -fwarn-monomorphism-restriction -O2 -pgmP cpphs
+    cpp-options: --cpp -traditional
+    build-tools: cpphs
 
 test-suite et-test
 
