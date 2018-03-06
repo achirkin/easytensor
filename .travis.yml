@@ -2,8 +2,11 @@ language: haskell
 ghc:
   - "8.0"
   - "8.2"
-  - "8.4"
+  - "head"
 env:
   - PACKAGEDIR="dimensions"
   - PACKAGEDIR="easytensor"
 before_install: cd ${PACKAGEDIR}
+install:
+  - cabal install cpphs
+  - cabal install --only-dependencies --enable-tests
