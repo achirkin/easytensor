@@ -1,0 +1,8 @@
+ghc:
+  - "8.0"
+  - "8.2"
+  - "8.4"
+env:
+  - PACKAGEDIR="dimensions"
+  - PACKAGEDIR="easytensor"
+before_install: cd ${PACKAGEDIR}
