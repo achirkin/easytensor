@@ -1,8 +1,12 @@
+Easytensor: many-dimensional type-safe numeric ops
+==================================
+[![Build Status](https://secure.travis-ci.org/achirkin/easytensor.svg)](http://travis-ci.org/achirkin/easytensor)
+
 The project consists of two parts:
  * `dimensions` is a library to support type-level operations on lists of dimensions;
  * `easytensor` wraps low-level operations on primitive byte arrays in a type-safe data type indexed over an element type and a list of dimensions.
 
-### dimensions
+### dimensions [![Hackage](https://img.shields.io/hackage/v/dimensions.svg)](https://hackage.haskell.org/package/dimensions)
 
 `Numeric.Dimensions.List` provides type-level operations on lists and means to infer constraints over these operations at runtime.
 `Numeric.Dimension` provides:
@@ -10,7 +14,7 @@ The project consists of two parts:
   * data type `Dim (ds :: [k])`, where `k` is either `Nat` or `XNat`, together with class `Dimensions ds` it allows lots of type-level operations on type-level dimensionality;
   * data type `Idx (ds :: [k])` is used to index over many-dimensional space defined by `Dim ds`.
 
-### easytensor
+### easytensor [![Hackage](https://img.shields.io/hackage/v/easytensor.svg)](https://hackage.haskell.org/package/easytensor)
 
 This library aims at providing fast, simple, and useful geometry types for use in computer graphics and low-dimensional physics modelling.
 
