@@ -434,66 +434,113 @@ instance ( Bounded a, Bounded b, Bounded c, Bounded d
 
 instance Foldable T1 where
     foldMap = coerce
+    {-# INLINE foldMap #-}
     foldr f z y = f (coerce y) z
+    {-# INLINE foldr #-}
+    length _ = 1
+    {-# INLINE length #-}
+    null _ = False
+    {-# INLINE null #-}
 instance Foldable (T2 a) where
     foldMap f ~(T2 _ x) = f x
+    {-# INLINE foldMap #-}
     foldr f z ~(T2 _ x) = f x z
+    {-# INLINE foldr #-}
     length _ = 1
+    {-# INLINE length #-}
     null _ = False
+    {-# INLINE null #-}
 instance Foldable (T3 a b) where
     foldMap f ~(T3 _ _ x) = f x
+    {-# INLINE foldMap #-}
     foldr f z ~(T3 _ _ x) = f x z
+    {-# INLINE foldr #-}
     length _ = 1
+    {-# INLINE length #-}
     null _ = False
+    {-# INLINE null #-}
 instance Foldable (T4 a b c) where
     foldMap f ~(T4 _ _ _ x) = f x
+    {-# INLINE foldMap #-}
     foldr f z ~(T4 _ _ _ x) = f x z
+    {-# INLINE foldr #-}
     length _ = 1
+    {-# INLINE length #-}
     null _ = False
+    {-# INLINE null #-}
 instance Foldable (T5 a b c e) where
     foldMap f ~(T5 _ _ _ _ x) = f x
+    {-# INLINE foldMap #-}
     foldr f z ~(T5 _ _ _ _ x) = f x z
+    {-# INLINE foldr #-}
     length _ = 1
+    {-# INLINE length #-}
     null _ = False
+    {-# INLINE null #-}
 instance Foldable (T6 a b c d e) where
     foldMap f ~(T6 _ _ _ _ _ x) = f x
+    {-# INLINE foldMap #-}
     foldr f z ~(T6 _ _ _ _ _ x) = f x z
+    {-# INLINE foldr #-}
     length _ = 1
+    {-# INLINE length #-}
     null _ = False
+    {-# INLINE null #-}
 instance Foldable (T7 a b c d e f) where
     foldMap f ~(T7 _ _ _ _ _ _ x) = f x
+    {-# INLINE foldMap #-}
     foldr f z ~(T7 _ _ _ _ _ _ x) = f x z
+    {-# INLINE foldr #-}
     length _ = 1
+    {-# INLINE length #-}
     null _ = False
+    {-# INLINE null #-}
 instance Foldable (T8 a b c d e f g) where
     foldMap f ~(T8 _ _ _ _ _ _ _ x) = f x
+    {-# INLINE foldMap #-}
     foldr f z ~(T8 _ _ _ _ _ _ _ x) = f x z
+    {-# INLINE foldr #-}
     length _ = 1
+    {-# INLINE length #-}
     null _ = False
+    {-# INLINE null #-}
 instance Foldable (T9 a b c d e f g h) where
     foldMap f ~(T9 _ _ _ _ _ _ _ _ x) = f x
+    {-# INLINE foldMap #-}
     foldr f z ~(T9 _ _ _ _ _ _ _ _ x) = f x z
+    {-# INLINE foldr #-}
     length _ = 1
+    {-# INLINE length #-}
     null _ = False
+    {-# INLINE null #-}
 
 instance Traversable T1 where
     traverse f = fmap T1 . coerce f
+    {-# INLINE traverse #-}
 instance Traversable (T2 a) where
     traverse fun ~(T2 a b) = T2 a <$> fun b
+    {-# INLINE traverse #-}
 instance Traversable (T3 a b) where
     traverse fun ~(T3 a b c) = T3 a b <$> fun c
+    {-# INLINE traverse #-}
 instance Traversable (T4 a b c) where
     traverse fun ~(T4 a b c d) = T4 a b c <$> fun d
+    {-# INLINE traverse #-}
 instance Traversable (T5 a b c d) where
     traverse fun ~(T5 a b c d e) = T5 a b c d <$> fun e
+    {-# INLINE traverse #-}
 instance Traversable (T6 a b c d e) where
     traverse fun ~(T6 a b c d e f) = T6 a b c d e <$> fun f
+    {-# INLINE traverse #-}
 instance Traversable (T7 a b c d e f) where
     traverse fun ~(T7 a b c d e f g) = T7 a b c d e f <$> fun g
+    {-# INLINE traverse #-}
 instance Traversable (T8 a b c d e f g) where
     traverse fun ~(T8 a b c d e f g h) = T8 a b c d e f g <$> fun h
+    {-# INLINE traverse #-}
 instance Traversable (T9 a b c d e f g h) where
     traverse fun ~(T9 a b c d e f g h i) = T9 a b c d e f g h <$> fun i
+    {-# INLINE traverse #-}
 
 
 instance Bifunctor T2 where
@@ -537,7 +584,7 @@ class AsTuple a b | a -> b, b -> a where
 instance AsTuple () T0 where
     toTuple () = T0
     fromTuple T0 = ()
--- instance StrictTuple a (T1 a) where
+-- instance AsTuple a (T1 a) where
 --     toTuple a = T1 a
 --     fromTuple (T1 a) = a
 instance AsTuple (a,b) (T2 a b) where

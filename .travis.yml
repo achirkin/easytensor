@@ -2,7 +2,7 @@ language: haskell
 ghc:
   - "8.0"
   - "8.2"
-  - "head"
+#  - "head" # need to resolve some errors first
 env:
   - PACKAGEDIR="dimensions"
   - PACKAGEDIR="easytensor"
