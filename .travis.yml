@@ -10,3 +10,8 @@ before_install: cd ${PACKAGEDIR}
 install:
   - cabal install cpphs
   - cabal install --only-dependencies --enable-tests
+
+script:
+  - cabal configure --enable-tests --ghc-options="-O0"
+  - cabal build
+  - cabal test

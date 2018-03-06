@@ -8,12 +8,13 @@
 {-# LANGUAGE MagicHash                  #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeFamilyDependencies     #-}
+{-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UnboxedTuples              #-}
-{-# LANGUAGE StandaloneDeriving         #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Array.Family
@@ -43,17 +44,18 @@ module Numeric.Array.Family
 import           Data.Int                  (Int16, Int32, Int64, Int8)
 import           Data.Type.Equality        ((:~:) (..))
 import           Data.Word                 (Word16, Word32, Word64, Word8)
-import           GHC.Prim                  ( ByteArray#, Double#, Float#
+import           GHC.Exts                  (RuntimeRep (..))
+import           GHC.Prim                  (ByteArray#, Double#, Float#, Int#
+                                           ,Word#, unsafeCoerce#
 #if WORD_SIZE_IN_BITS < 64
-                                           , Int64#, Word64#
+                                           ,Int64#, Word64#
 #endif
-                                           , Int#, Word#, unsafeCoerce#)
-import           GHC.Exts                  (RuntimeRep(..))
+                                           )
 
 import           Numeric.Array.ElementWise
 import           Numeric.Commons
-import           Numeric.TypeLits
 import           Numeric.Dimensions
+import           Numeric.TypeLits
 
 -- | Full collection of n-order arrays
 type family Array t (ds :: [Nat]) = v | v -> t ds where
