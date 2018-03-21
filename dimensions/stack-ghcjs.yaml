@@ -1,4 +1,4 @@
-resolver: lts-8.21
+resolver: snapshot-8.0.yaml
 compiler: ghcjs-0.2.1.9008021_ghc-8.0.2
 compiler-check: match-exact
 
@@ -8,9 +8,3 @@ setup-info:
       ghcjs-0.2.1.9008021_ghc-8.0.2:
         url: https://github.com/achirkin/prepare-ghcjs/releases/download/lts-8.21-20170716/ghcjs-0.2.1.9008021_ghc-8.0.2.tar.gz
         sha1: c38434ee74c840525e14b494a1ecf565322c7153
-
-packages:
-  - '.'
-
-extra-deps: []
-flags: {}
