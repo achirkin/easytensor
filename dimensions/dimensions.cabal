@@ -1,5 +1,5 @@
 name: dimensions
-version: 0.3.2.0
+version: 0.4.0.0
 cabal-version: >=1.20
 build-type: Simple
 license: BSD3
@@ -22,18 +22,22 @@ source-repository head
 library
 
     exposed-modules:
-        Numeric.Dimensions
-        Numeric.Dimensions.Dim
-        Numeric.Dimensions.XDim
-        Numeric.Dimensions.Idx
-        Numeric.Dimensions.List
-        Numeric.Dimensions.Traverse
-        Numeric.Dimensions.Traverse.IO
-        Numeric.Dimensions.Traverse.ST
-        Numeric.TypeLits
+        Numeric.Dim
+        -- Numeric.Tuple
+        Numeric.Type.Evidence
+        Numeric.Type.List
+        -- Numeric.Dimensions
+        -- Numeric.Dimensions.XDim
+        -- Numeric.Dimensions.Idx
+        -- Numeric.Dimensions.List
+        -- Numeric.Dimensions.Traverse
+        -- Numeric.Dimensions.Traverse.IO
+        -- Numeric.Dimensions.Traverse.ST
+        -- Numeric.TypeLits
     build-depends:
         base >=4.9 && <5,
-        ghc-prim >= 0.5
+        ghc-prim >= 0.5,
+        generic-deriving >= 1.11
     default-language: Haskell2010
     hs-source-dirs: src
     ghc-options: -Wall -fwarn-tabs -O2
