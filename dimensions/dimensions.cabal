@@ -23,9 +23,12 @@ library
 
     exposed-modules:
         Numeric.Dim
-        -- Numeric.Tuple
+        Numeric.Tuple
+        Numeric.Tuple.Lazy
+        Numeric.Tuple.Strict
         Numeric.Type.Evidence
         Numeric.Type.List
+        Numeric.TypedList
         -- Numeric.Dimensions
         -- Numeric.Dimensions.XDim
         -- Numeric.Dimensions.Idx

@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleInstances     #-}
@@ -66,9 +67,13 @@ type SomeDim = Dim ('XN 0)
 
 -- | `Proxy` type to store type-level dimension info
 newtype Dim (x :: k) = Dim Word
+-- Starting from GHC 8.2, compiler supports specifying lists of complete
+-- pattern synonyms.
+#if __GLASGOW_HASKELL__ >= 802
 {-# COMPLETE D #-}
 {-# COMPLETE Dn #-}
 {-# COMPLETE Dx #-}
+#endif
 
 -- | Statically known `XNat`
 pattern D :: forall (n :: Nat) . () => KnownDim n => Dim n
@@ -251,20 +256,32 @@ reifyDim n k = unsafeCoerce# (MagicDim k :: MagicDim r) n proxy#
 newtype MagicDim r = MagicDim (forall (n :: Nat) . KnownDim n => Proxy# n -> r)
 
 
-dimEv :: Dim n -> Evidence (KnownDim n)
-dimEv (Dim k) = reifyDim k (\(_ :: Proxy# m) -> unsafeCoerce# (E @(KnownDim m)))
+dimEv :: forall n . Dim n -> Evidence (KnownDim n)
+dimEv (Dim k) = reifyDim k f
+  where
+   f :: forall (k :: Nat)
+      . KnownDim k => Proxy# k -> Evidence (KnownDim n)
+   f _ = unsafeCoerce# (E @(KnownDim k))
 {-# INLINE dimEv #-}
 
-dimNEv :: Dim (N n) -> (# Evidence (KnownDim n), Dim n #)
+dimNEv :: forall n . Dim (N n) -> (# Evidence (KnownDim n), Dim n #)
 dimNEv (Dim k) =
-  (# reifyDim k (\(_ :: Proxy# m) -> unsafeCoerce# (E @(KnownDim m)))
+  (# reifyDim k f
    , unsafeCoerce# k
    #)
+  where
+    f :: forall (k :: Nat)
+       . KnownDim k => Proxy# k -> Evidence (KnownDim n)
+    f _ = unsafeCoerce# (E @(KnownDim k))
 {-# INLINE dimNEv #-}
 
 dimXNEv :: forall m n . Dim (XN m) -> (# Evidence (MinDim m n, KnownDim n), Dim n #)
 dimXNEv (Dim k) =
-  (# reifyDim k (\(_ :: Proxy# k) -> unsafeCoerce# (E @(k <= k, KnownDim k)))
+  (# reifyDim k f
    , unsafeCoerce# k
    #)
+  where
+    f :: forall (k :: Nat)
+       . KnownDim k => Proxy# k -> Evidence (MinDim m n, KnownDim n)
+    f _ = unsafeCoerce# (E @(k <= k, KnownDim k))
 {-# INLINE dimXNEv #-}
