@@ -29,7 +29,8 @@
 -- This module is based on `GHC.TypeLits` and re-exports its functionality.
 -- It provides `KnownDim` class that is similar to `KnownNat`, but keeps
 -- `Int`s instead of `Integer`s;
--- Also it provide `Dim` data family serving as a customized `Proxy` type.
+-- Also it provides `Dim` data family serving as a customized `Proxy` type
+-- and a singleton suitable for recovering an instance of the `KnownDim` class.
 -- A set of utility functions provide inference functionality, so
 -- that `KnownDim` can be preserved over some type-level operations.
 --
@@ -37,11 +38,15 @@
 module Numeric.Dim
   ( XNat (..), XN, N
   , Dim (D, Dn, Dx), SomeDim
-  , KnownDim (..), dimVal, dimVal', someDimVal, sameDim
+  , KnownDim (..)
+  , dimVal, dimVal', someDimVal
+  , sameDim, sameDim'
+  , compareDim, compareDim'
+  , constrain, relax
     -- * Simple Dim arithmetics
   , plusDim, minusDim, minusDimM, timesDim, powerDim
     -- * Re-export part of `GHC.TypeLits` for convenience
-  , Nat, CmpNat, (<=), (+), (-), (*), (^)
+  , Nat, CmpNat, type (<=), type (+), type (-), type (*), type (^)
   ) where
 
 
@@ -79,7 +84,7 @@ newtype Dim (x :: k) = Dim Word
 pattern D :: forall (n :: Nat) . () => KnownDim n => Dim n
 pattern D <- (dimEv -> E)
   where
-    D = dim @n
+    D = dim @_ @n
 
 -- | Statically known `XNat`
 pattern Dn :: forall (n :: Nat) . () => KnownDim n => Dim n -> Dim (N n)
@@ -96,10 +101,28 @@ pattern Dx k <- (dimXNEv @m @n -> (# E, k #))
   where
     Dx k = unsafeCoerce# k
 
--- | This class gives the int associated with a type-level natural.
---   Valid known dim must be not less than 0.
-class KnownDim (n :: Nat) where
-    -- | Get value of type-level dim at runtime
+-- | This class provides the `Dim` associated with a type-level natural.
+class KnownDim (n :: k) where
+    -- | Get value of type-level dim at runtime.
+    --
+    --   Note, this function is supposed to be used with @TypeApplications@,
+    --   and the @KnownDim@ class has varying kind of the parameter;
+    --   thus, the function has two type paremeters (kind and type of @n@).
+    --   For example, you can type:
+    --
+    --   >>>:set -XTypeApplications
+    --   >>>:set -XDataKinds
+    --   >>>:t dim @Nat @3
+    --   dim @Nat @3 :: Dim 3
+    --
+    --   >>>:set -XTypeOperators
+    --   >>>:t dim @_ @(13 - 6)
+    --   dim @_ @(13 - 6) :: Dim 7
+    --
+    --
+    --   >>>:t dim @_ @(N 17)
+    --   dim @_ @(N 17) :: Dim (N 17)
+    --
     dim :: Dim n
 
 -- | Similar to `natVal` from `GHC.TypeLits`, but returns `Word`.
@@ -109,7 +132,7 @@ dimVal = unsafeCoerce#
 
 -- | Similar to `natVal` from `GHC.TypeLits`, but returns `Word`.
 dimVal' :: forall n . KnownDim n => Word
-dimVal' = unsafeCoerce# (dim @n)
+dimVal' = unsafeCoerce# (dim @_ @n)
 {-# INLINE dimVal' #-}
 
 -- | Friendly error message if `m <= n` constraint is not satisfied
@@ -175,21 +198,62 @@ instance {-# OVERLAPPING #-} KnownDim 19 where
 instance {-# OVERLAPPING #-} KnownDim 20 where
   { {-# INLINE dim #-}; dim = Dim 20 }
 
+instance KnownDim n => KnownDim ('N n) where
+    {-# INLINE dim #-}
+    dim = unsafeCoerce# (dim @Nat @n)
+
 -- | Similar to `someNatVal` from `GHC.TypeLits`.
-someDimVal :: forall (m :: Nat) . KnownDim m => Word -> Maybe (Dim ('XN m))
-someDimVal x | dimVal' @m > x = Nothing
-             | otherwise      = Just (unsafeCoerce# x)
+someDimVal :: Word -> SomeDim
+someDimVal = unsafeCoerce#
 {-# INLINE someDimVal #-}
+
+
+-- | Change the minimum allowed size of a @Dim (XN x)@,
+--   while testing if the value inside satisfies it.
+constrain :: forall (m :: Nat) x . KnownDim m
+          => Dim x -> Maybe (Dim (XN m))
+constrain (Dim x) | dimVal' @m > x = Nothing
+                  | otherwise      = Just (unsafeCoerce# x)
+{-# INLINE constrain #-}
+
+-- | Decrease minimum allowed size of a @Dim (XN x)@.
+relax :: forall (m :: Nat) (n :: Nat) . (m <= n) => Dim (XN n) -> Dim (XN m)
+relax = unsafeCoerce#
+{-# INLINE relax #-}
+
 
 -- | We either get evidence that this function
 --   was instantiated with the same type-level numbers, or Nothing.
-sameDim :: forall (x :: Nat) (y :: Nat) p
-         . (KnownDim x, KnownDim y)
-         => p x -> p y -> Maybe (Evidence (x ~ y))
-sameDim _ _
-  | dimVal' @x == dimVal' @y
-    = Just (unsafeCoerce# (E @(x ~ x)))
+--
+--   Note, this version of the function behaves incorrectly with @Dim (XN x)@:
+--   it compares only contained dim values, and ignores minimum value constraints.
+--   As a result, GHC may infer minimum value contraints equality incorrectly.
+sameDim :: forall x y
+         . Dim x -> Dim y -> Maybe (Evidence (x ~ y))
+sameDim (Dim a) (Dim b)
+  | a == b    = Just (unsafeCoerce# (E @(x ~ x)))
   | otherwise = Nothing
+{-# INLINE sameDim #-}
+
+-- | We either get evidence that this function
+--   was instantiated with the same type-level numbers, or Nothing.
+sameDim' :: forall (x :: Nat) (y :: Nat) p q
+          . (KnownDim x, KnownDim y)
+         => p x -> q y -> Maybe (Evidence (x ~ y))
+sameDim' _ _ = sameDim' (dim @Nat @x) (dim @Nat @y)
+{-# INLINE sameDim' #-}
+
+-- | Ordering of dimension values.
+compareDim :: Dim a -> Dim b -> Ordering
+compareDim = unsafeCoerce# (compare :: Word -> Word -> Ordering)
+{-# INLINE compareDim #-}
+
+
+-- | Ordering of dimension values.
+compareDim' :: forall a b p q
+             . (KnownDim a, KnownDim b) => p a -> q b -> Ordering
+compareDim' _ _ = compareDim (dim @_ @a)  (dim @_ @b)
+{-# INLINE compareDim' #-}
 
 
 instance Eq (Dim (n :: Nat)) where
@@ -205,7 +269,7 @@ instance Ord (Dim (n :: Nat)) where
     {-# INLINE compare #-}
 
 instance Ord (Dim (x :: XNat)) where
-    compare (Dim a) (Dim b) = compare a b
+    compare = compareDim
     {-# INLINE compare #-}
 
 instance Show (Dim x) where
@@ -214,7 +278,7 @@ instance Show (Dim x) where
 
 instance KnownDim m => Read (Dim ('XN m)) where
     readsPrec p xs = do (a,ys) <- readsPrec p xs
-                        case someDimVal a of
+                        case constrain (someDimVal a) of
                           Nothing -> []
                           Just n  -> [(n,ys)]
 
@@ -250,38 +314,25 @@ powerDim (Dim a) (Dim b) = unsafeCoerce# (a ^ b)
 --   to create an instance of KnownDim typeclass at runtime.
 --   The trick is taken from Edward Kmett's reflection library explained
 --   in https://www.schoolofhaskell.com/user/thoughtpolice/using-reflection
-reifyDim :: forall r . Word -> (forall (n :: Nat) . KnownDim n => Proxy# n -> r) -> r
-reifyDim n k = unsafeCoerce# (MagicDim k :: MagicDim r) n proxy#
+reifyDim :: forall r d . Dim d -> (KnownDim d => r) -> r
+reifyDim d k = unsafeCoerce# (MagicDim k :: MagicDim d r) d
 {-# INLINE reifyDim #-}
-newtype MagicDim r = MagicDim (forall (n :: Nat) . KnownDim n => Proxy# n -> r)
+newtype MagicDim d r = MagicDim (KnownDim d => r)
 
-
-dimEv :: forall n . Dim n -> Evidence (KnownDim n)
-dimEv (Dim k) = reifyDim k f
-  where
-   f :: forall (k :: Nat)
-      . KnownDim k => Proxy# k -> Evidence (KnownDim n)
-   f _ = unsafeCoerce# (E @(KnownDim k))
+dimEv :: Dim d -> Evidence (KnownDim d)
+dimEv d = reifyDim d E
 {-# INLINE dimEv #-}
 
 dimNEv :: forall n . Dim (N n) -> (# Evidence (KnownDim n), Dim n #)
 dimNEv (Dim k) =
-  (# reifyDim k f
+  (# reifyDim (Dim @Nat @n k) E
    , unsafeCoerce# k
    #)
-  where
-    f :: forall (k :: Nat)
-       . KnownDim k => Proxy# k -> Evidence (KnownDim n)
-    f _ = unsafeCoerce# (E @(KnownDim k))
 {-# INLINE dimNEv #-}
 
 dimXNEv :: forall m n . Dim (XN m) -> (# Evidence (MinDim m n, KnownDim n), Dim n #)
 dimXNEv (Dim k) =
-  (# reifyDim k f
+  (# reifyDim (Dim @Nat @n k) (unsafeCoerce# (E @(n <= n, KnownDim n)))
    , unsafeCoerce# k
    #)
-  where
-    f :: forall (k :: Nat)
-       . KnownDim k => Proxy# k -> Evidence (MinDim m n, KnownDim n)
-    f _ = unsafeCoerce# (E @(k <= k, KnownDim k))
 {-# INLINE dimXNEv #-}

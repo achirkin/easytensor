@@ -29,6 +29,7 @@ library
         Numeric.Type.Evidence
         Numeric.Type.List
         Numeric.TypedList
+        Numeric.Dimensions.Dims
         -- Numeric.Dimensions
         -- Numeric.Dimensions.XDim
         -- Numeric.Dimensions.Idx
