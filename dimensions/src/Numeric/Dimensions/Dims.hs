@@ -186,6 +186,8 @@ compareDims a b = compare (reverse $ listDims a) (reverse $ listDims b)
 --   Literally,
 --
 --   > compareDims a b = compare (reverse $ listDims a) (reverse $ listDims b)
+--
+--   This is the same @compare@ rule, as for `Idxs`.
 compareDims' :: forall as bs p q
               . (Dimensions as, Dimensions bs)
              => p as -> q bs -> Ordering

@@ -19,8 +19,16 @@ source-repository head
     subdir: dimensions
 
 
+flag unsafeindices
+    description:
+        Disable bound checks on Idx and Idxs types.
+    default: False
+
+
 library
 
+    if flag(unsafeindices)
+        cpp-options: -DUNSAFE_INDICES
     exposed-modules:
         Numeric.Dim
         Numeric.Tuple
@@ -29,15 +37,10 @@ library
         Numeric.Type.Evidence
         Numeric.Type.List
         Numeric.TypedList
+        Numeric.Dimensions
         Numeric.Dimensions.Dims
-        -- Numeric.Dimensions
-        -- Numeric.Dimensions.XDim
-        -- Numeric.Dimensions.Idx
-        -- Numeric.Dimensions.List
-        -- Numeric.Dimensions.Traverse
-        -- Numeric.Dimensions.Traverse.IO
-        -- Numeric.Dimensions.Traverse.ST
-        -- Numeric.TypeLits
+        Numeric.Dimensions.Idxs
+        Numeric.Dimensions.Fold
     build-depends:
         base >=4.9 && <5,
         ghc-prim >= 0.5,

@@ -18,6 +18,7 @@
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 {-# LANGUAGE ViewPatterns          #-}
+{-# LANGUAGE Strict                #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dim
@@ -37,7 +38,7 @@
 -----------------------------------------------------------------------------
 module Numeric.Dim
   ( XNat (..), XN, N
-  , Dim (D, Dn, Dx), SomeDim
+  , Dim (Dim, D, Dn, Dx), SomeDim
   , KnownDim (..)
   , dimVal, dimVal', someDimVal
   , sameDim, sameDim'
@@ -71,14 +72,27 @@ type SomeDim = Dim ('XN 0)
 
 
 -- | `Proxy` type to store type-level dimension info
-newtype Dim (x :: k) = Dim Word
+newtype Dim (x :: k) = DimSing Word
 -- Starting from GHC 8.2, compiler supports specifying lists of complete
 -- pattern synonyms.
 #if __GLASGOW_HASKELL__ >= 802
 {-# COMPLETE D #-}
 {-# COMPLETE Dn #-}
 {-# COMPLETE Dx #-}
+{-# COMPLETE Dim #-}
 #endif
+
+
+-- | Independently of the kind of type-level number,
+--   construct an instance of `KnownDim` from it.
+--
+--   Match against this pattern to bring `KnownDim` instance into scope
+--   when you don't know the kind of the @Dim@ parameter.
+pattern Dim :: forall (n :: k) . () => KnownDim n => Dim n
+pattern Dim <- (dimEv -> E)
+  where
+    Dim = dim @_ @n
+
 
 -- | Statically known `XNat`
 pattern D :: forall (n :: Nat) . () => KnownDim n => Dim n
@@ -153,50 +167,50 @@ type family MinDim (m :: Nat) (n :: Nat) :: Constraint where
 
 instance {-# OVERLAPPABLE #-} KnownNat n => KnownDim n where
     {-# INLINE dim #-}
-    dim = Dim (fromInteger (natVal' (proxy# :: Proxy# n)))
+    dim = DimSing (fromInteger (natVal' (proxy# :: Proxy# n)))
 
 instance {-# OVERLAPPING #-} KnownDim 0  where
-  { {-# INLINE dim #-}; dim = Dim 0 }
+  { {-# INLINE dim #-}; dim = DimSing 0 }
 instance {-# OVERLAPPING #-} KnownDim 1  where
-  { {-# INLINE dim #-}; dim = Dim 1 }
+  { {-# INLINE dim #-}; dim = DimSing 1 }
 instance {-# OVERLAPPING #-} KnownDim 2  where
-  { {-# INLINE dim #-}; dim = Dim 2 }
+  { {-# INLINE dim #-}; dim = DimSing 2 }
 instance {-# OVERLAPPING #-} KnownDim 3  where
-  { {-# INLINE dim #-}; dim = Dim 3 }
+  { {-# INLINE dim #-}; dim = DimSing 3 }
 instance {-# OVERLAPPING #-} KnownDim 4  where
-  { {-# INLINE dim #-}; dim = Dim 4 }
+  { {-# INLINE dim #-}; dim = DimSing 4 }
 instance {-# OVERLAPPING #-} KnownDim 5  where
-  { {-# INLINE dim #-}; dim = Dim 5 }
+  { {-# INLINE dim #-}; dim = DimSing 5 }
 instance {-# OVERLAPPING #-} KnownDim 6  where
-  { {-# INLINE dim #-}; dim = Dim 6 }
+  { {-# INLINE dim #-}; dim = DimSing 6 }
 instance {-# OVERLAPPING #-} KnownDim 7  where
-  { {-# INLINE dim #-}; dim = Dim 7 }
+  { {-# INLINE dim #-}; dim = DimSing 7 }
 instance {-# OVERLAPPING #-} KnownDim 8  where
-  { {-# INLINE dim #-}; dim = Dim 8 }
+  { {-# INLINE dim #-}; dim = DimSing 8 }
 instance {-# OVERLAPPING #-} KnownDim 9  where
-  { {-# INLINE dim #-}; dim = Dim 9 }
+  { {-# INLINE dim #-}; dim = DimSing 9 }
 instance {-# OVERLAPPING #-} KnownDim 10 where
-  { {-# INLINE dim #-}; dim = Dim 10 }
+  { {-# INLINE dim #-}; dim = DimSing 10 }
 instance {-# OVERLAPPING #-} KnownDim 11 where
-  { {-# INLINE dim #-}; dim = Dim 11 }
+  { {-# INLINE dim #-}; dim = DimSing 11 }
 instance {-# OVERLAPPING #-} KnownDim 12 where
-  { {-# INLINE dim #-}; dim = Dim 12 }
+  { {-# INLINE dim #-}; dim = DimSing 12 }
 instance {-# OVERLAPPING #-} KnownDim 13 where
-  { {-# INLINE dim #-}; dim = Dim 13 }
+  { {-# INLINE dim #-}; dim = DimSing 13 }
 instance {-# OVERLAPPING #-} KnownDim 14 where
-  { {-# INLINE dim #-}; dim = Dim 14 }
+  { {-# INLINE dim #-}; dim = DimSing 14 }
 instance {-# OVERLAPPING #-} KnownDim 15 where
-  { {-# INLINE dim #-}; dim = Dim 15 }
+  { {-# INLINE dim #-}; dim = DimSing 15 }
 instance {-# OVERLAPPING #-} KnownDim 16 where
-  { {-# INLINE dim #-}; dim = Dim 16 }
+  { {-# INLINE dim #-}; dim = DimSing 16 }
 instance {-# OVERLAPPING #-} KnownDim 17 where
-  { {-# INLINE dim #-}; dim = Dim 17 }
+  { {-# INLINE dim #-}; dim = DimSing 17 }
 instance {-# OVERLAPPING #-} KnownDim 18 where
-  { {-# INLINE dim #-}; dim = Dim 18 }
+  { {-# INLINE dim #-}; dim = DimSing 18 }
 instance {-# OVERLAPPING #-} KnownDim 19 where
-  { {-# INLINE dim #-}; dim = Dim 19 }
+  { {-# INLINE dim #-}; dim = DimSing 19 }
 instance {-# OVERLAPPING #-} KnownDim 20 where
-  { {-# INLINE dim #-}; dim = Dim 20 }
+  { {-# INLINE dim #-}; dim = DimSing 20 }
 
 instance KnownDim n => KnownDim ('N n) where
     {-# INLINE dim #-}
@@ -212,8 +226,8 @@ someDimVal = unsafeCoerce#
 --   while testing if the value inside satisfies it.
 constrain :: forall (m :: Nat) x . KnownDim m
           => Dim x -> Maybe (Dim (XN m))
-constrain (Dim x) | dimVal' @m > x = Nothing
-                  | otherwise      = Just (unsafeCoerce# x)
+constrain (DimSing x) | dimVal' @m > x = Nothing
+                      | otherwise      = Just (unsafeCoerce# x)
 {-# INLINE constrain #-}
 
 -- | Decrease minimum allowed size of a @Dim (XN x)@.
@@ -230,7 +244,7 @@ relax = unsafeCoerce#
 --   As a result, GHC may infer minimum value contraints equality incorrectly.
 sameDim :: forall x y
          . Dim x -> Dim y -> Maybe (Evidence (x ~ y))
-sameDim (Dim a) (Dim b)
+sameDim (DimSing a) (DimSing b)
   | a == b    = Just (unsafeCoerce# (E @(x ~ x)))
   | otherwise = Nothing
 {-# INLINE sameDim #-}
@@ -261,7 +275,7 @@ instance Eq (Dim (n :: Nat)) where
     {-# INLINE (==) #-}
 
 instance Eq (Dim (x :: XNat)) where
-    Dim a == Dim b = a == b
+    DimSing a == DimSing b = a == b
     {-# INLINE (==) #-}
 
 instance Ord (Dim (n :: Nat)) where
@@ -286,25 +300,25 @@ instance KnownDim m => Read (Dim ('XN m)) where
 
 
 plusDim :: Dim n -> Dim m -> Dim (n + m)
-plusDim (Dim a) (Dim b) = unsafeCoerce# (a + b)
+plusDim (DimSing a) (DimSing b) = unsafeCoerce# (a + b)
 {-# INLINE plusDim #-}
 
 minusDim :: (<=) m n => Dim n -> Dim m -> Dim (n - m)
-minusDim (Dim a) (Dim b) = unsafeCoerce# (a - b)
+minusDim (DimSing a) (DimSing b) = unsafeCoerce# (a - b)
 {-# INLINE minusDim #-}
 
 minusDimM :: Dim n -> Dim m -> Maybe (Dim (n - m))
-minusDimM (Dim a) (Dim b)
+minusDimM (DimSing a) (DimSing b)
   | a >= b    = Just (unsafeCoerce# (a - b))
   | otherwise = Nothing
 {-# INLINE minusDimM #-}
 
 timesDim :: Dim n -> Dim m -> Dim ((*) n m)
-timesDim (Dim a) (Dim b) = unsafeCoerce# (a * b)
+timesDim (DimSing a) (DimSing b) = unsafeCoerce# (a * b)
 {-# INLINE timesDim #-}
 
 powerDim :: Dim n -> Dim m -> Dim ((^) n m)
-powerDim (Dim a) (Dim b) = unsafeCoerce# (a ^ b)
+powerDim (DimSing a) (DimSing b) = unsafeCoerce# (a ^ b)
 {-# INLINE powerDim #-}
 
 
@@ -324,15 +338,15 @@ dimEv d = reifyDim d E
 {-# INLINE dimEv #-}
 
 dimNEv :: forall n . Dim (N n) -> (# Evidence (KnownDim n), Dim n #)
-dimNEv (Dim k) =
-  (# reifyDim (Dim @Nat @n k) E
+dimNEv (DimSing k) =
+  (# reifyDim (DimSing @Nat @n k) E
    , unsafeCoerce# k
    #)
 {-# INLINE dimNEv #-}
 
 dimXNEv :: forall m n . Dim (XN m) -> (# Evidence (MinDim m n, KnownDim n), Dim n #)
-dimXNEv (Dim k) =
-  (# reifyDim (Dim @Nat @n k) (unsafeCoerce# (E @(n <= n, KnownDim n)))
+dimXNEv (DimSing k) =
+  (# reifyDim (DimSing @Nat @n k) (unsafeCoerce# (E @(n <= n, KnownDim n)))
    , unsafeCoerce# k
    #)
 {-# INLINE dimXNEv #-}
