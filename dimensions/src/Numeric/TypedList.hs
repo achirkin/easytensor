@@ -26,6 +26,13 @@
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
 --
+-- Provide a type-indexed heterogeneous list type @TypedList@.
+-- Behind the facade, @TypedList@ is just a plain list of haskell pointers.
+-- It is used to represent dimension lists, indices, and just flexible tuples.
+--
+-- Most of type-level functionality is implemented using GADT-like pattern synonyms.
+-- Import this module qualified to use list-like functionality.
+--
 -----------------------------------------------------------------------------
 module Numeric.TypedList
     ( TypedList (U, (:*), Empty, TypeList, Cons, Snoc, Reverse, Concat)

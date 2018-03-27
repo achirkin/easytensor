@@ -48,7 +48,8 @@ import           Data.Coerce
 import           Data.Data             (Data)
 import           Data.Foldable
 import           Data.Ix               (Ix)
-import           Data.Semigroup        (Monoid (..), Semigroup (..))
+import           Data.Monoid           (Monoid (..))
+import           Data.Semigroup        (Semigroup (..))
 import           Data.String           (IsString)
 import           Foreign.Storable      (Storable)
 import           GHC.Exts
@@ -72,8 +73,6 @@ newtype Id a = Id { runId :: a }
 instance (Read a) => Read (Id a) where
     readsPrec d = fmap (first Id) . readsPrec d
 
--- | This instance would be equivalent to the derived instances of the
--- 'Id' newtype if the 'runId' field were removed
 instance (Show a) => Show (Id a) where
     showsPrec d = showsPrec d . runId
 
@@ -186,7 +185,9 @@ instance (All Semigroup xs) => Semigroup (Tuple xs) where
     _ <> _ = error "(<>): impossible combination of arguments"
 #endif
 
-instance (RepresentableList xs, All Monoid xs) => Monoid (Tuple xs) where
+instance ( Semigroup (Tuple xs)
+         , RepresentableList xs
+         , All Monoid xs) => Monoid (Tuple xs) where
     mempty = go (tList @Type @xs)
       where
         go :: forall (ys :: [Type])

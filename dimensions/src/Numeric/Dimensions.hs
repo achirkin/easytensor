@@ -7,7 +7,7 @@
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
 -- Provides a set of data types to define and traverse through multiple dimensions.
--- The core types are `Dim ds` and `Idx ds`, which fix dimension sizes at compile time.
+-- The core types are `Dims ds` and `Idxs ds`, which fix dimension sizes at compile time.
 --
 -- Lower indices go first, i.e. assumed enumeration
 --          is i = i1 + i2*n1 + i3*n1*n2 + ... + ik*n1*n2*...*n(k-1).
@@ -16,13 +16,17 @@
 -----------------------------------------------------------------------------
 
 module Numeric.Dimensions
-  ( module Numeric.Dimensions.List
-  , module Numeric.Dimensions.Dim
-  , module Numeric.Dimensions.Idx
-  , Evidence (..), withEvidence, sumEvs, (+!+)
+  ( module Numeric.Dim
+  , module Numeric.Dimensions.Dims
+  , module Numeric.Dimensions.Idxs
+  , module Numeric.Dimensions.Fold
+  , module Numeric.Type.Evidence
+  , module Numeric.Type.List
   ) where
 
-import Numeric.Dimensions.List
-import Numeric.Dimensions.Dim
-import Numeric.Dimensions.Idx
-import Numeric.TypeLits
+import Numeric.Dim
+import Numeric.Dimensions.Dims
+import Numeric.Dimensions.Idxs
+import Numeric.Dimensions.Fold
+import Numeric.Type.Evidence
+import Numeric.Type.List
