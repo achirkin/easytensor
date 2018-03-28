@@ -1,4 +1,4 @@
-resolver: snapshot-8.2.yaml
+resolver: snapshot-8.0.yaml
 
 packages:
   - '.'

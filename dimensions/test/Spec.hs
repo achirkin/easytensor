@@ -3,13 +3,13 @@ module Main (tests, main) where
 import           System.Exit
 import           Distribution.TestSuite
 
-import qualified Numeric.Dimensions.ListTest
+import qualified Numeric.DimTest
 
 
 -- | Collection of tests in detailed-0.9 format
 tests :: IO [Test]
 tests = return
-  [ test "Dimensions.List"    Numeric.Dimensions.ListTest.runTests
+  [ test "Dim"    Numeric.DimTest.runTests
   ]
 
 

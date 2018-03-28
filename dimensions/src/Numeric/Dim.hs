@@ -37,7 +37,9 @@
 --
 -----------------------------------------------------------------------------
 module Numeric.Dim
-  ( XNat (..), XN, N
+  ( -- * Type level numbers that can be unknown.
+    XNat (..), XN, N
+    -- * Term level dimension
   , Dim (Dim, D, Dn, Dx), SomeDim
   , KnownDim (..)
   , dimVal, dimVal', someDimVal
@@ -45,6 +47,19 @@ module Numeric.Dim
   , compareDim, compareDim'
   , constrain, relax
     -- * Simple Dim arithmetics
+    --
+    --   The functions below create singleton values that work as a witness
+    --   of `KnownDim` instance for type-level Nat operations.
+    --   For example, to show that @(a + b)@ is a @KnownDim@, one writes:
+    --
+    --   > case plusDim dA dB of
+    --   >   D -> ... -- here we know KnownDim ( a + b )
+    --
+    --   There is a bug and a feature in these functions though:
+    --   they are implemented in terms of @Num Word@, which means that
+    --   their results are subject to integer overflow.
+    --   The good side is the confidence that they behave exactly as
+    --   their @Word@ counterparts.
   , plusDim, minusDim, minusDimM, timesDim, powerDim
     -- * Re-export part of `GHC.TypeLits` for convenience
   , Nat, CmpNat, type (<=), type (+), type (-), type (*), type (^)
@@ -71,7 +86,16 @@ type N (n::Nat) = 'N n
 type SomeDim = Dim ('XN 0)
 
 
--- | `Proxy` type to store type-level dimension info
+-- | Singleton type to store type-level dimension value.
+--
+--   On the one hand, it can be used to let type-inference system know
+--   relations between type-level naturals.
+--   On the other hand, this is just a newtype wrapper on the @Word@ type.
+--
+--   Usually, the type parameter of @Dim@ is either @Nat@ or @XNat@.
+--   If dimensionality of your data is known in advance, use @Nat@;
+--   if you know the size of some dimensions, but do not know the size
+--   of others, use @XNat@s to represent them.
 newtype Dim (x :: k) = DimSing Word
 -- Starting from GHC 8.2, compiler supports specifying lists of complete
 -- pattern synonyms.
