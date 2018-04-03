@@ -52,10 +52,10 @@ import           Data.Monoid           (Monoid (..))
 import           Data.Semigroup        (Semigroup (..))
 import           Data.String           (IsString)
 import           Foreign.Storable      (Storable)
+import           GHC.Base              (Type)
 import           GHC.Exts
 import           GHC.Generics          (Generic, Generic1)
 import qualified GHC.Read              as Read
-import           GHC.Types
 import qualified Text.Read             as Read
 
 import           Numeric.Type.Evidence
@@ -196,7 +196,7 @@ instance ( Semigroup (Tuple xs)
         go (_ :* xs) = mempty *! go xs
 #if __GLASGOW_HASKELL__ >= 802
 #else
-        go _ = error "mempty/go: impossible combination of arguments"
+        go _         = error "mempty/go: impossible combination of arguments"
 #endif
     mappend = go (tList @Type @xs)
       where
@@ -267,7 +267,7 @@ instance All Show xs => Show (Tuple xs) where
     show (x :* xs) = show x ++ " :* " ++ show xs
 #if __GLASGOW_HASKELL__ >= 802
 #else
-    show _ = error "show: impossible combination of arguments"
+    show _         = error "show: impossible combination of arguments"
 #endif
     showsPrec _ U = showString "U"
     showsPrec p (x :* xs) = showParen (p >= 5)

@@ -10,6 +10,8 @@
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
 -- Fold a function over all dimensions provided dimension indices or offsets.
+-- The main purpose of this module is to fold or traverse flat data arrays
+-- following the shape of dimensions associated with them.
 --
 -----------------------------------------------------------------------------
 module Numeric.Dimensions.Fold
