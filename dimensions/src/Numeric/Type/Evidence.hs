@@ -19,8 +19,8 @@ module Numeric.Type.Evidence
   ) where
 
 
-import           GHC.Exts  (Constraint)
-import           GHC.Types (Type)
+import           GHC.Base (Type)
+import           GHC.Exts (Constraint)
 
 
 -- | Bring an instance of certain class or constaint satisfaction evidence into scope.

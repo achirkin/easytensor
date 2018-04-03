@@ -54,8 +54,8 @@ module Numeric.TypedList
 
 import           Control.Arrow         (first)
 import           Data.Proxy
+import           GHC.Base              (Type)
 import           GHC.Exts
-import           GHC.Types
 
 import           Numeric.Dim
 import           Numeric.Type.Evidence
@@ -187,15 +187,16 @@ length :: TypedList f xs -> Dim (Length xs)
 length = order
 {-# INLINE length #-}
 
-splitAt :: Dim n -> TypedList f xs
-          -> (TypedList f (Take n xs), TypedList f (Drop n xs))
+splitAt :: Dim n
+        -> TypedList f xs
+        -> (TypedList f (Take n xs), TypedList f (Drop n xs))
 splitAt d (TypedList xs) = unsafeCoerce# (Prelude.splitAt (intD d) xs)
 {-# INLINE splitAt #-}
 
 -- | Map a function over contents of a typed list
 map :: (forall a . f a -> g a)
-      -> TypedList f xs
-      -> TypedList g xs
+    -> TypedList f xs
+    -> TypedList g xs
 map k (TypedList xs) = unsafeCoerce# (Prelude.map k' xs)
   where
     k' :: Any -> Any

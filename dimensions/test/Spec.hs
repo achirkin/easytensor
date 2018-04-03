@@ -4,12 +4,14 @@ import           System.Exit
 import           Distribution.TestSuite
 
 import qualified Numeric.DimTest
+import qualified Numeric.Dimensions.DimsTest
 
 
 -- | Collection of tests in detailed-0.9 format
 tests :: IO [Test]
 tests = return
   [ test "Dim"    Numeric.DimTest.runTests
+  , test "Dims"   Numeric.Dimensions.DimsTest.runTests
   ]
 
 

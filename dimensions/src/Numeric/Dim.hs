@@ -2,6 +2,7 @@
 {-# LANGUAGE CPP                   #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE ExplicitNamespaces    #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE KindSignatures        #-}
@@ -12,13 +13,12 @@
 {-# LANGUAGE Rank2Types            #-}
 {-# LANGUAGE RoleAnnotations       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE Strict                #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 {-# LANGUAGE ViewPatterns          #-}
-{-# LANGUAGE Strict                #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dim
@@ -45,7 +45,7 @@ module Numeric.Dim
   , dimVal, dimVal', someDimVal
   , sameDim, sameDim'
   , compareDim, compareDim'
-  , constrain, relax
+  , constrain, constrainBy, relax
     -- * Simple Dim arithmetics
     --
     --   The functions below create singleton values that work as a witness
@@ -62,7 +62,8 @@ module Numeric.Dim
     --   their @Word@ counterparts.
   , plusDim, minusDim, minusDimM, timesDim, powerDim
     -- * Re-export part of `GHC.TypeLits` for convenience
-  , Nat, CmpNat, type (<=), type (+), type (-), type (*), type (^)
+  , Nat, CmpNat, type (+), type (-), type (*), type (^)
+  , MinDim, inferDimLE
   ) where
 
 
@@ -126,7 +127,7 @@ pattern D <- (dimEv -> E)
 
 -- | Statically known `XNat`
 pattern Dn :: forall (n :: Nat) . () => KnownDim n => Dim n -> Dim (N n)
-pattern Dn k <- (dimNEv -> (# E, k #))
+pattern Dn k <- (dimNEv -> ( E, k ))
   where
     Dn k = unsafeCoerce# k
 
@@ -135,7 +136,7 @@ pattern Dn k <- (dimNEv -> (# E, k #))
 --   Hide dimension size inside, but allow specifying its minimum possible value.
 pattern Dx :: forall (m :: Nat) (n :: Nat)
             . () => (MinDim m n, KnownDim n) => Dim n -> Dim (XN m)
-pattern Dx k <- (dimXNEv @m @n -> (# E, k #))
+pattern Dx k <- (dimXNEv @m @n -> ( E, k ))
   where
     Dx k = unsafeCoerce# k
 
@@ -173,7 +174,9 @@ dimVal' :: forall n . KnownDim n => Word
 dimVal' = unsafeCoerce# (dim @_ @n)
 {-# INLINE dimVal' #-}
 
--- | Friendly error message if `m <= n` constraint is not satisfied
+-- | Friendly error message if `m <= n` constraint is not satisfied.
+--   Use this type family instead of @(<=)@ if possible
+--   or try `inferDimLE` function as the last resort.
 type family MinDim (m :: Nat) (n :: Nat) :: Constraint where
   MinDim m n =
     If (CmpNat m n == 'GT)
@@ -254,8 +257,14 @@ constrain (DimSing x) | dimVal' @m > x = Nothing
                       | otherwise      = Just (unsafeCoerce# x)
 {-# INLINE constrain #-}
 
+-- | `constrain` with explicitly-passed constraining @Dim@
+--   to avoid @AllowAmbiguousTypes@.
+constrainBy :: forall m x . Dim m -> Dim x -> Maybe (Dim (XN m))
+constrainBy D = constrain @m
+
+
 -- | Decrease minimum allowed size of a @Dim (XN x)@.
-relax :: forall (m :: Nat) (n :: Nat) . (m <= n) => Dim (XN n) -> Dim (XN m)
+relax :: forall (m :: Nat) (n :: Nat) . (MinDim m n) => Dim (XN n) -> Dim (XN m)
 relax = unsafeCoerce#
 {-# INLINE relax #-}
 
@@ -327,7 +336,7 @@ plusDim :: Dim n -> Dim m -> Dim (n + m)
 plusDim (DimSing a) (DimSing b) = unsafeCoerce# (a + b)
 {-# INLINE plusDim #-}
 
-minusDim :: (<=) m n => Dim n -> Dim m -> Dim (n - m)
+minusDim :: MinDim m n => Dim n -> Dim m -> Dim (n - m)
 minusDim (DimSing a) (DimSing b) = unsafeCoerce# (a - b)
 {-# INLINE minusDim #-}
 
@@ -346,6 +355,11 @@ powerDim (DimSing a) (DimSing b) = unsafeCoerce# (a ^ b)
 {-# INLINE powerDim #-}
 
 
+-- | @MinDim@ implies @(<=)@, but this fact is not so clear to GHC.
+--   This function assures the type system that the relation takes place.
+inferDimLE :: forall m n . MinDim m n => Evidence (m <= n)
+inferDimLE = unsafeCoerce# (E @(n <= n))
+
 --------------------------------------------------------------------------------
 
 -- | This function does GHC's magic to convert user-supplied `dimVal'` function
@@ -361,16 +375,16 @@ dimEv :: Dim d -> Evidence (KnownDim d)
 dimEv d = reifyDim d E
 {-# INLINE dimEv #-}
 
-dimNEv :: forall n . Dim (N n) -> (# Evidence (KnownDim n), Dim n #)
+dimNEv :: forall n . Dim (N n) -> ( Evidence (KnownDim n), Dim n )
 dimNEv (DimSing k) =
-  (# reifyDim (DimSing @Nat @n k) E
-   , unsafeCoerce# k
-   #)
+  ( reifyDim (DimSing @Nat @n k) E
+  , unsafeCoerce# k
+  )
 {-# INLINE dimNEv #-}
 
-dimXNEv :: forall m n . Dim (XN m) -> (# Evidence (MinDim m n, KnownDim n), Dim n #)
+dimXNEv :: forall m n . Dim (XN m) -> ( Evidence (MinDim m n, KnownDim n), Dim n )
 dimXNEv (DimSing k) =
-  (# reifyDim (DimSing @Nat @n k) (unsafeCoerce# (E @(n <= n, KnownDim n)))
-   , unsafeCoerce# k
-   #)
+  ( reifyDim (DimSing @Nat @n k) (unsafeCoerce# (E @(n <= n, KnownDim n)))
+  , unsafeCoerce# k
+  )
 {-# INLINE dimXNEv #-}

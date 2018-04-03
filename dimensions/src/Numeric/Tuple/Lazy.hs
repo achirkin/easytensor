@@ -52,10 +52,10 @@ import           Data.Monoid           (Monoid (..))
 import           Data.Semigroup        (Semigroup (..))
 import           Data.String           (IsString)
 import           Foreign.Storable      (Storable)
+import           GHC.Base              (Type)
 import           GHC.Exts
 import           GHC.Generics          (Generic, Generic1)
 import qualified GHC.Read              as Read
-import           GHC.Types
 import qualified Text.Read             as Read
 
 import           Numeric.Type.Evidence
