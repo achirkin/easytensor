@@ -134,9 +134,11 @@ pattern Dn k <- (dimNEv -> ( E, k ))
 -- | `XNat` that is unknown at compile time.
 --   Same as `SomeNat`, but for a dimension:
 --   Hide dimension size inside, but allow specifying its minimum possible value.
-pattern Dx :: forall (m :: Nat) (n :: Nat)
-            . () => (MinDim m n, KnownDim n) => Dim n -> Dim (XN m)
-pattern Dx k <- (dimXNEv @m @n -> ( E, k ))
+pattern Dx :: forall (m :: Nat)
+            . ()
+           => forall (n :: Nat)
+            . (MinDim m n, KnownDim n) => Dim n -> Dim (XN m)
+pattern Dx k <- (dimXNEv @m -> DimXNEv k)
   where
     Dx k = unsafeCoerce# k
 
@@ -261,7 +263,9 @@ constrain (DimSing x) | dimVal' @m > x = Nothing
 --   to avoid @AllowAmbiguousTypes@.
 constrainBy :: forall m x . Dim m -> Dim x -> Maybe (Dim (XN m))
 constrainBy D = constrain @m
-
+#if __GLASGOW_HASKELL__ < 802
+constrainBy _ = error "Dim: Impossible pattern."
+#endif
 
 -- | Decrease minimum allowed size of a @Dim (XN x)@.
 relax :: forall (m :: Nat) (n :: Nat) . (MinDim m n) => Dim (XN n) -> Dim (XN m)
@@ -362,8 +366,8 @@ inferDimLE = unsafeCoerce# (E @(n <= n))
 
 --------------------------------------------------------------------------------
 
--- | This function does GHC's magic to convert user-supplied `dimVal'` function
---   to create an instance of KnownDim typeclass at runtime.
+-- | This function does GHC's magic to convert user-supplied `dim` function
+--   to create an instance of `KnownDim` typeclass at runtime.
 --   The trick is taken from Edward Kmett's reflection library explained
 --   in https://www.schoolofhaskell.com/user/thoughtpolice/using-reflection
 reifyDim :: forall r d . Dim d -> (KnownDim d => r) -> r
@@ -382,9 +386,18 @@ dimNEv (DimSing k) =
   )
 {-# INLINE dimNEv #-}
 
-dimXNEv :: forall m n . Dim (XN m) -> ( Evidence (MinDim m n, KnownDim n), Dim n )
-dimXNEv (DimSing k) =
-  ( reifyDim (DimSing @Nat @n k) (unsafeCoerce# (E @(n <= n, KnownDim n)))
-  , unsafeCoerce# k
-  )
+
+data DimXNEv (m :: Nat)
+  = forall (n :: Nat)
+  . (MinDim m n, KnownDim n) => DimXNEv {-# UNPACK #-} !(Dim n)
+
+dimXNEv :: forall m . Dim (XN m) -> DimXNEv m
+dimXNEv (DimSing k) = reifyDim dd (f dd)
+  where
+    dd = DimSing @Nat @_ k
+    f :: forall (d :: Nat) . KnownDim d => Dim d -> DimXNEv m
+    f d = case ( unsafeCoerce# (E @((CmpNat m m == 'GT) ~ 'False, m <= m))
+                :: Evidence ((CmpNat m d == 'GT) ~ 'False, m <= d)
+               ) of
+      E -> DimXNEv d
 {-# INLINE dimXNEv #-}

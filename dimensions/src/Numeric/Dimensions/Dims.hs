@@ -40,7 +40,7 @@
 
 module Numeric.Dimensions.Dims
   ( Dims, SomeDims (..), Dimensions (..)
-  , TypedList (Dims, U, (:*), Empty, TypeList, Cons, Snoc, Reverse, Concat)
+  , TypedList (Dims, U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
   , listDims, someDimsVal, totalDim, totalDim'
   , sameDims, sameDims'
   , compareDims, compareDims'
@@ -286,8 +286,8 @@ infixl 6 >:
 
 --------------------------------------------------------------------------------
 
--- | This function does GHC's magic to convert user-supplied `dimVal'` function
---   to create an instance of KnownDim typeclass at runtime.
+-- | This function does GHC's magic to convert user-supplied `dims` function
+--   to create an instance of `Dimensions` typeclass at runtime.
 --   The trick is taken from Edward Kmett's reflection library explained
 --   in https://www.schoolofhaskell.com/user/thoughtpolice/using-reflection
 reifyDims :: forall r ds . Dims ds -> ( Dimensions ds => r) -> r
