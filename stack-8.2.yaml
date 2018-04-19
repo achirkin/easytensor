@@ -1,7 +1,0 @@
-resolver: lts-10.8
-packages:
-  - easytensor
-  - dimensions
-
-extra-deps: []
-flags: {}

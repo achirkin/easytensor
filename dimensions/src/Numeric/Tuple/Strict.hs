@@ -35,7 +35,7 @@
 -----------------------------------------------------------------------------
 module Numeric.Tuple.Strict
     ( Id (..), Tuple
-    , TypedList (U, (:*), (:$), (:!), Empty, TypeList, Cons, Snoc, Reverse, Concat)
+    , TypedList (U, (:*), (:$), (:!), Empty, TypeList, Cons, Snoc, Reverse)
     , (*$), ($*), (*!), (!*)
     ) where
 
@@ -58,7 +58,6 @@ import           GHC.Generics          (Generic, Generic1)
 import qualified GHC.Read              as Read
 import qualified Text.Read             as Read
 
-import           Numeric.Type.Evidence
 import           Numeric.Type.List
 import           Numeric.TypedList
 
@@ -128,17 +127,21 @@ type Tuple (xs :: [Type]) = TypedList Id xs
 
 
 -- | Constructing a type-indexed list
-pattern (:$) :: forall (y :: Type) (ys :: [Type]) (xs :: [Type])
-              . () => (xs ~ (y ': ys)) => y -> Tuple ys -> Tuple xs
-pattern (:$) x xs <- (unTuple @y @ys @xs -> (Just (E, (x, xs ))))
+pattern (:$) :: forall (xs :: [Type])
+              . ()
+             => forall (y :: Type) (ys :: [Type])
+              . (xs ~ (y ': ys)) => y -> Tuple ys -> Tuple xs
+pattern (:$) x xs <- (Id x :* xs)
   where
     (:$) = (*$)
 infixr 5 :$
 
 -- | Constructing a type-indexed list
-pattern (:!) :: forall (y :: Type) (ys :: [Type]) (xs :: [Type])
-              . () => (xs ~ (y ': ys)) => y -> Tuple ys -> Tuple xs
-pattern (:!) x xs <- (unTuple' @y @ys @xs -> (Just (E, (x, xs))))
+pattern (:!) :: forall (xs :: [Type])
+              . ()
+             => forall (y :: Type) (ys :: [Type])
+              . (xs ~ (y ': ys)) => y -> Tuple ys -> Tuple xs
+pattern (:!) x xs <- (forceCons -> Id x :* xs)
   where
     (:!) = (*!)
 infixr 5 :!
@@ -196,7 +199,7 @@ instance ( Semigroup (Tuple xs)
         go (_ :* xs) = mempty *! go xs
 #if __GLASGOW_HASKELL__ >= 802
 #else
-        go _         = error "mempty/go: impossible combination of arguments"
+        go _ = error "mempty/go: impossible combination of arguments"
 #endif
     mappend = go (tList @Type @xs)
       where
@@ -267,7 +270,7 @@ instance All Show xs => Show (Tuple xs) where
     show (x :* xs) = show x ++ " :* " ++ show xs
 #if __GLASGOW_HASKELL__ >= 802
 #else
-    show _         = error "show: impossible combination of arguments"
+    show _ = error "show: impossible combination of arguments"
 #endif
     showsPrec _ U = showString "U"
     showsPrec p (x :* xs) = showParen (p >= 5)
@@ -308,28 +311,10 @@ instance (RepresentableList xs, All Read xs) => Read (Tuple xs) where
 (#.) :: Coercible b c => (b -> c) -> (a -> b) -> a -> c
 (#.) _f = coerce
 
-
-
-unTuple :: forall y ys xs
-         . Tuple xs
-        -> Maybe (Evidence (xs ~ (y ': ys)), (y, Tuple ys))
-unTuple = go . unsafeCoerce#
-  where
-    go :: [Any] -> Maybe (Evidence (xs ~ (y ': ys)), (y, Tuple ys))
-    go [] = Nothing
-    go (x : xs)
-      = case (unsafeCoerce# (E @(xs ~ xs)) :: Evidence (xs ~ (y ': ys))) of
-          E -> Just (E, (unsafeCoerce# x, unsafeCoerce# xs))
-
-unTuple' :: forall y ys xs
-          . Tuple xs
-         -> Maybe (Evidence (xs ~ (y ': ys)), (y, Tuple ys))
-unTuple' = go . unsafeCoerce#
-  where
-    go :: [Any] -> Maybe (Evidence (xs ~ (y ': ys)), (y, Tuple ys))
-    go [] = Nothing
-    go (x : xs)
-      = case (unsafeCoerce# (E @(xs ~ xs)) :: Evidence (xs ~ (y ': ys))) of
-          E -> let !y = unsafeCoerce# x
-                   !ys = unsafeCoerce# xs
-               in Just (E, (y, ys))
+forceCons :: Tuple xs -> Tuple xs
+forceCons U = U
+forceCons (Id x :* xs) = x `seq` xs `seq` (Id x :* xs)
+#if __GLASGOW_HASKELL__ >= 802
+#else
+forceCons _ = error "forceCons: impossible combination of arguments"
+#endif

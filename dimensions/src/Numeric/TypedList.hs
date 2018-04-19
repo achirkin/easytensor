@@ -35,7 +35,7 @@
 --
 -----------------------------------------------------------------------------
 module Numeric.TypedList
-    ( TypedList (U, (:*), Empty, TypeList, Cons, Snoc, Reverse, Concat)
+    ( TypedList (U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
     , RepresentableList (..)
     , TypeList, types, order, order'
     , cons, snoc
@@ -47,6 +47,7 @@ module Numeric.TypedList
     , Numeric.TypedList.last
     , Numeric.TypedList.init
     , Numeric.TypedList.splitAt
+    , Numeric.TypedList.concat
     , Numeric.TypedList.length
     , Numeric.TypedList.map
     , module Numeric.Type.List
@@ -77,7 +78,6 @@ newtype TypedList (f :: (k -> Type)) (xs :: [k]) = TypedList [Any]
 {-# COMPLETE Empty, Cons #-}
 {-# COMPLETE Empty, Snoc #-}
 {-# COMPLETE Reverse #-}
-{-# COMPLETE Concat #-}
 #endif
 
 -- | A list of type proxies
@@ -92,12 +92,10 @@ pattern TypeList <- (mkRTL -> E)
   where
     TypeList = tList @k @xs
 
-
-
 -- | Zero-length type list
 pattern U :: forall (f :: k -> Type) (xs :: [k])
            . () => (xs ~ '[]) => TypedList f xs
-pattern U <- (patTL -> (Left (E, _)))
+pattern U <- (patTL @f @xs -> PatCNil)
   where
     U = unsafeCoerce# []
 
@@ -107,45 +105,40 @@ pattern Empty :: forall (f :: k -> Type) (xs :: [k])
 pattern Empty = U
 
 -- | Constructing a type-indexed list
-pattern (:*) :: forall (y :: k) (ys :: [k]) (f :: k -> Type) (xs :: [k])
-              . () => (xs ~ (y ': ys)) => f y -> TypedList f ys -> TypedList f xs
-pattern (:*) x xs <- (patTL @f @xs @y @ys -> (Right (E, (x, xs ))))
-  where
-    (:*) x xs = TypedList (unsafeCoerce# x : unsafeCoerce# xs)
+pattern (:*) :: forall (f :: k -> Type) (xs :: [k])
+              . ()
+             => forall (y :: k) (ys :: [k])
+              . (xs ~ (y ': ys)) => f y -> TypedList f ys -> TypedList f xs
+pattern (:*) x xs = Cons x xs
 infixr 5 :*
 
 -- | Constructing a type-indexed list in the canonical way
-pattern Cons :: forall (y :: k) (ys :: [k]) (f :: k -> Type) (xs :: [k])
-              . () => (xs ~ (y ': ys)) => f y -> TypedList f ys -> TypedList f xs
-pattern Cons x xs <- (patTL @f @xs @y @ys -> (Right (E, (x, xs ))))
+pattern Cons :: forall (f :: k -> Type) (xs :: [k])
+              . ()
+             => forall (y :: k) (ys :: [k])
+              . (xs ~ (y ': ys)) => f y -> TypedList f ys -> TypedList f xs
+pattern Cons x xs <- (patTL @f @xs -> PatCons x xs)
   where
     Cons = Numeric.TypedList.cons
 
 -- | Constructing a type-indexed list from the other end
-pattern Snoc :: forall (sy :: [k]) (y :: k) (f :: k -> Type) (xs :: [k])
-              . () => (xs ~ (sy +: y)) => TypedList f sy -> f y -> TypedList f xs
-pattern Snoc sx x <- (unsnocTL @f @xs @sy @y -> (Just (E, (sx, x))))
+pattern Snoc :: forall (f :: k -> Type) (xs :: [k])
+              . ()
+             => forall (sy :: [k]) (y :: k)
+              . (xs ~ (sy +: y)) => TypedList f sy -> f y -> TypedList f xs
+pattern Snoc sx x <- (unsnocTL @f @xs -> PatSnoc sx x)
   where
     Snoc = Numeric.TypedList.snoc
 
 -- | Reverse a typed list
-pattern Reverse :: forall (sx :: [k]) (f :: k -> Type) (xs :: [k])
-              . () => (xs ~ Reverse sx, sx ~ Reverse xs)
-                   => TypedList f sx -> TypedList f xs
-pattern Reverse sx <- (unreverseTL @f @xs @sx -> (E, sx))
+pattern Reverse :: forall (f :: k -> Type) (xs :: [k])
+                 . ()
+                => forall (sx :: [k])
+                 . (xs ~ Reverse sx, sx ~ Reverse xs)
+                => TypedList f sx -> TypedList f xs
+pattern Reverse sx <- (unreverseTL @f @xs -> PatReverse sx)
   where
     Reverse = Numeric.TypedList.reverse
-
--- | Split a typed list into two.
---   Bring type-level evidence on relations between typelists into the scope.
-pattern Concat :: forall (xs :: [k]) (ys :: [k]) (f :: k -> Type) (xsys :: [k])
-                . KnownDim (Length xs)
-                  => ConcatList xs ys xsys
-                  => TypedList f xs -> TypedList f ys -> TypedList f xsys
-pattern Concat xs ys <- (unconcatTL @f @xs @ys @xsys -> (E, (xs, ys)))
-  where
-    Concat (TypedList xs) (TypedList ys) = unsafeCoerce# (xs ++ ys)
-
 
 cons :: f x -> TypedList f xs -> TypedList f (x :+ xs)
 cons x xs = TypedList (unsafeCoerce# x : unsafeCoerce# xs)
@@ -192,6 +185,12 @@ splitAt :: Dim n
         -> (TypedList f (Take n xs), TypedList f (Drop n xs))
 splitAt d (TypedList xs) = unsafeCoerce# (Prelude.splitAt (intD d) xs)
 {-# INLINE splitAt #-}
+
+concat :: TypedList f xs
+       -> TypedList f ys
+       -> TypedList f (xs ++ ys)
+concat (TypedList xs) (TypedList ys) = unsafeCoerce# (xs ++ ys)
+{-# INLINE concat #-}
 
 -- | Map a function over contents of a typed list
 map :: (forall a . f a -> g a)
@@ -252,15 +251,16 @@ reifyRepList tl k = unsafeCoerce# (MagicRepList k :: MagicRepList xs r) tl
 {-# INLINE reifyRepList #-}
 newtype MagicRepList xs r = MagicRepList (RepresentableList xs => r)
 
+data PatReverse f xs
+  = forall (sx :: [k]) . (xs ~ Reverse sx, sx ~ Reverse xs)
+  => PatReverse (TypedList f sx)
 
-unreverseTL :: forall f xs sx
-           . TypedList f xs
-          -> (Evidence (xs ~ Reverse sx, sx ~ Reverse xs), TypedList f sx)
+unreverseTL :: forall f xs . TypedList f xs -> PatReverse f xs
 unreverseTL (TypedList xs)
-  = case (unsafeCoerce# (E @(xs ~ xs, sx ~ sx))
+  = case (unsafeCoerce# (E @(xs ~ xs, xs ~ xs))
            :: Evidence (xs ~ Reverse sx, sx ~ Reverse xs)
          ) of
-      E -> (E, unsafeCoerce# (Prelude.reverse xs))
+      E -> PatReverse (unsafeCoerce# (Prelude.reverse xs))
 {-# INLINE unreverseTL #-}
 
 
@@ -270,13 +270,18 @@ mkRTL :: forall (xs :: [k])
 mkRTL xs = reifyRepList xs E
 {-# INLINE mkRTL #-}
 
-unsnocTL :: forall f xs sy y
-        . TypedList f xs
-       -> Maybe (Evidence (xs ~ (sy +: y)), (TypedList f sy, f y))
-unsnocTL (TypedList []) = Nothing
+
+data PatSnoc f xs where
+  PatSNil :: PatSnoc f '[]
+  PatSnoc :: TypedList f ys -> f y -> PatSnoc f (ys +: y)
+
+unsnocTL :: forall f xs . TypedList f xs -> PatSnoc f xs
+unsnocTL (TypedList [])
+  = case (unsafeCoerce# (E @(xs ~ xs)) :: Evidence (xs ~ '[])) of
+      E -> PatSNil
 unsnocTL (TypedList (x:xs))
-  = case (unsafeCoerce# (E @(xs ~ xs)) :: Evidence (xs ~ (sy +: y))) of
-      E -> Just (E, (unsafeCoerce# sy, unsafeCoerce# y))
+  = case (unsafeCoerce# (E @(xs ~ xs)) :: Evidence (xs ~ (Init xs +: Last xs))) of
+      E -> PatSnoc (unsafeCoerce# sy) (unsafeCoerce# y)
   where
     (sy, y) = unsnoc x xs
     unsnoc t []     = ([], t)
@@ -284,44 +289,18 @@ unsnocTL (TypedList (x:xs))
 {-# INLINE unsnocTL #-}
 
 
-patTL :: forall f xs y ys
-       . TypedList f xs
-      -> Either (Evidence (xs ~ '[]), TypedList f '[])
-                (Evidence (xs ~ (y ': ys)), (f y, TypedList f ys))
+data PatCons f xs where
+  PatCNil :: PatCons f '[]
+  PatCons :: f y -> TypedList f ys -> PatCons f (y ': ys)
+
+patTL :: forall f xs . TypedList f xs -> PatCons f xs
 patTL (TypedList [])
   = case (unsafeCoerce# (E @(xs ~ xs)) :: Evidence (xs ~ '[])) of
-      E -> Left (E, unsafeCoerce# [])
+      E -> PatCNil
 patTL (TypedList (x : xs))
-  = case (unsafeCoerce# (E @(xs ~ xs)) :: Evidence (xs ~ (y ': ys))) of
-      E -> Right (E, (unsafeCoerce# x, unsafeCoerce# xs))
+  = case (unsafeCoerce# (E @(xs ~ xs)) :: Evidence (xs ~ (Head xs ': Tail xs))) of
+      E -> PatCons (unsafeCoerce# x) (unsafeCoerce# xs)
 {-# INLINE patTL #-}
-
-
-unconcatTL :: forall f xs ys xsys
-            . KnownDim (Length xs)
-           => TypedList f xsys
-           -> (Evidence (ConcatList xs ys xsys), (TypedList f xs, TypedList f ys))
-unconcatTL (TypedList xsys)
-  = case ( unsafeCoerce#
-            (E :: ConcatEvidence ('[] :: [()]) ('[] :: [()]) ('[] :: [()]))
-           :: ConcatEvidence xs ys xsys
-         ) of
-      E -> (E, (unsafeCoerce# xs, unsafeCoerce# ys))
-  where
-    (xs, ys) = Prelude.splitAt (fromIntegral (dimVal' @(Length xs))) xsys
-{-# INLINE unconcatTL #-}
-
-
--- | Pattern-matching on the constructor of this type
---   brings an evidence that `as ++ bs ~ asbs`
-type ConcatEvidence (as :: [k]) (bs :: [k]) (asbs :: [k])
-  = Evidence
-    ( asbs ~ Concat as bs
-    , as   ~ Prefix bs asbs
-    , bs   ~ Suffix as asbs
-    , IsSuffix bs asbs ~ 'True
-    , IsPrefix as asbs ~ 'True
-    )
 
 intD :: Dim n -> Int
 intD = (fromIntegral :: Word -> Int) . unsafeCoerce#

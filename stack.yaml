@@ -1,7 +1,5 @@
-resolver: lts-8.21
+resolver: snapshot-8.2.yaml
+
 packages:
   - easytensor
   - dimensions
-
-extra-deps: []
-flags: {}
