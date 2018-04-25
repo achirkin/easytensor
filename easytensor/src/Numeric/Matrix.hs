@@ -36,7 +36,7 @@ module Numeric.Matrix
 
 
 #ifdef ghcjs_HOST_OS
-import           Numeric.Array.Family (ElemTypeInference)
+import           Numeric.DataFrame.Internal.Array.Family (ElemTypeInference)
 #endif
 
 import           GHC.Types                     (Type)

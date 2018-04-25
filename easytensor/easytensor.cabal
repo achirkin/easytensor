@@ -15,8 +15,6 @@ description:
     Allows ad-hoc replacement with fixed low-dimensionality vectors and matrices without changing user interface.
 category: Math, Geometry
 author: Artem Chirkin
-extra-source-files:
-    src-base/Numeric/Array/Family/Array.h
 
 source-repository head
     type: git
@@ -35,75 +33,47 @@ library
     if flag(unsafeindices)
         cpp-options: -DUNSAFE_INDICES
     exposed-modules:
-        Numeric.Commons
         Numeric.DataFrame
-        Numeric.DataFrame.IO
-        Numeric.DataFrame.ST
-        Numeric.Matrix
-        Numeric.Vector
-        Numeric.Scalar
-        Numeric.Quaternion
-        Numeric.Semigroup
-        Numeric.Tuple
+        -- Numeric.DataFrame.IO
+        -- Numeric.DataFrame.ST
+        -- Numeric.Matrix
+        -- Numeric.Vector
+        -- Numeric.Scalar
+        -- Numeric.Quaternion
+        -- Numeric.Semigroup
+        -- Numeric.Tuple
+        Numeric.PrimBytes
+        Numeric.DataFrame.Internal.Array
+        Numeric.DataFrame.Internal.Array.Class
+        Numeric.DataFrame.Internal.Array.Family
+        Numeric.DataFrame.Internal.Array.Family.ArrayBase
+        Numeric.DataFrame.Internal.Array.Family.Scalar
+        Numeric.DataFrame.Internal.Array.Family.FloatX2
+        Numeric.DataFrame.Internal.Array.Family.FloatX3
+        Numeric.DataFrame.Internal.Array.Family.FloatX4
+        Numeric.DataFrame.Internal.Array.Family.DoubleX2
+        Numeric.DataFrame.Internal.Array.Family.DoubleX3
+        Numeric.DataFrame.Internal.Array.Family.DoubleX4
     build-depends:
         base >=4.9 && <5,
-        ghc-prim >=0.5,
         dimensions -any
-    if impl(ghcjs)
-      build-depends:
-        ghcjs-base >= 0.2.0.0
     default-language: Haskell2010
     hs-source-dirs: src
-    if impl(ghcjs)
-        hs-source-dirs: src-ghcjs
-    else
-        hs-source-dirs: src-base
     other-modules:
-        Numeric.Array.Family
-        Numeric.Array.ElementWise
-        Numeric.Array
         Numeric.DataFrame.SubSpace
         Numeric.DataFrame.Contraction
         Numeric.DataFrame.Mutable
         Numeric.DataFrame.Type
-        Numeric.DataFrame.Inference
-        Numeric.DataFrame.Shape
-        Numeric.Matrix.Class
-        Numeric.Matrix.Mat44d
-        Numeric.Matrix.Mat44f
-        Numeric.Quaternion.Class
-        Numeric.Quaternion.QDouble
-        Numeric.Quaternion.QFloat
-    if impl(ghcjs)
-      other-modules:
-        Numeric.Array.Family.ArrayT
-    else
-      other-modules:
-        Numeric.Array.Family.ArrayF
-        Numeric.Array.Family.ArrayD
-        Numeric.Array.Family.ArrayI
-        Numeric.Array.Family.ArrayI8
-        Numeric.Array.Family.ArrayI16
-        Numeric.Array.Family.ArrayI32
-        Numeric.Array.Family.ArrayI64
-        Numeric.Array.Family.ArrayW
-        Numeric.Array.Family.ArrayW8
-        Numeric.Array.Family.ArrayW16
-        Numeric.Array.Family.ArrayW32
-        Numeric.Array.Family.ArrayW64
-        Numeric.Array.Family.FloatX2
-        Numeric.Array.Family.FloatX3
-        Numeric.Array.Family.FloatX4
-        Numeric.Array.Family.DoubleX2
-        Numeric.Array.Family.DoubleX3
-        Numeric.Array.Family.DoubleX4
-    js-sources:
-        src-ghcjs/Numeric/Array/Family/ArrayT.js
-        src-ghcjs/Numeric/Quaternion/Quaternion.js
-        src-ghcjs/Numeric/Matrix/Mat44.js
-    ghc-options: -Wall -fwarn-tabs -fwarn-unused-do-bind -fwarn-monomorphism-restriction -O2 -pgmP cpphs
-    cpp-options: --cpp -traditional
-    build-tools: cpphs
+        -- Numeric.DataFrame.Inference
+        -- Numeric.DataFrame.Shape
+        -- Numeric.Matrix.Class
+        -- Numeric.Matrix.Mat44d
+        -- Numeric.Matrix.Mat44f
+        -- Numeric.Quaternion.Class
+        -- Numeric.Quaternion.QDouble
+        -- Numeric.Quaternion.QFloat
+        Numeric.DataFrame.Internal.Array.Internal
+    ghc-options: -Wall -fwarn-tabs -fwarn-unused-do-bind -fwarn-monomorphism-restriction
 
 test-suite et-test
 

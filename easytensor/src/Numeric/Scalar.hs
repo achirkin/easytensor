@@ -17,7 +17,7 @@ module Numeric.Scalar
     ) where
 
 
-import qualified Numeric.Array.Family   as AFam
+import qualified Numeric.DataFrame.Internal.Array.Family   as AFam
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions     (Nat)
 

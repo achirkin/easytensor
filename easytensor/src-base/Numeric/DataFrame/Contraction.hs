@@ -42,7 +42,7 @@ import           GHC.Types              (Int (..), RuntimeRep (..), Type,
                                          Word (..), isTrue#)
 import           Unsafe.Coerce          (unsafeCoerce)
 
-import           Numeric.Array.Family
+import           Numeric.DataFrame.Internal.Array.Family
 import           Numeric.Commons
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions

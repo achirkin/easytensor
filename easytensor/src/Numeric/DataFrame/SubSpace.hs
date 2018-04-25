@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP                     #-}
 {-# LANGUAGE BangPatterns            #-}
 {-# LANGUAGE DataKinds               #-}
 {-# LANGUAGE FlexibleContexts        #-}
@@ -15,10 +14,6 @@
 {-# LANGUAGE UnboxedTuples           #-}
 {-# LANGUAGE UndecidableInstances    #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-#ifdef ghcjs_HOST_OS
-{-# LANGUAGE JavaScriptFFI           #-}
-{-# LANGUAGE UnliftedFFITypes        #-}
-#endif
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.SubSpace
@@ -31,28 +26,19 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.SubSpace
-  ( SubSpace (..), (!), element
+  ( SubSpace (..), (!), (!.), element
   , ewfoldMap, iwfoldMap
   , ewzip, iwzip
   , indexWise_, elementWise_
   ) where
 
-import           GHC.Base                  (runRW#)
-import           GHC.Prim
-import           GHC.Types                 (Int (..), Type)
+import           GHC.Base
 
-#ifdef ghcjs_HOST_OS
-import           GHCJS.Types (JSVal)
-import           Unsafe.Coerce (unsafeCoerce)
-#endif
-
-import qualified Numeric.Array.ElementWise as EW
-import           Numeric.Commons
+import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Internal.Array.Internal
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
-import           Numeric.Dimensions.Traverse
-import           Numeric.TypeLits
-import           Numeric.Scalar
+import           Numeric.PrimBytes
 
 -- | Operations on DataFrames
 --
@@ -68,20 +54,18 @@ class ( ConcatList as bs asbs
       , Dimensions asbs
       ) => SubSpace (t :: Type) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
                     | asbs as -> bs, asbs bs -> as, as bs -> asbs where
-    -- | Unsafely get a sub-dataframe by its primitive element subset.
+    -- | Unsafely get a sub-dataframe by its primitive element offset.
     --   The offset is not checked to be aligned to the space structure or for bounds.
     --   Arguments are zero-based primitive element offset and subset ("as" element) size (aka `totalDim` of sub dataframe)
     --
     --   Normal indexing can be expressed in terms of `indexOffset#`:
     --
     --   > i !. x = case (# dimVal (dim @as), fromEnum i #) of (# I# n, I# j #) -> indexOffset# (n *# j) n x
-    indexOffset# :: Int# -> Int# -> DataFrame t asbs -> DataFrame t as
-    -- | Get an element by its index in the dataframe
-    (!.) :: Idx bs -> DataFrame t asbs -> DataFrame t as
-    (!.) i = case (# dimVal (dim @as), fromEnum i #) of (# I# n, I# j #) -> indexOffset# (n *# j) n
-    {-# INLINE (!.) #-}
+    indexOffset# :: Int# -- ^ Prim element offset
+                 -> Int# -- ^ Number of prim elements in the prefix subspace
+                 -> DataFrame t asbs -> DataFrame t as
     -- | Set a new value to an element
-    update :: Idx bs -> DataFrame t as -> DataFrame t asbs -> DataFrame t asbs
+    update :: Idxs bs -> DataFrame t as -> DataFrame t asbs -> DataFrame t asbs
     -- | Map a function over each element of DataFrame
     ewmap  :: forall s (as' :: [Nat]) (asbs' :: [Nat])
             . SubSpace s as' bs asbs'
@@ -90,12 +74,12 @@ class ( ConcatList as bs asbs
     -- | Map a function over each element with its index of DataFrame
     iwmap  :: forall s (as' :: [Nat]) (asbs' :: [Nat])
             . SubSpace s as' bs asbs'
-           => (Idx bs -> DataFrame s as' -> DataFrame t as)
+           => (Idxs bs -> DataFrame s as' -> DataFrame t as)
            -> DataFrame s asbs' -> DataFrame t asbs
     -- | Generate a DataFrame by repeating an element
     ewgen :: DataFrame t as -> DataFrame t asbs
     -- | Generate a DataFrame by iterating a function (index -> element)
-    iwgen :: (Idx bs -> DataFrame t as) -> DataFrame t asbs
+    iwgen :: (Idxs bs -> DataFrame t as) -> DataFrame t asbs
     -- | Left-associative fold of a DataFrame.
     --   The fold is strict, so accumulater is evaluated to WHNF;
     --   but you'd better make sure that the function is strict enough to not
@@ -105,7 +89,7 @@ class ( ConcatList as bs asbs
     --   The fold is strict, so accumulater is evaluated to WHNF;
     --   but you'd better make sure that the function is strict enough to not
     --   produce memory leaks deeply inside the result data type.
-    iwfoldl :: (Idx bs -> b -> DataFrame t as -> b) -> b -> DataFrame t asbs -> b
+    iwfoldl :: (Idxs bs -> b -> DataFrame t as -> b) -> b -> DataFrame t asbs -> b
     -- | Right-associative fold of a DataFrame
     --   The fold is strict, so accumulater is evaluated to WHNF;
     --   but you'd better make sure that the function is strict enough to not
@@ -115,7 +99,7 @@ class ( ConcatList as bs asbs
     --   The fold is strict, so accumulater is evaluated to WHNF;
     --   but you'd better make sure that the function is strict enough to not
     --   produce memory leaks deeply inside the result data type.
-    iwfoldr :: (Idx bs -> DataFrame t as -> b -> b) -> b -> DataFrame t asbs -> b
+    iwfoldr :: (Idxs bs -> DataFrame t as -> b -> b) -> b -> DataFrame t asbs -> b
     -- | Apply an applicative functor on each element (Lens-like traversal)
     elementWise :: forall s (as' :: [Nat]) (asbs' :: [Nat]) f
                  . ( Applicative f
@@ -129,15 +113,23 @@ class ( ConcatList as bs asbs
                . ( Applicative f
                  , SubSpace s as' bs asbs'
                  )
-              => (Idx bs -> DataFrame s as' -> f (DataFrame t as))
+              => (Idxs bs -> DataFrame s as' -> f (DataFrame t as))
               -> DataFrame s asbs' -> f (DataFrame t asbs)
+
+-- | Get an element by its index in the dataframe
+(!.) :: forall t as bs asbs
+      . SubSpace t as bs asbs
+     => Idxs bs -> DataFrame t asbs -> DataFrame t as
+(!.) i = case (# totalDim (dims @_ @as), fromEnum i #) of
+   (# W# n, I# j #) -> indexOffset# (word2Int# n *# j) (word2Int# n)
+{-# INLINE (!.) #-}
 infixr 4 !.
 
 -- | Apply an applicative functor on each element with its index
 --     (Lens-like indexed traversal)
 indexWise_ :: forall t as bs asbs f b
             . (SubSpace t as bs asbs, Applicative f)
-           => (Idx bs -> DataFrame t as -> f b)
+           => (Idxs bs -> DataFrame t as -> f b)
            -> DataFrame t asbs -> f ()
 indexWise_ f = iwfoldr (\i -> (*>) . f i) (pure ())
 
@@ -152,7 +144,7 @@ elementWise_ f = ewfoldr ((*>) . f) (pure ())
 -- | Apply a functor over a single element (simple lens)
 element :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) f
          . (SubSpace t as bs asbs, Applicative f)
-        => Idx bs
+        => Idxs bs
         -> (DataFrame t as -> f (DataFrame t as))
         -> DataFrame t asbs -> f (DataFrame t asbs)
 element i f df = flip (update i) df <$> f (i !. df)
@@ -160,7 +152,7 @@ element i f df = flip (update i) df <$> f (i !. df)
 
 -- | Index an element (reverse of !.)
 (!) :: SubSpace t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-    => DataFrame t asbs -> Idx bs -> DataFrame t as
+    => DataFrame t asbs -> Idxs bs -> DataFrame t as
 (!) = flip (!.)
 infixl 4 !
 {-# INLINE (!) #-}
@@ -174,7 +166,7 @@ ewfoldMap f = ewfoldl (\m b -> m `seq` (mappend m $! f b)) mempty
 
 iwfoldMap :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) m
            . ( Monoid m, SubSpace t as bs asbs)
-          => (Idx bs -> DataFrame t as -> m) -> DataFrame t asbs -> m
+          => (Idxs bs -> DataFrame t as -> m) -> DataFrame t asbs -> m
 iwfoldMap f = iwfoldl (\i m b -> m `seq` (mappend m $! f i b)) mempty
 {-# INLINE iwfoldMap #-}
 
@@ -188,7 +180,7 @@ iwzip :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
          , SubSpace s as' bs asbs'
          , SubSpace r as'' bs asbs''
          )
-      => (Idx bs -> DataFrame t as -> DataFrame s as' -> DataFrame r as'')
+      => (Idxs bs -> DataFrame t as -> DataFrame s as' -> DataFrame r as'')
       -> DataFrame t asbs
       -> DataFrame s asbs'
       -> DataFrame r asbs''
@@ -213,116 +205,141 @@ ewzip = iwzip . const
 {-# INLINE ewzip #-}
 
 
-#ifdef ghcjs_HOST_OS
-foreign import javascript unsafe "$3.subarray($1,$1 + $2)" js_subarray        :: Int# -> Int# -> JSVal -> JSVal
-#endif
-
-instance {-# OVERLAPPABLE #-}
-         ( ConcatList as bs asbs
+instance ( ConcatList as bs asbs
          , Dimensions as
          , Dimensions bs
          , Dimensions asbs
-         , PrimBytes (DataFrame t as)
-         , PrimBytes (DataFrame t asbs)
-         , as ~ (a'' ': as'')
-         , asbs ~ (a'' ': asbs'')
+         , PrimArray t (DataFrame t as)
+         , PrimArray t (DataFrame t asbs)
+         , PrimBytes   (DataFrame t as)
+         , PrimBytes   (DataFrame t asbs)
          ) => SubSpace t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) where
-#ifdef ghcjs_HOST_OS
-    indexOffset# i l = unsafeCoerce . js_subarray i l . unsafeCoerce
-#else
-    indexOffset# i l d = case toBytes d of
-        (# off, _, arr #) -> fromBytes (# off +# i, l, arr #)
-#endif
-    {-# INLINE indexOffset# #-}
+
+    indexOffset# i l d = case elemSize0 d of
+      -- if elemSize0 returns 0, then this is a fromScalar-like constructor
+      0# -> broadcast (ix# 0# d)
+      _  -> fromElems (elemOffset d +# i) l (getBytes d)
+
+
+    update ei x df
+      | I# i <- fromEnum ei
+      , I# len <- fromIntegral $ totalDim' @asbs
+      = case runRW#
+          ( \s0 -> case newByteArray# (len *# byteSize @t undefined) s0 of
+            (# s1, mba #) -> unsafeFreezeByteArray# mba
+              ( writeArray mba i x
+                ( writeBytes mba 0# df s1 )
+              )
+          ) of (# _, r #) -> fromElems 0# len r
 
     ewmap  :: forall s (as' :: [Nat]) (asbs' :: [Nat])
             . SubSpace s as' bs asbs'
            => (DataFrame s as' -> DataFrame t as)
            -> DataFrame s asbs' -> DataFrame t asbs
     ewmap f df
-      | elS <- elementByteSize (undefined :: DataFrame t asbs)
-      , I# lenBS <- totalDim (Proxy @bs)
-      , I# lenAS <- totalDim (Proxy @as)
-      , I# lenAS' <- totalDim (Proxy @as')
-      , lenASB <- lenAS *# elS
+      | elS <- byteSize @t undefined
+      , W# lenBSW <- totalDim' @bs
+      , W# lenASW <- totalDim' @as
+      , W# lenAS'W <- totalDim' @as'
+      , lenBS <- word2Int# lenBSW
+      , lenAS <- word2Int# lenASW
+      , lenAS' <- word2Int# lenAS'W
+      , lenASBS <- lenAS *# lenBS
+      , lenAS'BS <- lenAS' *# lenBS
       = case runRW#
-          ( \s0 -> case newByteArray# (lenAS *# lenBS *# elS) s0 of
-              (# s1, marr #) -> case overDimOff_#
-                  (dim @bs)
-                  ( \pos s -> case toBytes $ f (indexOffset# (pos *# lenAS') lenAS' df) of
-                      (# offX, _, arrX #) -> copyByteArray# arrX (offX *# elS) marr (pos *# lenASB) lenASB s
-                  ) 0# 1# s1 of
-                s2 -> unsafeFreezeByteArray# marr s2
-          ) of (# _, r #) -> fromBytes (# 0#, lenAS *# lenBS, r #)
+          ( \s0 -> case newByteArray# (lenASBS *# elS) s0 of
+            (# s1, mba #) -> unsafeFreezeByteArray# mba
+              ( loopWithI# 0# lenAS' lenAS'BS
+                (\i off -> writeArray mba i (f (indexOffset# off lenAS' df)))
+                s1
+              )
+          ) of (# _, r #) -> fromElems 0# lenASBS r
     {-# INLINE ewmap #-}
+
 
     iwmap  :: forall s (as' :: [Nat]) (asbs' :: [Nat])
             . SubSpace s as' bs asbs'
-           => (Idx bs -> DataFrame s as' -> DataFrame t as)
+           => (Idxs bs -> DataFrame s as' -> DataFrame t as)
            -> DataFrame s asbs' -> DataFrame t asbs
     iwmap f df
-      | elS <- elementByteSize (undefined :: DataFrame t asbs)
-      , I# lenBS <- totalDim (Proxy @bs)
-      , I# lenAS <- totalDim (Proxy @as)
-      , I# lenAS' <- totalDim (Proxy @as')
-      , lenASB <- lenAS *# elS
-      = case runRW#
-          ( \s0 -> case newByteArray# (lenAS *# lenBS *# elS) s0 of
-              (# s1, marr #) -> case overDim_#
-                  (dim @bs)
-                  ( \i pos s -> case toBytes $ f i (indexOffset# (pos *# lenAS') lenAS' df) of
-                      (# offX, _, arrX #) -> copyByteArray# arrX (offX *# elS) marr (pos *# lenASB) lenASB s
-                  ) 0# 1# s1 of
-                s2 -> unsafeFreezeByteArray# marr s2
-          ) of (# _, r #) -> fromBytes (# 0#, lenAS *# lenBS, r #)
-
-    ewgen x
-      | (# offX, lenX, arrX #) <- toBytes x
-      , I# lenASBS <- totalDim (Proxy @asbs)
-      , elS <- elementByteSize x
-      , offXB <- offX *# elS
-      , lenXB <- lenX *# elS
+      | elS <- byteSize @t undefined
+      , dbs <- dims @_ @bs
+      , W# lenBSW <- totalDim dbs
+      , W# lenASW <- totalDim' @as
+      , W# lenAS'W <- totalDim' @as'
+      , lenBS <- word2Int# lenBSW
+      , lenAS <- word2Int# lenASW
+      , lenAS' <- word2Int# lenAS'W
+      , lenASBS <- lenAS *# lenBS
       = case runRW#
           ( \s0 -> case newByteArray# (lenASBS *# elS) s0 of
-              (# s1, marr #) -> case overDimOff_# (dim @bs)
-                  ( \posB -> copyByteArray# arrX offXB marr posB lenXB )
-                  0# lenXB s1 of
-                s2 -> unsafeFreezeByteArray# marr s2
-          ) of (# _, r #) -> fromBytes (# 0#, lenASBS, r #)
+            (# s1, mba #) -> unsafeFreezeByteArray# mba
+              ( overDim_# dbs
+                ( \i pos ->
+                    writeArray mba pos (f i (indexOffset# (pos *# lenAS') lenAS' df))
+                ) 0# 1# s1
+              )
+          ) of (# _, r #) -> fromElems 0# lenASBS r
+
+    ewgen x = case elemSize0 x of
+      0# -> broadcast (ix# 0# x)
+      lenAS
+        | elS <- byteSize @t undefined
+        , W# lenBSW <- totalDim' @bs
+        , lenBS <- word2Int# lenBSW
+        , lenASBS <- lenAS *# lenBS
+        -> case runRW#
+            ( \s0 -> case newByteArray# (lenASBS *# elS) s0 of
+              (# s1, mba #) -> unsafeFreezeByteArray# mba
+                ( loop# 0# lenAS lenASBS
+                  (\off -> writeBytes mba off x)
+                  s1
+                )
+            ) of (# _, r #) -> fromElems 0# lenASBS r
 
     iwgen f
-      | I# lenASBS <- totalDim (Proxy @asbs)
-      , elS <- elementByteSize (undefined :: DataFrame t asbs)
-      , I# lenAS <- totalDim (Proxy @as)
-      , lenASB <- lenAS *# elS
+      | elS <- byteSize @t undefined
+      , dbs <- dims @_ @bs
+      , W# lenBSW <- totalDim dbs
+      , W# lenASW <- totalDim' @as
+      , lenBS <- word2Int# lenBSW
+      , lenAS <- word2Int# lenASW
+      , lenASBS <- lenAS *# lenBS
       = case runRW#
           ( \s0 -> case newByteArray# (lenASBS *# elS) s0 of
-              (# s1, marr #) -> case overDim_# (dim @bs)
-                  ( \i pos s -> case toBytes (f i) of
-                      (# offX, _, arrX #) -> copyByteArray# arrX (offX *# elS) marr pos lenASB s
-                  ) 0# lenASB s1 of
-                s2 -> unsafeFreezeByteArray# marr s2
-          ) of (# _, r #) -> fromBytes (# 0#, lenASBS, r #)
+            (# s1, mba #) -> unsafeFreezeByteArray# mba
+              ( overDim_# dbs
+                ( \i pos -> writeArray mba pos (f i)
+                ) 0# 1# s1
+              )
+          ) of (# _, r #) -> fromElems 0# lenASBS r
 
-    ewfoldl f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
-        (# (# off, _, arr #), I# step #) -> foldDimOff (dim @bs)
-                    (\pos acc -> f acc $! fromBytes (# pos, step, arr #))
-                    off step x0
+    ewfoldl f x0 df
+      | ba <- getBytes df
+      = foldDimOff (dims @_ @bs) (\(I# o) acc -> f acc (fromBytes o ba))
+          (I# (byteOffset df))
+          (I# (byteSize @t undefined) * fromIntegral (totalDim' @as)) x0
 
-    iwfoldl f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
-        (# (# off, _, arr #), I# step #) -> foldDim (dim @bs)
-                    (\i pos acc -> f i acc $! fromBytes (# pos, step, arr #))
-                    off step x0
+    iwfoldl f x0 df
+      | ba <- getBytes df
+      = foldDim (dims @_ @bs) (\i (I# o) acc -> f i acc (fromBytes o ba))
+          (I# (byteOffset df))
+          (I# (byteSize @t undefined) * fromIntegral (totalDim' @as)) x0
 
-    ewfoldr f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
-        (# (# off, len, arr #), I# step #) -> foldDimOff (dim @bs)
-                    (\pos -> f (fromBytes (# pos, step, arr #)))
-                    (off +# len -# step) (negateInt# step) x0
+    ewfoldr f x0 df
+      | step <- I# (byteSize @t undefined) * fromIntegral (totalDim' @as)
+      , ba <- getBytes df
+      = foldDimOff (dims @_ @bs) (\(I# o) -> f (fromBytes o ba))
+          (I# (byteOffset df +# byteSize df) - step)
+          (negate step) x0
 
-    iwfoldr f x0 df = case (# toBytes df, totalDim ( Proxy @as) #) of
-        (# (# off, _, arr #), I# step #) -> foldDimReverse (dim @bs)
-                    (\i pos -> f i (fromBytes (# pos, step, arr #)) )
-                    off step x0
+    iwfoldr f x0 df
+      | step <- I# (byteSize @t undefined) * fromIntegral (totalDim' @as)
+      , ba <- getBytes df
+      = foldDimReverse (dims @_ @bs) (\i (I# o) -> f i (fromBytes o ba))
+          (I# (byteOffset df +# byteSize df) - step)
+          step x0
+
 
     -- implement elementWise in terms of indexWise
     elementWise = indexWise . const
@@ -332,7 +349,7 @@ instance {-# OVERLAPPABLE #-}
                . ( Applicative f
                  , SubSpace s as' bs asbs'
                  )
-              => (Idx bs -> DataFrame s as' -> f (DataFrame t as))
+              => (Idxs bs -> DataFrame s as' -> f (DataFrame t as))
               -> DataFrame s asbs' -> f (DataFrame t asbs)
     indexWise f df = runWithState <$> iwfoldl applyF (pure initialState) df
       where
@@ -342,7 +359,7 @@ instance {-# OVERLAPPABLE #-}
         runWithState g = case runRW#
                            ( \s0 -> case g s0 of
                                 (# s1, (# marr, _ #) #) -> unsafeFreezeByteArray# marr s1
-                           ) of (# _, arr #) -> fromBytes (# 0#, rezLength#, arr #)
+                           ) of (# _, arr #) -> fromElems 0# rezLength# arr
 
         -- Prepare empty byte array for the result DataFrame and keep a current position counter
         -- Input: state
@@ -356,8 +373,8 @@ instance {-# OVERLAPPABLE #-}
         updateChunk :: (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
                     -> DataFrame t as
                     -> (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
-        updateChunk g dfChunk = case toBytes dfChunk of
-            (# off#, _, arr#  #) -> \s -> case g s of
+        updateChunk g dfChunk = case (# byteOffset dfChunk, getBytes dfChunk #) of
+            (# off#, arr#  #) -> \s -> case g s of
                                         (# s1, (# marr#, pos# #) #) -> case
                                             copyByteArray# arr# (off# *# rezElBSize#)
                                                            marr# (pos# *# rezElBSize#)
@@ -365,63 +382,15 @@ instance {-# OVERLAPPABLE #-}
                                           s2 -> (# s2, (# marr#, pos# +# rezStepN# #) #)
 
         -- Apply applicative functor on each chunk and update a state.
-        applyF :: Idx bs
+        applyF :: Idxs bs
                -> f (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
                -> DataFrame s as'
                -> f (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
         applyF idx s dfChunk = idx `seq` dfChunk `seq` updateChunk <$> s <*> f idx dfChunk
 
         -- Element byte size of the result DataFrame (byte size of s)
-        rezElBSize# = elementByteSize (undefined :: DataFrame t asbs)
+        rezElBSize# = byteSize @t undefined
         -- Number of primitive elements in the result DataFrame chunk
-        !(I# rezStepN#) = totalDim (Proxy @as)
+        !(I# rezStepN#) = fromIntegral $ totalDim' @as
         -- Number of primitive elements in the result DataFrame
-        !(I# rezLength#) = totalDim (Proxy @asbs)
-
-    update ei x df
-      | I# i <- fromEnum ei
-      , (# off, len, arr #) <- toBytes df
-      , (# offX, lenX, arrX #) <- toBytes x
-      , elS <- elementByteSize df
-      = case runRW#
-          ( \s0 -> case newByteArray# ( len *# elS ) s0 of
-            (# s1, marr #) -> case copyByteArray# arr (off *# elS) marr 0# (len *# elS) s1 of
-              s2 -> case copyByteArray# arrX (offX *# elS) marr (lenX *# i *# elS) (lenX *# elS) s2 of
-                s3 -> unsafeFreezeByteArray# marr s3
-          ) of (# _, r #) -> fromBytes (# 0#, len, r #)
-
-
-
-
--- | Specialized instance of SubSpace for operating on scalars.
-instance {-# OVERLAPPING #-}
-         ( Dimensions bs
-         , EW.ElementWise (Idx bs) t (DataFrame t bs)
-         , PrimBytes (DataFrame t bs)
-         ) => SubSpace t ('[] :: [Nat]) (bs :: [Nat]) (bs :: [Nat]) where
-    indexOffset# i _ x = scalar (EW.indexOffset# x i)
-    {-# INLINE indexOffset# #-}
-    i !. x =  scalar $ x EW.! i
-    {-# INLINE (!.) #-}
-    ewmap = iwmap . const
-    {-# INLINE ewmap #-}
-    iwmap f x = EW.ewgen (\i -> unScalar $ f i (i !. x))
-    {-# INLINE iwmap #-}
-    ewgen = EW.broadcast . unScalar
-    {-# INLINE ewgen #-}
-    iwgen f = EW.ewgen (unScalar . f)
-    {-# INLINE iwgen #-}
-    ewfoldl f = EW.ewfoldl (\_ a -> f a . scalar)
-    {-# INLINE ewfoldl #-}
-    iwfoldl f = EW.ewfoldl (\i a -> f i a . scalar)
-    {-# INLINE iwfoldl #-}
-    ewfoldr f = EW.ewfoldr (\_ x  -> f (scalar x))
-    {-# INLINE ewfoldr #-}
-    iwfoldr f = EW.ewfoldr (\i x -> f i (scalar x))
-    {-# INLINE iwfoldr #-}
-    elementWise = indexWise . const
-    {-# INLINE elementWise #-}
-    indexWise f x = EW.ewgenA (\i -> unScalar <$> f i (i !. x))
-    {-# INLINE indexWise #-}
-    update i x = EW.update i (unScalar x)
-    {-# INLINE update #-}
+        !(I# rezLength#) = fromIntegral $ totalDim' @asbs

@@ -1,24 +1,17 @@
-{-# LANGUAGE CPP                        #-}
-{-# LANGUAGE ConstraintKinds            #-}
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE ExistentialQuantification  #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MagicHash                  #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE StandaloneDeriving         #-}
-{-# LANGUAGE TypeApplications           #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE TypeFamilyDependencies     #-}
-{-# LANGUAGE TypeInType                 #-}
-{-# LANGUAGE TypeOperators              #-}
-{-# LANGUAGE Rank2Types              #-}
+{-# LANGUAGE ConstraintKinds        #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE MagicHash              #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE UnboxedTuples              #-}
-{-# LANGUAGE UnboxedSums              #-}
-{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE Rank2Types             #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeInType             #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Internal.Array.Family
@@ -32,6 +25,7 @@
 
 module Numeric.DataFrame.Internal.Array.Family
   ( Array, Scalar (..), ArrayBase (..)
+  , ArraySingleton (..)
   --  Array
   -- , ArrayF (..), ArrayD (..)
   -- , ArrayI (..), ArrayI8 (..), ArrayI16 (..), ArrayI32 (..), ArrayI64 (..)
@@ -44,14 +38,12 @@ module Numeric.DataFrame.Internal.Array.Family
   -- , getArrayInstance, ArrayInstance (..), inferArrayInstance
   ) where
 
-#include "MachDeps.h"
 
-import           Data.Proxy
+-- import           Data.Proxy
 -- import           Data.Int                  (Int16, Int32, Int64, Int8)
-import           Data.Type.Equality        ((:~:) (..))
+-- import           Data.Type.Equality        ((:~:) (..))
 -- import           Data.Word                 (Word16, Word32, Word64, Word8)
-import           GHC.Exts                  -- (RuntimeRep (..))
-import           GHC.Base                  hiding (foldr)
+import           GHC.Base
 -- (ByteArray#, Double#, Float#, Int#
                                            --,Word#, unsafeCoerce#
 -- #if WORD_SIZE_IN_BITS < 64
@@ -61,8 +53,20 @@ import           GHC.Base                  hiding (foldr)
 
 -- import           Numeric.DataFrame.Internal.Array.ElementWise
 -- import           Numeric.Commons
+-- import           Numeric.DataFrame.Internal.Array.Class
+-- import           Numeric.DataFrame.Internal.Array.Internal
 import           Numeric.Dimensions
-import Numeric.DataFrame.Internal.Array.Family.ArrayBase
+-- import           Numeric.PrimBytes
+
+import           Numeric.DataFrame.Internal.Array.Family.ArrayBase
+import           Numeric.DataFrame.Internal.Array.Family.DoubleX2
+import           Numeric.DataFrame.Internal.Array.Family.DoubleX3
+import           Numeric.DataFrame.Internal.Array.Family.DoubleX4
+import           Numeric.DataFrame.Internal.Array.Family.FloatX2
+import           Numeric.DataFrame.Internal.Array.Family.FloatX3
+import           Numeric.DataFrame.Internal.Array.Family.FloatX4
+import           Numeric.DataFrame.Internal.Array.Family.Scalar
+
 
 -- | This type family aggregates all types used for arrays with different
 --   dimensioinality.
@@ -76,7 +80,7 @@ import Numeric.DataFrame.Internal.Array.Family.ArrayBase
 --
 --   We have two types of dimension lists here: @[Nat]@ and @[XNat]@.
 --   Thus, all types are indexed by the kind of the Dims, either @Nat@ or @XNat@.
-type family Array k (t :: Type) (ds :: [k]) = v | v -> t ds k where
+type family Array k t (ds :: [k]) = v | v -> t ds k where
     Array k    t      '[]    = Scalar k t
     Array Nat  Float  '[2]   = FloatX2 Nat
     Array Nat  Float  '[3]   = FloatX3 Nat
@@ -112,22 +116,22 @@ deriving instance Ord (ArraySing k t ds)
 deriving instance Show (ArraySing k t ds)
 
 
-
--- | This function does GHC's magic to convert user-supplied `aSing` function
---   to create an instance of `ArraySingleton` typeclass at runtime.
---   The trick is taken from Edward Kmett's reflection library explained
---   in https://www.schoolofhaskell.com/user/thoughtpolice/using-reflection
-reifyArraySing :: forall r k t ds
-                . ArraySing k t ds -> ( ArraySingleton k t ds => r) -> r
-reifyArraySing as k
-  = unsafeCoerce# (MagicArraySing k :: MagicArraySing k t ds r) as
-{-# INLINE reifyArraySing #-}
-newtype MagicArraySing k t (ds :: [k]) r
-  = MagicArraySing (ArraySingleton k t ds => r)
-
-aSingEv :: ArraySing k t ds -> Evidence (ArraySingleton k t ds)
-aSingEv ds = reifyArraySing ds E
-{-# INLINE aSingEv #-}
+--
+-- -- | This function does GHC's magic to convert user-supplied `aSing` function
+-- --   to create an instance of `ArraySingleton` typeclass at runtime.
+-- --   The trick is taken from Edward Kmett's reflection library explained
+-- --   in https://www.schoolofhaskell.com/user/thoughtpolice/using-reflection
+-- reifyArraySing :: forall r k t ds
+--                 . ArraySing k t ds -> ( ArraySingleton k t ds => r) -> r
+-- reifyArraySing as k
+--   = unsafeCoerce# (MagicArraySing k :: MagicArraySing k t ds r) as
+-- {-# INLINE reifyArraySing #-}
+-- newtype MagicArraySing k t (ds :: [k]) r
+--   = MagicArraySing (ArraySingleton k t ds => r)
+--
+-- aSingEv :: ArraySing k t ds -> Evidence (ArraySingleton k t ds)
+-- aSingEv ds = reifyArraySing ds E
+-- {-# INLINE aSingEv #-}
 
 
 
@@ -159,40 +163,3 @@ instance {-# OVERLAPPING #-}  ArraySingleton XNat Double '[N 3] where
     aSing = AD3
 instance {-# OVERLAPPING #-}  ArraySingleton XNat Double '[N 4] where
     aSing = AD4
-
-
-
-
-
-
-
--- | Specialize scalar type without any arrays
-newtype Scalar k t = Scalar { _unScalar :: t }
-  deriving ( Enum, Eq, Integral
-           , Num, Fractional, Floating, Ord, Read, Real, RealFrac, RealFloat)
-instance Show t => Show (Scalar k t) where
-  show (Scalar t) = "{ " ++ show t ++ " }"
-
-deriving instance {-# OVERLAPPABLE #-} Bounded t => Bounded (Scalar k t)
-instance {-# OVERLAPPING #-} Bounded (Scalar k Double) where
-  maxBound = Scalar inftyD
-  minBound = Scalar $ negate inftyD
-instance {-# OVERLAPPING #-} Bounded (Scalar k Float) where
-  maxBound = Scalar inftyF
-  minBound = Scalar $ negate inftyF
-inftyD :: Double
-inftyD = read "Infinity"
-inftyF :: Float
-inftyF = read "Infinity"
-
-
-
--- * Specialized types
---   More efficient data types for small fixed-size tensors
-data FloatX2 k = FloatX2# Float# Float#
-data FloatX3 k = FloatX3# Float# Float# Float#
-data FloatX4 k = FloatX4# Float# Float# Float# Float#
-
-data DoubleX2 k = DoubleX2# Double# Double#
-data DoubleX3 k = DoubleX3# Double# Double# Double#
-data DoubleX4 k = DoubleX4# Double# Double# Double# Double#

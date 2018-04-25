@@ -15,6 +15,7 @@ module Numeric.DataFrame.Internal.Array
   ) where
 
 import           Numeric.DataFrame.Internal.Array.Family
+-- import           Numeric.DataFrame.Internal.Array.Family.ArrayBase ()
 
 -- import           Numeric.DataFrame.Internal.Array.Family.FloatX2   ()
 -- import           Numeric.DataFrame.Internal.Array.Family.FloatX3   ()
