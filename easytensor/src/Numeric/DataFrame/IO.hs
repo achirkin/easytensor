@@ -50,7 +50,7 @@ import           GHC.Types              (Int (..), IO (..))
 
 
 #ifdef ghcjs_HOST_OS
-import           Numeric.Array.Family hiding (Scalar)
+import           Numeric.DataFrame.Internal.Array.Family hiding (Scalar)
 import           JavaScript.TypedArray.ArrayBuffer
 import           GHC.Prim
 import           Data.Int

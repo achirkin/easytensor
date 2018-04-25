@@ -39,8 +39,8 @@ import           GHC.Prim
 import           GHC.Types                   (Int (..), Type, isTrue#)
 import           Unsafe.Coerce               (unsafeCoerce)
 
-import qualified Numeric.Array.ElementWise   as EW
-import           Numeric.Array.Family        hiding (Scalar)
+import qualified Numeric.DataFrame.Internal.Array.ElementWise   as EW
+import           Numeric.DataFrame.Internal.Array.Family        hiding (Scalar)
 import           Numeric.Commons
 import           Numeric.DataFrame.Inference
 import           Numeric.DataFrame.Type

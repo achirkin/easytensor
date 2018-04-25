@@ -1,8 +1,6 @@
-resolver: lts-8.21
+resolver: ../snapshot-8.2.yaml
+
 packages:
   - '.'
   - location: ../dimensions
     extra-dep: true
-
-extra-deps: []
-flags: {}

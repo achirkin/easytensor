@@ -26,7 +26,7 @@ module Numeric.Vector
     , unpackV2, unpackV3, unpackV4
     ) where
 
-import           Numeric.Array.ElementWise
+import           Numeric.DataFrame.Internal.Array.ElementWise
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
 import           Numeric.Scalar
