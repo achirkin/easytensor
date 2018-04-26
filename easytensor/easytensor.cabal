@@ -37,14 +37,15 @@ library
         Numeric.DataFrame.IO
         Numeric.DataFrame.ST
         -- Numeric.Matrix
-        -- Numeric.Vector
-        -- Numeric.Scalar
+        Numeric.Vector
+        Numeric.Scalar
         -- Numeric.Quaternion
-        -- Numeric.Semigroup
+        Numeric.Semigroup
         -- Numeric.Tuple
         Numeric.PrimBytes
         Numeric.DataFrame.Type
         Numeric.DataFrame.Family
+        Numeric.DataFrame.Shape
         Numeric.DataFrame.SubSpace
         Numeric.DataFrame.Contraction
         Numeric.DataFrame.Internal.Mutable
