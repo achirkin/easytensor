@@ -1,26 +1,29 @@
+{-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE UnboxedTuples         #-}
+{-# OPTIONS_GHC -fno-warn-orphans  #-}
 module Numeric.DataFrame.Internal.Array.Family.FloatX4 (FloatX4 (..)) where
 
 
 import           GHC.Base
 import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Internal.Array.PrimOps
+import           Numeric.DataFrame.SubSpace
+import           Numeric.Dimensions
 import           Numeric.PrimBytes
 
 
-data FloatX4 k = FloatX4# Float# Float# Float# Float#
+data FloatX4 = FloatX4# Float# Float# Float# Float#
 
 
-instance Bounded (FloatX4 k) where
-    maxBound = case infty of F# x -> FloatX4# x x x x
-    minBound = case negate infty of F# x -> FloatX4# x x x x
+instance Bounded FloatX4 where
+    maxBound = case inftyF of F# x -> FloatX4# x x x x
+    minBound = case negate inftyF of F# x -> FloatX4# x x x x
 
-infty :: Float
-infty = read "Infinity"
 
-instance Show (FloatX4 k) where
+instance Show FloatX4 where
     show (FloatX4# a1 a2 a3 a4)
       =  "{ " ++ show (F# a1)
       ++ ", " ++ show (F# a2)
@@ -30,7 +33,7 @@ instance Show (FloatX4 k) where
 
 
 
-instance Eq (FloatX4 k) where
+instance Eq FloatX4 where
 
     FloatX4# a1 a2 a3 a4 == FloatX4# b1 b2 b3 b4 =
       isTrue#
@@ -54,7 +57,7 @@ instance Eq (FloatX4 k) where
 
 -- | Implement partial ordering for `>`, `<`, `>=`, `<=`
 --           and lexicographical ordering for `compare`
-instance Ord (FloatX4 k) where
+instance Ord FloatX4 where
     FloatX4# a1 a2 a3 a4 > FloatX4# b1 b2 b3 b4 =
       isTrue#
       (       (a1 `gtFloat#` b1)
@@ -123,7 +126,7 @@ instance Ord (FloatX4 k) where
 
 
 -- | element-wise operations for vectors
-instance Num (FloatX4 k) where
+instance Num FloatX4 where
 
     FloatX4# a1 a2 a3 a4 + FloatX4# b1 b2 b3 b4
       = FloatX4# (plusFloat# a1 b1) (plusFloat# a2 b2) (plusFloat# a3 b3) (plusFloat# a4 b4)
@@ -169,7 +172,7 @@ instance Num (FloatX4 k) where
 
 
 
-instance Fractional (FloatX4 k) where
+instance Fractional FloatX4 where
 
     FloatX4# a1 a2 a3 a4 / FloatX4# b1 b2 b3 b4 = FloatX4#
       (divideFloat# a1 b1) (divideFloat# a2 b2) (divideFloat# a3 b3) (divideFloat# a4 b4)
@@ -184,7 +187,7 @@ instance Fractional (FloatX4 k) where
 
 
 
-instance Floating (FloatX4 k) where
+instance Floating FloatX4 where
 
     pi = FloatX4#
       3.141592653589793238#
@@ -260,7 +263,7 @@ instance Floating (FloatX4 k) where
 
 
 
-instance PrimBytes (FloatX4 k) where
+instance PrimBytes FloatX4 where
 
     getBytes (FloatX4# a1 a2 a3 a4) = case runRW#
        ( \s0 -> case newByteArray# (byteSize @Float undefined *# 4#) s0 of
@@ -335,7 +338,7 @@ instance PrimBytes (FloatX4 k) where
     {-# INLINE writeArray #-}
 
 
-instance PrimArray Float (FloatX4 k) where
+instance PrimArray Float FloatX4 where
 
     broadcast (F# x) = FloatX4# x x x x
     {-# INLINE broadcast #-}
@@ -344,7 +347,7 @@ instance PrimArray Float (FloatX4 k) where
     ix# 1# (FloatX4# _ a2 _ _) = F# a2
     ix# 2# (FloatX4# _ _ a3 _) = F# a3
     ix# 3# (FloatX4# _ _ _ a4) = F# a4
-    ix# _   _                   = undefined
+    ix# _   _                  = undefined
     {-# INLINE ix# #-}
 
     gen# _ f s0 = case f s0 of
@@ -358,7 +361,7 @@ instance PrimArray Float (FloatX4 k) where
     upd# _ 1# (F# q) (FloatX4# x _ z w) = FloatX4# x q z w
     upd# _ 2# (F# q) (FloatX4# x y _ w) = FloatX4# x y q w
     upd# _ 3# (F# q) (FloatX4# x y z _) = FloatX4# x y z q
-    upd# _ _ _ x                         = x
+    upd# _ _ _ x                        = x
     {-# INLINE upd# #-}
 
     elemOffset _ = 0#
@@ -373,3 +376,28 @@ instance PrimArray Float (FloatX4 k) where
       (indexFloatArray# ba (off +# 2#))
       (indexFloatArray# ba (off +# 3#))
     {-# INLINE fromElems #-}
+
+
+--------------------------------------------------------------------------------
+-- Rewrite rules to improve efficiency of algorithms
+--
+-- Here we don't have access to DataFrame constructors, because we cannot import
+-- Numeric.DataFrame.Type module.
+-- However, we know that all DataFrame instances are just newtype wrappers
+-- (as well as Scalar). Thus, we can use unsafeCoerce# to get access to Arrays
+-- inside DataFrames.
+--
+--------------------------------------------------------------------------------
+
+getIdxOffset :: Idxs '[4] -> Int#
+getIdxOffset is = case unsafeCoerce# is of
+  [W# i] -> word2Int# i -# 1#
+  _ -> 0#
+{-# INLINE getIdxOffset #-}
+
+
+{-# RULES
+"index/FloatX4" forall i . (!.) @Float @'[] i
+  = unsafeCoerce# (ix# @Float @FloatX4 (getIdxOffset i))
+
+  #-}

@@ -34,8 +34,8 @@ library
         cpp-options: -DUNSAFE_INDICES
     exposed-modules:
         Numeric.DataFrame
-        -- Numeric.DataFrame.IO
-        -- Numeric.DataFrame.ST
+        Numeric.DataFrame.IO
+        Numeric.DataFrame.ST
         -- Numeric.Matrix
         -- Numeric.Vector
         -- Numeric.Scalar
@@ -43,6 +43,11 @@ library
         -- Numeric.Semigroup
         -- Numeric.Tuple
         Numeric.PrimBytes
+        Numeric.DataFrame.Type
+        Numeric.DataFrame.Family
+        Numeric.DataFrame.SubSpace
+        Numeric.DataFrame.Contraction
+        Numeric.DataFrame.Internal.Mutable
         Numeric.DataFrame.Internal.Array
         Numeric.DataFrame.Internal.Array.Class
         Numeric.DataFrame.Internal.Array.Family
@@ -54,16 +59,13 @@ library
         Numeric.DataFrame.Internal.Array.Family.DoubleX2
         Numeric.DataFrame.Internal.Array.Family.DoubleX3
         Numeric.DataFrame.Internal.Array.Family.DoubleX4
+        Numeric.DataFrame.Internal.Array.PrimOps
     build-depends:
         base >=4.9 && <5,
         dimensions -any
     default-language: Haskell2010
     hs-source-dirs: src
     other-modules:
-        Numeric.DataFrame.SubSpace
-        Numeric.DataFrame.Contraction
-        Numeric.DataFrame.Mutable
-        Numeric.DataFrame.Type
         -- Numeric.DataFrame.Inference
         -- Numeric.DataFrame.Shape
         -- Numeric.Matrix.Class
@@ -72,7 +74,6 @@ library
         -- Numeric.Quaternion.Class
         -- Numeric.Quaternion.QDouble
         -- Numeric.Quaternion.QFloat
-        Numeric.DataFrame.Internal.Array.Internal
     ghc-options: -Wall -fwarn-tabs -fwarn-unused-do-bind -fwarn-monomorphism-restriction
 
 test-suite et-test

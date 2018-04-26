@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP                    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
@@ -31,12 +30,10 @@ module Numeric.DataFrame.Contraction
   ( Contraction (..), (%*)
   ) where
 
-#include "MachDeps.h"
-
-
 import           GHC.Base
+
+import           Numeric.DataFrame.Family
 import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
 
 

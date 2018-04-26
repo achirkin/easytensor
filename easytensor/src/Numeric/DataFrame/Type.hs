@@ -10,17 +10,18 @@
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MagicHash                  #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
-{-# LANGUAGE PatternSynonyms       #-}
-{-# LANGUAGE ViewPatterns       #-}
-{-# LANGUAGE TypeInType       #-}
+{-# LANGUAGE ViewPatterns               #-}
+{-# OPTIONS_GHC -fno-warn-orphans  #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Type
@@ -45,36 +46,38 @@ module Numeric.DataFrame.Type
   ) where
 
 -- #include "MachDeps.h"
-import           Data.Int                  (Int16, Int32, Int64, Int8)
-import           Data.Word                 (Word16, Word32, Word64, Word8)
-import           Foreign.Storable          (Storable (..))
+import           Data.Int                                (Int16, Int32, Int64,
+                                                          Int8)
+import           Data.Word                               (Word16, Word32,
+                                                          Word64, Word8)
+import           Foreign.Storable                        (Storable (..))
 import           GHC.Base
-import           GHC.Exts
 
 
+import           Numeric.DataFrame.Family
 import           Numeric.DataFrame.Internal.Array.Class
 import           Numeric.DataFrame.Internal.Array.Family
-import           Numeric.PrimBytes
 import           Numeric.Dimensions
-import           Numeric.Tuple.Strict
+import           Numeric.PrimBytes
 
--- | Keep data in a primitive data frame
---    and maintain information about Dimensions in the type system
-data family DataFrame (t :: l) (xs :: [k])
-
--- | Single array
-newtype instance DataFrame (t :: Type) (ns :: [k])
-  = SingleFrame { _getDF :: Array k t ns }
+-- | Single frame
+newtype instance DataFrame (t :: Type) (ns :: [Nat])
+  = SingleFrame { _getDF :: Array t ns }
 
 -- | Multiple "columns" of data frames of the same shape
-newtype instance DataFrame (ts :: [Type]) (ns :: [k])
+newtype instance DataFrame (ts :: [Type]) (ns :: [Nat])
   = MultiFrame { _getDFS ::  TypedList (DataFrame' ns) ts }
 
+-- | Data frame with some dimensions missing at compile time.
+--   Pattern-match against its constructor to get a Nat-indexed data frame.
+data instance DataFrame (ts :: l) (xs :: [XNat])
+  = forall (ns :: [Nat]) . Dimensions ns
+  => XFrame (DataFrame ts ns)
 
--- | Data frame that has an unknown at compile time dimensionality.
---   Pattern-match against its constructor to get a normal data frame.
+-- | Data frame that has an unknown dimensionality at compile time.
+--   Pattern-match against its constructor to get a Nat-indexed data frame
 data SomeDataFrame (t :: l)
-  = forall xs . Dimensions xs => SomeDataFrame (DataFrame t xs)
+  = forall (ns :: [Nat]) . Dimensions ns => SomeDataFrame (DataFrame t ns)
 
 -- | DataFrame with its type arguments swapped.
 newtype DataFrame' (xs :: [k]) (t :: l) = DataFrame' (DataFrame t xs)
@@ -83,9 +86,9 @@ newtype DataFrame' (xs :: [k]) (t :: l) = DataFrame' (DataFrame t xs)
 
 
 -- | Constructing a @MultiFrame@ using DataFrame columns
-pattern (:*:) :: forall (xs :: [Type]) (ns :: [k])
+pattern (:*:) :: forall (xs :: [Type]) (ns :: [Nat])
               . ()
-             => forall (y :: Type) (ys :: [Type])
+              => forall (y :: Type) (ys :: [Type])
               . (xs ~ (y ': ys))
                 => DataFrame y ns
                 -> DataFrame ys ns -> DataFrame xs ns
@@ -95,12 +98,12 @@ pattern (:*:) x xs <- (MultiFrame (DataFrame' x :* (MultiFrame -> xs)))
 infixr 6 :*:
 
 -- | Empty MultiFrame
-pattern Z :: forall (xs :: [Type]) (ns :: [k])
+pattern Z :: forall (xs :: [Type]) (ns :: [Nat])
            . () => (xs ~ '[]) => DataFrame xs ns
 pattern Z = MultiFrame U
 
 
-instance ( Show (Array k t ds)
+instance ( Show (Array t ds)
          , Dimensions ds
          ) => Show (DataFrame (t :: Type) ds) where
   show (SingleFrame arr) = unlines
@@ -119,37 +122,37 @@ instance ( Dimensions ds
       showAll _ Z = []
       showAll n (SingleFrame arr :*: fs) = ("Var " ++ show n) : show arr : showAll (n+1) fs
 
-type family ImplAllows (f :: Type -> Constraint) (ts :: l) (ds :: [k])
+type family ImplAllows (f :: Type -> Constraint) (ts :: l) (ds :: [Nat])
                                                              :: Constraint where
-    ImplAllows f (t :: Type) (ds :: [k]) = f (Array k t ds)
+    ImplAllows f (t :: Type) ds = f (Array t ds)
     ImplAllows _ ('[] :: [Type]) _ = ()
-    ImplAllows f (t ': ts :: [Type]) (ds :: [k]) = (f (Array k t ds), ImplAllows f ts ds)
+    ImplAllows f (t ': ts :: [Type]) ds = (f (Array t ds), ImplAllows f ts ds)
 
 -- TODO: shall I add all these instances to MultiFrame?
-deriving instance Bounded (Array k t ds) => Bounded (DataFrame t ds)
-deriving instance Enum (Array k t ds) => Enum (DataFrame t ds)
-deriving instance Eq (Array k t ds) => Eq (DataFrame t ds)
-deriving instance Integral (Array k t ds)
+deriving instance Bounded (Array t ds) => Bounded (DataFrame t ds)
+deriving instance Enum (Array t ds) => Enum (DataFrame t ds)
+deriving instance Eq (Array t ds) => Eq (DataFrame t ds)
+deriving instance Integral (Array t ds)
                => Integral (DataFrame t ds)
-deriving instance Num (Array k t ds)
+deriving instance Num (Array t ds)
                => Num (DataFrame t ds)
-deriving instance Fractional (Array k t ds)
+deriving instance Fractional (Array t ds)
                => Fractional (DataFrame t ds)
-deriving instance Floating (Array k t ds)
+deriving instance Floating (Array t ds)
                => Floating (DataFrame t ds)
-deriving instance Ord (Array k t ds)
+deriving instance Ord (Array t ds)
                => Ord (DataFrame t ds)
-deriving instance ( Read (Array k t ds), Dimensions ds )
+deriving instance ( Read (Array t ds), Dimensions ds )
                => Read (DataFrame t ds)
-deriving instance Real (Array k t ds)
+deriving instance Real (Array t ds)
                => Real (DataFrame t ds)
-deriving instance RealFrac (Array k t ds)
+deriving instance RealFrac (Array t ds)
                => RealFrac (DataFrame t ds)
-deriving instance RealFloat (Array k t ds)
+deriving instance RealFloat (Array t ds)
                => RealFloat (DataFrame t ds)
-deriving instance (PrimArray t (Array k t ds), PrimBytes t)
+deriving instance (PrimArray t (Array t ds), PrimBytes t)
                => PrimArray t (DataFrame t ds)
-deriving instance PrimBytes (Array k t ds)
+deriving instance PrimBytes (Array t ds)
                => PrimBytes (DataFrame t ds)
 
 

@@ -1,10 +1,10 @@
-{-# LANGUAGE DataKinds        #-}
-{-# LANGUAGE KindSignatures   #-}
-{-# LANGUAGE MagicHash        #-}
-{-# LANGUAGE PolyKinds        #-}
-{-# LANGUAGE UnboxedTuples    #-}
+{-# LANGUAGE DataKinds      #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MagicHash      #-}
+{-# LANGUAGE PolyKinds      #-}
+{-# LANGUAGE UnboxedTuples  #-}
 -- | Internal primitive functions shared across modules
-module Numeric.DataFrame.Internal.Array.Internal where
+module Numeric.DataFrame.Internal.Array.PrimOps where
 
 import           GHC.Base
 import           Numeric.Dimensions

@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP                       #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
@@ -6,10 +5,10 @@
 {-# LANGUAGE KindSignatures            #-}
 {-# LANGUAGE MagicHash                 #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE PolyKinds                 #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
-{-# LANGUAGE UnboxedTuples             #-}
 {-# LANGUAGE TypeOperators             #-}
 -----------------------------------------------------------------------------
 -- |
@@ -19,334 +18,157 @@
 --
 -- Maintainer  :  chirkin@arch.ethz.ch
 --
----- Mutable DataFrames living in IO.
+-- Mutable DataFrames living in IO.
 --
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.IO
-    (
-#ifdef ghcjs_HOST_OS
-      MutableFrame (), IODataFrame (..), MDataFrame (..), MutableArrayT (..)
-#else
-      MutableFrame (), IODataFrame ()
-#endif
-    , SomeIODataFrame (..)
-    , newDataFrame, copyDataFrame, copyMutableDataFrame
-    , unsafeFreezeDataFrame
-    , freezeDataFrame, thawDataFrame
-    , writeDataFrame, readDataFrame
-    , writeDataFrameOff, readDataFrameOff
-#ifdef ghcjs_HOST_OS
-      -- * JavaScript-specific functions
-    , MutableArrayBuffer
-    , newArrayBuffer, arrayBuffer, viewFloatArray, viewDoubleArray
-    , viewIntArray, viewInt32Array, viewInt16Array, viewInt8Array
-    , viewWordArray, viewWord32Array, viewWord16Array, viewWord8Array, viewWord8ClampedArray
-#endif
+    ( IODataFrame (XIOFrame), SomeIODataFrame (..)
+    , newDataFrame, newPinnedDataFrame
+    , copyDataFrame, copyMutableDataFrame
+    , freezeDataFrame, unsafeFreezeDataFrame
+    , thawDataFrame, thawPinDataFrame, unsafeThawDataFrame
+    , writeDataFrame, writeDataFrameOff
+    , readDataFrame, readDataFrameOff
     ) where
 
-import           GHC.Prim               (RealWorld)
-import           GHC.Types              (Int (..), IO (..))
 
+import           GHC.Base
+import           GHC.IO                                 (IO (..))
 
-#ifdef ghcjs_HOST_OS
-import           Numeric.DataFrame.Internal.Array.Family hiding (Scalar)
-import           JavaScript.TypedArray.ArrayBuffer
-import           GHC.Prim
-import           Data.Int
-import           Data.Word
-import           Data.Maybe
-import           GHCJS.Types
-import           Numeric.DataFrame.Inference
-#endif
-import           Numeric.Commons
-import           Numeric.DataFrame.Type
-import           Numeric.DataFrame.Mutable
+import           Numeric.DataFrame.Family
+import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Internal.Mutable
 import           Numeric.Dimensions
-import           Numeric.Scalar
+import           Numeric.PrimBytes
+
 
 -- | Mutable DataFrame that lives in IO.
---   Internal representation is always a ByteArray.
-newtype IODataFrame t (ns :: [Nat]) = IODataFrame (MDataFrame RealWorld t (ns :: [Nat]))
-#ifdef ghcjs_HOST_OS
-instance IsJSVal (IODataFrame t ds)
-#endif
+--   Internal representation is always a MutableByteArray.
+data family IODataFrame (t :: Type) (ns :: [k])
+
+-- | Pure wrapper on a mutable byte array
+newtype instance IODataFrame t (ns :: [Nat]) = IODataFrame (MDataFrame RealWorld t (ns :: [Nat]))
+
+-- | Data frame with some dimensions missing at compile time.
+--   Pattern-match against its constructor to get a Nat-indexed mutable data frame.
+data instance IODataFrame t (xs :: [XNat])
+  = forall (ns :: [Nat]) . Dimensions ns
+  => XIOFrame (IODataFrame t ns)
+
 -- | Mutable DataFrame of unknown dimensionality
-data SomeIODataFrame t (xns :: [XNat])
-  = forall (ns :: [Nat])
-  . ( FixedDim xns ns ~ ns
-    , FixedXDim xns ns ~ xns
-    , NumericFrame t ns
-    )
-  => SomeIODataFrame (IODataFrame t ns)
+data SomeIODataFrame (t :: Type)
+  = forall (ns :: [Nat]) . Dimensions ns => SomeIODataFrame (IODataFrame t ns)
 
 -- | Create a new mutable DataFrame.
 newDataFrame :: forall t (ns :: [Nat])
-#ifdef ghcjs_HOST_OS
-               . ( ElemTypeInference t, Dimensions ns)
-#else
-               . ( PrimBytes t, Dimensions ns)
-#endif
-              => IO (IODataFrame t ns)
+              . ( PrimBytes t, Dimensions ns)
+             => IO (IODataFrame t ns)
 newDataFrame = IODataFrame <$> IO (newDataFrame# @t @ns)
 {-# INLINE newDataFrame #-}
 
+
+-- | Create a new mutable DataFrame.
+newPinnedDataFrame :: forall t (ns :: [Nat])
+                    . ( PrimBytes t, Dimensions ns)
+                   => IO (IODataFrame t ns)
+newPinnedDataFrame = IODataFrame <$> IO (newPinnedDataFrame# @t @ns)
+{-# INLINE newPinnedDataFrame #-}
+
+
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
-copyDataFrame :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat])
-               . ( ConcatList as (b :+ bs) asbs, Dimensions (b :+ bs)
-#ifdef ghcjs_HOST_OS
-                 , ArraySizeInference (as +: b'), Dimensions as
-#else
+copyDataFrame :: forall (t :: Type) (as :: [Nat]) (b' :: Nat) (b :: Nat)
+                                    (bs :: [Nat]) (asbs :: [Nat])
+               . ( PrimBytes t
                  , PrimBytes (DataFrame t (as +: b'))
-#endif
+                 , ConcatList as (b :+ bs) asbs
+                 , Dimensions (b :+ bs)
                  )
-               => DataFrame t (as +: b') -> Idx (b :+ bs) -> IODataFrame t asbs -> IO ()
+               => DataFrame t (as +: b') -> Idxs (b :+ bs) -> IODataFrame t asbs -> IO ()
 copyDataFrame df ei (IODataFrame mdf) = IO (copyDataFrame# df ei mdf)
 {-# INLINE copyDataFrame #-}
 
-
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
-copyMutableDataFrame :: forall t (as :: [Nat]) (b' :: Nat) (b :: Nat) (bs :: [Nat]) (asbs :: [Nat])
-                . ( PrimBytes t
-                  , ConcatList as (b :+ bs) asbs
-                  , Dimensions (b :+ bs)
-#ifdef ghcjs_HOST_OS
-                  , Dimensions as
-#endif
-                  )
-               => IODataFrame t (as +: b') -> Idx (b :+ bs) -> IODataFrame t asbs -> IO ()
+copyMutableDataFrame :: forall (t :: Type) (as :: [Nat]) (b' :: Nat) (b :: Nat)
+                               (bs :: [Nat]) (asbs :: [Nat])
+                      . ( PrimBytes t
+                        , ConcatList as (b :+ bs) asbs
+                        , Dimensions (b :+ bs)
+                        )
+                     => IODataFrame t (as +: b') -> Idxs (b :+ bs)
+                     -> IODataFrame t asbs -> IO ()
 copyMutableDataFrame (IODataFrame mdfA) ei (IODataFrame mdfB)
     = IO (copyMDataFrame# mdfA ei mdfB)
 {-# INLINE copyMutableDataFrame #-}
 
 
 -- | Make a mutable DataFrame immutable, without copying.
-unsafeFreezeDataFrame :: forall t (ns :: [Nat])
-#ifdef ghcjs_HOST_OS
-                  . (MutableFrame t ns, ArraySizeInference ns)
-#else
-                  . PrimBytes (DataFrame t ns)
-#endif
-                       => IODataFrame t ns -> IO (DataFrame t ns)
+unsafeFreezeDataFrame :: forall (t :: Type) (ns :: [Nat])
+                       . PrimArray t (DataFrame t ns)
+                      => IODataFrame t ns -> IO (DataFrame t ns)
 unsafeFreezeDataFrame (IODataFrame mdf) = IO (unsafeFreezeDataFrame# mdf)
 {-# INLINE unsafeFreezeDataFrame #-}
 
 
 -- | Copy content of a mutable DataFrame into a new immutable DataFrame.
-freezeDataFrame :: forall t (ns :: [Nat])
-#ifdef ghcjs_HOST_OS
-                 . (MutableFrame t ns, ArraySizeInference ns)
-#else
-                 . PrimBytes (DataFrame t ns)
-#endif
+freezeDataFrame :: forall (t :: Type) (ns :: [Nat])
+                 . PrimArray t (DataFrame t ns)
                 => IODataFrame t ns -> IO (DataFrame t ns)
 freezeDataFrame (IODataFrame mdf) = IO (freezeDataFrame# mdf)
 {-# INLINE freezeDataFrame #-}
 
 -- | Create a new mutable DataFrame and copy content of immutable one in there.
-thawDataFrame :: forall t (ns :: [Nat])
-#ifdef ghcjs_HOST_OS
-               . (MutableFrame t ns, ArrayInstanceInference t ns)
-#else
-               . PrimBytes (DataFrame t ns)
-#endif
-               => DataFrame t ns -> IO (IODataFrame t ns)
+thawDataFrame :: forall (t :: Type) (ns :: [Nat])
+               . (PrimBytes (DataFrame t ns), PrimBytes t)
+              => DataFrame t ns -> IO (IODataFrame t ns)
 thawDataFrame df = IODataFrame <$> IO (thawDataFrame# df)
 {-# INLINE thawDataFrame #-}
+
+-- | Create a new mutable DataFrame and copy content of immutable one in there.
+--   The result array is pinned and aligned.
+thawPinDataFrame :: forall (t :: Type) (ns :: [Nat])
+                  . (PrimBytes (DataFrame t ns), PrimBytes t)
+                 => DataFrame t ns -> IO (IODataFrame t ns)
+thawPinDataFrame df = IODataFrame <$> IO (thawPinDataFrame# df)
+{-# INLINE thawPinDataFrame #-}
+
+-- | UnsafeCoerces an underlying byte array.
+unsafeThawDataFrame :: forall (t :: Type) (ns :: [Nat])
+                     . (PrimBytes (DataFrame t ns), PrimBytes t)
+                    => DataFrame t ns -> IO (IODataFrame t ns)
+unsafeThawDataFrame df = IODataFrame <$> IO (unsafeThawDataFrame# df)
+{-# INLINE unsafeThawDataFrame #-}
 
 
 -- | Write a single element at the specified index
 writeDataFrame :: forall t (ns :: [Nat])
-                . ( MutableFrame t ns, Dimensions ns )
-               => IODataFrame t ns -> Idx ns -> Scalar t -> IO ()
-writeDataFrame (IODataFrame mdf) ei = IO . writeDataFrame# mdf ei . unScalar
+                . ( PrimBytes t, Dimensions ns )
+               => IODataFrame t ns -> Idxs ns -> DataFrame t '[] -> IO ()
+writeDataFrame (IODataFrame mdf) ei = IO . writeDataFrame# mdf ei . unsafeCoerce#
 {-# INLINE writeDataFrame #-}
 
 
 -- | Read a single element at the specified index
-readDataFrame :: forall t (ns :: [Nat])
-                . ( MutableFrame t ns, Dimensions ns )
-               => IODataFrame t ns -> Idx ns -> IO (Scalar t)
-readDataFrame (IODataFrame mdf) = fmap scalar . IO . readDataFrame# mdf
+readDataFrame :: forall (t :: Type) (ns :: [Nat])
+               . ( PrimBytes t, Dimensions ns )
+              => IODataFrame t ns -> Idxs ns -> IO (DataFrame t '[])
+readDataFrame (IODataFrame mdf) = unsafeCoerce# . IO . readDataFrame# mdf
 {-# INLINE readDataFrame #-}
 
 
 -- | Write a single element at the specified element offset
-writeDataFrameOff :: forall t (ns :: [Nat])
-                . ( MutableFrame t ns, Dimensions ns )
-               => IODataFrame t ns -> Int -> Scalar t -> IO ()
-writeDataFrameOff (IODataFrame mdf) (I# i) x = IO $ \s -> (# writeDataFrameOff# mdf i (unScalar x) s, () #)
+writeDataFrameOff :: forall (t :: Type) (ns :: [Nat])
+                   . PrimBytes t
+               => IODataFrame t ns -> Int -> DataFrame t '[]  -> IO ()
+writeDataFrameOff (IODataFrame mdf) (I# i)
+  = IO . writeDataFrameOff# mdf i . unsafeCoerce#
 {-# INLINE writeDataFrameOff #-}
 
 
 -- | Read a single element at the specified element offset
-readDataFrameOff :: forall t (ns :: [Nat])
-                . ( MutableFrame t ns, Dimensions ns )
-               => IODataFrame t ns -> Int -> IO (Scalar t)
-readDataFrameOff (IODataFrame mdf) (I# i) = scalar <$> IO (readDataFrameOff# mdf i)
+readDataFrameOff :: forall (t :: Type) (ns :: [Nat])
+                  . PrimBytes t
+               => IODataFrame t ns -> Int -> IO (DataFrame t '[])
+readDataFrameOff (IODataFrame mdf) (I# i)
+  = unsafeCoerce# (IO (readDataFrameOff# mdf i))
 {-# INLINE readDataFrameOff #-}
-
-
-#ifdef ghcjs_HOST_OS
-newArrayBuffer :: Int -> IO MutableArrayBuffer
-newArrayBuffer n = unsafeCoerce# <$> IO (newArrayBuffer# n)
-
-viewFloatArray :: forall ds
-                . ( Dimensions ds, ArraySizeInference ds)
-               => MutableArrayBuffer -> IO (SomeIODataFrame Float (AsXDims ds +: XN 0))
-viewFloatArray ab = do
-    SomeDim (pn@Dn :: Dim (n :: Nat)) <- abDim (I# (byteSize (undefined :: Float))) (dim @ds) ab
-    df <- fmap IODataFrame . IO $ viewFloatArray# (jsval ab) :: IO (IODataFrame Float (ds +: n))
-    return $ case unsafeForceFixedDims @ds @n
-         `sumEvs` inferSnocDimensions @ds @n
-         `sumEvs` inferSnocArrayInstance (undefined :: DataFrame Float ds) pn
-                 of
-        Evidence -> case inferNumericFrame @Float @(ds +: n) of
-            Evidence -> SomeIODataFrame df
-
-viewDoubleArray ::  forall ds
-                . ( Dimensions ds, ArraySizeInference ds)
-               => MutableArrayBuffer -> IO (SomeIODataFrame Double (AsXDims ds +: XN 0))
-viewDoubleArray ab = do
-    SomeDim (pn@Dn :: Dim (n :: Nat)) <- abDim (I# (byteSize (undefined :: Double))) (dim @ds) ab
-    df <- fmap IODataFrame . IO $ viewDoubleArray# (jsval ab) :: IO (IODataFrame Double (ds +: n))
-    return $ case unsafeForceFixedDims @ds @n
-         `sumEvs` inferSnocDimensions @ds @n
-         `sumEvs` inferSnocArrayInstance (undefined :: DataFrame Double ds) pn
-                 of
-        Evidence -> case inferNumericFrame @Double @(ds +: n) of
-            Evidence -> SomeIODataFrame df
-
-viewIntArray ::  forall ds
-                . ( Dimensions ds, ArraySizeInference ds)
-               => MutableArrayBuffer -> IO (SomeIODataFrame Int (AsXDims ds +: XN 0))
-viewIntArray ab = do
-    SomeDim (pn@Dn :: Dim (n :: Nat)) <- abDim (I# (byteSize (undefined :: Int))) (dim @ds) ab
-    df <- fmap IODataFrame . IO $ viewIntArray# (jsval ab) :: IO (IODataFrame Int (ds +: n))
-    return $ case unsafeForceFixedDims @ds @n
-         `sumEvs` inferSnocDimensions @ds @n
-         `sumEvs` inferSnocArrayInstance (undefined :: DataFrame Int ds) pn
-                 of
-        Evidence -> case inferNumericFrame @Int @(ds +: n) of
-            Evidence -> SomeIODataFrame df
-
-viewInt32Array ::  forall ds
-                . ( Dimensions ds, ArraySizeInference ds)
-               => MutableArrayBuffer -> IO (SomeIODataFrame Int32 (AsXDims ds +: XN 0))
-viewInt32Array ab = do
-    SomeDim (pn@Dn :: Dim (n :: Nat)) <- abDim (I# (byteSize (undefined :: Int32))) (dim @ds) ab
-    df <- fmap IODataFrame . IO $ viewInt32Array# (jsval ab) :: IO (IODataFrame Int32 (ds +: n))
-    return $ case unsafeForceFixedDims @ds @n
-         `sumEvs` inferSnocDimensions @ds @n
-         `sumEvs` inferSnocArrayInstance (undefined :: DataFrame Int32 ds) pn
-                 of
-        Evidence -> case inferNumericFrame @Int32 @(ds +: n) of
-            Evidence -> SomeIODataFrame df
-
-viewInt16Array ::  forall ds
-                . ( Dimensions ds, ArraySizeInference ds)
-               => MutableArrayBuffer -> IO (SomeIODataFrame Int16 (AsXDims ds +: XN 0))
-viewInt16Array ab = do
-    SomeDim (pn@Dn :: Dim (n :: Nat)) <- abDim (I# (byteSize (undefined :: Int16))) (dim @ds) ab
-    df <- fmap IODataFrame . IO $ viewInt16Array# (jsval ab) :: IO (IODataFrame Int16 (ds +: n))
-    return $ case unsafeForceFixedDims @ds @n
-         `sumEvs` inferSnocDimensions @ds @n
-         `sumEvs` inferSnocArrayInstance (undefined :: DataFrame Int16 ds) pn
-                 of
-        Evidence -> case inferNumericFrame @Int16 @(ds +: n) of
-            Evidence -> SomeIODataFrame df
-
-viewInt8Array ::  forall ds
-                . ( Dimensions ds, ArraySizeInference ds)
-               => MutableArrayBuffer -> IO (SomeIODataFrame Int8 (AsXDims ds +: XN 0))
-viewInt8Array ab = do
-    SomeDim (pn@Dn :: Dim (n :: Nat)) <- abDim (I# (byteSize (undefined :: Int8))) (dim @ds) ab
-    df <- fmap IODataFrame . IO $ viewInt8Array# (jsval ab) :: IO (IODataFrame Int8 (ds +: n))
-    return $ case unsafeForceFixedDims @ds @n
-         `sumEvs` inferSnocDimensions @ds @n
-         `sumEvs` inferSnocArrayInstance (undefined :: DataFrame Int8 ds) pn
-                 of
-        Evidence -> case inferNumericFrame @Int8 @(ds +: n) of
-            Evidence -> SomeIODataFrame df
-
-viewWordArray ::  forall ds
-                . ( Dimensions ds, ArraySizeInference ds)
-               => MutableArrayBuffer -> IO (SomeIODataFrame Word (AsXDims ds +: XN 0))
-viewWordArray ab = do
-    SomeDim (pn@Dn :: Dim (n :: Nat)) <- abDim (I# (byteSize (undefined :: Word))) (dim @ds) ab
-    df <- fmap IODataFrame . IO $ viewWordArray# (jsval ab) :: IO (IODataFrame Word (ds +: n))
-    return $ case unsafeForceFixedDims @ds @n
-         `sumEvs` inferSnocDimensions @ds @n
-         `sumEvs` inferSnocArrayInstance (undefined :: DataFrame Word ds) pn
-                 of
-        Evidence -> case inferNumericFrame @Word @(ds +: n) of
-            Evidence -> SomeIODataFrame df
-
-viewWord32Array ::  forall ds
-                . ( Dimensions ds, ArraySizeInference ds)
-               => MutableArrayBuffer -> IO (SomeIODataFrame Word32 (AsXDims ds +: XN 0))
-viewWord32Array ab = do
-    SomeDim (pn@Dn :: Dim (n :: Nat)) <- abDim (I# (byteSize (undefined :: Word32))) (dim @ds) ab
-    df <- fmap IODataFrame . IO $ viewWord32Array# (jsval ab) :: IO (IODataFrame Word32 (ds +: n))
-    return $ case unsafeForceFixedDims @ds @n
-         `sumEvs` inferSnocDimensions @ds @n
-         `sumEvs` inferSnocArrayInstance (undefined :: DataFrame Word32 ds) pn
-                 of
-        Evidence -> case inferNumericFrame @Word32 @(ds +: n) of
-            Evidence -> SomeIODataFrame df
-
-viewWord16Array ::  forall ds
-                . ( Dimensions ds, ArraySizeInference ds)
-               => MutableArrayBuffer -> IO (SomeIODataFrame Word16 (AsXDims ds +: XN 0))
-viewWord16Array ab = do
-    SomeDim (pn@Dn :: Dim (n :: Nat)) <- abDim (I# (byteSize (undefined :: Word16))) (dim @ds) ab
-    df <- fmap IODataFrame . IO $ viewWord16Array# (jsval ab) :: IO (IODataFrame Word16 (ds +: n))
-    return $ case unsafeForceFixedDims @ds @n
-         `sumEvs` inferSnocDimensions @ds @n
-         `sumEvs` inferSnocArrayInstance (undefined :: DataFrame Word16 ds) pn
-                 of
-        Evidence -> case inferNumericFrame @Word16 @(ds +: n) of
-            Evidence -> SomeIODataFrame df
-
-viewWord8Array ::  forall ds
-                . ( Dimensions ds, ArraySizeInference ds)
-               => MutableArrayBuffer -> IO (SomeIODataFrame Word8 (AsXDims ds +: XN 0))
-viewWord8Array ab = do
-    SomeDim (pn@Dn :: Dim (n :: Nat)) <- abDim (I# (byteSize (undefined :: Word8))) (dim @ds) ab
-    df <- fmap IODataFrame . IO $ viewWord8Array# (jsval ab) :: IO (IODataFrame Word8 (ds +: n))
-    return $ case unsafeForceFixedDims @ds @n
-         `sumEvs` inferSnocDimensions @ds @n
-         `sumEvs` inferSnocArrayInstance (undefined :: DataFrame Word8 ds) pn
-                 of
-        Evidence -> case inferNumericFrame @Word8 @(ds +: n) of
-            Evidence -> SomeIODataFrame df
-
-viewWord8ClampedArray ::  forall ds
-                . ( Dimensions ds, ArraySizeInference ds)
-               => MutableArrayBuffer -> IO (SomeIODataFrame Word8Clamped (AsXDims ds +: XN 0))
-viewWord8ClampedArray ab = do
-    SomeDim (pn@Dn :: Dim (n :: Nat)) <- abDim (I# (byteSize (undefined :: Word8Clamped))) (dim @ds) ab
-    df <- fmap IODataFrame . IO $ viewWord8ClampedArray# (jsval ab) :: IO (IODataFrame Word8Clamped (ds +: n))
-    return $ case unsafeForceFixedDims @ds @n
-         `sumEvs` inferSnocDimensions @ds @n
-         `sumEvs` inferSnocArrayInstance (undefined :: DataFrame Word8Clamped ds) pn
-                 of
-        Evidence -> case inferNumericFrame @Word8Clamped @(ds +: n) of
-            Evidence -> SomeIODataFrame df
-
-arrayBuffer :: IODataFrame t ds ->  IO MutableArrayBuffer
-arrayBuffer (IODataFrame x) = unsafeCoerce# <$> IO (arrayBuffer# x)
-
-
-foreign import javascript unsafe "$1.length"     js_abLength     :: MutableArrayBuffer -> IO Int
-
-abDim :: Int -> Dim (ds :: [Nat]) -> MutableArrayBuffer -> IO SomeDim
-abDim elS d ab = fromMaybe (SomeDim (Dn :: Dim 0)) . someDimVal . (`quot` (elS * dimVal d)) <$> js_abLength ab
-
-unsafeForceFixedDims :: forall ds n
-                      . Evidence ( FixedDim (AsXDims ds +: XN 0) (ds +: n) ~ (ds +: n)
-                                 , FixedXDim (AsXDims ds +: XN 0) (ds +: n) ~ (AsXDims ds +: XN 0)
-                                 )
-unsafeForceFixedDims = unsafeCoerce# (Evidence :: Evidence ( (ds +: n) ~  (ds +: n) ,  (ds +: n) ~  (ds +: n) ))
-
-#endif

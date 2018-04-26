@@ -7,20 +7,19 @@ module Numeric.DataFrame.Internal.Array.Family.FloatX3 (FloatX3 (..)) where
 
 import           GHC.Base
 import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Internal.Array.PrimOps
 import           Numeric.PrimBytes
 
 
-data FloatX3 k = FloatX3# Float# Float# Float#
+data FloatX3 = FloatX3# Float# Float# Float#
 
 
-instance Bounded (FloatX3 k) where
-    maxBound = case infty of F# x -> FloatX3# x x x
-    minBound = case negate infty of F# x -> FloatX3# x x x
+instance Bounded FloatX3 where
+    maxBound = case inftyF of F# x -> FloatX3# x x x
+    minBound = case negate inftyF of F# x -> FloatX3# x x x
 
-infty :: Float
-infty = read "Infinity"
 
-instance Show (FloatX3 k) where
+instance Show FloatX3 where
     show (FloatX3# a1 a2 a3)
       =  "{ " ++ show (F# a1)
       ++ ", " ++ show (F# a2)
@@ -29,7 +28,7 @@ instance Show (FloatX3 k) where
 
 
 
-instance Eq (FloatX3 k) where
+instance Eq FloatX3 where
 
     FloatX3# a1 a2 a3 == FloatX3# b1 b2 b3 =
       isTrue#
@@ -51,7 +50,7 @@ instance Eq (FloatX3 k) where
 
 -- | Implement partial ordering for `>`, `<`, `>=`, `<=`
 --           and lexicographical ordering for `compare`
-instance Ord (FloatX3 k) where
+instance Ord FloatX3 where
     FloatX3# a1 a2 a3 > FloatX3# b1 b2 b3 =
       isTrue#
       (       (a1 `gtFloat#` b1)
@@ -112,7 +111,7 @@ instance Ord (FloatX3 k) where
 
 
 -- | element-wise operations for vectors
-instance Num (FloatX3 k) where
+instance Num FloatX3 where
 
     FloatX3# a1 a2 a3 + FloatX3# b1 b2 b3
       = FloatX3# (plusFloat# a1 b1) (plusFloat# a2 b2) (plusFloat# a3 b3)
@@ -154,7 +153,7 @@ instance Num (FloatX3 k) where
 
 
 
-instance Fractional (FloatX3 k) where
+instance Fractional FloatX3 where
 
     FloatX3# a1 a2 a3 / FloatX3# b1 b2 b3 = FloatX3#
       (divideFloat# a1 b1) (divideFloat# a2 b2) (divideFloat# a3 b3)
@@ -169,7 +168,7 @@ instance Fractional (FloatX3 k) where
 
 
 
-instance Floating (FloatX3 k) where
+instance Floating FloatX3 where
 
     pi = FloatX3#
       3.141592653589793238#
@@ -244,7 +243,7 @@ instance Floating (FloatX3 k) where
 
 
 
-instance PrimBytes (FloatX3 k) where
+instance PrimBytes FloatX3 where
 
     getBytes (FloatX3# a1 a2 a3) = case runRW#
        ( \s0 -> case newByteArray# (byteSize @Float undefined *# 3#) s0 of
@@ -312,7 +311,7 @@ instance PrimBytes (FloatX3 k) where
     {-# INLINE writeArray #-}
 
 
-instance PrimArray Float (FloatX3 k) where
+instance PrimArray Float FloatX3 where
 
     broadcast (F# x) = FloatX3# x x x
     {-# INLINE broadcast #-}
@@ -320,7 +319,7 @@ instance PrimArray Float (FloatX3 k) where
     ix# 0# (FloatX3# a1 _ _) = F# a1
     ix# 1# (FloatX3# _ a2 _) = F# a2
     ix# 2# (FloatX3# _ _ a3) = F# a3
-    ix# _   _                 = undefined
+    ix# _   _                = undefined
     {-# INLINE ix# #-}
 
     gen# _ f s0 = case f s0 of
@@ -332,7 +331,7 @@ instance PrimArray Float (FloatX3 k) where
     upd# _ 0# (F# q) (FloatX3# _ y z) = FloatX3# q y z
     upd# _ 1# (F# q) (FloatX3# x _ z) = FloatX3# x q z
     upd# _ 2# (F# q) (FloatX3# x y _) = FloatX3# x y q
-    upd# _ _ _ x                       = x
+    upd# _ _ _ x                      = x
     {-# INLINE upd# #-}
 
     elemOffset _ = 0#

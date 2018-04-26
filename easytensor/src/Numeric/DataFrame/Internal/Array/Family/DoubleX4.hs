@@ -7,20 +7,19 @@ module Numeric.DataFrame.Internal.Array.Family.DoubleX4 (DoubleX4 (..)) where
 
 import           GHC.Base
 import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Internal.Array.PrimOps
 import           Numeric.PrimBytes
 
 
-data DoubleX4 k = DoubleX4# Double# Double# Double# Double#
+data DoubleX4 = DoubleX4# Double# Double# Double# Double#
 
 
-instance Bounded (DoubleX4 k) where
-    maxBound = case infty of D# x -> DoubleX4# x x x x
-    minBound = case negate infty of D# x -> DoubleX4# x x x x
+instance Bounded DoubleX4 where
+    maxBound = case inftyD of D# x -> DoubleX4# x x x x
+    minBound = case negate inftyD of D# x -> DoubleX4# x x x x
 
-infty :: Double
-infty = read "Infinity"
 
-instance Show (DoubleX4 k) where
+instance Show DoubleX4 where
     show (DoubleX4# a1 a2 a3 a4)
       =  "{ " ++ show (D# a1)
       ++ ", " ++ show (D# a2)
@@ -30,7 +29,7 @@ instance Show (DoubleX4 k) where
 
 
 
-instance Eq (DoubleX4 k) where
+instance Eq DoubleX4 where
 
     DoubleX4# a1 a2 a3 a4 == DoubleX4# b1 b2 b3 b4 =
       isTrue#
@@ -54,7 +53,7 @@ instance Eq (DoubleX4 k) where
 
 -- | Implement partial ordering for `>`, `<`, `>=`, `<=`
 --           and lexicographical ordering for `compare`
-instance Ord (DoubleX4 k) where
+instance Ord DoubleX4 where
     DoubleX4# a1 a2 a3 a4 > DoubleX4# b1 b2 b3 b4 =
       isTrue#
       (       (a1 >## b1)
@@ -123,7 +122,7 @@ instance Ord (DoubleX4 k) where
 
 
 -- | element-wise operations for vectors
-instance Num (DoubleX4 k) where
+instance Num DoubleX4 where
 
     DoubleX4# a1 a2 a3 a4 + DoubleX4# b1 b2 b3 b4
       = DoubleX4# ((+##) a1 b1) ((+##) a2 b2) ((+##) a3 b3) ((+##) a4 b4)
@@ -169,7 +168,7 @@ instance Num (DoubleX4 k) where
 
 
 
-instance Fractional (DoubleX4 k) where
+instance Fractional DoubleX4 where
 
     DoubleX4# a1 a2 a3 a4 / DoubleX4# b1 b2 b3 b4 = DoubleX4#
       ((/##) a1 b1) ((/##) a2 b2) ((/##) a3 b3) ((/##) a4 b4)
@@ -184,7 +183,7 @@ instance Fractional (DoubleX4 k) where
 
 
 
-instance Floating (DoubleX4 k) where
+instance Floating DoubleX4 where
 
     pi = DoubleX4#
       3.141592653589793238##
@@ -260,7 +259,7 @@ instance Floating (DoubleX4 k) where
 
 
 
-instance PrimBytes (DoubleX4 k) where
+instance PrimBytes DoubleX4 where
 
     getBytes (DoubleX4# a1 a2 a3 a4) = case runRW#
        ( \s0 -> case newByteArray# (byteSize @Double undefined *# 4#) s0 of
@@ -335,7 +334,7 @@ instance PrimBytes (DoubleX4 k) where
     {-# INLINE writeArray #-}
 
 
-instance PrimArray Double (DoubleX4 k) where
+instance PrimArray Double DoubleX4 where
 
     broadcast (D# x) = DoubleX4# x x x x
     {-# INLINE broadcast #-}
