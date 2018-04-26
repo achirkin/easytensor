@@ -7,20 +7,19 @@ module Numeric.DataFrame.Internal.Array.Family.DoubleX3 (DoubleX3 (..)) where
 
 import           GHC.Base
 import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Internal.Array.PrimOps
 import           Numeric.PrimBytes
 
 
-data DoubleX3 k = DoubleX3# Double# Double# Double#
+data DoubleX3 = DoubleX3# Double# Double# Double#
 
 
-instance Bounded (DoubleX3 k) where
-    maxBound = case infty of D# x -> DoubleX3# x x x
-    minBound = case negate infty of D# x -> DoubleX3# x x x
+instance Bounded DoubleX3 where
+    maxBound = case inftyD of D# x -> DoubleX3# x x x
+    minBound = case negate inftyD of D# x -> DoubleX3# x x x
 
-infty :: Double
-infty = read "Infinity"
 
-instance Show (DoubleX3 k) where
+instance Show DoubleX3 where
     show (DoubleX3# a1 a2 a3)
       =  "{ " ++ show (D# a1)
       ++ ", " ++ show (D# a2)
@@ -29,7 +28,7 @@ instance Show (DoubleX3 k) where
 
 
 
-instance Eq (DoubleX3 k) where
+instance Eq DoubleX3 where
 
     DoubleX3# a1 a2 a3 == DoubleX3# b1 b2 b3 =
       isTrue#
@@ -51,7 +50,7 @@ instance Eq (DoubleX3 k) where
 
 -- | Implement partial ordering for `>`, `<`, `>=`, `<=`
 --           and lexicographical ordering for `compare`
-instance Ord (DoubleX3 k) where
+instance Ord DoubleX3 where
     DoubleX3# a1 a2 a3 > DoubleX3# b1 b2 b3 =
       isTrue#
       (       (a1 >## b1)
@@ -112,7 +111,7 @@ instance Ord (DoubleX3 k) where
 
 
 -- | element-wise operations for vectors
-instance Num (DoubleX3 k) where
+instance Num DoubleX3 where
 
     DoubleX3# a1 a2 a3 + DoubleX3# b1 b2 b3
       = DoubleX3# ((+##) a1 b1) ((+##) a2 b2) ((+##) a3 b3)
@@ -154,7 +153,7 @@ instance Num (DoubleX3 k) where
 
 
 
-instance Fractional (DoubleX3 k) where
+instance Fractional DoubleX3 where
 
     DoubleX3# a1 a2 a3 / DoubleX3# b1 b2 b3 = DoubleX3#
       ((/##) a1 b1) ((/##) a2 b2) ((/##) a3 b3)
@@ -169,7 +168,7 @@ instance Fractional (DoubleX3 k) where
 
 
 
-instance Floating (DoubleX3 k) where
+instance Floating DoubleX3 where
 
     pi = DoubleX3#
       3.141592653589793238##
@@ -244,7 +243,7 @@ instance Floating (DoubleX3 k) where
 
 
 
-instance PrimBytes (DoubleX3 k) where
+instance PrimBytes DoubleX3 where
 
     getBytes (DoubleX3# a1 a2 a3) = case runRW#
        ( \s0 -> case newByteArray# (byteSize @Double undefined *# 3#) s0 of
@@ -312,7 +311,7 @@ instance PrimBytes (DoubleX3 k) where
     {-# INLINE writeArray #-}
 
 
-instance PrimArray Double (DoubleX3 k) where
+instance PrimArray Double DoubleX3 where
 
     broadcast (D# x) = DoubleX3# x x x
     {-# INLINE broadcast #-}

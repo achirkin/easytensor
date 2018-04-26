@@ -34,9 +34,9 @@ module Numeric.DataFrame.SubSpace
 
 import           GHC.Base
 
+import           Numeric.DataFrame.Family
 import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.Internal
-import           Numeric.DataFrame.Type
+import           Numeric.DataFrame.Internal.Array.PrimOps
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
 
@@ -122,7 +122,7 @@ class ( ConcatList as bs asbs
      => Idxs bs -> DataFrame t asbs -> DataFrame t as
 (!.) i = case (# totalDim (dims @_ @as), fromEnum i #) of
    (# W# n, I# j #) -> indexOffset# (word2Int# n *# j) (word2Int# n)
-{-# INLINE (!.) #-}
+{-# INLINE [1] (!.) #-}
 infixr 4 !.
 
 -- | Apply an applicative functor on each element with its index

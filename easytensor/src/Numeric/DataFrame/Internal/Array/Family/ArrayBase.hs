@@ -25,9 +25,9 @@ module Numeric.DataFrame.Internal.Array.Family.ArrayBase
 
 import           Data.Int
 import           Data.Word
-import           GHC.Base               hiding (foldr)
+import           GHC.Base                                        hiding (foldr)
 import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.Internal
+import           Numeric.DataFrame.Internal.Array.PrimOps
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
 
@@ -35,7 +35,7 @@ import           Numeric.PrimBytes
 --   This array can reside in plain `ByteArray#` and can share the @ByteArray#@
 --   with other arrays.
 --   However, byte offset in the @ByteArray#@ must be multiple of the element size.
-data ArrayBase k (t :: Type) (ds :: [k])
+data ArrayBase (t :: Type) (ds :: [Nat])
   = ArrayBase
     (# t
        -- ^ Same value for each element;
@@ -48,19 +48,19 @@ data ArrayBase k (t :: Type) (ds :: [k])
      #)
 
 
-instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase k t ds) where
-    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase k Float ds)  #-}
-    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase k Double ds) #-}
-    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase k Int ds)    #-}
-    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase k Word ds)   #-}
-    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase k Int8 ds)   #-}
-    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase k Int16 ds)  #-}
-    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase k Int32 ds)  #-}
-    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase k Int64 ds)  #-}
-    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase k Word8 ds)  #-}
-    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase k Word16 ds) #-}
-    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase k Word32 ds) #-}
-    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase k Word64 ds) #-}
+instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
+    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase Float ds)  #-}
+    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase Double ds) #-}
+    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase Int ds)    #-}
+    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase Word ds)   #-}
+    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase Int8 ds)   #-}
+    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase Int16 ds)  #-}
+    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase Int32 ds)  #-}
+    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase Int64 ds)  #-}
+    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase Word8 ds)  #-}
+    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase Word16 ds) #-}
+    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase Word32 ds) #-}
+    {-# SPECIALIZE instance Dimensions ds => PrimBytes (ArrayBase Word64 ds) #-}
 
     getBytes (ArrayBase a ) = case a of
         (# t | #)
@@ -133,7 +133,7 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase k t ds) where
 accumV2Idempotent :: PrimBytes t
                   => a
                   -> (t -> t -> a -> a)
-                  -> ArrayBase k t ds -> ArrayBase k t ds -> a
+                  -> ArrayBase t ds -> ArrayBase t ds -> a
 accumV2Idempotent x f
   (ArrayBase (# a | #))
   (ArrayBase (# b | #))
@@ -152,7 +152,7 @@ accumV2Idempotent x f
     = loop1a# n (\i -> f (ix# i a) b) x
 {-# INLINE accumV2Idempotent #-}
 
-mapV :: PrimBytes t => (t -> t) -> ArrayBase k t ds -> ArrayBase k t ds
+mapV :: PrimBytes t => (t -> t) -> ArrayBase t ds -> ArrayBase t ds
 mapV f (ArrayBase (# t | #))
     = ArrayBase (# f t | #)
 mapV f x@(ArrayBase (# | (# offN, n, ba #) #))
@@ -171,7 +171,7 @@ mapV f x@(ArrayBase (# | (# offN, n, ba #) #))
 
 
 zipV :: PrimBytes t => (t -> t -> t)
-     -> ArrayBase k t ds -> ArrayBase k t ds -> ArrayBase k t ds
+     -> ArrayBase t ds -> ArrayBase t ds -> ArrayBase t ds
 zipV f (ArrayBase (# x | #)) b = mapV (f x) b
 zipV f a (ArrayBase (# y | #)) = mapV (flip f y) a
 zipV f a@(ArrayBase (# | (# oa, na, ba #) #))
@@ -197,37 +197,37 @@ zipV f a@(ArrayBase (# | (# oa, na, ba #) #))
 -- TODO: to improve performance, I can either compare bytearrays using memcmp
 --       or implement early termination if the first elements do not match.
 --       On the other hand, hopefully @(&&)@ and @(||)@ ops take care of that.
-instance (Eq t, PrimBytes t) => Eq (ArrayBase k t ds) where
-    {-# SPECIALIZE instance Eq (ArrayBase k Float ds)  #-}
-    {-# SPECIALIZE instance Eq (ArrayBase k Double ds) #-}
-    {-# SPECIALIZE instance Eq (ArrayBase k Int ds)    #-}
-    {-# SPECIALIZE instance Eq (ArrayBase k Word ds)   #-}
-    {-# SPECIALIZE instance Eq (ArrayBase k Int8 ds)   #-}
-    {-# SPECIALIZE instance Eq (ArrayBase k Int16 ds)  #-}
-    {-# SPECIALIZE instance Eq (ArrayBase k Int32 ds)  #-}
-    {-# SPECIALIZE instance Eq (ArrayBase k Int64 ds)  #-}
-    {-# SPECIALIZE instance Eq (ArrayBase k Word8 ds)  #-}
-    {-# SPECIALIZE instance Eq (ArrayBase k Word16 ds) #-}
-    {-# SPECIALIZE instance Eq (ArrayBase k Word32 ds) #-}
-    {-# SPECIALIZE instance Eq (ArrayBase k Word64 ds) #-}
+instance (Eq t, PrimBytes t) => Eq (ArrayBase t ds) where
+    {-# SPECIALIZE instance Eq (ArrayBase Float ds)  #-}
+    {-# SPECIALIZE instance Eq (ArrayBase Double ds) #-}
+    {-# SPECIALIZE instance Eq (ArrayBase Int ds)    #-}
+    {-# SPECIALIZE instance Eq (ArrayBase Word ds)   #-}
+    {-# SPECIALIZE instance Eq (ArrayBase Int8 ds)   #-}
+    {-# SPECIALIZE instance Eq (ArrayBase Int16 ds)  #-}
+    {-# SPECIALIZE instance Eq (ArrayBase Int32 ds)  #-}
+    {-# SPECIALIZE instance Eq (ArrayBase Int64 ds)  #-}
+    {-# SPECIALIZE instance Eq (ArrayBase Word8 ds)  #-}
+    {-# SPECIALIZE instance Eq (ArrayBase Word16 ds) #-}
+    {-# SPECIALIZE instance Eq (ArrayBase Word32 ds) #-}
+    {-# SPECIALIZE instance Eq (ArrayBase Word64 ds) #-}
     (==) = accumV2Idempotent True  (\x y r -> r && x == y)
     (/=) = accumV2Idempotent False (\x y r -> r || x /= y)
 
 -- | Implement partial ordering for `>`, `<`, `>=`, `<=`
 --     and lexicographical ordering for `compare`
-instance (Ord t, PrimBytes t) => Ord (ArrayBase k t ds)  where
-    {-# SPECIALIZE instance Ord (ArrayBase k Float ds)  #-}
-    {-# SPECIALIZE instance Ord (ArrayBase k Double ds) #-}
-    {-# SPECIALIZE instance Ord (ArrayBase k Int ds)    #-}
-    {-# SPECIALIZE instance Ord (ArrayBase k Word ds)   #-}
-    {-# SPECIALIZE instance Ord (ArrayBase k Int8 ds)   #-}
-    {-# SPECIALIZE instance Ord (ArrayBase k Int16 ds)  #-}
-    {-# SPECIALIZE instance Ord (ArrayBase k Int32 ds)  #-}
-    {-# SPECIALIZE instance Ord (ArrayBase k Int64 ds)  #-}
-    {-# SPECIALIZE instance Ord (ArrayBase k Word8 ds)  #-}
-    {-# SPECIALIZE instance Ord (ArrayBase k Word16 ds) #-}
-    {-# SPECIALIZE instance Ord (ArrayBase k Word32 ds) #-}
-    {-# SPECIALIZE instance Ord (ArrayBase k Word64 ds) #-}
+instance (Ord t, PrimBytes t) => Ord (ArrayBase t ds)  where
+    {-# SPECIALIZE instance Ord (ArrayBase Float ds)  #-}
+    {-# SPECIALIZE instance Ord (ArrayBase Double ds) #-}
+    {-# SPECIALIZE instance Ord (ArrayBase Int ds)    #-}
+    {-# SPECIALIZE instance Ord (ArrayBase Word ds)   #-}
+    {-# SPECIALIZE instance Ord (ArrayBase Int8 ds)   #-}
+    {-# SPECIALIZE instance Ord (ArrayBase Int16 ds)  #-}
+    {-# SPECIALIZE instance Ord (ArrayBase Int32 ds)  #-}
+    {-# SPECIALIZE instance Ord (ArrayBase Int64 ds)  #-}
+    {-# SPECIALIZE instance Ord (ArrayBase Word8 ds)  #-}
+    {-# SPECIALIZE instance Ord (ArrayBase Word16 ds) #-}
+    {-# SPECIALIZE instance Ord (ArrayBase Word32 ds) #-}
+    {-# SPECIALIZE instance Ord (ArrayBase Word64 ds) #-}
     -- | Partiall ordering: all elements GT
     (>)  = accumV2Idempotent True (\x y r -> r && x > y)
     {-# INLINE (>) #-}
@@ -251,7 +251,7 @@ instance (Ord t, PrimBytes t) => Ord (ArrayBase k t ds)  where
     {-# INLINE max #-}
 
 instance (Dimensions ds, PrimBytes t, Show t)
-      => Show (ArrayBase k t ds) where
+      => Show (ArrayBase t ds) where
   show x = case dims @_ @ds of
     U -> "{ " ++ show (ix# 0# x) ++ " }"
     Dim :* U -> ('{' :) . drop 1 $
@@ -271,41 +271,41 @@ instance (Dimensions ds, PrimBytes t, Show t)
                                 ++ loopInner ds maxBound ++ s
       in drop 1 $ foldr loopOuter "" [minBound..maxBound]
 
-instance {-# OVERLAPPING #-} Bounded (ArrayBase k Double ds) where
+instance {-# OVERLAPPING #-} Bounded (ArrayBase Double ds) where
     maxBound = ArrayBase (# inftyD | #)
     minBound = ArrayBase (# negate inftyD | #)
 
-instance {-# OVERLAPPING #-} Bounded (ArrayBase k Float ds) where
+instance {-# OVERLAPPING #-} Bounded (ArrayBase Float ds) where
     maxBound = ArrayBase (# inftyF | #)
     minBound = ArrayBase (# negate inftyF | #)
 
-instance {-# OVERLAPPABLE #-} Bounded t => Bounded (ArrayBase k t ds) where
-    {-# SPECIALIZE instance Bounded (ArrayBase k Int ds)    #-}
-    {-# SPECIALIZE instance Bounded (ArrayBase k Word ds)   #-}
-    {-# SPECIALIZE instance Bounded (ArrayBase k Int8 ds)   #-}
-    {-# SPECIALIZE instance Bounded (ArrayBase k Int16 ds)  #-}
-    {-# SPECIALIZE instance Bounded (ArrayBase k Int32 ds)  #-}
-    {-# SPECIALIZE instance Bounded (ArrayBase k Int64 ds)  #-}
-    {-# SPECIALIZE instance Bounded (ArrayBase k Word8 ds)  #-}
-    {-# SPECIALIZE instance Bounded (ArrayBase k Word16 ds) #-}
-    {-# SPECIALIZE instance Bounded (ArrayBase k Word32 ds) #-}
-    {-# SPECIALIZE instance Bounded (ArrayBase k Word64 ds) #-}
+instance {-# OVERLAPPABLE #-} Bounded t => Bounded (ArrayBase t ds) where
+    {-# SPECIALIZE instance Bounded (ArrayBase Int ds)    #-}
+    {-# SPECIALIZE instance Bounded (ArrayBase Word ds)   #-}
+    {-# SPECIALIZE instance Bounded (ArrayBase Int8 ds)   #-}
+    {-# SPECIALIZE instance Bounded (ArrayBase Int16 ds)  #-}
+    {-# SPECIALIZE instance Bounded (ArrayBase Int32 ds)  #-}
+    {-# SPECIALIZE instance Bounded (ArrayBase Int64 ds)  #-}
+    {-# SPECIALIZE instance Bounded (ArrayBase Word8 ds)  #-}
+    {-# SPECIALIZE instance Bounded (ArrayBase Word16 ds) #-}
+    {-# SPECIALIZE instance Bounded (ArrayBase Word32 ds) #-}
+    {-# SPECIALIZE instance Bounded (ArrayBase Word64 ds) #-}
     maxBound = ArrayBase (# maxBound | #)
     minBound = ArrayBase (# minBound | #)
 
-instance (Num t, PrimBytes t) => Num (ArrayBase k t ds)  where
-    {-# SPECIALIZE instance Num (ArrayBase k Float ds)  #-}
-    {-# SPECIALIZE instance Num (ArrayBase k Double ds) #-}
-    {-# SPECIALIZE instance Num (ArrayBase k Int ds)    #-}
-    {-# SPECIALIZE instance Num (ArrayBase k Word ds)   #-}
-    {-# SPECIALIZE instance Num (ArrayBase k Int8 ds)   #-}
-    {-# SPECIALIZE instance Num (ArrayBase k Int16 ds)  #-}
-    {-# SPECIALIZE instance Num (ArrayBase k Int32 ds)  #-}
-    {-# SPECIALIZE instance Num (ArrayBase k Int64 ds)  #-}
-    {-# SPECIALIZE instance Num (ArrayBase k Word8 ds)  #-}
-    {-# SPECIALIZE instance Num (ArrayBase k Word16 ds) #-}
-    {-# SPECIALIZE instance Num (ArrayBase k Word32 ds) #-}
-    {-# SPECIALIZE instance Num (ArrayBase k Word64 ds) #-}
+instance (Num t, PrimBytes t) => Num (ArrayBase t ds)  where
+    {-# SPECIALIZE instance Num (ArrayBase Float ds)  #-}
+    {-# SPECIALIZE instance Num (ArrayBase Double ds) #-}
+    {-# SPECIALIZE instance Num (ArrayBase Int ds)    #-}
+    {-# SPECIALIZE instance Num (ArrayBase Word ds)   #-}
+    {-# SPECIALIZE instance Num (ArrayBase Int8 ds)   #-}
+    {-# SPECIALIZE instance Num (ArrayBase Int16 ds)  #-}
+    {-# SPECIALIZE instance Num (ArrayBase Int32 ds)  #-}
+    {-# SPECIALIZE instance Num (ArrayBase Int64 ds)  #-}
+    {-# SPECIALIZE instance Num (ArrayBase Word8 ds)  #-}
+    {-# SPECIALIZE instance Num (ArrayBase Word16 ds) #-}
+    {-# SPECIALIZE instance Num (ArrayBase Word32 ds) #-}
+    {-# SPECIALIZE instance Num (ArrayBase Word64 ds) #-}
     (+) = zipV (+)
     {-# INLINE (+) #-}
     (-) = zipV (-)
@@ -321,9 +321,9 @@ instance (Num t, PrimBytes t) => Num (ArrayBase k t ds)  where
     fromInteger i = ArrayBase (# fromInteger i | #)
     {-# INLINE fromInteger #-}
 
-instance (Fractional t, PrimBytes t) => Fractional (ArrayBase k t ds)  where
-    {-# SPECIALIZE instance Fractional (ArrayBase k Float ds)  #-}
-    {-# SPECIALIZE instance Fractional (ArrayBase k Double ds) #-}
+instance (Fractional t, PrimBytes t) => Fractional (ArrayBase t ds)  where
+    {-# SPECIALIZE instance Fractional (ArrayBase Float ds)  #-}
+    {-# SPECIALIZE instance Fractional (ArrayBase Double ds) #-}
     (/) = zipV (/)
     {-# INLINE (/) #-}
     recip = mapV recip
@@ -332,9 +332,9 @@ instance (Fractional t, PrimBytes t) => Fractional (ArrayBase k t ds)  where
     {-# INLINE fromRational #-}
 
 
-instance (Floating t, PrimBytes t) => Floating (ArrayBase k t ds) where
-    {-# SPECIALIZE instance Floating (ArrayBase k Float ds)  #-}
-    {-# SPECIALIZE instance Floating (ArrayBase k Double ds) #-}
+instance (Floating t, PrimBytes t) => Floating (ArrayBase t ds) where
+    {-# SPECIALIZE instance Floating (ArrayBase Float ds)  #-}
+    {-# SPECIALIZE instance Floating (ArrayBase Double ds) #-}
     pi = ArrayBase (# pi | #)
     {-# INLINE pi #-}
     exp = mapV exp
@@ -372,19 +372,19 @@ instance (Floating t, PrimBytes t) => Floating (ArrayBase k t ds) where
     atanh = mapV atanh
     {-# INLINE atanh #-}
 
-instance PrimBytes t => PrimArray t (ArrayBase k t ds) where
-    {-# SPECIALIZE instance PrimArray Float  (ArrayBase k Float ds)  #-}
-    {-# SPECIALIZE instance PrimArray Double (ArrayBase k Double ds) #-}
-    {-# SPECIALIZE instance PrimArray Int    (ArrayBase k Int ds)    #-}
-    {-# SPECIALIZE instance PrimArray Word   (ArrayBase k Word ds)   #-}
-    {-# SPECIALIZE instance PrimArray Int8   (ArrayBase k Int8 ds)   #-}
-    {-# SPECIALIZE instance PrimArray Int16  (ArrayBase k Int16 ds)  #-}
-    {-# SPECIALIZE instance PrimArray Int32  (ArrayBase k Int32 ds)  #-}
-    {-# SPECIALIZE instance PrimArray Int64  (ArrayBase k Int64 ds)  #-}
-    {-# SPECIALIZE instance PrimArray Word8  (ArrayBase k Word8 ds)  #-}
-    {-# SPECIALIZE instance PrimArray Word16 (ArrayBase k Word16 ds) #-}
-    {-# SPECIALIZE instance PrimArray Word32 (ArrayBase k Word32 ds) #-}
-    {-# SPECIALIZE instance PrimArray Word64 (ArrayBase k Word64 ds) #-}
+instance PrimBytes t => PrimArray t (ArrayBase t ds) where
+    {-# SPECIALIZE instance PrimArray Float  (ArrayBase Float ds)  #-}
+    {-# SPECIALIZE instance PrimArray Double (ArrayBase Double ds) #-}
+    {-# SPECIALIZE instance PrimArray Int    (ArrayBase Int ds)    #-}
+    {-# SPECIALIZE instance PrimArray Word   (ArrayBase Word ds)   #-}
+    {-# SPECIALIZE instance PrimArray Int8   (ArrayBase Int8 ds)   #-}
+    {-# SPECIALIZE instance PrimArray Int16  (ArrayBase Int16 ds)  #-}
+    {-# SPECIALIZE instance PrimArray Int32  (ArrayBase Int32 ds)  #-}
+    {-# SPECIALIZE instance PrimArray Int64  (ArrayBase Int64 ds)  #-}
+    {-# SPECIALIZE instance PrimArray Word8  (ArrayBase Word8 ds)  #-}
+    {-# SPECIALIZE instance PrimArray Word16 (ArrayBase Word16 ds) #-}
+    {-# SPECIALIZE instance PrimArray Word32 (ArrayBase Word32 ds) #-}
+    {-# SPECIALIZE instance PrimArray Word64 (ArrayBase Word64 ds) #-}
 
     broadcast t = ArrayBase (# t | #)
     {-# INLINE broadcast #-}
@@ -451,7 +451,7 @@ instance PrimBytes t => PrimArray t (ArrayBase k t ds) where
 --------------------------------------------------------------------------------
 
 
-ix :: (PrimBytes t, Dimensions ds) => Idxs ds -> ArrayBase k t ds -> t
+ix :: (PrimBytes t, Dimensions ds) => Idxs ds -> ArrayBase t ds -> t
 ix i (ArrayBase a) = case a of
   (# t | #)  -> t
   (# | (# off, _, arr #) #) -> case fromEnum i of
@@ -459,5 +459,5 @@ ix i (ArrayBase a) = case a of
 {-# INLINE ix #-}
 
 
-undefEl :: ArrayBase k t ds -> t
+undefEl :: ArrayBase t ds -> t
 undefEl = const undefined

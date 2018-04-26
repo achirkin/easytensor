@@ -55,7 +55,7 @@ import           GHC.Base
 -- import           Numeric.Commons
 -- import           Numeric.DataFrame.Internal.Array.Class
 -- import           Numeric.DataFrame.Internal.Array.Internal
-import           Numeric.Dimensions
+-- import           Numeric.Dimensions
 -- import           Numeric.PrimBytes
 
 import           Numeric.DataFrame.Internal.Array.Family.ArrayBase
@@ -77,43 +77,34 @@ import           Numeric.DataFrame.Internal.Array.Family.Scalar
 --   Otherwise, it falls back to the generic ArrayBase implementation.
 --
 --   Data family would not work here, because it would give overlapping instances.
---
---   We have two types of dimension lists here: @[Nat]@ and @[XNat]@.
---   Thus, all types are indexed by the kind of the Dims, either @Nat@ or @XNat@.
-type family Array k t (ds :: [k]) = v | v -> t ds k where
-    Array k    t      '[]    = Scalar k t
-    Array Nat  Float  '[2]   = FloatX2 Nat
-    Array Nat  Float  '[3]   = FloatX3 Nat
-    Array Nat  Float  '[4]   = FloatX4 Nat
-    Array Nat  Double '[2]   = DoubleX2 Nat
-    Array Nat  Double '[3]   = DoubleX3 Nat
-    Array Nat  Double '[4]   = DoubleX4 Nat
-    Array XNat Float  '[N 2] = FloatX2 XNat
-    Array XNat Float  '[N 3] = FloatX3 XNat
-    Array XNat Float  '[N 4] = FloatX4 XNat
-    Array XNat Double '[N 2] = DoubleX2 XNat
-    Array XNat Double '[N 3] = DoubleX3 XNat
-    Array XNat Double '[N 4] = DoubleX4 XNat
-    Array k    t       ds    = ArrayBase k t ds
+type family Array (t :: Type) (ds :: [Nat]) = (v :: Type) | v -> t ds where
+    Array t      '[]    = Scalar t
+    Array Float  '[2]   = FloatX2
+    Array Float  '[3]   = FloatX3
+    Array Float  '[4]   = FloatX4
+    Array Double '[2]   = DoubleX2
+    Array Double '[3]   = DoubleX3
+    Array Double '[4]   = DoubleX4
+    Array t       ds    = ArrayBase t ds
 
 -- | A framework for using Array type family instances.
-class ArraySingleton k t (ds :: [k]) where
+class ArraySingleton (t :: Type) (ds :: [Nat]) where
     -- | Get Array type family instance
-    aSing :: ArraySing k t ds
+    aSing :: ArraySing t ds
 
-data ArraySing k t (ds :: [k]) where
-    AScalar :: (Array k t ds ~ Scalar k t)       => ArraySing k t     '[]
-    AF2     :: (Array k t ds ~ FloatX2 k)        => ArraySing k Float  ds
-    AF3     :: (Array k t ds ~ FloatX3 k)        => ArraySing k Float  ds
-    AF4     :: (Array k t ds ~ FloatX4 k)        => ArraySing k Float  ds
-    AD2     :: (Array k t ds ~ DoubleX2 k)       => ArraySing k Double ds
-    AD3     :: (Array k t ds ~ DoubleX3 k)       => ArraySing k Double ds
-    AD4     :: (Array k t ds ~ DoubleX4 k)       => ArraySing k Double ds
-    ABase   :: (Array k t ds ~ ArrayBase k t ds) => ArraySing k t      ds
+data ArraySing t (ds :: [Nat]) where
+    AScalar :: (Array t ds ~ Scalar t)       => ArraySing t     '[]
+    AF2     :: (Array t ds ~ FloatX2)        => ArraySing Float  ds
+    AF3     :: (Array t ds ~ FloatX3)        => ArraySing Float  ds
+    AF4     :: (Array t ds ~ FloatX4)        => ArraySing Float  ds
+    AD2     :: (Array t ds ~ DoubleX2)       => ArraySing Double ds
+    AD3     :: (Array t ds ~ DoubleX3)       => ArraySing Double ds
+    AD4     :: (Array t ds ~ DoubleX4)       => ArraySing Double ds
+    ABase   :: (Array t ds ~ ArrayBase t ds) => ArraySing t      ds
 
-deriving instance Eq (ArraySing k t ds)
-deriving instance Ord (ArraySing k t ds)
-deriving instance Show (ArraySing k t ds)
+deriving instance Eq (ArraySing t ds)
+deriving instance Ord (ArraySing t ds)
+deriving instance Show (ArraySing t ds)
 
 
 --
@@ -135,31 +126,19 @@ deriving instance Show (ArraySing k t ds)
 
 
 
-instance {-# OVERLAPPABLE #-} ArraySingleton k t (ds :: [k])    where
-    aSing = unsafeCoerce# (ABase :: ArraySing XNat t '[XN 0])
-instance {-# OVERLAPPING #-}  ArraySingleton k    t      '[]    where
+instance {-# OVERLAPPABLE #-} ArraySingleton t ds where
+    aSing = unsafeCoerce# (ABase :: ArraySing t '[0])
+instance {-# OVERLAPPING #-}  ArraySingleton t      '[]    where
     aSing = AScalar
-instance {-# OVERLAPPING #-}  ArraySingleton Nat  Float  '[2]   where
+instance {-# OVERLAPPING #-}  ArraySingleton Float  '[2]   where
     aSing = AF2
-instance {-# OVERLAPPING #-}  ArraySingleton Nat  Float  '[3]   where
+instance {-# OVERLAPPING #-}  ArraySingleton Float  '[3]   where
     aSing = AF3
-instance {-# OVERLAPPING #-}  ArraySingleton Nat  Float  '[4]   where
+instance {-# OVERLAPPING #-}  ArraySingleton Float  '[4]   where
     aSing = AF4
-instance {-# OVERLAPPING #-}  ArraySingleton XNat Float  '[N 2] where
-    aSing = AF2
-instance {-# OVERLAPPING #-}  ArraySingleton XNat Float  '[N 3] where
-    aSing = AF3
-instance {-# OVERLAPPING #-}  ArraySingleton XNat Float  '[N 4] where
-    aSing = AF4
-instance {-# OVERLAPPING #-}  ArraySingleton Nat  Double '[2]   where
+instance {-# OVERLAPPING #-}  ArraySingleton Double '[2]   where
     aSing = AD2
-instance {-# OVERLAPPING #-}  ArraySingleton Nat  Double '[3]   where
+instance {-# OVERLAPPING #-}  ArraySingleton Double '[3]   where
     aSing = AD3
-instance {-# OVERLAPPING #-}  ArraySingleton Nat  Double '[4]   where
-    aSing = AD4
-instance {-# OVERLAPPING #-}  ArraySingleton XNat Double '[N 2] where
-    aSing = AD2
-instance {-# OVERLAPPING #-}  ArraySingleton XNat Double '[N 3] where
-    aSing = AD3
-instance {-# OVERLAPPING #-}  ArraySingleton XNat Double '[N 4] where
+instance {-# OVERLAPPING #-}  ArraySingleton Double '[4]   where
     aSing = AD4

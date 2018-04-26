@@ -9,27 +9,27 @@ module Numeric.DataFrame.Internal.Array.Family.Scalar (Scalar (..)) where
 
 import           GHC.Base
 import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.Internal
+import           Numeric.DataFrame.Internal.Array.PrimOps
 import           Numeric.PrimBytes
 
 -- | Specialize scalar type without any arrays
-newtype Scalar k t = Scalar { _unScalar :: t }
+newtype Scalar t = Scalar { _unScalar :: t }
   deriving ( Enum, Eq, Integral
            , Num, Fractional, Floating, Ord, Read, Real, RealFrac, RealFloat
            , PrimBytes)
 
-instance Show t => Show (Scalar k t) where
+instance Show t => Show (Scalar t) where
   show (Scalar t) = "{ " ++ show t ++ " }"
 
-deriving instance {-# OVERLAPPABLE #-} Bounded t => Bounded (Scalar k t)
-instance {-# OVERLAPPING #-} Bounded (Scalar k Double) where
+deriving instance {-# OVERLAPPABLE #-} Bounded t => Bounded (Scalar t)
+instance {-# OVERLAPPING #-} Bounded (Scalar Double) where
   maxBound = Scalar inftyD
   minBound = Scalar $ negate inftyD
-instance {-# OVERLAPPING #-} Bounded (Scalar k Float) where
+instance {-# OVERLAPPING #-} Bounded (Scalar Float) where
   maxBound = Scalar inftyF
   minBound = Scalar $ negate inftyF
 
-instance PrimBytes t => PrimArray t (Scalar k t) where
+instance PrimBytes t => PrimArray t (Scalar t) where
   broadcast = unsafeCoerce#
   {-# INLINE broadcast #-}
   ix# _ = unsafeCoerce#

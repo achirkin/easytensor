@@ -7,20 +7,19 @@ module Numeric.DataFrame.Internal.Array.Family.DoubleX2 (DoubleX2 (..)) where
 
 import           GHC.Base
 import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Internal.Array.PrimOps
 import           Numeric.PrimBytes
 
 
-data DoubleX2 k = DoubleX2# Double# Double#
+data DoubleX2 = DoubleX2# Double# Double#
 
 
-instance Bounded (DoubleX2 k) where
-    maxBound = case infty of D# x -> DoubleX2# x x
-    minBound = case negate infty of D# x -> DoubleX2# x x
+instance Bounded DoubleX2 where
+    maxBound = case inftyD of D# x -> DoubleX2# x x
+    minBound = case negate inftyD of D# x -> DoubleX2# x x
 
-infty :: Double
-infty = read "Infinity"
 
-instance Show (DoubleX2 k) where
+instance Show DoubleX2 where
     show (DoubleX2# a1 a2)
       =  "{ " ++ show (D# a1)
       ++ ", " ++ show (D# a2)
@@ -28,7 +27,7 @@ instance Show (DoubleX2 k) where
 
 
 
-instance Eq (DoubleX2 k) where
+instance Eq DoubleX2 where
 
     DoubleX2# a1 a2 == DoubleX2# b1 b2 =
       isTrue#
@@ -48,7 +47,7 @@ instance Eq (DoubleX2 k) where
 
 -- | Implement partial ordering for `>`, `<`, `>=`, `<=`
 --           and lexicographical ordering for `compare`
-instance Ord (DoubleX2 k) where
+instance Ord DoubleX2 where
     DoubleX2# a1 a2 > DoubleX2# b1 b2 =
       isTrue#
       (       (a1 >## b1)
@@ -101,7 +100,7 @@ instance Ord (DoubleX2 k) where
 
 
 -- | element-wise operations for vectors
-instance Num (DoubleX2 k) where
+instance Num DoubleX2 where
 
     DoubleX2# a1 a2 + DoubleX2# b1 b2
       = DoubleX2# ((+##) a1 b1) ((+##) a2 b2)
@@ -139,7 +138,7 @@ instance Num (DoubleX2 k) where
 
 
 
-instance Fractional (DoubleX2 k) where
+instance Fractional DoubleX2 where
 
     DoubleX2# a1 a2 / DoubleX2# b1 b2 = DoubleX2#
       ((/##) a1 b1) ((/##) a2 b2)
@@ -154,7 +153,7 @@ instance Fractional (DoubleX2 k) where
 
 
 
-instance Floating (DoubleX2 k) where
+instance Floating DoubleX2 where
 
     pi = DoubleX2#
       3.141592653589793238##
@@ -228,7 +227,7 @@ instance Floating (DoubleX2 k) where
 
 
 
-instance PrimBytes (DoubleX2 k) where
+instance PrimBytes DoubleX2 where
 
     getBytes (DoubleX2# a1 a2) = case runRW#
        ( \s0 -> case newByteArray# (byteSize @Double undefined *# 3#) s0 of
@@ -289,7 +288,7 @@ instance PrimBytes (DoubleX2 k) where
     {-# INLINE writeArray #-}
 
 
-instance PrimArray Double (DoubleX2 k) where
+instance PrimArray Double DoubleX2 where
 
     broadcast (D# x) = DoubleX2# x x
     {-# INLINE broadcast #-}
@@ -306,7 +305,7 @@ instance PrimArray Double (DoubleX2 k) where
 
     upd# _ 0# (D# q) (DoubleX2# _ y) = DoubleX2# q y
     upd# _ 1# (D# q) (DoubleX2# x _) = DoubleX2# x q
-    upd# _ _ _ x                       = x
+    upd# _ _ _ x                     = x
     {-# INLINE upd# #-}
 
     elemOffset _ = 0#

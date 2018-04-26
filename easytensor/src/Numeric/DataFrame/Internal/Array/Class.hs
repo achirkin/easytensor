@@ -7,7 +7,7 @@ module Numeric.DataFrame.Internal.Array.Class
   ( PrimArray (..)
   ) where
 
-import           GHC.Base          (Int#, ByteArray#)
+import           GHC.Base          (ByteArray#, Int#)
 import           Numeric.PrimBytes
 
 
