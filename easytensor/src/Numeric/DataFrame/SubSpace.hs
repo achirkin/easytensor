@@ -52,6 +52,7 @@ class ( ConcatList as bs asbs
       , Dimensions as
       , Dimensions bs
       , Dimensions asbs
+      , PrimArray t (DataFrame t asbs)
       ) => SubSpace (t :: Type) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
                     | asbs as -> bs, asbs bs -> as, as bs -> asbs where
     -- | Unsafely get a sub-dataframe by its primitive element offset.
@@ -283,6 +284,7 @@ instance ( ConcatList as bs asbs
 
     ewgen x = case elemSize0 x of
       0# -> broadcast (ix# 0# x)
+      1# -> broadcast (ix# 0# x)
       lenAS
         | elS <- byteSize @t undefined
         , W# lenBSW <- totalDim' @bs
@@ -296,6 +298,7 @@ instance ( ConcatList as bs asbs
                   s1
                 )
             ) of (# _, r #) -> fromElems 0# lenASBS r
+    {-# INLINE [1] ewgen #-}
 
     iwgen f
       | elS <- byteSize @t undefined
@@ -394,3 +397,12 @@ instance ( ConcatList as bs asbs
         !(I# rezStepN#) = fromIntegral $ totalDim' @as
         -- Number of primitive elements in the result DataFrame
         !(I# rezLength#) = fromIntegral $ totalDim' @asbs
+
+
+unSc :: DataFrame (t :: Type) ('[] :: [Nat]) -> t
+unSc = unsafeCoerce#
+
+{-# RULES
+"ewgen/broadcast" ewgen = broadcast . unSc
+
+  #-}
