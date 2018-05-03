@@ -38,10 +38,10 @@
 -----------------------------------------------------------------------------
 module Numeric.Dim
   ( -- * Type level numbers that can be unknown.
-    XNat (..), XN, N
+    XNat (..), XN, N, XNatType (..)
     -- * Term level dimension
   , Dim (Dim, D, Dn, Dx), SomeDim
-  , KnownDim (..)
+  , KnownDim (..), KnownXNatType (..)
   , dimVal, dimVal', someDimVal
   , sameDim, sameDim'
   , compareDim, compareDim'
@@ -63,14 +63,14 @@ module Numeric.Dim
   , plusDim, minusDim, minusDimM, timesDim, powerDim
     -- * Re-export part of `GHC.TypeLits` for convenience
   , Nat, CmpNat, type (+), type (-), type (*), type (^)
-  , MinDim, inferDimLE
+  , MinDim, FixedDim, inferDimLE
   ) where
 
 
 import           Data.Type.Bool
 import           Data.Type.Equality
-import           GHC.Exts              (Constraint, Proxy#, proxy#,
-                                        unsafeCoerce#)
+import           GHC.Base           (Type)
+import           GHC.Exts           (Constraint, Proxy#, proxy#, unsafeCoerce#)
 import           GHC.TypeLits
 
 import           Numeric.Type.Evidence
@@ -82,6 +82,13 @@ data XNat = XN Nat | N Nat
 type XN (n::Nat) = 'XN n
 -- | Known natural number
 type N (n::Nat) = 'N n
+
+-- | Find out whether @XNat@ is of known or constrained type.
+data XNatType :: XNat -> Type where
+  -- | Given @XNat@ is known
+  Nt  :: XNatType ('N n)
+  -- | Given @XNat@ is constrained unknown
+  XNt :: XNatType ('XN m)
 
 -- | Same as `SomeNat`
 type SomeDim = Dim ('XN 0)
@@ -102,8 +109,7 @@ newtype Dim (x :: k) = DimSing Word
 -- pattern synonyms.
 #if __GLASGOW_HASKELL__ >= 802
 {-# COMPLETE D #-}
-{-# COMPLETE Dn #-}
-{-# COMPLETE Dx #-}
+{-# COMPLETE Dn, Dx #-}
 {-# COMPLETE Dim #-}
 #endif
 
@@ -126,19 +132,19 @@ pattern D <- (dimEv -> E)
     D = dim @_ @n
 
 -- | Statically known `XNat`
-pattern Dn :: forall (n :: Nat) . () => KnownDim n => Dim n -> Dim (N n)
-pattern Dn k <- (dimNEv -> ( E, k ))
+pattern Dn :: forall (xn :: XNat) . KnownXNatType xn
+           => forall (n :: Nat) . (KnownDim n, xn ~ 'N n) => Dim n -> Dim xn
+pattern Dn k <- (dimXNEv (xNatType @xn) -> PatN k)
   where
     Dn k = unsafeCoerce# k
 
 -- | `XNat` that is unknown at compile time.
 --   Same as `SomeNat`, but for a dimension:
 --   Hide dimension size inside, but allow specifying its minimum possible value.
-pattern Dx :: forall (m :: Nat)
-            . ()
-           => forall (n :: Nat)
-            . (MinDim m n, KnownDim n) => Dim n -> Dim (XN m)
-pattern Dx k <- (dimXNEv @m -> DimXNEv k)
+pattern Dx :: forall (xn :: XNat) . KnownXNatType xn
+           => forall (n :: Nat) (m :: Nat)
+            . (KnownDim n, MinDim m n, xn ~ 'XN m) => Dim n -> Dim xn
+pattern Dx k <- (dimXNEv (xNatType @xn) -> PatXN k)
   where
     Dx k = unsafeCoerce# k
 
@@ -165,6 +171,21 @@ class KnownDim (n :: k) where
     --   dim @_ @(N 17) :: Dim (N 17)
     --
     dim :: Dim n
+
+
+  -- | Find out the type of `XNat` constructor
+class KnownXNatType (n :: XNat) where
+  -- | Pattern-match against this to out the type of `XNat` constructor
+  xNatType :: XNatType n
+
+instance KnownXNatType ('N n) where
+  xNatType = Nt
+  {-# INLINE xNatType #-}
+
+instance KnownXNatType ('XN n) where
+  xNatType = XNt
+  {-# INLINE xNatType #-}
+
 
 -- | Similar to `natVal` from `GHC.TypeLits`, but returns `Word`.
 dimVal :: Dim (x :: k) -> Word
@@ -193,6 +214,11 @@ type family MinDim (m :: Nat) (n :: Nat) :: Constraint where
          ) :: Constraint
        )
        (m <= n)
+
+-- | Constraints given by an XNat type on possible values of a Nat hidden inside.
+type family FixedDim (x :: XNat) (n :: Nat) :: Constraint where
+  FixedDim ('N a)  b = a ~ b
+  FixedDim ('XN m) b = MinDim m b
 
 instance {-# OVERLAPPABLE #-} KnownNat n => KnownDim n where
     {-# INLINE dim #-}
@@ -379,25 +405,21 @@ dimEv :: Dim d -> Evidence (KnownDim d)
 dimEv d = reifyDim d E
 {-# INLINE dimEv #-}
 
-dimNEv :: forall n . Dim (N n) -> ( Evidence (KnownDim n), Dim n )
-dimNEv (DimSing k) =
-  ( reifyDim (DimSing @Nat @n k) E
-  , unsafeCoerce# k
-  )
-{-# INLINE dimNEv #-}
+data PatXDim (xn :: XNat) where
+  PatN :: KnownDim n => Dim n -> PatXDim ('N n)
+  PatXN :: (KnownDim n, MinDim m n) => Dim n -> PatXDim ('XN m)
 
-
-data DimXNEv (m :: Nat)
-  = forall (n :: Nat)
-  . (MinDim m n, KnownDim n) => DimXNEv {-# UNPACK #-} !(Dim n)
-
-dimXNEv :: forall m . Dim (XN m) -> DimXNEv m
-dimXNEv (DimSing k) = reifyDim dd (f dd)
+dimXNEv :: forall (xn :: XNat) . XNatType xn -> Dim xn -> PatXDim xn
+dimXNEv Nt (DimSing k) = reifyDim dd (PatN dd)
   where
     dd = DimSing @Nat @_ k
-    f :: forall (d :: Nat) . KnownDim d => Dim d -> DimXNEv m
-    f d = case ( unsafeCoerce# (E @((CmpNat m m == 'GT) ~ 'False, m <= m))
+dimXNEv XNt xn@(DimSing k) = reifyDim dd (f dd xn)
+  where
+    dd = DimSing @Nat @_ k
+    f :: forall (d :: Nat) (m :: Nat)
+       . KnownDim d => Dim d -> Dim ('XN m) -> PatXDim ('XN m)
+    f d _ = case ( unsafeCoerce# (E @((CmpNat m m == 'GT) ~ 'False, m <= m))
                 :: Evidence ((CmpNat m d == 'GT) ~ 'False, m <= d)
                ) of
-      E -> DimXNEv d
+      E -> PatXN d
 {-# INLINE dimXNEv #-}

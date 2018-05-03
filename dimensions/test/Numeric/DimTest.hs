@@ -12,8 +12,15 @@
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeOperators             #-}
 
-
-
+-- | Some GHC versions show incorrect warnings here:
+--
+--   GHC 8.2 says "Pattern match has inaccessible right hand side"
+--    if our GADT-like patterns are matched nested:
+--    https://ghc.haskell.org/trac/ghc/ticket/14253
+--
+--   GHC 8.0 says "Pattern match(es) are non-exhaustive"
+--    because it does not support COMPLETE pragmas yet.
+--
 module Numeric.DimTest (runTests) where
 
 import           Test.QuickCheck       (quickCheckAll)

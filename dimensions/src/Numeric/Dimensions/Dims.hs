@@ -40,14 +40,14 @@
 
 module Numeric.Dimensions.Dims
   ( Dims, SomeDims (..), Dimensions (..)
-  , TypedList (Dims, U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
+  , TypedList (Dims, XDims, U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
   , listDims, someDimsVal, totalDim, totalDim'
   , sameDims, sameDims'
   , compareDims, compareDims'
   , inSpaceOf, asSpaceOf
     -- * Type-level programming
     --   Provide type families to work with lists of dimensions (`[Nat]` or `[XNat]`)
-  , AsXDims, AsDims, type (:<), type (>:)
+  , AsXDims, AsDims, FixedDims, type (:<), type (>:)
     -- * Re-export type list
   , RepresentableList (..), TypeList, types
   , order, order'
@@ -57,7 +57,7 @@ module Numeric.Dimensions.Dims
 
 
 
-import           GHC.Exts              (unsafeCoerce#)
+import           GHC.Exts              (unsafeCoerce#, Constraint)
 import qualified Text.Read             as Read
 
 import           Numeric.Dim
@@ -74,8 +74,8 @@ type Dims (xs :: [k]) = TypedList Dim xs
 -- pattern synonyms.
 #if __GLASGOW_HASKELL__ >= 802
 {-# COMPLETE Dims #-}
+{-# COMPLETE XDims #-}
 #endif
-
 
 -- | Pattern-matching against this constructor brings a `Dimensions` instance
 --   into the scope.
@@ -86,11 +86,24 @@ pattern Dims <- (dimsEv -> E)
   where
     Dims = dims @_ @ds
 
+-- | Pattern-matching against this constructor reveals Nat-kinded list of dims,
+--   pretending the dimensionality is known at compile time within the scope
+--   of the pattern match.
+--   This is the main recommended way to get `Dims` at runtime;
+--   for example, reading a list of dimensions from a file.
+--
+--   In order to use this pattern, one must know @XNat@ type constructors in
+--   each dimension at compile time.
+pattern XDims :: forall (xns :: [XNat]) . KnownXNatTypes xns
+              => forall (ns :: [Nat]) . (FixedDims xns ns, Dimensions ns)
+              => Dims ns -> Dims xns
+pattern XDims ns <- (patXDims -> PatXDims ns)
+  where
+    XDims ns = unsafeCoerce# ns
 
 -- | Same as SomeNat, but for Dimensions:
 --   Hide all information about Dimensions inside
 data SomeDims = forall (ns :: [Nat]) . SomeDims (Dims ns)
-
 
 class Dimensions (ds :: [k]) where
     -- | Get dimensionality of a space at runtime,
@@ -263,6 +276,15 @@ type family AsDims (xns::[XNat]) = (ns :: [Nat]) | ns -> xns where
     AsDims '[] = '[]
     AsDims (N x ': xs) = x ': AsDims xs
 
+-- | Constrain @Nat@ dimensions hidden behind @XNat@s.
+type family FixedDims (xns::[XNat]) (ns :: [Nat]) :: Constraint where
+    FixedDims '[] '[] = ()
+    FixedDims (xn ': xns)  (n ': ns) = (FixedDim xn n, FixedDims xns ns)
+
+-- | Know the structure of each dimension
+type KnownXNatTypes xns = All KnownXNatType xns
+
+
 -- | Synonym for (:+) that treats Nat values 0 and 1 in a special way:
 --   it preserves the property that all dimensions are greater than 1.
 type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
@@ -298,3 +320,21 @@ newtype MagicDims ds r = MagicDims (Dimensions ds => r)
 dimsEv :: Dims ds -> Evidence (Dimensions ds)
 dimsEv ds = reifyDims ds E
 {-# INLINE dimsEv #-}
+
+
+data PatXDims (xns :: [XNat])
+  = forall (ns :: [Nat])
+  . (FixedDims xns ns, Dimensions ns) => PatXDims (Dims ns)
+
+
+patXDims :: All KnownXNatType xns => Dims xns -> PatXDims xns
+patXDims U = PatXDims U
+patXDims (Dn n :* xns) = case patXDims xns of
+  PatXDims ns -> PatXDims (n :* ns)
+patXDims (Dx n :* xns) = case patXDims xns of
+  PatXDims ns -> PatXDims (n :* ns)
+#if __GLASGOW_HASKELL__ >= 802
+#else
+patXDims _ = error "XDims/patXDims: impossible argument"
+#endif
+{-# INLINE patXDims #-}
