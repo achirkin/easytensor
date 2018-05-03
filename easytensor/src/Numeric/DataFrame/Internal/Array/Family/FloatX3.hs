@@ -255,7 +255,7 @@ instance PrimBytes FloatX3 where
     {-# INLINE getBytes #-}
 
     fromBytes off arr
-      | i <- uncheckedIShiftRL# off 3#
+      | i <- uncheckedIShiftRL# off 2#
       = FloatX3#
       (indexFloatArray# arr i)
       (indexFloatArray# arr (i +# 1#))
@@ -263,7 +263,7 @@ instance PrimBytes FloatX3 where
     {-# INLINE fromBytes #-}
 
     readBytes mba off s0
-      | i <- uncheckedIShiftRL# off 3#
+      | i <- uncheckedIShiftRL# off 2#
       = case readFloatArray# mba i s0 of
       (# s1, a1 #) -> case readFloatArray# mba (i +# 1#) s1 of
         (# s2, a2 #) -> case readFloatArray# mba (i +# 2#) s2 of
@@ -271,7 +271,7 @@ instance PrimBytes FloatX3 where
     {-# INLINE readBytes #-}
 
     writeBytes mba off (FloatX3# a1 a2 a3) s
-      | i <- uncheckedIShiftRL# off 3#
+      | i <- uncheckedIShiftRL# off 2#
       = writeFloatArray# mba (i +# 2#) a3
       ( writeFloatArray# mba (i +# 1#) a2
       ( writeFloatArray# mba  i        a1 s ))

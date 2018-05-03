@@ -47,7 +47,7 @@ module Numeric.Dimensions.Dims
   , inSpaceOf, asSpaceOf
     -- * Type-level programming
     --   Provide type families to work with lists of dimensions (`[Nat]` or `[XNat]`)
-  , AsXDims, AsDims, FixedDims, type (:<), type (>:)
+  , AsXDims, AsDims, FixedDims, KnownXNatTypes, type (:<), type (>:)
     -- * Re-export type list
   , RepresentableList (..), TypeList, types
   , order, order'

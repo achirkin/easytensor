@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 -- {-# LANGUAGE IncoherentInstances   #-}
+{-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
@@ -13,10 +14,11 @@
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
-{-# LANGUAGE Rank2Types  #-}
-
 module Numeric.PrimBytes
-  ( PrimBytes (..)
+  ( PrimBytes
+    ( getBytes, fromBytes, readBytes, writeBytes, byteSize, byteAlign, byteOffset
+    , indexArray, readArray, writeArray)
+  , PrimTag (..), primTag
   ) where
 
 #include "MachDeps.h"
@@ -32,7 +34,7 @@ import qualified Numeric.Tuple.Strict    as TS
 import qualified Numeric.Type.List       as L
 
 -- | Facilities to convert to and from raw byte array.
-class PrimBytes a where
+class PrimTagged a => PrimBytes a where
     -- | Store content of a data type in a primitive byte array
     --   Should be used together with @byteOffset@ function.
     getBytes :: a -> ByteArray#
@@ -82,6 +84,8 @@ class PrimBytes a where
     writeArray ba i = writeArray ba (i *# byteSize @a undefined)
     {-# INLINE writeArray #-}
 
+
+
     default getBytes :: (Generic a, GPrimBytes (Rep a)) => a -> ByteArray#
     getBytes a = ggetBytes (from a)
     {-# INLINE getBytes #-}
@@ -116,6 +120,7 @@ class PrimBytes a where
                      => a -> Int#
     byteOffset a = gbyteOffset (from a)
     {-# INLINE byteOffset #-}
+
 
 -- | Deriving `PrimBytes` using generics
 class GPrimBytes f where
@@ -662,7 +667,7 @@ instance PrimBytes Double where
     {-# INLINE writeArray #-}
 
 
-instance PrimBytes (Ptr ()) where
+instance PrimBytes (Ptr a) where
     getBytes (Ptr x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_HSPTR# s0 of
          (# s1, marr #) -> case writeAddrArray# marr 0# x s1 of
@@ -779,7 +784,6 @@ instance PrimBytes Int32 where
     {-# INLINE readArray #-}
     writeArray mba i (I32# x) = writeInt32Array# mba i x
     {-# INLINE writeArray #-}
-
 instance PrimBytes Int64 where
     getBytes (I64# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_INT64# s0 of
@@ -959,7 +963,7 @@ instance RepresentableList xs => PrimBytes (Idxs xs) where
     fromBytes off ba = unsafeCoerce#
         (go (uncheckedIShiftRL# off OFFSHIFT_W#) (unsafeCoerce# (tList @_ @xs)))
       where
-        go _ [] = []
+        go _ []           = []
         go i (Proxy : ls) = W# (indexWordArray# ba i) : go (i +# 1#) ls
     {-# INLINE fromBytes #-}
     readBytes mba off s = unsafeCoerce#
@@ -1104,3 +1108,86 @@ undefP = const undefined
 instance PrimBytes a => PrimBytes (Maybe a)
 instance (PrimBytes a, PrimBytes b) => PrimBytes (Either a b)
 instance PrimBytes a => PrimBytes [a] -- ??? likely to give inf byteSize
+
+
+data PrimTag a where
+    PTagFloat  :: PrimTag Float
+    PTagDouble :: PrimTag Double
+    PTagInt    :: PrimTag Int
+    PTagInt8   :: PrimTag Int8
+    PTagInt16  :: PrimTag Int16
+    PTagInt32  :: PrimTag Int32
+    PTagInt64  :: PrimTag Int64
+    PTagWord   :: PrimTag Word
+    PTagWord8  :: PrimTag Word8
+    PTagWord16 :: PrimTag Word16
+    PTagWord32 :: PrimTag Word32
+    PTagWord64 :: PrimTag Word64
+    PTagPtr    :: PrimTag (Ptr a)
+    PTagOther  :: PrimTag a
+
+class PrimTagged a where
+    primTag' :: a -> PrimTag a
+
+-- | This function allows to find out a type by comparing its tag.
+--   This is needed for array overloading, to infer array instances.
+--   For non-basic types it defaults to `PTagOther`
+primTag :: PrimBytes a => a -> PrimTag a
+primTag = primTag'
+{-# INLINE primTag #-}
+
+instance {-# OVERLAPPABLE #-} PrimTagged a where
+    primTag' = const PTagOther
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged Float where
+    primTag' = const PTagFloat
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged Double where
+    primTag' = const PTagDouble
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged Int where
+    primTag' = const PTagInt
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged Int8 where
+    primTag' = const PTagInt8
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged Int16 where
+    primTag' = const PTagInt16
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged Int32 where
+    primTag' = const PTagInt32
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged Int64 where
+    primTag' = const PTagInt64
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged Word where
+    primTag' = const PTagWord
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged Word8 where
+    primTag' = const PTagWord8
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged Word16 where
+    primTag' = const PTagWord16
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged Word32 where
+    primTag' = const PTagWord32
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged Word64 where
+    primTag' = const PTagWord64
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged (Ptr a) where
+    primTag' = const PTagPtr
+    {-# INLINE primTag' #-}

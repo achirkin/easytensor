@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns              #-}
+{-# LANGUAGE AllowAmbiguousTypes       #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
@@ -28,123 +28,116 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.Shape
-    (
-    --   (<:>), (<::>), (<+:>)
+    ( (<:>), (<::>), (<+:>)
     -- , fromList, DataFrameToList (..)
     -- ,
-    fromScalar
+    , fromScalar
+    , fromListN, fromList
     ) where
 
 -- import           Data.Type.Equality          ((:~:) (..))
 import           GHC.Base
-import qualified GHC.Exts                    as Exts (IsList (..))
 
 import           Numeric.PrimBytes
+import qualified Numeric.TypedList                       as Dims
 -- import           Numeric.DataFrame.Inference
+import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Internal.Array.Family (ArraySingleton (..),
+                                                          aSingSnoc, inferPrim)
+import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
-import           Numeric.Scalar              as Scalar
-import           Numeric.Vector              (vec2)
---
--- -- | Append one DataFrame to another, adding up their last dimensionality
--- (<:>) :: forall (n :: Nat) (m :: Nat) (npm :: Nat) (ds :: [Nat])
---                 (t :: Type)
---        . ( PrimBytes (DataFrame t (ds +: n))
---          , PrimBytes (DataFrame t (ds +: m))
---          , PrimBytes (DataFrame t (ds +: npm))
---          , npm ~ (n + m)
---          , n   ~ (npm - m)
---          , m   ~ (npm - n)
---          )
---         => DataFrame t (ds +: n)
---         -> DataFrame t (ds +: m)
---         -> DataFrame t (ds +: npm)
--- a <:> b = case (# toBytes a, toBytes b
---                 , byteSize a
---                 , byteSize b
---                 , elementByteSize a #) of
---   (# (# off1, n1, arr1 #), (# off2, n2, arr2 #), bs1, bs2, ebs #) -> case runRW#
---      ( \s0 -> case newByteArray# (bs1 +# bs2) s0 of
---          (# s1, mr #) -> case copyByteArray# arr1 (off1 *# ebs) mr 0# bs1 s1 of
---            s2 -> case copyByteArray# arr2 (off2 *# ebs) mr bs1 bs2 s2 of
---              s3 -> unsafeFreezeByteArray# mr s3
---      ) of (# _, r #) -> fromBytes (# 0#, n1 +# n2, r #)
--- infixl 5 <:>
---
--- -- | Append one DataFrame to another, adding up their last dimensionality
--- (<::>) :: forall (ds :: [Nat]) (t :: Type)
---        .  ( PrimBytes (DataFrame t ds)
---           , PrimBytes (DataFrame t ds)
---           , PrimBytes (DataFrame t (ds +: 2 :: [Nat]))
---           )
---         => DataFrame t ds
---         -> DataFrame t ds
---         -> DataFrame t (ds +: 2 :: [Nat])
--- a <::> b = case (# toBytes a, toBytes b
---                 , byteSize a
---                 , byteSize b
---                 , elementByteSize a #) of
---   (# (# off1, n1, arr1 #), (# off2, n2, arr2 #), bs1, bs2, ebs #) -> case runRW#
---      ( \s0 -> case newByteArray# (bs1 +# bs2) s0 of
---          (# s1, mr #) -> case copyByteArray# arr1 (off1 *# ebs) mr 0# bs1 s1 of
---            s2 -> case copyByteArray# arr2 (off2 *# ebs) mr bs1 bs2 s2 of
---              s3 -> unsafeFreezeByteArray# mr s3
---      ) of (# _, r #) -> fromBytes (# 0#, n1 +# n2, r #)
--- infixl 5 <::>
--- {-# NOINLINE [1] (<::>) #-}
---
--- {-# RULES
--- "<::>/vec2-Float"  forall (a :: Scalar Float)  (b :: Scalar Float)  . a <::> b = vec2 (unScalar a) (unScalar b)
--- "<::>/vec2-Double" forall (a :: Scalar Double) (b :: Scalar Double) . a <::> b = vec2 (unScalar a) (unScalar b)
--- "<::>/vec2-Int"    forall (a :: Scalar Int)    (b :: Scalar Int)    . a <::> b = vec2 (unScalar a) (unScalar b)
--- -- "<::>/vec2-Word"   forall (a :: Scalar Word)   (b :: Scalar Word)   . a <::> b = vec2 (unScalar a) (unScalar b)
---   #-}
---
--- -- | Append one DataFrame to another, adding up their last dimensionality
--- (<+:>) :: forall (ds :: [Nat]) (n :: Nat) (m :: Nat) (t :: Type)
---         . ( PrimBytes (DataFrame t (ds +: n))
---           , PrimBytes (DataFrame t ds)
---           , PrimBytes (DataFrame t (ds +: m))
---           , m ~ (n + 1)
---           )
---         => DataFrame t (ds +: n)
---         -> DataFrame t ds
---         -> DataFrame t (ds +: m)
--- a <+:> b = case (# toBytes a, toBytes b
---                 , byteSize a
---                 , byteSize b
---                 , elementByteSize a #) of
---   (# (# off1, n1, arr1 #), (# off2, n2, arr2 #), bs1, bs2, ebs #) -> case runRW#
---      ( \s0 -> case newByteArray# (bs1 +# bs2) s0 of
---          (# s1, mr #) -> case copyByteArray# arr1 (off1 *# ebs) mr 0# bs1 s1 of
---            s2 -> case copyByteArray# arr2 (off2 *# ebs) mr bs1 bs2 s2 of
---              s3 -> unsafeFreezeByteArray# mr s3
---      ) of (# _, r #) -> fromBytes (# 0#, n1 +# n2, r #)
--- infixl 5 <+:>
+import           Numeric.Scalar                          as Scalar
+import           Numeric.Vector
 
+-- | Append one DataFrame to another, sum up last dimension
+(<:>) :: forall (n :: Nat) (m :: Nat) (npm :: Nat) (ds :: [Nat])
+                (t :: Type)
+       . ( PrimBytes (DataFrame t (ds +: n))
+         , PrimBytes (DataFrame t (ds +: m))
+         , PrimBytes (DataFrame t (ds +: npm))
+         , npm ~ (n + m)
+         , n   ~ (npm - m)
+         , m   ~ (npm - n)
+         )
+        => DataFrame t (ds +: n)
+        -> DataFrame t (ds +: m)
+        -> DataFrame t (ds +: npm)
+(<:>) = appendDF
+infixl 5 <:>
+{-# INLINE [1] (<:>) #-}
+
+-- | Append one DataFrame to another,
+--   add another @Dim = 2@ to their dimension list.
+(<::>) :: forall (ds :: [Nat]) (t :: Type)
+       .  ( PrimBytes (DataFrame t ds)
+          , PrimBytes (DataFrame t ds)
+          , PrimBytes (DataFrame t (ds +: 2 :: [Nat]))
+          )
+        => DataFrame t ds
+        -> DataFrame t ds
+        -> DataFrame t (ds +: 2 :: [Nat])
+(<::>) = appendDF
+infixl 5 <::>
+{-# INLINE [1] (<::>) #-}
+
+
+vec2t :: forall t . SubSpace t '[] '[2] '[2] => Scalar t -> Scalar t -> Vector t 2
+vec2t = unsafeCoerce# (vec2 @t)
+{-# INLINE vec2t #-}
+
+{-# RULES
+"<::>/vec2-Float"  (<::>) = vec2t @Float
+"<::>/vec2-Double" (<::>) = vec2t @Double
+"<::>/vec2-Int"    (<::>) = vec2t @Int
+"<::>/vec2-Word"   (<::>) = vec2t @Word
+  #-}
+
+-- | Grow the first DataFrame by adding the second one to it
+--   incrementing the last Dim in the list.
+(<+:>) :: forall (ds :: [Nat]) (n :: Nat) (m :: Nat) (t :: Type)
+        . ( PrimBytes (DataFrame t (ds +: n))
+          , PrimBytes (DataFrame t ds)
+          , PrimBytes (DataFrame t (ds +: m))
+          , m ~ (n + 1)
+          )
+        => DataFrame t (ds +: n)
+        -> DataFrame t ds
+        -> DataFrame t (ds +: m)
+(<+:>) = appendDF
+infixl 5 <+:>
+{-# INLINE [1] (<+:>) #-}
+
+
+-- | Concatenate a list of @DataFrame@s.
+--   Returns @Nothing@ if the list does not have enough elements.
 --
--- -- | Input must be parametrized by [Nat] to make sure every element
--- --   in the input list has the same dimensionality.
--- --   Output is in [XNat], because the last dimension is unknown at compile time
--- fromList :: forall ns t xns xnsm
---           . ( ns ~ AsDims xns
---             , xnsm ~ (xns +: XN 2)
---             , PrimBytes (DataFrame t ns)
---             , Dimensions ns
---             , ArrayInstanceInference t ns
---             )
---          => [DataFrame t ns] -> DataFrame t (xns +: XN 2)
--- fromList xs = fromListN (length xs) xs
---
--- -- | Implement function `toList`.
--- --   We need to create a dedicated type class for this
--- --   to make it polymorphic over kind k (Nat <-> XNat).
--- class DataFrameToList t z (ds :: [k]) where
---     -- | Unwrap the last dimension of a DataFrame into a list  of smaller frames
---     toList :: DataFrame t (ds +: z) -> [DataFrame t ds]
---
---
---
+--   Input must be parametrized by @[Nat]@ to make sure every element
+--   in the input list has the same dimensionality.
+--   Output is in @[XNat]@, because the last dimension is unknown at compile time.
+fromList :: forall m ns t
+          . ( Dimensions ns
+            , ArraySingleton t ns
+            , PrimBytes t
+            )
+         => Dim m
+            -- ^ Minimum number of elements in a list
+         -> [DataFrame t ns]
+            -- ^ List of frames to concatenate
+         -> Maybe (DataFrame t (AsXDims ns +: XN m))
+fromList d xs = fromListN d (length xs) xs
+
+
+
+-- | Implement function `toList`.
+--   We need to create a dedicated type class for this
+--   to make it polymorphic over kind k (Nat <-> XNat).
+class DataFrameToList t (ds :: [k]) (z :: k) where
+    -- | Unwrap the last dimension of a DataFrame into a list  of smaller frames
+    toList :: DataFrame t (ds +: z) -> [DataFrame t ds]
+
+
+
 -- instance ( Dimensions ns
 --          , Dimensions (ns +: z)
 --          , PrimBytes (DataFrame t ns)
@@ -193,53 +186,69 @@ import           Numeric.Vector              (vec2)
 --                                         )
 --                                       : go p step arr lim (pos +# step)
 --   toList _ = error "(DataFrameToList.ToList) Impossible happend: DataFrame has rank zero!"
---
---
--- fromListN :: forall ns t xns xnsm
---            . ( ns ~ AsDims xns
---              , xnsm ~ (xns +: XN 2)
---              , PrimBytes (DataFrame t ns)
---              , Dimensions ns
---              , ArrayInstanceInference t ns
---              )
---           => Int -> [DataFrame t ns] -> DataFrame t (xns +: XN 2)
--- fromListN _ []  = error "DataFrame fromList: the list must have at least two elements"
--- fromListN _ [_] = error "DataFrame fromList: the list must have at least two elements"
--- fromListN n@(I# n#) xs  | Just (SomeNat (pm :: Proxy m)) <- someNatVal (fromIntegral n)
---                         , (pnsm, Refl, Refl, Refl) <- snocP pm
---                         , I# len# <- totalDim (Proxy @ns)
---                         , resultBytes# <- df len#
---                         , Evidence <- inferSnocDimensions @ns @m
---                         , Evidence <- inferSnocArrayInstance (head xs) pm
---                         , Evidence <- inferPrimBytes @t @(ns +: m)
---                         , Evidence <- inferNumericFrame @t @(ns +: m)
---     = SomeDataFrame . enforceDim @t pnsm $ fromBytes (# 0#, n# *# len#, resultBytes# #)
---   where
---     elSize# = elementByteSize (head xs)
---     df :: Int# -> ByteArray#
---     df len# = case runRW#
---       ( \s0 -> let !(# s1, marr #) = newByteArray# (n# *# elSize# *# len#) s0
---                    go s _ [] = s
---                    go s pos (earr : as) = case toBytes earr of
---                      (# eoff#, _, ea #) -> go
---                        (copyByteArray# ea (eoff# *# elSize#) marr (pos *# elSize#) (elSize# *# len#) s)
---                        (pos +# len#)
---                        as
---                    s2 = go s1 0# xs
---                in unsafeFreezeByteArray# marr s2
---       ) of (# _, r #) -> r
---     snocP :: forall m . Proxy m ->
---            ( Proxy (ns +: m)
---            , FixedXDim xnsm (ns +: m) :~: xnsm
---            , FixedDim  xnsm (ns +: m) :~: (ns +: m)
---            , (2 <=? m) :~: 'True
---            )
---     snocP _ = (Proxy, unsafeCoerce Refl, unsafeCoerce Refl, unsafeCoerce Refl)
---     enforceDim :: forall s nsm . Proxy nsm -> DataFrame s nsm -> DataFrame s nsm
---     enforceDim _ = id
--- fromListN n _ = error $ "DataFrame fromList: not a proper list length: " ++ show n
---
---
+
+-- | Concatenate a list of @DataFrame@s.
+--   Returns @Nothing@ if the list does not have enough elements
+--   or if provided length is invalid.
+fromListN :: forall m ns t
+           . ( Dimensions ns
+             , ArraySingleton t ns
+             , PrimBytes t
+             )
+          => Dim m
+             -- ^ Minimum number of elements in a list
+          -> Int
+             -- ^ How many elements of a list to take.
+             --   Must be not smaller than @m@ and not greater than @length ns@.
+          -> [DataFrame t ns]
+             -- ^ List of frames to concatenate
+          -> Maybe (DataFrame t (AsXDims ns +: XN m))
+fromListN Dim n@(I# n#) xs'
+  | n < 0 = Nothing
+  | Just (Dx dn@(D :: Dim n)) <- constrain @m (someDimVal (fromIntegral n))
+  , Just xs <- takeMaybe n xs'
+  , ns <- dims @Nat @ns
+  , E <- inferKnownXNatTypes ns
+  , dns@Dims <- Dims.snoc (dims @Nat @ns) dn
+  , E <- knownXNatTypeSnoc @(AsXDims ns) @(XN m)
+  , (XDims dns') <- unsafeCoerce# dns :: Dims (AsXDims ns +: XN m)
+  , Just E <- sameDims dns dns'
+  , E <- inferPrim @t @ns
+  , E <- aSingSnoc @t @ns @n
+  , E <- inferPrim @t @(ns +: n)
+  , I# partElN <- fromIntegral $ totalDim' @ns
+  , totalElN <- partElN *# n#
+  , elS <- byteSize @t undefined
+  , partBS <- partElN *# elS
+  = case runRW#
+    ( \s0 -> case newByteArray# (totalElN *# elS) s0 of
+        (# s1, mba #) ->
+          let go _ [] s = s
+              go off (p : ps) s = go (off +# partBS) ps (writeBytes mba off p s)
+          in unsafeFreezeByteArray# mba (go 0# xs s1)
+    ) of (# _, r #)
+            -> Just (XFrame (fromElems 0# totalElN r :: DataFrame t (ns +: n)))
+fromListN _ _ _ = Nothing
+
+takeMaybe :: Int -> [a] -> Maybe [a]
+takeMaybe 0 _        = Just []
+takeMaybe _ []       = Nothing
+takeMaybe n (x : xs) = (x:) <$> takeMaybe (n-1) xs
+
+-- TODO: Move to dimensions
+inferKnownXNatTypes :: forall ns
+                     . Dims ns -> Evidence (KnownXNatTypes (AsXDims ns))
+inferKnownXNatTypes U         = E
+inferKnownXNatTypes (_ :* ds) = case inferKnownXNatTypes ds of E -> E
+
+-- TODO: Move to dimensions
+knownXNatTypeSnoc :: forall xns x
+                   . (KnownXNatTypes xns, KnownXNatType x)
+                  => Evidence (KnownXNatTypes (xns +: x))
+knownXNatTypeSnoc = unsafeCoerce# (E @(KnownXNatTypes xns, KnownXNatType x))
+
+
+
 -- instance ( xnsm ~ (x ': xns')
 --          , xns ~ Init xnsm
 --          , Last xnsm ~ XN 2
@@ -255,3 +264,17 @@ import           Numeric.Vector              (vec2)
 --   fromListN = fromListN
 --   toList (SomeDataFrame (df :: DataFrame t ds))
 --     | Refl <- unsafeCoerce Refl :: ds :~: (ns +: Last ds) = toList df
+
+
+
+appendDF :: (PrimBytes x, PrimBytes y, PrimBytes z)
+         => x -> y -> z
+appendDF x y
+  | sx <- byteSize x
+  = case runRW#
+    ( \s0 -> case newByteArray# (sx +# byteSize y) s0 of
+        (# s1, mba #) -> unsafeFreezeByteArray# mba
+            ( writeBytes mba sx y
+            ( writeBytes mba 0# x s1))
+    ) of (# _, r #) -> fromBytes 0# r
+{-# INLINE appendDF #-}

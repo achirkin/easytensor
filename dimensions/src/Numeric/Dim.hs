@@ -125,7 +125,7 @@ pattern Dim <- (dimEv -> E)
     Dim = dim @_ @n
 
 
--- | Statically known `XNat`
+-- | Same as @Dim@ pattern, but constrained to @Nat@ kind.
 pattern D :: forall (n :: Nat) . () => KnownDim n => Dim n
 pattern D <- (dimEv -> E)
   where

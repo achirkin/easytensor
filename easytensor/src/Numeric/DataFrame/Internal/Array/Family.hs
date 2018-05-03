@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                    #-}
 {-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
@@ -9,10 +10,11 @@
 {-# LANGUAGE Rank2Types             #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeInType             #-}
-{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE TypeOperators          #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Internal.Array.Family
@@ -28,7 +30,9 @@ module Numeric.DataFrame.Internal.Array.Family
   ( Array, Scalar (..), ArrayBase (..)
   , ArraySingleton (..)
   , ArraySing (..), aSingEv
-  , witnessPrim, witnessEq, witnessShow, witnessOrd, witnessNum, witnessFractional, witnessFloating
+  , inferPrim, inferEq, inferShow, inferOrd, inferNum
+  , inferFractional, inferFloating
+  , aSingCons, aSingSnoc
   ) where
 
 
@@ -36,8 +40,6 @@ import           GHC.Base
 
 
 import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.Dimensions
-import           Numeric.PrimBytes
 import           Numeric.DataFrame.Internal.Array.Family.ArrayBase
 import           Numeric.DataFrame.Internal.Array.Family.DoubleX2
 import           Numeric.DataFrame.Internal.Array.Family.DoubleX3
@@ -46,6 +48,8 @@ import           Numeric.DataFrame.Internal.Array.Family.FloatX2
 import           Numeric.DataFrame.Internal.Array.Family.FloatX3
 import           Numeric.DataFrame.Internal.Array.Family.FloatX4
 import           Numeric.DataFrame.Internal.Array.Family.Scalar
+import           Numeric.Dimensions
+import           Numeric.PrimBytes
 
 
 -- | This type family aggregates all types used for arrays with different
@@ -129,97 +133,90 @@ instance {-# OVERLAPPING #-}  ArraySingleton Double '[3]   where
 instance {-# OVERLAPPING #-}  ArraySingleton Double '[4]   where
     aSing = AD4
 
-witnessPrim :: forall t ds
-             . ( PrimBytes t
-               , ArraySingleton t ds
-               , Dimensions ds
-               )
-            => Evidence (PrimBytes (Array t ds), PrimArray t (Array t ds))
-witnessPrim = case (aSing :: ArraySing t ds) of
-  AScalar -> E
-  AF2 -> E
-  AF3 -> E
-  AF4 -> E
-  AD2 -> E
-  AD3 -> E
-  AD4 -> E
-  ABase -> E
+-- Rather verbose way to show that there is an instance of a required type class
+-- for every instance of the type family.
+#define WITNESS case (aSing :: ArraySing t ds) of {\
+  AScalar -> E;\
+  AF2     -> E;\
+  AF3     -> E;\
+  AF4     -> E;\
+  AD2     -> E;\
+  AD3     -> E;\
+  AD4     -> E;\
+  ABase   -> E}
 
-witnessEq :: forall t ds
-           . (Eq t, ArraySingleton t ds)
-          => Evidence (Eq (Array t ds))
-witnessEq = case (aSing :: ArraySing t ds) of
-  AScalar -> E
-  AF2 -> E
-  AF3 -> E
-  AF4 -> E
-  AD2 -> E
-  AD3 -> E
-  AD4 -> E
-  ABase -> E
 
-witnessOrd :: forall t ds
+inferPrim :: forall t ds
+           . ( PrimBytes t
+             , ArraySingleton t ds
+             , Dimensions ds
+             )
+          => Evidence (PrimBytes (Array t ds), PrimArray t (Array t ds))
+inferPrim = WITNESS
+
+inferEq :: forall t ds
+         . (Eq t, ArraySingleton t ds)
+        => Evidence (Eq (Array t ds))
+inferEq = WITNESS
+
+inferOrd :: forall t ds
             . (Ord t, ArraySingleton t ds)
            => Evidence (Ord (Array t ds))
-witnessOrd = case (aSing :: ArraySing t ds) of
-  AScalar -> E
-  AF2 -> E
-  AF3 -> E
-  AF4 -> E
-  AD2 -> E
-  AD3 -> E
-  AD4 -> E
-  ABase -> E
+inferOrd = WITNESS
 
-witnessNum :: forall t ds
-            . (Num t, ArraySingleton t ds)
-           => Evidence (Num (Array t ds))
-witnessNum = case (aSing :: ArraySing t ds) of
-  AScalar -> E
-  AF2 -> E
-  AF3 -> E
-  AF4 -> E
-  AD2 -> E
-  AD3 -> E
-  AD4 -> E
-  ABase -> E
+inferNum :: forall t ds
+          . (Num t, ArraySingleton t ds)
+         => Evidence (Num (Array t ds))
+inferNum = WITNESS
 
-witnessFractional :: forall t ds
-                   . (Fractional t, ArraySingleton t ds)
-                  => Evidence (Fractional (Array t ds))
-witnessFractional = case (aSing :: ArraySing t ds) of
-  AScalar -> E
-  AF2 -> E
-  AF3 -> E
-  AF4 -> E
-  AD2 -> E
-  AD3 -> E
-  AD4 -> E
-  ABase -> E
+inferFractional :: forall t ds
+                 . (Fractional t, ArraySingleton t ds)
+                => Evidence (Fractional (Array t ds))
+inferFractional = WITNESS
 
-witnessFloating :: forall t ds
-                 . (Floating t, ArraySingleton t ds)
-                => Evidence (Floating (Array t ds))
-witnessFloating = case (aSing :: ArraySing t ds) of
-  AScalar -> E
-  AF2 -> E
-  AF3 -> E
-  AF4 -> E
-  AD2 -> E
-  AD3 -> E
-  AD4 -> E
-  ABase -> E
+inferFloating :: forall t ds
+               . (Floating t, ArraySingleton t ds)
+              => Evidence (Floating (Array t ds))
+inferFloating = WITNESS
 
-witnessShow :: forall t ds
+inferShow :: forall t ds
            . (Show t, Dimensions ds, ArraySingleton t ds)
           => Evidence (Show (Array t ds))
-witnessShow = case (aSing :: ArraySing t ds) of
-  AScalar -> E
-  AF2 -> E
-  AF3 -> E
-  AF4 -> E
-  AD2 -> E
-  AD3 -> E
-  AD4 -> E
-  ABase -> E
+inferShow = WITNESS
 
+
+aSingCons :: forall t d ds
+           . ( KnownDim d
+             , Dimensions ds
+             , PrimBytes t
+             , ArraySingleton t ds)
+          => Evidence (ArraySingleton t (d ': ds))
+aSingCons = case (aSing @t @ds, primTag @t undefined) of
+  (AScalar, PTagFloat)
+      | Just E <- sameDim (D @2) (D @d) -> E
+      | Just E <- sameDim (D @3) (D @d) -> E
+      | Just E <- sameDim (D @4) (D @d) -> E
+  (AScalar, PTagDouble)
+      | Just E <- sameDim (D @2) (D @d) -> E
+      | Just E <- sameDim (D @3) (D @d) -> E
+      | Just E <- sameDim (D @4) (D @d) -> E
+  _ -> case (unsafeCoerce# (E @('[17] ~ '[17]))
+                           :: Evidence ((d ': ds) ~ '[17])) of E -> E
+
+aSingSnoc :: forall t ds d
+           . ( KnownDim d
+             , Dimensions ds
+             , PrimBytes t
+             , ArraySingleton t ds)
+          => Evidence (ArraySingleton t (ds +: d))
+aSingSnoc = case (aSing @t @ds, primTag @t undefined) of
+  (AScalar, PTagFloat)
+      | Just E <- sameDim (D @2) (D @d) -> E
+      | Just E <- sameDim (D @3) (D @d) -> E
+      | Just E <- sameDim (D @4) (D @d) -> E
+  (AScalar, PTagDouble)
+      | Just E <- sameDim (D @2) (D @d) -> E
+      | Just E <- sameDim (D @3) (D @d) -> E
+      | Just E <- sameDim (D @4) (D @d) -> E
+  _ -> case (unsafeCoerce# (E @('[17] ~ '[17]))
+                           :: Evidence ((d ': ds) ~ '[17])) of E -> E
