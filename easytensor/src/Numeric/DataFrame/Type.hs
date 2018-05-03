@@ -66,8 +66,9 @@ newtype instance DataFrame (ts :: [Type]) (ns :: [Nat])
 
 -- | Data frame with some dimensions missing at compile time.
 --   Pattern-match against its constructor to get a Nat-indexed data frame.
-data instance DataFrame (ts :: l) (xs :: [XNat])
-  = forall (ns :: [Nat]) . Dimensions ns
+data instance DataFrame (ts :: l) (xns :: [XNat])
+  = forall (ns :: [Nat])
+  . (FixedDims xns ns, Dimensions ns, ArraySingletons ts ns)
   => XFrame (DataFrame ts ns)
 
 -- | Data frame that has an unknown dimensionality at compile time.
@@ -101,14 +102,15 @@ pattern Z = MultiFrame U
 
 instance ( Show (Array t ds)
          , Dimensions ds
-         ) => Show (DataFrame (t :: Type) ds) where
+         ) => Show (DataFrame (t :: Type) (ds :: [Nat])) where
   show (SingleFrame arr) = unlines
                             [ "DF " ++ drop 5 (show $ dims @_ @ds) ++ ":"
                             , show arr
                             ]
+
 instance ( Dimensions ds
          , ImplAllows Show ts ds
-         ) => Show (DataFrame (ts :: [Type]) ds) where
+         ) => Show (DataFrame (ts :: [Type]) (ds :: [Nat])) where
   show dfs = unlines $
       ("DF " ++ show (order dds) ++ " x "  ++ drop 5 (show dds) ++ ":")
       : showAll 1 dfs
@@ -118,11 +120,28 @@ instance ( Dimensions ds
       showAll _ Z = []
       showAll n (SingleFrame arr :*: fs) = ("Var " ++ show n) : show arr : showAll (n+1) fs
 
+
+instance Show t => Show (DataFrame (t :: Type) (xns :: [XNat])) where
+  show (XFrame (df :: DataFrame t ns))
+    | E <- inferShow @t @ns = 'X': show df
+
+-- instance All Show ts => Show (DataFrame (ts :: [Type]) (xns :: [XNat])) where
+--   show (XFrame (df :: DataFrame t ns))
+--     | E <- inferShow @t @ns = show df
+
+
+
 type family ImplAllows (f :: Type -> Constraint) (ts :: l) (ds :: [Nat])
                                                              :: Constraint where
     ImplAllows f (t :: Type) ds = f (Array t ds)
     ImplAllows _ ('[] :: [Type]) _ = ()
     ImplAllows f (t ': ts :: [Type]) ds = (f (Array t ds), ImplAllows f ts ds)
+
+type family ArraySingletons (ts :: l) (ns :: [Nat]) :: Constraint where
+    ArraySingletons (t :: Type) ns = ArraySingleton t ns
+    ArraySingletons ('[] :: [Type]) _ = ()
+    ArraySingletons (t ': ts :: [Type]) ns
+      = (ArraySingleton t ns, ArraySingletons ts ns)
 
 -- TODO: shall I add all these instances to MultiFrame?
 deriving instance Bounded (Array t ds) => Bounded (DataFrame t ds)
