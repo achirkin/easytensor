@@ -51,6 +51,7 @@ import           Numeric.Dimensions
 import           Numeric.Matrix.Class
 import           Numeric.PrimBytes
 import           Numeric.Vector
+import           Numeric.Scalar
 
 import           Control.Monad.ST
 import           Numeric.DataFrame.ST
@@ -118,3 +119,27 @@ instance MatrixCalculus t (xn :: XNat) (xm :: XNat) where
       , E <- inferPrimElem @t @n @'[m]
       = XFrame (transpose df :: Matrix t m n)
     transpose _ = error "MatrixCalculus/transpose: impossible argument"
+
+
+instance (KnownDim n, PrimArray t (Matrix t n n), Num t)
+      => SquareMatrixCalculus t n where
+    eye
+      | n@(I# n#) <- fromIntegral $ dimVal' @n
+      = let f 0 = (# n, 1 #)
+            f k = (# k - 1, 0 #)
+        in case gen# (n# *# n#) f 0 of
+            (# _, r #) -> r
+    diag se
+      | n@(I# n#) <- fromIntegral $ dimVal' @n
+      , e <- unScalar se
+      = let f 0 = (# n, e #)
+            f k = (# k - 1, 0 #)
+        in case gen# (n# *# n#) f 0 of
+            (# _, r #) -> r
+    det _ = error "Not implemented yet, sorry" -- TODO: implement!
+    trace df
+      | I# n <- fromIntegral $ dimVal' @n
+      , n1 <- n +# 1#
+      = let f 0# = ix# 0# df
+            f k  = ix# k  df + f (k -# n1)
+        in scalar $ f (n *# n -# 1#)
