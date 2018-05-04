@@ -40,7 +40,7 @@
 
 module Numeric.Dimensions.Dims
   ( Dims, SomeDims (..), Dimensions (..)
-  , TypedList (Dims, XDims, U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
+  , TypedList (Dims, XDims, AsXDims, U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
   , listDims, someDimsVal, totalDim, totalDim'
   , sameDims, sameDims'
   , compareDims, compareDims'
@@ -75,6 +75,7 @@ type Dims (xs :: [k]) = TypedList Dim xs
 #if __GLASGOW_HASKELL__ >= 802
 {-# COMPLETE Dims #-}
 {-# COMPLETE XDims #-}
+{-# COMPLETE AsXDims #-}
 #endif
 
 -- | Pattern-matching against this constructor brings a `Dimensions` instance
@@ -100,6 +101,14 @@ pattern XDims :: forall (xns :: [XNat]) . KnownXNatTypes xns
 pattern XDims ns <- (patXDims -> PatXDims ns)
   where
     XDims ns = unsafeCoerce# ns
+
+-- | An easy way to convert Nat-indexed dims into XNat-indexed dims.
+pattern AsXDims :: forall (ns :: [Nat]) . ()
+                => (KnownXNatTypes (AsXDims ns), RepresentableList (AsXDims ns))
+                => Dims (AsXDims ns) -> Dims ns
+pattern AsXDims xns <- (patAsXDims -> PatAsXDims xns)
+  where
+    AsXDims xns = unsafeCoerce# xns
 
 -- | Same as SomeNat, but for Dimensions:
 --   Hide all information about Dimensions inside
@@ -338,3 +347,19 @@ patXDims (Dx n :* xns) = case patXDims xns of
 patXDims _ = error "XDims/patXDims: impossible argument"
 #endif
 {-# INLINE patXDims #-}
+
+
+data PatAsXDims (ns :: [Nat])
+  = (KnownXNatTypes (AsXDims ns), RepresentableList (AsXDims ns))
+  => PatAsXDims (Dims (AsXDims ns))
+
+
+patAsXDims :: Dims ns -> PatAsXDims ns
+patAsXDims U = PatAsXDims U
+patAsXDims (n@D :* ns) = case patAsXDims ns of
+  PatAsXDims xns -> PatAsXDims (Dn n :* xns)
+#if __GLASGOW_HASKELL__ >= 802
+#else
+patAsXDims _ = error "AsXDims/patAsXDims: impossible argument"
+#endif
+{-# INLINE patAsXDims #-}

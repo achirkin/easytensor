@@ -35,7 +35,7 @@
 --
 -----------------------------------------------------------------------------
 module Numeric.TypedList
-    ( TypedList (U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
+    ( TypedList (U, (:*), Empty, TypeList, EvList, Cons, Snoc, Reverse)
     , RepresentableList (..)
     , TypeList, types, order, order'
     , cons, snoc
@@ -71,6 +71,7 @@ newtype TypedList (f :: (k -> Type)) (xs :: [k]) = TypedList [Any]
 -- pattern synonyms.
 #if __GLASGOW_HASKELL__ >= 802
 {-# COMPLETE TypeList #-}
+{-# COMPLETE EvList #-}
 {-# COMPLETE U, (:*) #-}
 {-# COMPLETE U, Cons #-}
 {-# COMPLETE U, Snoc #-}
@@ -83,6 +84,12 @@ newtype TypedList (f :: (k -> Type)) (xs :: [k]) = TypedList [Any]
 -- | A list of type proxies
 type TypeList (xs :: [k]) = TypedList Proxy xs
 
+
+-- | A list of evidence for constraints
+type EvidenceList (c :: k -> Constraint) (xs :: [k])
+  = TypedList (Evidence' c) xs
+
+
 -- | Pattern matching against this causes `RepresentableList` instance
 --   come into scope.
 --   Also it allows constructing a term-level list out of a constraint.
@@ -91,6 +98,14 @@ pattern TypeList :: forall (xs :: [k])
 pattern TypeList <- (mkRTL -> E)
   where
     TypeList = tList @k @xs
+
+-- | Pattern matching against this allows manipulating lists of constraints.
+--   Useful when creating functions that change the shape of dimensions.
+pattern EvList :: forall (c :: k -> Constraint) (xs :: [k])
+                . () => (All c xs, RepresentableList xs) => EvidenceList c xs
+pattern EvList <- (mkEVL -> E)
+  where
+    EvList = _evList (tList @k @xs)
 
 -- | Zero-length type list
 pattern U :: forall (f :: k -> Type) (xs :: [k])
@@ -200,6 +215,7 @@ map k (TypedList xs) = unsafeCoerce# (Prelude.map k' xs)
   where
     k' :: Any -> Any
     k' = unsafeCoerce# . k . unsafeCoerce#
+{-# INLINE map #-}
 
 -- | Get a constructible `TypeList` from any other `TypedList`;
 --   Pattern matching agains the result brings `RepresentableList` constraint
@@ -209,7 +225,7 @@ map k (TypedList xs) = unsafeCoerce# (Prelude.map k' xs)
 --
 types :: TypedList f xs -> TypeList xs
 types (TypedList xs) = unsafeCoerce# (Prelude.map (const Proxy) xs)
-
+{-# INLINE types #-}
 
 -- | Representable type lists.
 --   Allows getting type information about list structure at runtime.
@@ -226,10 +242,11 @@ instance RepresentableList xs => RepresentableList (x ': xs :: [k]) where
 
 order' :: forall xs . RepresentableList xs => Dim (Length xs)
 order' = order (tList @_ @xs)
+{-# INLINE order' #-}
 
 order :: TypedList f xs -> Dim (Length xs)
 order (TypedList xs) = unsafeCoerce# (fromIntegral (Prelude.length xs) :: Word)
-
+{-# INLINE order #-}
 
 
 
@@ -304,3 +321,23 @@ patTL (TypedList (x : xs))
 
 intD :: Dim n -> Int
 intD = (fromIntegral :: Word -> Int) . unsafeCoerce#
+
+
+mkEVL :: forall (c :: k -> Constraint) (xs :: [k])
+       . EvidenceList c xs -> Evidence (All c xs, RepresentableList xs)
+mkEVL U = E
+mkEVL (E' :* evs) = case mkEVL evs of E -> E
+#if __GLASGOW_HASKELL__ >= 802
+#else
+mkEVL _ = error "EvList/mkEVL: impossible argument"
+#endif
+
+
+_evList :: forall (c :: k -> Constraint) (xs :: [k])
+        . All c xs => TypeList xs -> EvidenceList c xs
+_evList U = U
+_evList (_ :* xs) = case _evList xs of evs -> E' :* evs
+#if __GLASGOW_HASKELL__ >= 802
+#else
+_evList _ = error "EvList/_evList: impossible argument"
+#endif
