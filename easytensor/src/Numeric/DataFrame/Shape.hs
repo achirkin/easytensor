@@ -1,4 +1,3 @@
-{-# LANGUAGE AllowAmbiguousTypes       #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
@@ -38,7 +37,7 @@ import           GHC.Base
 
 import           Numeric.DataFrame.Internal.Array.Class
 import           Numeric.DataFrame.Internal.Array.Family (inferASing, inferPrim,
-                                                          inferPrimElem)
+                                                          inferPrimElem, aSing)
 import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
@@ -47,6 +46,7 @@ import           Numeric.Scalar                          as Scalar
 import           Numeric.TypedList                       (TypedList (..))
 import qualified Numeric.TypedList                       as Dims
 import           Numeric.Vector
+
 
 -- | Append one DataFrame to another, sum up last dimension
 (<:>) :: forall (n :: Nat) (m :: Nat) (npm :: Nat) (ds :: [Nat])
@@ -173,6 +173,10 @@ instance DataFrameToList t (xns :: [XNat]) (xz :: XNat) where
       , E <- inferPrimElem @t @k @ks
       , XDims ns' <- xns
       , Just E <- sameDims ns ns'
+      , E <- inferASing @t @ns -- TODO: I don't understand why removing this
+                               --       does not cause any type errors?!
+                               --       Instead, it leads to incorrect inference
+                               --       of ArraySingleton.
       = map XFrame (toList df)
     toList _ = []
 
@@ -202,7 +206,10 @@ fromListN Dim n@(I# n#) xs'
                         (toEvidence' (E @(KnownXNatType (XN m))))
   , XDims nsn' <- xnsn
   , Just E <- sameDims nsn nsn'
-  , E <- inferASing @t @ns
+  , E <- inferASing @t @ns -- TODO: I don't understand why removing this
+                           --       does not cause any type errors?!
+                           --       Instead, it leads to incorrect inference
+                           --       of ArraySingleton.
   , E <- inferASing @t @(ns +: n)
   , E <- inferPrim @t @ns
   , E <- inferPrim @t @(ns +: n)
