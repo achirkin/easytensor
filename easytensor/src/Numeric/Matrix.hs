@@ -3,7 +3,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE KindSignatures            #-}
-{-# LANGUAGE MagicHash                 #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE TypeFamilies              #-}
 -----------------------------------------------------------------------------
@@ -34,20 +33,13 @@ module Numeric.Matrix
   ) where
 
 
-
-#ifdef ghcjs_HOST_OS
-import           Numeric.DataFrame.Internal.Array.Family (ElemTypeInference)
-#endif
-
-import           GHC.Types                     (Type)
-
-import           Numeric.Commons
+import           Numeric.PrimBytes
 import           Numeric.DataFrame.Contraction ((%*))
 import           Numeric.DataFrame.Shape
-import           Numeric.Dimensions            (Nat, Idx (..))
+import           Numeric.Dimensions
 import           Numeric.Matrix.Class
-import           Numeric.Matrix.Mat44d         ()
-import           Numeric.Matrix.Mat44f         ()
+-- import           Numeric.Matrix.Mat44d         ()
+-- import           Numeric.Matrix.Mat44f         ()
 import           Numeric.Vector
 
 import           Control.Monad.ST
@@ -63,40 +55,30 @@ mat22 :: ( PrimBytes (Vector t 2)
 mat22 = (<::>)
 
 -- | Compose a 3x3D matrix
-mat33 :: (
-#ifdef ghcjs_HOST_OS
-           ElemTypeInference t, MutableFrame t '[3,3]
-#else
-           PrimBytes t
+mat33 :: ( PrimBytes t
          , PrimBytes (Vector t 3)
          , PrimBytes (Matrix t 3 3)
-#endif
          )
       => Vector t 3 -> Vector t 3 -> Vector t 3 -> Matrix t 3 3
 mat33 a b c = runST $ do
   mmat <- newDataFrame
-  copyDataFrame a (1:!1:!Z) mmat
-  copyDataFrame b (1:!2:!Z) mmat
-  copyDataFrame c (1:!3:!Z) mmat
+  copyDataFrame a (1:*1:*U) mmat
+  copyDataFrame b (1:*2:*U) mmat
+  copyDataFrame c (1:*3:*U) mmat
   unsafeFreezeDataFrame mmat
 
 -- | Compose a 4x4D matrix
-mat44 :: forall (t :: Type)
-       . (
-#ifdef ghcjs_HOST_OS
-           ElemTypeInference t, MutableFrame t '[4,4]
-#else
-           PrimBytes t
+mat44 :: forall t
+       . ( PrimBytes t
          , PrimBytes (Vector t (4 :: Nat))
          , PrimBytes (Matrix t (4 :: Nat) (4 :: Nat))
-#endif
          )
       => Vector t (4 :: Nat) -> Vector t (4 :: Nat) -> Vector t (4 :: Nat) -> Vector t (4 :: Nat)
       -> Matrix t (4 :: Nat) (4 :: Nat)
 mat44 a b c d = runST $ do
   mmat <- newDataFrame
-  copyDataFrame a (1:!1:!Z) mmat
-  copyDataFrame b (1:!2:!Z) mmat
-  copyDataFrame c (1:!3:!Z) mmat
-  copyDataFrame d (1:!4:!Z) mmat
+  copyDataFrame a (1:*1:*U) mmat
+  copyDataFrame b (1:*2:*U) mmat
+  copyDataFrame c (1:*3:*U) mmat
+  copyDataFrame d (1:*4:*U) mmat
   unsafeFreezeDataFrame mmat

@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE TypeFamilies          #-}
 module Numeric.Matrix.Class
   ( MatrixCalculus (..)
@@ -17,19 +18,18 @@ module Numeric.Matrix.Class
   , Mat42d, Mat43d, Mat44d
   ) where
 
-import           Numeric.Commons
-import           Numeric.DataFrame.Type
-import           Numeric.Dimensions     (Nat)
+import           Numeric.DataFrame.Family
+import           Numeric.Dimensions       (Nat)
 import           Numeric.Scalar
 import           Numeric.Vector
 
 -- | Alias for DataFrames of rank 2
-type Matrix t (n :: Nat) (m :: Nat) = DataFrame t '[n,m]
+type Matrix t (n :: k) (m :: k) = DataFrame t '[n,m]
 
-class MatrixCalculus t (n :: Nat) (m :: Nat) where
+class MatrixCalculus t (n :: k) (m :: k) where
     -- | Transpose Mat
-    transpose :: (MatrixCalculus t m n, PrimBytes (Matrix t m n)) => Matrix t n m -> Matrix t m n
-
+    transpose :: Matrix t n m -> Matrix t m n
+  -- (MatrixCalculus t m n, PrimBytes (Matrix t m n)) =>
 
 class SquareMatrixCalculus t (n :: Nat) where
     -- | Mat with 1 on diagonal and 0 elsewhere
@@ -43,7 +43,7 @@ class SquareMatrixCalculus t (n :: Nat) where
 
 class MatrixInverse t (n :: Nat) where
     -- | Matrix inverse
-    inverse :: DataFrame t '[n,n] -> DataFrame t '[n,n]
+    inverse :: Matrix t n n -> Matrix t n n
 
 
 -- | Operations on 4x4 transformation matrices and vectors in homogeneous coordinates.

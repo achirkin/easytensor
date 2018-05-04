@@ -1,32 +1,39 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MagicHash #-}
-{-# LANGUAGE UnboxedTuples #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MagicHash                  #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeSynonymInstances       #-}
+{-# LANGUAGE UnboxedTuples              #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 module Numeric.Quaternion.QDouble
     ( QDouble, Quater (..)
     ) where
 
-import GHC.Exts
-import Data.Coerce (coerce)
+import           Data.Coerce                                      (coerce)
+import           GHC.Exts
 
-import Numeric.DataFrame.Internal.Array
-import Numeric.DataFrame.Type
-import Numeric.Commons
-import Numeric.Dimensions
-import Numeric.Scalar
-import Numeric.Vector
-import Numeric.Matrix
-import qualified Numeric.DataFrame.ST as ST
-import qualified Numeric.Dimensions.Traverse.ST as ST
-import qualified Control.Monad.ST as ST
-
-import Numeric.Quaternion.Class
+import qualified Control.Monad.ST                                 as ST
+import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Internal.Array.Family.DoubleX3
+import           Numeric.DataFrame.Internal.Array.Family.DoubleX4
+import qualified Numeric.DataFrame.ST                             as ST
+import           Numeric.DataFrame.Type
+import           Numeric.Dimensions
+import qualified Numeric.Dimensions.Fold                          as ST
+import           Numeric.PrimBytes                                (PrimBytes)
+import           Numeric.Quaternion.Class
+import           Numeric.Scalar
+import           Numeric.Vector
 
 
 type QDouble = Quater Double
+
+deriving instance PrimBytes (Quater Double)
+deriving instance PrimArray Double (Quater Double)
 
 instance Quaternion Double where
     newtype Quater Double = QDouble DoubleX4
@@ -35,7 +42,7 @@ instance Quaternion Double where
     {-# INLINE unpackQ #-}
     unpackQ (QDouble (DoubleX4# x y z w)) = (D# x, D# y, D# z, D# w)
     {-# INLINE fromVecNum #-}
-    fromVecNum (KnownDataFrame (DoubleX3# x y z)) (D# w) = QDouble (DoubleX4# x y z w)
+    fromVecNum (SingleFrame (DoubleX3# x y z)) (D# w) = QDouble (DoubleX4# x y z w)
     {-# INLINE fromVec4 #-}
     fromVec4 = coerce
     {-# INLINE toVec4 #-}
@@ -47,7 +54,7 @@ instance Quaternion Double where
     {-# INLINE re #-}
     re (QDouble (DoubleX4# _ _ _ w)) = QDouble (DoubleX4# 0.0## 0.0## 0.0## w)
     {-# INLINE imVec #-}
-    imVec (QDouble (DoubleX4# x y z _)) = KnownDataFrame (DoubleX3# x y z)
+    imVec (QDouble (DoubleX4# x y z _)) = SingleFrame (DoubleX3# x y z)
     {-# INLINE taker #-}
     taker (QDouble (DoubleX4# _ _ _ w)) = D# w
     {-# INLINE takei #-}
@@ -63,23 +70,23 @@ instance Quaternion Double where
                                                 (negateDouble# z) w)
     {-# INLINE rotScale #-}
     rotScale (QDouble (DoubleX4# i j k t))
-             (KnownDataFrame (DoubleX3# x y z))
+             (SingleFrame (DoubleX3# x y z))
       = let l = t*##t -## i*##i -## j*##j -## k*##k
             d = 2.0## *## ( i*##x +## j*##y +## k*##z)
             t2 = t *## 2.0##
-        in KnownDataFrame
+        in SingleFrame
             ( DoubleX3#
                 (l*##x +## d*##i +## t2 *## (z*##j -## y*##k))
                 (l*##y +## d*##j +## t2 *## (x*##k -## z*##i))
                 (l*##z +## d*##k +## t2 *## (y*##i -## x*##j))
             )
     {-# INLINE getRotScale #-}
-    getRotScale _ (KnownDataFrame (DoubleX3# 0.0## 0.0## 0.0##))
+    getRotScale _ (SingleFrame (DoubleX3# 0.0## 0.0## 0.0##))
       = QDouble (DoubleX4# 0.0## 0.0## 0.0## 0.0##)
-    getRotScale (KnownDataFrame (DoubleX3# 0.0## 0.0## 0.0##)) _
+    getRotScale (SingleFrame (DoubleX3# 0.0## 0.0## 0.0##)) _
       = case infty of D# x -> QDouble (DoubleX4# x x x x)
-    getRotScale a@(KnownDataFrame (DoubleX3# a1 a2 a3))
-                b@(KnownDataFrame (DoubleX3# b1 b2 b3))
+    getRotScale a@(SingleFrame (DoubleX3# a1 a2 a3))
+                b@(SingleFrame (DoubleX3# b1 b2 b3))
       = let ma = sqrtDouble# (a1*##a1 +## a2*##a2 +## a3*##a3)
             mb = sqrtDouble# (b1*##b1 +## b2*##b2 +## b3*##b3)
             d  = a1*##b1 +## a2*##b2 +## a3*##b3
@@ -87,12 +94,12 @@ instance Quaternion Double where
             ma2 = ma *## sqrtDouble# 2.0##
             r  = 1.0## /## (ma2 *## c)
         in case cross a b of
-          KnownDataFrame (DoubleX3# 0.0## 0.0## 0.0##) ->
+          SingleFrame (DoubleX3# 0.0## 0.0## 0.0##) ->
             if isTrue# (d >## 0.0##)
             then QDouble (DoubleX4#  0.0## 0.0## 0.0## (sqrtDouble# (mb /## ma)))
                  -- Shall we move result from k to i component?
             else QDouble (DoubleX4#  0.0## 0.0## (sqrtDouble# (mb /## ma)) 0.0##)
-          KnownDataFrame (DoubleX3# t1 t2 t3) -> QDouble
+          SingleFrame (DoubleX3# t1 t2 t3) -> QDouble
                 ( DoubleX4#
                     (t1 *## r)
                     (t2 *## r)
@@ -100,9 +107,9 @@ instance Quaternion Double where
                     (c /## ma2)
                 )
     {-# INLINE axisRotation #-}
-    axisRotation (KnownDataFrame (DoubleX3# 0.0## 0.0## 0.0##)) _
+    axisRotation (SingleFrame (DoubleX3# 0.0## 0.0## 0.0##)) _
       = QDouble (DoubleX4# 0.0## 0.0## 0.0## 1.0##)
-    axisRotation (KnownDataFrame (DoubleX3# x y z)) (D# a)
+    axisRotation (SingleFrame (DoubleX3# x y z)) (D# a)
       = let c = cosDouble# (a *## 0.5##)
             s = sinDouble# (a *## 0.5##)
                 /## sqrtDouble# (x*##x +## y*##y +## z*##z)
@@ -148,7 +155,12 @@ instance Quaternion Double where
             (sqrtDouble# (max# 0.0## (d +## ix 0# m +## ix 5# m +## ix 10# m )) *## c)
            )
     {-# INLINE toMatrix33 #-}
-    toMatrix33 (QDouble (DoubleX4# 0.0## 0.0## 0.0## w)) = diag (scalar (D# (w *## w)))
+    toMatrix33 (QDouble (DoubleX4# 0.0## 0.0## 0.0## w))
+      = let x = D# (w *## w)
+            f 0 = (# 3 :: Int , x #)
+            f k = (# k-1, 0 #)
+        in case gen# 9# f 0 of
+            (# _, m #) -> m -- diag (scalar (D# (w *## w)))
     toMatrix33 (QDouble (DoubleX4# x' y' z' w')) =
       let x = scalar (D# x')
           y = scalar (D# y')
@@ -174,7 +186,7 @@ instance Quaternion Double where
     {-# INLINE toMatrix44 #-}
     toMatrix44 (QDouble (DoubleX4# 0.0## 0.0## 0.0## w)) = ST.runST $ do
       df <- ST.newDataFrame
-      ST.overDimOff_ (dim :: Dim '[4,4]) (\i -> ST.writeDataFrameOff df (I# i) 0) 0# 1#
+      ST.overDimOff_ (dims :: Dims '[4,4]) (\i -> ST.writeDataFrameOff df i 0) 0 1
       let w2 = scalar (D# (w *## w))
       ST.writeDataFrameOff df 0 w2
       ST.writeDataFrameOff df 5 w2
@@ -231,6 +243,10 @@ sign# a | isTrue# (a >## 0.0##) = 1.0##
         | isTrue# (a <## 0.0##) = negateDouble# 1.0##
         | otherwise = 0.0##
 {-# INLINE sign# #-}
+
+ix :: PrimArray Double a => Int# -> a -> Double#
+ix i a = case ix# i a of D# r -> r
+{-# INLINE ix #-}
 
 --------------------------------------------------------------------------
 -- Num
@@ -496,7 +512,7 @@ instance  Floating QDouble where
     asin q = -i * log (i*q + sqrt (1 - q*q))
         where
           i = case signum . im $ q of
-                0 -> QDouble (DoubleX4# 1.0## 0.0## 0.0## 0.0##)
+                0  -> QDouble (DoubleX4# 1.0## 0.0## 0.0## 0.0##)
                 i' -> i'
     {-# INLINE acos #-}
     acos q = pi/2 - asin q

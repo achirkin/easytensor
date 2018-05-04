@@ -143,7 +143,7 @@ unsafeThawDataFrame df = STDataFrame <$> ST (unsafeThawDataFrame# df)
 -- | Write a single element at the specified index
 writeDataFrame :: forall t (ns :: [Nat]) s
                 . ( PrimBytes t, Dimensions ns )
-               => STDataFrame s t ns -> Idxs ns -> DataFrame t '[] -> ST s ()
+               => STDataFrame s t ns -> Idxs ns -> DataFrame t ('[] :: [Nat]) -> ST s ()
 writeDataFrame (STDataFrame mdf) ei = ST . writeDataFrame# mdf ei . unsafeCoerce#
 {-# INLINE writeDataFrame #-}
 
@@ -151,7 +151,7 @@ writeDataFrame (STDataFrame mdf) ei = ST . writeDataFrame# mdf ei . unsafeCoerce
 -- | Read a single element at the specified index
 readDataFrame :: forall (t :: Type) (ns :: [Nat]) s
                . ( PrimBytes t, Dimensions ns )
-              => STDataFrame s t ns -> Idxs ns -> ST s (DataFrame t '[])
+              => STDataFrame s t ns -> Idxs ns -> ST s (DataFrame t ('[] :: [Nat]))
 readDataFrame (STDataFrame mdf) = unsafeCoerce# . ST . readDataFrame# mdf
 {-# INLINE readDataFrame #-}
 
@@ -159,7 +159,7 @@ readDataFrame (STDataFrame mdf) = unsafeCoerce# . ST . readDataFrame# mdf
 -- | Write a single element at the specified element offset
 writeDataFrameOff :: forall (t :: Type) (ns :: [Nat]) s
                    . PrimBytes t
-               => STDataFrame s t ns -> Int -> DataFrame t '[]  -> ST s ()
+               => STDataFrame s t ns -> Int -> DataFrame t ('[] :: [Nat])  -> ST s ()
 writeDataFrameOff (STDataFrame mdf) (I# i)
   = ST . writeDataFrameOff# mdf i . unsafeCoerce#
 {-# INLINE writeDataFrameOff #-}
@@ -168,7 +168,7 @@ writeDataFrameOff (STDataFrame mdf) (I# i)
 -- | Read a single element at the specified element offset
 readDataFrameOff :: forall (t :: Type) (ns :: [Nat]) s
                   . PrimBytes t
-               => STDataFrame s t ns -> Int -> ST s (DataFrame t '[])
+               => STDataFrame s t ns -> Int -> ST s (DataFrame t ('[] :: [Nat]))
 readDataFrameOff (STDataFrame mdf) (I# i)
   = unsafeCoerce# (ST (readDataFrameOff# mdf i))
 {-# INLINE readDataFrameOff #-}
