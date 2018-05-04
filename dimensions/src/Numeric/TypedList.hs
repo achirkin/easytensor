@@ -187,7 +187,7 @@ init :: TypedList f xs -> TypedList f (Init xs)
 init (TypedList xs) = unsafeCoerce# (Prelude.init xs)
 {-# INLINE init #-}
 
-last :: TypedList f xs -> f (Head xs)
+last :: TypedList f xs -> f (Last xs)
 last (TypedList xs) = unsafeCoerce# (Prelude.last xs)
 {-# INLINE last #-}
 

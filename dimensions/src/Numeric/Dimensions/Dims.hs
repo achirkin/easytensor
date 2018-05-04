@@ -45,6 +45,7 @@ module Numeric.Dimensions.Dims
   , sameDims, sameDims'
   , compareDims, compareDims'
   , inSpaceOf, asSpaceOf
+  , xDims, xDims'
     -- * Type-level programming
     --   Provide type families to work with lists of dimensions (`[Nat]` or `[XNat]`)
   , AsXDims, AsDims, FixedDims, KnownXNatTypes, type (:<), type (>:)
@@ -167,6 +168,16 @@ totalDim' :: forall xs . Dimensions xs => Word
 totalDim' = totalDim (dims @_ @xs)
 {-# INLINE totalDim' #-}
 
+-- | Get XNat-indexed dims given their fixed counterpart.
+xDims :: FixedDims xns ns => Dims ns -> Dims xns
+xDims = unsafeCoerce#
+{-# INLINE xDims #-}
+
+-- | Get XNat-indexed dims given their fixed counterpart.
+xDims' :: forall xns ns . (FixedDims xns ns, Dimensions ns) => Dims xns
+xDims' = xDims @xns (dims @Nat @ns)
+{-# INLINE xDims' #-}
+
 
 -- | We either get evidence that this function was instantiated with the
 --   same type-level Dimensions, or 'Nothing' @O(Length xs)@.
@@ -187,7 +198,7 @@ sameDims as bs
 sameDims' :: forall (as :: [Nat]) (bs :: [Nat]) p q
            . (Dimensions as, Dimensions bs)
           => p as -> q bs -> Maybe (Evidence (as ~ bs))
-sameDims' _ _ = sameDims' (dims @Nat @as) (dims @Nat @bs)
+sameDims' _ _ = sameDims (dims @Nat @as) (dims @Nat @bs)
 {-# INLINE sameDims' #-}
 
 -- | Compare dimensions by their size in lexicorgaphic order

@@ -11,8 +11,8 @@ The project consists of two parts:
 `Numeric.Dimensions.List` provides type-level operations on lists and means to infer constraints over these operations at runtime.
 `Numeric.Dimension` provides:
   * promoted type `XNat = N Nat | XN` similar to type `Maybe`; kind `XNat` is used for type variables when some of dimensions in a type-level list are not known at compile time;
-  * data type `Dim (ds :: [k])`, where `k` is either `Nat` or `XNat`, together with class `Dimensions ds` it allows lots of type-level operations on type-level dimensionality;
-  * data type `Idx (ds :: [k])` is used to index over many-dimensional space defined by `Dim ds`.
+  * data type `Dims (ds :: [k])`, where `k` is either `Nat` or `XNat`, together with class `Dimensions ds` it allows lots of type-level operations on type-level dimensionality;
+  * data type `Idxs (ds :: [k])` is used to index over many-dimensional space defined by `Dims ds`.
 
 ### easytensor [![Hackage](https://img.shields.io/hackage/v/easytensor.svg)](https://hackage.haskell.org/package/easytensor)
 
