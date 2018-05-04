@@ -27,7 +27,7 @@ import           Numeric.DataFrame.Contraction
 import           Numeric.DataFrame.Shape
 import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type
---
+
 import           Numeric.Matrix
 import           Numeric.Scalar
 import           Numeric.Vector

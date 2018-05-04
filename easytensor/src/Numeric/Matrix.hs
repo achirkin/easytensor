@@ -2,9 +2,17 @@
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
 {-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE MagicHash                 #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
+{-# LANGUAGE UnboxedSums               #-}
+{-# LANGUAGE UnboxedTuples             #-}
+{-# LANGUAGE UndecidableInstances      #-}
+{-# OPTIONS_GHC -fno-warn-orphans  #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Matrix
@@ -33,13 +41,15 @@ module Numeric.Matrix
   ) where
 
 
-import           Numeric.PrimBytes
-import           Numeric.DataFrame.Contraction ((%*))
+import           GHC.Base
+import           Numeric.DataFrame.Contraction                     ((%*))
+import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Internal.Array.Family
 import           Numeric.DataFrame.Shape
+import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
 import           Numeric.Matrix.Class
--- import           Numeric.Matrix.Mat44d         ()
--- import           Numeric.Matrix.Mat44f         ()
+import           Numeric.PrimBytes
 import           Numeric.Vector
 
 import           Control.Monad.ST
@@ -73,7 +83,10 @@ mat44 :: forall t
          , PrimBytes (Vector t (4 :: Nat))
          , PrimBytes (Matrix t (4 :: Nat) (4 :: Nat))
          )
-      => Vector t (4 :: Nat) -> Vector t (4 :: Nat) -> Vector t (4 :: Nat) -> Vector t (4 :: Nat)
+      => Vector t (4 :: Nat)
+      -> Vector t (4 :: Nat)
+      -> Vector t (4 :: Nat)
+      -> Vector t (4 :: Nat)
       -> Matrix t (4 :: Nat) (4 :: Nat)
 mat44 a b c d = runST $ do
   mmat <- newDataFrame
@@ -82,3 +95,26 @@ mat44 a b c d = runST $ do
   copyDataFrame c (1:*3:*U) mmat
   copyDataFrame d (1:*4:*U) mmat
   unsafeFreezeDataFrame mmat
+
+instance ( KnownDim n, KnownDim m
+         , PrimArray t (Matrix t n m)
+         , PrimArray t (Matrix t m n)
+         ) => MatrixCalculus t (n :: Nat) (m :: Nat) where
+    transpose df = case elemSize0 df of
+      0# -> broadcast (ix# 0# df)
+      nm | I# m <- fromIntegral $ dimVal' @m
+         , I# n <- fromIntegral $ dimVal' @n
+         -> let f ( I# j,  I# i )
+                  | isTrue# (j ==# m) = f ( 0 , I# (i +# 1#) )
+                  | otherwise         = (# ( I# (j +# 1#), I# i )
+                                         , ix# (j *# n +# i) df
+                                         #)
+            in case gen# nm f (0,0) of
+              (# _, r #) -> r
+
+instance MatrixCalculus t (xn :: XNat) (xm :: XNat) where
+    transpose (XFrame (df :: DataFrame t ns))
+      | ((D :: Dim n) :* (D :: Dim m) :* U) <- dims @Nat @ns
+      , E <- inferPrimElem @t @n @'[m]
+      = XFrame (transpose df :: Matrix t m n)
+    transpose _ = error "MatrixCalculus/transpose: impossible argument"

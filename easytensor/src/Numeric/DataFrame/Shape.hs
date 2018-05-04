@@ -37,7 +37,7 @@ import           GHC.Base
 
 import           Numeric.DataFrame.Internal.Array.Class
 import           Numeric.DataFrame.Internal.Array.Family (inferASing, inferPrim,
-                                                          inferPrimElem, aSing)
+                                                          inferPrimElem)
 import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
