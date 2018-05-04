@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -256,13 +257,15 @@ instance Floating DoubleX4 where
     atanh x = 0.5 * log ((1.0+x) / (1.0-x))
     {-# INLINE atanh #-}
 
-
-
+-- offset in bytes is S times bigger than offset in prim elements,
+-- when S is power of two, this is equal to shift
+#define BOFF_TO_PRIMOFF(off) uncheckedIShiftRL# off 3#
+#define ELEM_N 4
 
 instance PrimBytes DoubleX4 where
 
     getBytes (DoubleX4# a1 a2 a3 a4) = case runRW#
-       ( \s0 -> case newByteArray# (byteSize @Double undefined *# 4#) s0 of
+       ( \s0 -> case newByteArray# (byteSize @DoubleX4 undefined) s0 of
            (# s1, marr #) -> case writeDoubleArray# marr 0# a1 s1 of
              s2 -> case writeDoubleArray# marr 1# a2 s2 of
                s3 -> case writeDoubleArray# marr 2# a3 s3 of
@@ -272,7 +275,7 @@ instance PrimBytes DoubleX4 where
     {-# INLINE getBytes #-}
 
     fromBytes off arr
-      | i <- uncheckedIShiftRL# off 3#
+      | i <- BOFF_TO_PRIMOFF(off)
       = DoubleX4#
       (indexDoubleArray# arr i)
       (indexDoubleArray# arr (i +# 1#))
@@ -281,7 +284,7 @@ instance PrimBytes DoubleX4 where
     {-# INLINE fromBytes #-}
 
     readBytes mba off s0
-      | i <- uncheckedIShiftRL# off 3#
+      | i <- BOFF_TO_PRIMOFF(off)
       = case readDoubleArray# mba i s0 of
       (# s1, a1 #) -> case readDoubleArray# mba (i +# 1#) s1 of
         (# s2, a2 #) -> case readDoubleArray# mba (i +# 2#) s2 of
@@ -290,7 +293,7 @@ instance PrimBytes DoubleX4 where
     {-# INLINE readBytes #-}
 
     writeBytes mba off (DoubleX4# a1 a2 a3 a4) s
-      | i <- uncheckedIShiftRL# off 3#
+      | i <- BOFF_TO_PRIMOFF(off)
       = writeDoubleArray# mba (i +# 3#) a4
       ( writeDoubleArray# mba (i +# 2#) a3
       ( writeDoubleArray# mba (i +# 1#) a2
@@ -298,17 +301,17 @@ instance PrimBytes DoubleX4 where
     {-# INLINE writeBytes #-}
 
 
-    byteSize _ = byteSize @Double undefined *# 4#
+    byteSize _ = byteSize @Double undefined *# ELEM_N#
     {-# INLINE byteSize #-}
 
-    byteAlign _ = byteAlign @Double undefined *# 4#
+    byteAlign _ = byteAlign @Double undefined
     {-# INLINE byteAlign #-}
 
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
 
     indexArray ba off
-      | i <- uncheckedIShiftL# off 2#
+      | i <- off *# ELEM_N#
       = DoubleX4#
       (indexDoubleArray# ba i)
       (indexDoubleArray# ba (i +# 1#))
@@ -317,7 +320,7 @@ instance PrimBytes DoubleX4 where
     {-# INLINE indexArray #-}
 
     readArray mba off s0
-      | i <- uncheckedIShiftL# off 2#
+      | i <- off *# ELEM_N#
       = case readDoubleArray# mba i s0 of
       (# s1, a1 #) -> case readDoubleArray# mba (i +# 1#) s1 of
         (# s2, a2 #) -> case readDoubleArray# mba (i +# 2#) s2 of
@@ -326,7 +329,7 @@ instance PrimBytes DoubleX4 where
     {-# INLINE readArray #-}
 
     writeArray mba off (DoubleX4# a1 a2 a3 a4) s
-      | i <- uncheckedIShiftL# off 2#
+      | i <- off *# ELEM_N#
       = writeDoubleArray# mba (i +# 3#) a4
       ( writeDoubleArray# mba (i +# 2#) a3
       ( writeDoubleArray# mba (i +# 1#) a2
@@ -363,7 +366,7 @@ instance PrimArray Double DoubleX4 where
     elemOffset _ = 0#
     {-# INLINE elemOffset #-}
 
-    elemSize0 _  = 4#
+    elemSize0 _  = ELEM_N#
     {-# INLINE elemSize0 #-}
 
     fromElems off _ ba = DoubleX4#

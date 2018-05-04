@@ -68,7 +68,7 @@ newtype instance DataFrame (ts :: [Type]) (ns :: [Nat])
 --   Pattern-match against its constructor to get a Nat-indexed data frame.
 data instance DataFrame (ts :: l) (xns :: [XNat])
   = forall (ns :: [Nat])
-  . (FixedDims xns ns, Dimensions ns, ArraySingletons ts ns)
+  . (KnownXNatTypes xns, FixedDims xns ns, Dimensions ns, ArraySingletons ts ns)
   => XFrame (DataFrame ts ns)
 
 -- | Data frame that has an unknown dimensionality at compile time.

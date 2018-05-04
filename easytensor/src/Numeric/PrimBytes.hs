@@ -81,7 +81,7 @@ class PrimTagged a => PrimBytes a where
     --
     --   > writeArray arr i = writeBytes arr ( i *# byteSize t)
     writeArray :: MutableByteArray# s -> Int# -> a -> State# s -> State# s
-    writeArray ba i = writeArray ba (i *# byteSize @a undefined)
+    writeArray ba i = writeBytes ba (i *# byteSize @a undefined)
     {-# INLINE writeArray #-}
 
 
@@ -784,6 +784,7 @@ instance PrimBytes Int32 where
     {-# INLINE readArray #-}
     writeArray mba i (I32# x) = writeInt32Array# mba i x
     {-# INLINE writeArray #-}
+
 instance PrimBytes Int64 where
     getBytes (I64# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_INT64# s0 of

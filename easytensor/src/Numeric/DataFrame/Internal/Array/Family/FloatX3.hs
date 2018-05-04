@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -240,13 +241,15 @@ instance Floating FloatX3 where
     atanh x = 0.5 * log ((1.0+x) / (1.0-x))
     {-# INLINE atanh #-}
 
-
-
+-- offset in bytes is S times bigger than offset in prim elements,
+-- when S is power of two, this is equal to shift
+#define BOFF_TO_PRIMOFF(off) uncheckedIShiftRL# off 2#
+#define ELEM_N 3
 
 instance PrimBytes FloatX3 where
 
     getBytes (FloatX3# a1 a2 a3) = case runRW#
-       ( \s0 -> case newByteArray# (byteSize @Float undefined *# 3#) s0 of
+       ( \s0 -> case newByteArray# (byteSize @FloatX3 undefined) s0 of
            (# s1, marr #) -> case writeFloatArray# marr 0# a1 s1 of
              s2 -> case writeFloatArray# marr 1# a2 s2 of
                s3 -> case writeFloatArray# marr 2# a3 s3 of
@@ -255,7 +258,7 @@ instance PrimBytes FloatX3 where
     {-# INLINE getBytes #-}
 
     fromBytes off arr
-      | i <- uncheckedIShiftRL# off 2#
+      | i <- BOFF_TO_PRIMOFF(off)
       = FloatX3#
       (indexFloatArray# arr i)
       (indexFloatArray# arr (i +# 1#))
@@ -263,7 +266,7 @@ instance PrimBytes FloatX3 where
     {-# INLINE fromBytes #-}
 
     readBytes mba off s0
-      | i <- uncheckedIShiftRL# off 2#
+      | i <- BOFF_TO_PRIMOFF(off)
       = case readFloatArray# mba i s0 of
       (# s1, a1 #) -> case readFloatArray# mba (i +# 1#) s1 of
         (# s2, a2 #) -> case readFloatArray# mba (i +# 2#) s2 of
@@ -271,24 +274,24 @@ instance PrimBytes FloatX3 where
     {-# INLINE readBytes #-}
 
     writeBytes mba off (FloatX3# a1 a2 a3) s
-      | i <- uncheckedIShiftRL# off 2#
+      | i <- BOFF_TO_PRIMOFF(off)
       = writeFloatArray# mba (i +# 2#) a3
       ( writeFloatArray# mba (i +# 1#) a2
       ( writeFloatArray# mba  i        a1 s ))
     {-# INLINE writeBytes #-}
 
 
-    byteSize _ = byteSize @Float undefined *# 3#
+    byteSize _ = byteSize @Float undefined *# ELEM_N#
     {-# INLINE byteSize #-}
 
-    byteAlign _ = byteAlign @Float undefined *# 3#
+    byteAlign _ = byteAlign @Float undefined
     {-# INLINE byteAlign #-}
 
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
 
     indexArray ba off
-      | i <- off *# 3#
+      | i <- off *# ELEM_N#
       = FloatX3#
       (indexFloatArray# ba i)
       (indexFloatArray# ba (i +# 1#))
@@ -296,7 +299,7 @@ instance PrimBytes FloatX3 where
     {-# INLINE indexArray #-}
 
     readArray mba off s0
-      | i <- off *# 3#
+      | i <- off *# ELEM_N#
       = case readFloatArray# mba i s0 of
       (# s1, a1 #) -> case readFloatArray# mba (i +# 1#) s1 of
         (# s2, a2 #) -> case readFloatArray# mba (i +# 2#) s2 of
@@ -304,7 +307,7 @@ instance PrimBytes FloatX3 where
     {-# INLINE readArray #-}
 
     writeArray mba off (FloatX3# a1 a2 a3) s
-      | i <- off *# 3#
+      | i <- off *# ELEM_N#
       = writeFloatArray# mba (i +# 2#) a3
       ( writeFloatArray# mba (i +# 1#) a2
       ( writeFloatArray# mba  i        a1 s ))
@@ -337,7 +340,7 @@ instance PrimArray Float FloatX3 where
     elemOffset _ = 0#
     {-# INLINE elemOffset #-}
 
-    elemSize0 _  = 3#
+    elemSize0 _  = ELEM_N#
     {-# INLINE elemSize0 #-}
 
     fromElems off _ ba = FloatX3#
