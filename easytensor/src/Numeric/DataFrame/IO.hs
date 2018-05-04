@@ -143,7 +143,7 @@ unsafeThawDataFrame df = IODataFrame <$> IO (unsafeThawDataFrame# df)
 -- | Write a single element at the specified index
 writeDataFrame :: forall t (ns :: [Nat])
                 . ( PrimBytes t, Dimensions ns )
-               => IODataFrame t ns -> Idxs ns -> DataFrame t '[] -> IO ()
+               => IODataFrame t ns -> Idxs ns -> DataFrame t ('[] :: [Nat]) -> IO ()
 writeDataFrame (IODataFrame mdf) ei = IO . writeDataFrame# mdf ei . unsafeCoerce#
 {-# INLINE writeDataFrame #-}
 
@@ -151,7 +151,7 @@ writeDataFrame (IODataFrame mdf) ei = IO . writeDataFrame# mdf ei . unsafeCoerce
 -- | Read a single element at the specified index
 readDataFrame :: forall (t :: Type) (ns :: [Nat])
                . ( PrimBytes t, Dimensions ns )
-              => IODataFrame t ns -> Idxs ns -> IO (DataFrame t '[])
+              => IODataFrame t ns -> Idxs ns -> IO (DataFrame t ('[] :: [Nat]))
 readDataFrame (IODataFrame mdf) = unsafeCoerce# . IO . readDataFrame# mdf
 {-# INLINE readDataFrame #-}
 
@@ -159,7 +159,7 @@ readDataFrame (IODataFrame mdf) = unsafeCoerce# . IO . readDataFrame# mdf
 -- | Write a single element at the specified element offset
 writeDataFrameOff :: forall (t :: Type) (ns :: [Nat])
                    . PrimBytes t
-               => IODataFrame t ns -> Int -> DataFrame t '[]  -> IO ()
+               => IODataFrame t ns -> Int -> DataFrame t ('[] :: [Nat])  -> IO ()
 writeDataFrameOff (IODataFrame mdf) (I# i)
   = IO . writeDataFrameOff# mdf i . unsafeCoerce#
 {-# INLINE writeDataFrameOff #-}
@@ -168,7 +168,7 @@ writeDataFrameOff (IODataFrame mdf) (I# i)
 -- | Read a single element at the specified element offset
 readDataFrameOff :: forall (t :: Type) (ns :: [Nat])
                   . PrimBytes t
-               => IODataFrame t ns -> Int -> IO (DataFrame t '[])
+               => IODataFrame t ns -> Int -> IO (DataFrame t ('[] :: [Nat]))
 readDataFrameOff (IODataFrame mdf) (I# i)
   = unsafeCoerce# (IO (readDataFrameOff# mdf i))
 {-# INLINE readDataFrameOff #-}

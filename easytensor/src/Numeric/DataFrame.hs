@@ -10,23 +10,15 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame
-  ( DataFrame (..) -- (SomeDataFrame)
-  -- , NumericFrame
-  --   -- * Utility type families and constraints
-  -- , FPFRame, IntegralFrame, NumericVariantFrame, CommonOpFrame
-  --   -- * Simplified type aliases
+  ( DataFrame (..), SomeDataFrame (..)
+    -- * Simplified type aliases
   , module Numeric.Scalar
   , module Numeric.Vector
-  -- , module Numeric.Matrix
-  --   -- * Functionality
+  , module Numeric.Matrix
+    -- * Functionality
   , module Numeric.DataFrame.SubSpace
   , module Numeric.DataFrame.Contraction
-  -- , module Numeric.DataFrame.Inference
   , module Numeric.DataFrame.Shape
-  -- , ElementWise ()
-  -- , ArrayInstanceEvidence, ArrayInstance (..), getArrayInstance, inferArrayInstance
-  -- , ArraySizeInference (..), ArraySize (..)
-  -- , ElemTypeInference (..), ElemType (..)
   ) where
 
 import           Numeric.DataFrame.Internal.Array ()
@@ -36,6 +28,6 @@ import           Numeric.DataFrame.Shape
 import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type
 --
--- import           Numeric.Matrix
+import           Numeric.Matrix
 import           Numeric.Scalar
 import           Numeric.Vector

@@ -1,32 +1,39 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MagicHash #-}
-{-# LANGUAGE UnboxedTuples #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MagicHash                  #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeSynonymInstances       #-}
+{-# LANGUAGE UnboxedTuples              #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 module Numeric.Quaternion.QFloat
     ( QFloat, Quater (..)
     ) where
 
-import GHC.Exts
-import Data.Coerce (coerce)
+import           Data.Coerce                                     (coerce)
+import           GHC.Exts
 
-import Numeric.DataFrame.Internal.Array
-import Numeric.DataFrame.Type
-import Numeric.Commons
-import Numeric.Dimensions
-import Numeric.Scalar
-import Numeric.Vector
-import Numeric.Matrix
-import qualified Numeric.DataFrame.ST as ST
-import qualified Numeric.Dimensions.Traverse.ST as ST
-import qualified Control.Monad.ST as ST
-
-import Numeric.Quaternion.Class
+import qualified Control.Monad.ST                                as ST
+import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Internal.Array.Family.FloatX3
+import           Numeric.DataFrame.Internal.Array.Family.FloatX4
+import qualified Numeric.DataFrame.ST                            as ST
+import           Numeric.DataFrame.Type
+import           Numeric.Dimensions
+import qualified Numeric.Dimensions.Fold                         as ST
+import           Numeric.PrimBytes                               (PrimBytes)
+import           Numeric.Quaternion.Class
+import           Numeric.Scalar
+import           Numeric.Vector
 
 
 type QFloat = Quater Float
+
+deriving instance PrimBytes (Quater Float)
+deriving instance PrimArray Float (Quater Float)
 
 instance Quaternion Float where
     newtype Quater Float = QFloat FloatX4
@@ -35,7 +42,7 @@ instance Quaternion Float where
     {-# INLINE unpackQ #-}
     unpackQ (QFloat (FloatX4# x y z w)) = (F# x, F# y, F# z, F# w)
     {-# INLINE fromVecNum #-}
-    fromVecNum (KnownDataFrame (FloatX3# x y z)) (F# w) = QFloat (FloatX4# x y z w)
+    fromVecNum (SingleFrame (FloatX3# x y z)) (F# w) = QFloat (FloatX4# x y z w)
     {-# INLINE fromVec4 #-}
     fromVec4 = coerce
     {-# INLINE toVec4 #-}
@@ -47,7 +54,7 @@ instance Quaternion Float where
     {-# INLINE re #-}
     re (QFloat (FloatX4# _ _ _ w)) = QFloat (FloatX4# 0.0# 0.0# 0.0# w)
     {-# INLINE imVec #-}
-    imVec (QFloat (FloatX4# x y z _)) = KnownDataFrame (FloatX3# x y z)
+    imVec (QFloat (FloatX4# x y z _)) = SingleFrame (FloatX3# x y z)
     {-# INLINE taker #-}
     taker (QFloat (FloatX4# _ _ _ w)) = F# w
     {-# INLINE takei #-}
@@ -63,23 +70,23 @@ instance Quaternion Float where
                                                 (negateFloat# z) w)
     {-# INLINE rotScale #-}
     rotScale (QFloat (FloatX4# i j k t))
-             (KnownDataFrame (FloatX3# x y z))
+             (SingleFrame (FloatX3# x y z))
       = let l = t*%t -% i*%i -% j*%j -% k*%k
             d = 2.0# *% ( i*%x +% j*%y +% k*%z)
             t2 = t *% 2.0#
-        in KnownDataFrame
+        in SingleFrame
             ( FloatX3#
                 (l*%x +% d*%i +% t2 *% (z*%j -% y*%k))
                 (l*%y +% d*%j +% t2 *% (x*%k -% z*%i))
                 (l*%z +% d*%k +% t2 *% (y*%i -% x*%j))
             )
     {-# INLINE getRotScale #-}
-    getRotScale _ (KnownDataFrame (FloatX3# 0.0# 0.0# 0.0#))
+    getRotScale _ (SingleFrame (FloatX3# 0.0# 0.0# 0.0#))
       = QFloat (FloatX4# 0.0# 0.0# 0.0# 0.0#)
-    getRotScale (KnownDataFrame (FloatX3# 0.0# 0.0# 0.0#)) _
+    getRotScale (SingleFrame (FloatX3# 0.0# 0.0# 0.0#)) _
       = case infty of F# x -> QFloat (FloatX4# x x x x)
-    getRotScale a@(KnownDataFrame (FloatX3# a1 a2 a3))
-                b@(KnownDataFrame (FloatX3# b1 b2 b3))
+    getRotScale a@(SingleFrame (FloatX3# a1 a2 a3))
+                b@(SingleFrame (FloatX3# b1 b2 b3))
       = let ma = sqrtFloat# (a1*%a1 +% a2*%a2 +% a3*%a3)
             mb = sqrtFloat# (b1*%b1 +% b2*%b2 +% b3*%b3)
             d  = a1*%b1 +% a2*%b2 +% a3*%b3
@@ -87,12 +94,12 @@ instance Quaternion Float where
             ma2 = ma *% sqrtFloat# 2.0#
             r  = 1.0# /% (ma2 *% c)
         in case cross a b of
-          KnownDataFrame (FloatX3# 0.0# 0.0# 0.0#) ->
+          SingleFrame (FloatX3# 0.0# 0.0# 0.0#) ->
             if isTrue# (gtFloat# d 0.0#)
             then QFloat (FloatX4#  0.0# 0.0# 0.0# (sqrtFloat# (mb /% ma)))
                  -- Shall we move result from k to i component?
             else QFloat (FloatX4#  0.0# 0.0# (sqrtFloat# (mb /% ma)) 0.0#)
-          KnownDataFrame (FloatX3# t1 t2 t3) -> QFloat
+          SingleFrame (FloatX3# t1 t2 t3) -> QFloat
                 ( FloatX4#
                     (t1 *% r)
                     (t2 *% r)
@@ -100,9 +107,9 @@ instance Quaternion Float where
                     (c /% ma2)
                 )
     {-# INLINE axisRotation #-}
-    axisRotation (KnownDataFrame (FloatX3# 0.0# 0.0# 0.0#)) _
+    axisRotation (SingleFrame (FloatX3# 0.0# 0.0# 0.0#)) _
       = QFloat (FloatX4# 0.0# 0.0# 0.0# 1.0#)
-    axisRotation (KnownDataFrame (FloatX3# x y z)) (F# a)
+    axisRotation (SingleFrame (FloatX3# x y z)) (F# a)
       = let c = cosFloat# (a *% 0.5#)
             s = sinFloat# (a *% 0.5#)
                 /% sqrtFloat# (x*%x +% y*%y +% z*%z)
@@ -148,7 +155,12 @@ instance Quaternion Float where
             (sqrtFloat# (max# 0.0# (d +% ix 0# m +% ix 5# m +% ix 10# m )) *% c)
            )
     {-# INLINE toMatrix33 #-}
-    toMatrix33 (QFloat (FloatX4# 0.0# 0.0# 0.0# w)) = diag (scalar (F# (w *% w)))
+    toMatrix33 (QFloat (FloatX4# 0.0# 0.0# 0.0# w))
+      = let x = F# (w *% w)
+            f 0 = (# 3 :: Int , x #)
+            f k = (# k-1, 0 #)
+        in case gen# 9# f 0 of
+            (# _, m #) -> m -- diag (scalar (F# (w *% w)))
     toMatrix33 (QFloat (FloatX4# x' y' z' w')) =
       let x = scalar (F# x')
           y = scalar (F# y')
@@ -174,7 +186,7 @@ instance Quaternion Float where
     {-# INLINE toMatrix44 #-}
     toMatrix44 (QFloat (FloatX4# 0.0# 0.0# 0.0# w)) = ST.runST $ do
       df <- ST.newDataFrame
-      ST.overDimOff_ (dim :: Dim '[4,4]) (\i -> ST.writeDataFrameOff df (I# i) 0) 0# 1#
+      ST.overDimOff_ (dims :: Dims '[4,4]) (\i -> ST.writeDataFrameOff df i 0) 0 1
       let w2 = scalar (F# (w *% w))
       ST.writeDataFrameOff df 0 w2
       ST.writeDataFrameOff df 5 w2
@@ -208,7 +220,7 @@ instance Quaternion Float where
         ST.writeDataFrameOff df 12 0
         ST.writeDataFrameOff df 13 0
         ST.writeDataFrameOff df 14 0
-        ST.writeDataFrameOff df 15 1
+        ST.writeDataFrameOff df 15 0
         ST.unsafeFreezeDataFrame df
 
 qdot :: QFloat -> Float#
@@ -251,6 +263,10 @@ sign# a | isTrue# (gtFloat# a 0.0#) = 1.0#
         | isTrue# (ltFloat# a 0.0#) = negateFloat# 1.0#
         | otherwise = 0.0#
 {-# INLINE sign# #-}
+
+ix :: PrimArray Float a => Int# -> a -> Float#
+ix i a = case ix# i a of F# r -> r
+{-# INLINE ix #-}
 
 --------------------------------------------------------------------------
 -- Num
@@ -516,7 +532,7 @@ instance  Floating QFloat where
     asin q = -i * log (i*q + sqrt (1 - q*q))
         where
           i = case signum . im $ q of
-                0 -> QFloat (FloatX4# 1.0# 0.0# 0.0# 0.0#)
+                0  -> QFloat (FloatX4# 1.0# 0.0# 0.0# 0.0#)
                 i' -> i'
     {-# INLINE acos #-}
     acos q = pi/2 - asin q
