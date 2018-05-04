@@ -35,19 +35,17 @@ module Numeric.DataFrame.Shape
     , fromListN, fromList
     ) where
 
--- import           Data.Type.Equality          ((:~:) (..))
 import           GHC.Base
 
-import           Numeric.PrimBytes
-import qualified Numeric.TypedList                       as Dims
--- import           Numeric.DataFrame.Inference
 import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.Family (ArraySingleton (..),
-                                                          aSingSnoc, inferPrim)
+import           Numeric.DataFrame.Internal.Array.Family (inferASing, inferPrim)
 import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
+import           Numeric.PrimBytes
 import           Numeric.Scalar                          as Scalar
+import           Numeric.TypedList                       (TypedList (..))
+import qualified Numeric.TypedList                       as Dims
 import           Numeric.Vector
 
 -- | Append one DataFrame to another, sum up last dimension
@@ -117,7 +115,6 @@ infixl 5 <+:>
 --   Output is in @[XNat]@, because the last dimension is unknown at compile time.
 fromList :: forall m ns t
           . ( Dimensions ns
-            , ArraySingleton t ns
             , PrimBytes t
             )
          => Dim m
@@ -192,7 +189,6 @@ class DataFrameToList t (ds :: [k]) (z :: k) where
 --   or if provided length is invalid.
 fromListN :: forall m ns t
            . ( Dimensions ns
-             , ArraySingleton t ns
              , PrimBytes t
              )
           => Dim m
@@ -205,16 +201,17 @@ fromListN :: forall m ns t
           -> Maybe (DataFrame t (AsXDims ns +: XN m))
 fromListN Dim n@(I# n#) xs'
   | n < 0 = Nothing
-  | Just (Dx dn@(D :: Dim n)) <- constrain @m (someDimVal (fromIntegral n))
+  | Just dxn@(Dx dn@(D :: Dim n)) <- constrain @m (someDimVal (fromIntegral n))
   , Just xs <- takeMaybe n xs'
-  , ns <- dims @Nat @ns
-  , E <- inferKnownXNatTypes ns
-  , dns@Dims <- Dims.snoc (dims @Nat @ns) dn
-  , E <- knownXNatTypeSnoc @(AsXDims ns) @(XN m)
-  , (XDims dns') <- unsafeCoerce# dns :: Dims (AsXDims ns +: XN m)
-  , Just E <- sameDims dns dns'
+  , ns@(AsXDims xns) <- dims @Nat @ns
+  , nsn@Dims <- Dims.snoc ns dn
+  , xnsn <- Dims.snoc xns dxn
+  , EvList <- Dims.snoc (EvList @_ @KnownXNatType @(AsXDims ns))
+                        (E' @_ @KnownXNatType @(XN m))
+  , XDims nsn' <- xnsn
+  , Just E <- sameDims nsn nsn'
+  , E <- inferASing @t @ns
   , E <- inferPrim @t @ns
-  , E <- aSingSnoc @t @ns @n
   , E <- inferPrim @t @(ns +: n)
   , I# partElN <- fromIntegral $ totalDim' @ns
   , totalElN <- partElN *# n#
@@ -234,36 +231,6 @@ takeMaybe :: Int -> [a] -> Maybe [a]
 takeMaybe 0 _        = Just []
 takeMaybe _ []       = Nothing
 takeMaybe n (x : xs) = (x:) <$> takeMaybe (n-1) xs
-
--- TODO: Move to dimensions
-inferKnownXNatTypes :: forall ns
-                     . Dims ns -> Evidence (KnownXNatTypes (AsXDims ns))
-inferKnownXNatTypes U         = E
-inferKnownXNatTypes (_ :* ds) = case inferKnownXNatTypes ds of E -> E
-
--- TODO: Move to dimensions
-knownXNatTypeSnoc :: forall xns x
-                   . (KnownXNatTypes xns, KnownXNatType x)
-                  => Evidence (KnownXNatTypes (xns +: x))
-knownXNatTypeSnoc = unsafeCoerce# (E @(KnownXNatTypes xns, KnownXNatType x))
-
-
-
--- instance ( xnsm ~ (x ': xns')
---          , xns ~ Init xnsm
---          , Last xnsm ~ XN 2
---          , ns ~ AsDims xns
---          , (x ': xns') ~ (xns +: XN 2)
---          , PrimBytes (DataFrame t ns)
---          , Dimensions ns
---          , ArrayInstanceInference t ns
---          )
---       => Exts.IsList (DataFrame t ((x ': xns') :: [XNat])) where
---   type Item (DataFrame t (x ': xns')) = DataFrame t (AsDims (Init (x ': xns')))
---   fromList xs = fromListN (length xs) xs
---   fromListN = fromListN
---   toList (SomeDataFrame (df :: DataFrame t ds))
---     | Refl <- unsafeCoerce Refl :: ds :~: (ns +: Last ds) = toList df
 
 
 

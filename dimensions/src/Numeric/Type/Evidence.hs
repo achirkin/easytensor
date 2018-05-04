@@ -3,6 +3,7 @@
 {-# LANGUAGE GADTs           #-}
 {-# LANGUAGE KindSignatures  #-}
 {-# LANGUAGE Rank2Types      #-}
+{-# LANGUAGE PolyKinds       #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Type.Evidence
@@ -16,6 +17,7 @@
 -----------------------------------------------------------------------------
 module Numeric.Type.Evidence
   ( Evidence (..), withEvidence, sumEvs, (+!+)
+  , Evidence' (..), toEvidence, toEvidence'
   ) where
 
 
@@ -42,3 +44,16 @@ infixl 4 +!+
 withEvidence :: Evidence a -> (a => r) -> r
 withEvidence d r = case d of E -> r
 {-# INLINE withEvidence #-}
+
+-- | Same as @Evidence@, but allows to separate constraint function from
+--   the type it is applied to.
+data Evidence' :: (k -> Constraint) -> k -> Type where
+    E' :: c a => Evidence' c a
+
+toEvidence :: Evidence' c a -> Evidence (c a)
+toEvidence E' = E
+{-# INLINE toEvidence #-}
+
+toEvidence' :: Evidence (c a) -> Evidence' c a
+toEvidence' E = E'
+{-# INLINE toEvidence' #-}

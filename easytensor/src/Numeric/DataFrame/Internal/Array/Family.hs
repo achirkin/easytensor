@@ -29,10 +29,9 @@
 module Numeric.DataFrame.Internal.Array.Family
   ( Array, Scalar (..), ArrayBase (..)
   , ArraySingleton (..)
-  , ArraySing (..), aSingEv
+  , ArraySing (..), aSingEv, inferASing
   , inferPrim, inferEq, inferShow, inferOrd, inferNum
   , inferFractional, inferFloating
-  , aSingCons, aSingSnoc
   ) where
 
 
@@ -113,6 +112,23 @@ aSingEv :: ArraySing t ds -> Evidence (ArraySingleton t ds)
 aSingEv ds = reifyArraySing ds E
 {-# INLINE aSingEv #-}
 
+-- | Use `ArraySing` GADT to construct an `ArraySingleton` dictionary.
+--   The same as `aSingEv`, but relies on `PrimBytes` and `Dimensions`.
+inferASing :: forall t ds
+            . (PrimBytes t, Dimensions ds)
+           => Evidence (ArraySingleton t ds)
+inferASing = case (dims @_ @ds, primTag @t undefined) of
+  (U, _) -> E
+  (d :* U, PTagFloat)
+      | Just E <- sameDim (D @2) d -> E
+      | Just E <- sameDim (D @3) d -> E
+      | Just E <- sameDim (D @4) d -> E
+  (d :* U, PTagDouble)
+      | Just E <- sameDim (D @2) d -> E
+      | Just E <- sameDim (D @3) d -> E
+      | Just E <- sameDim (D @4) d -> E
+  _ -> case (unsafeCoerce# (E @(ds ~ ds)) :: Evidence (ds ~ '[0])) of E -> E
+{-# INLINE inferASing #-}
 
 
 instance {-# OVERLAPPABLE #-}
@@ -183,40 +199,3 @@ inferShow :: forall t ds
            . (Show t, Dimensions ds, ArraySingleton t ds)
           => Evidence (Show (Array t ds))
 inferShow = WITNESS
-
-
-aSingCons :: forall t d ds
-           . ( KnownDim d
-             , Dimensions ds
-             , PrimBytes t
-             , ArraySingleton t ds)
-          => Evidence (ArraySingleton t (d ': ds))
-aSingCons = case (aSing @t @ds, primTag @t undefined) of
-  (AScalar, PTagFloat)
-      | Just E <- sameDim (D @2) (D @d) -> E
-      | Just E <- sameDim (D @3) (D @d) -> E
-      | Just E <- sameDim (D @4) (D @d) -> E
-  (AScalar, PTagDouble)
-      | Just E <- sameDim (D @2) (D @d) -> E
-      | Just E <- sameDim (D @3) (D @d) -> E
-      | Just E <- sameDim (D @4) (D @d) -> E
-  _ -> case (unsafeCoerce# (E @('[17] ~ '[17]))
-                           :: Evidence ((d ': ds) ~ '[17])) of E -> E
-
-aSingSnoc :: forall t ds d
-           . ( KnownDim d
-             , Dimensions ds
-             , PrimBytes t
-             , ArraySingleton t ds)
-          => Evidence (ArraySingleton t (ds +: d))
-aSingSnoc = case (aSing @t @ds, primTag @t undefined) of
-  (AScalar, PTagFloat)
-      | Just E <- sameDim (D @2) (D @d) -> E
-      | Just E <- sameDim (D @3) (D @d) -> E
-      | Just E <- sameDim (D @4) (D @d) -> E
-  (AScalar, PTagDouble)
-      | Just E <- sameDim (D @2) (D @d) -> E
-      | Just E <- sameDim (D @3) (D @d) -> E
-      | Just E <- sameDim (D @4) (D @d) -> E
-  _ -> case (unsafeCoerce# (E @('[17] ~ '[17]))
-                           :: Evidence ((d ': ds) ~ '[17])) of E -> E
