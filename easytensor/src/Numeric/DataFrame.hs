@@ -30,10 +30,8 @@ module Numeric.DataFrame
   ) where
 
 import           Numeric.DataFrame.Internal.Array ()
--- import           Numeric.DataFrame.Internal.Array.ElementWise
---
+
 import           Numeric.DataFrame.Contraction
--- import           Numeric.DataFrame.Inference
 import           Numeric.DataFrame.Shape
 import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type

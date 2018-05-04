@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE CPP                    #-}
 {-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE DataKinds              #-}
@@ -30,7 +31,7 @@ module Numeric.DataFrame.Internal.Array.Family
   ( Array, Scalar (..), ArrayBase (..)
   , ArraySingleton (..)
   , ArraySing (..), aSingEv, inferASing
-  , inferPrim, inferEq, inferShow, inferOrd, inferNum
+  , inferPrimElem, inferPrim, inferEq, inferShow, inferOrd, inferNum
   , inferFractional, inferFloating
   ) where
 
@@ -149,6 +150,20 @@ instance {-# OVERLAPPING #-}  ArraySingleton Double '[3]   where
 instance {-# OVERLAPPING #-}  ArraySingleton Double '[4]   where
     aSing = AD4
 
+-- | This is a special function, because Scalar does not require PrimBytes.
+--   That is why the dimension list in the argument is not empty.
+inferPrimElem :: forall t d ds
+               . ArraySingleton t (d ': ds)
+              => Evidence (PrimBytes t)
+inferPrimElem = case (aSing :: ArraySing t (d ': ds)) of
+  AF2   -> E
+  AF3   -> E
+  AF4   -> E
+  AD2   -> E
+  AD3   -> E
+  AD4   -> E
+  ABase -> E
+
 -- Rather verbose way to show that there is an instance of a required type class
 -- for every instance of the type family.
 #define WITNESS case (aSing :: ArraySing t ds) of {\
@@ -160,7 +175,6 @@ instance {-# OVERLAPPING #-}  ArraySingleton Double '[4]   where
   AD3     -> E;\
   AD4     -> E;\
   ABase   -> E}
-
 
 inferPrim :: forall t ds
            . ( PrimBytes t

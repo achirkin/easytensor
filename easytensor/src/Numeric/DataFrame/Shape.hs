@@ -14,7 +14,7 @@
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UnboxedTuples             #-}
 {-# LANGUAGE UndecidableInstances      #-}
-{-# OPTIONS_GHC -fno-warn-orphans      #-}
+{-# OPTIONS_GHC -fno-warn-overlapping-patterns #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Shape
@@ -29,16 +29,16 @@
 
 module Numeric.DataFrame.Shape
     ( (<:>), (<::>), (<+:>)
-    -- , fromList, DataFrameToList (..)
-    -- ,
     , fromScalar
+    , DataFrameToList (..)
     , fromListN, fromList
     ) where
 
 import           GHC.Base
 
 import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.Family (inferASing, inferPrim)
+import           Numeric.DataFrame.Internal.Array.Family (inferASing, inferPrim,
+                                                          inferPrimElem)
 import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
@@ -129,65 +129,57 @@ fromList d xs = fromListN d (length xs) xs
 -- | Implement function `toList`.
 --   We need to create a dedicated type class for this
 --   to make it polymorphic over kind k (Nat <-> XNat).
-class DataFrameToList t (ds :: [k]) (z :: k) where
+class DataFrameToList (t :: Type) (ds :: [k]) (z :: k) where
     -- | Unwrap the last dimension of a DataFrame into a list  of smaller frames
     toList :: DataFrame t (ds +: z) -> [DataFrame t ds]
 
 
 
--- instance ( Dimensions ns
---          , Dimensions (ns +: z)
---          , PrimBytes (DataFrame t ns)
---          , PrimBytes (DataFrame t (ns +: z))
---          )
---          => DataFrameToList t z (ns :: [Nat]) where
---   toList df@(KnownDataFrame _) = go offset
---     where
---       !(I# step) = totalDim (Proxy @ns)
---       !(# offset, lenN, arr #) = toBytes df
---       lim = offset +# lenN
---       go pos | isTrue# (pos >=# lim)  = []
---              | otherwise = fromBytes (# pos, step , arr #) : go (pos +# step)
---
--- instance DataFrameToList t xz (xns :: [XNat]) where
---   toList (SomeDataFrame (df :: DataFrame t nsz))
---       | (pns :: Proxy ns, _ :: Proxy z, Refl, Refl, Refl, Refl, Refl) <- getXSZ @nsz
---       , Just Evidence <- inferInitDimensions @nsz
---       , Evidence <- inferInitArrayInstance df
---       , Evidence <- inferNumericFrame @t @ns
---       , I# step <- totalDim pns
---       , (# offset, lenN, arr #) <- toBytes df
---       = go pns step arr (offset +# lenN) offset
---     where
---       getXSZ :: forall xs z . (Proxy xs, Proxy z
---                               , (xs +: z) :~: nsz
---                               , xs :~: Init nsz
---                               , (Head nsz :+ Tail nsz) :~: nsz
---                               , FixedDim xns (Init nsz) :~: Init nsz
---                               , FixedXDim xns (Init nsz) :~: xns)
---       getXSZ = ( Proxy, Proxy, unsafeCoerce Refl
---                , unsafeCoerce Refl
---                , unsafeCoerce Refl
---                , unsafeCoerce Refl
---                , unsafeCoerce Refl)
---       go :: forall ns
---           . ( FixedDim xns ns ~ ns
---             , FixedXDim xns ns ~ xns
---             , NumericFrame t ns
---             , Dimensions ns
---             )
---          => Proxy ns -> Int# -> ByteArray# -> Int# -> Int# -> [DataFrame t xns]
---       go p step arr lim pos | isTrue# (pos >=# lim)  = []
---                             | otherwise = SomeDataFrame (
---                                            fromBytes (# pos, step , arr #) :: DataFrame t ns
---                                         )
---                                       : go p step arr lim (pos +# step)
---   toList _ = error "(DataFrameToList.ToList) Impossible happend: DataFrame has rank zero!"
+instance ( Dimensions (ns +: z)
+         , PrimBytes t
+         )
+         => DataFrameToList t (ns :: [Nat]) (z :: Nat) where
+    toList df
+      | Dims.Snoc (Dims :: Dims ns') dn <- dims @Nat @(ns +: z)
+          -- TODO: line below is a workaround and should be avoided.
+      , E <- unsafeCoerce# (E @(ns ~ ns)) :: Evidence (ns ~ ns')
+      , E <- inferASing @t @ns -- TODO: I don't understand why removing this
+                               --       does not cause any type errors?!
+                               --       Instead, it leads to incorrect inference
+                               --       of ArraySingleton.
+      , E <- inferASing @t @(ns +: z)
+      , E <- inferPrim @t @(ns +: z)
+      , E <- inferPrim @t @ns
+      , n <- dimVal dn
+      , I# step <- fromIntegral $ totalDim' @ns
+      , off0 <- elemOffset df
+      , ba <- getBytes df
+      = let go 0 _   = []
+            go k off = fromElems off step ba : go (k-1) (off +# step)
+        in go n off0
+      | otherwise = []
+
+instance DataFrameToList t (xns :: [XNat]) (xz :: XNat) where
+    toList (XFrame (df :: DataFrame t nsz))
+      | nsz <- dims @Nat @nsz
+      , xnsz <- xDims @(xns +: xz) nsz
+          -- TODO: line below is a workaround and should be avoided.
+      , E <- unsafeCoerce# (E @(xns ~ xns)) :: Evidence (xns ~ Init (xns +: xz))
+      , xns <- Dims.init xnsz
+      , TypeList <- types xnsz
+      , EvList <- Dims.init (EvList @_ @KnownXNatType @(xns +: xz))
+      , Dims.Snoc (ns@Dims :: Dims ns) _ <- nsz
+      , Dims.Cons (_ :: Dim k) (_ :: Dims ks) <- nsz
+      , E <- inferPrimElem @t @k @ks
+      , XDims ns' <- xns
+      , Just E <- sameDims ns ns'
+      = map XFrame (toList df)
+    toList _ = []
 
 -- | Concatenate a list of @DataFrame@s.
 --   Returns @Nothing@ if the list does not have enough elements
 --   or if provided length is invalid.
-fromListN :: forall m ns t
+fromListN :: forall (m :: Nat) (ns :: [Nat]) (t :: Type)
            . ( Dimensions ns
              , PrimBytes t
              )
@@ -206,11 +198,12 @@ fromListN Dim n@(I# n#) xs'
   , ns@(AsXDims xns) <- dims @Nat @ns
   , nsn@Dims <- Dims.snoc ns dn
   , xnsn <- Dims.snoc xns dxn
-  , EvList <- Dims.snoc (EvList @_ @KnownXNatType @(AsXDims ns))
-                        (E' @_ @KnownXNatType @(XN m))
+  , EvList <- Dims.snoc (EvList @XNat @KnownXNatType @(AsXDims ns))
+                        (toEvidence' (E @(KnownXNatType (XN m))))
   , XDims nsn' <- xnsn
   , Just E <- sameDims nsn nsn'
   , E <- inferASing @t @ns
+  , E <- inferASing @t @(ns +: n)
   , E <- inferPrim @t @ns
   , E <- inferPrim @t @(ns +: n)
   , I# partElN <- fromIntegral $ totalDim' @ns

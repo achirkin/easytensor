@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -224,13 +225,15 @@ instance Floating FloatX2 where
     atanh x = 0.5 * log ((1.0+x) / (1.0-x))
     {-# INLINE atanh #-}
 
-
-
+-- offset in bytes is S times bigger than offset in prim elements,
+-- when S is power of two, this is equal to shift
+#define BOFF_TO_PRIMOFF(off) uncheckedIShiftRL# off 2#
+#define ELEM_N 2
 
 instance PrimBytes FloatX2 where
 
     getBytes (FloatX2# a1 a2) = case runRW#
-       ( \s0 -> case newByteArray# (byteSize @Float undefined *# 3#) s0 of
+       ( \s0 -> case newByteArray# (byteSize @FloatX2 undefined) s0 of
            (# s1, marr #) -> case writeFloatArray# marr 0# a1 s1 of
              s2 -> case writeFloatArray# marr 1# a2 s2 of
                s3 -> unsafeFreezeByteArray# marr s3
@@ -238,51 +241,51 @@ instance PrimBytes FloatX2 where
     {-# INLINE getBytes #-}
 
     fromBytes off arr
-      | i <- uncheckedIShiftRL# off 2#
+      | i <- BOFF_TO_PRIMOFF(off)
       = FloatX2#
       (indexFloatArray# arr i)
       (indexFloatArray# arr (i +# 1#))
     {-# INLINE fromBytes #-}
 
     readBytes mba off s0
-      | i <- uncheckedIShiftRL# off 2#
+      | i <- BOFF_TO_PRIMOFF(off)
       = case readFloatArray# mba i s0 of
       (# s1, a1 #) -> case readFloatArray# mba (i +# 1#) s1 of
         (# s2, a2 #) -> (# s2, FloatX2# a1 a2 #)
     {-# INLINE readBytes #-}
 
     writeBytes mba off (FloatX2# a1 a2) s
-      | i <- uncheckedIShiftRL# off 2#
+      | i <- BOFF_TO_PRIMOFF(off)
       = writeFloatArray# mba (i +# 1#) a2
       ( writeFloatArray# mba  i        a1 s )
     {-# INLINE writeBytes #-}
 
 
-    byteSize _ = byteSize @Float undefined *# 2#
+    byteSize _ = byteSize @Float undefined *# ELEM_N#
     {-# INLINE byteSize #-}
 
-    byteAlign _ = byteAlign @Float undefined *# 2#
+    byteAlign _ = byteAlign @Float undefined
     {-# INLINE byteAlign #-}
 
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
 
     indexArray ba off
-      | i <- off *# 2#
+      | i <- off *# ELEM_N#
       = FloatX2#
       (indexFloatArray# ba i)
       (indexFloatArray# ba (i +# 1#))
     {-# INLINE indexArray #-}
 
     readArray mba off s0
-      | i <- off *# 2#
+      | i <- off *# ELEM_N#
       = case readFloatArray# mba i s0 of
       (# s1, a1 #) -> case readFloatArray# mba (i +# 1#) s1 of
         (# s2, a2 #) -> (# s2, FloatX2# a1 a2 #)
     {-# INLINE readArray #-}
 
     writeArray mba off (FloatX2# a1 a2) s
-      | i <- off *# 2#
+      | i <- off *# ELEM_N#
       = writeFloatArray# mba (i +# 1#) a2
       ( writeFloatArray# mba  i        a1 s )
     {-# INLINE writeArray #-}
@@ -311,7 +314,7 @@ instance PrimArray Float FloatX2 where
     elemOffset _ = 0#
     {-# INLINE elemOffset #-}
 
-    elemSize0 _  = 2#
+    elemSize0 _  = ELEM_N#
     {-# INLINE elemSize0 #-}
 
     fromElems off _ ba = FloatX2#
