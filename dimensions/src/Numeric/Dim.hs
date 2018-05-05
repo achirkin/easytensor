@@ -302,10 +302,10 @@ relax = unsafeCoerce#
 -- | We either get evidence that this function
 --   was instantiated with the same type-level numbers, or Nothing.
 --
---   Note, this version of the function behaves incorrectly with @Dim (XN x)@:
---   it compares only contained dim values, and ignores minimum value constraints.
---   As a result, GHC may infer minimum value contraints equality incorrectly.
-sameDim :: forall x y
+--   Note, this function works on @Nat@-indexed dimensions only,
+--   because @Dim (XN x)@ does not have runtime evidence to infer @x@
+--   and `KnownDim x` does not imply `KnownDim (XN x)`.
+sameDim :: forall (x :: Nat) (y :: Nat)
          . Dim x -> Dim y -> Maybe (Evidence (x ~ y))
 sameDim (DimSing a) (DimSing b)
   | a == b    = Just (unsafeCoerce# (E @(x ~ x)))

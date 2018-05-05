@@ -182,10 +182,10 @@ xDims' = xDims @xns (dims @Nat @ns)
 -- | We either get evidence that this function was instantiated with the
 --   same type-level Dimensions, or 'Nothing' @O(Length xs)@.
 --
---   Note, this version of the function behaves incorrectly with @Dims '[XN x,..]@:
---   it compares only contained dims values, and ignores minimum value constraints.
---   As a result, GHC may infer minimum value contraints equality incorrectly.
-sameDims :: Dims as -> Dims bs -> Maybe (Evidence (as ~ bs))
+--   Note, this function works on @Nat@-indexed dimensions only,
+--   because @Dims '[XN x]@ does not have runtime evidence to infer @x@
+--   and `KnownDim x` does not imply `KnownDim (XN x)`.
+sameDims :: Dims (as :: [Nat]) -> Dims (bs :: [Nat]) -> Maybe (Evidence (as ~ bs))
 sameDims as bs
   | listDims as == listDims bs
     = Just (unsafeCoerce# (E @('[] ~ '[])))
