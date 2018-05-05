@@ -143,10 +143,7 @@ instance ( Dimensions (ns +: z)
       | Dims.Snoc (Dims :: Dims ns') dn <- dims @Nat @(ns +: z)
           -- TODO: line below is a workaround and should be avoided.
       , E <- unsafeCoerce# (E @(ns ~ ns)) :: Evidence (ns ~ ns')
-      , E <- inferASing @t @ns -- TODO: I don't understand why removing this
-                               --       does not cause any type errors?!
-                               --       Instead, it leads to incorrect inference
-                               --       of ArraySingleton.
+      , E <- inferASing @t @ns
       , E <- inferASing @t @(ns +: z)
       , E <- inferPrim @t @(ns +: z)
       , E <- inferPrim @t @ns
@@ -173,10 +170,7 @@ instance DataFrameToList t (xns :: [XNat]) (xz :: XNat) where
       , E <- inferPrimElem @t @k @ks
       , XDims ns' <- xns
       , Just E <- sameDims ns ns'
-      , E <- inferASing @t @ns -- TODO: I don't understand why removing this
-                               --       does not cause any type errors?!
-                               --       Instead, it leads to incorrect inference
-                               --       of ArraySingleton.
+      , E <- inferASing @t @ns
       = map XFrame (toList df)
     toList _ = []
 
@@ -206,10 +200,7 @@ fromListN Dim n@(I# n#) xs'
                         (toEvidence' (E @(KnownXNatType (XN m))))
   , XDims nsn' <- xnsn
   , Just E <- sameDims nsn nsn'
-  , E <- inferASing @t @ns -- TODO: I don't understand why removing this
-                           --       does not cause any type errors?!
-                           --       Instead, it leads to incorrect inference
-                           --       of ArraySingleton.
+  , E <- inferASing @t @ns
   , E <- inferASing @t @(ns +: n)
   , E <- inferPrim @t @ns
   , E <- inferPrim @t @(ns +: n)
