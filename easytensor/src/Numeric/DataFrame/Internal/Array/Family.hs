@@ -133,8 +133,9 @@ inferASing = case (dims @_ @ds, primTag @t undefined) of
 
 
 instance {-# OVERLAPPABLE #-}
-         PrimBytes t => ArraySingleton t ds where
-    aSing = unsafeCoerce# (ABase :: ArraySing t '[0])
+         (Array t ds ~ ArrayBase t ds, PrimBytes t)
+         => ArraySingleton t ds where
+    aSing = ABase
 instance {-# OVERLAPPING #-}  ArraySingleton t      '[]    where
     aSing = AScalar
 instance {-# OVERLAPPING #-}  ArraySingleton Float  '[2]   where
