@@ -80,7 +80,7 @@ test-suite et-test
         Numeric.DataFrame.Arbitraries
         -- Numeric.DataFrame.SubSpaceTest
         Numeric.DataFrame.BasicTest
-        -- Numeric.QuaternionTest
+        Numeric.QuaternionTest
     build-depends:
         base -any,
         Cabal -any,

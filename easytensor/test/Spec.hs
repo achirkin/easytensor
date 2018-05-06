@@ -5,7 +5,7 @@ import           Distribution.TestSuite
 
 import qualified Numeric.DataFrame.BasicTest
 -- import qualified Numeric.DataFrame.SubSpaceTest
--- import qualified Numeric.QuaternionTest
+import qualified Numeric.QuaternionTest
 
 
 -- | Collection of tests in detailed-0.9 format
@@ -13,7 +13,7 @@ tests :: IO [Test]
 tests = return
   [ test "DataFrame.Basic"    Numeric.DataFrame.BasicTest.runTests
   -- , test "DataFrame.SubSpace" Numeric.DataFrame.SubSpaceTest.runTests
-  -- , test "Quaternion"         Numeric.QuaternionTest.runTests
+  , test "Quaternion"         Numeric.QuaternionTest.runTests
   ]
 
 
