@@ -39,7 +39,7 @@ import           Numeric.DataFrame.Internal.Array.Class
 import           Numeric.DataFrame.Internal.Array.Family (inferASing, inferPrim,
                                                           inferPrimElem)
 import           Numeric.DataFrame.SubSpace
-import           Numeric.DataFrame.Type
+import           Numeric.DataFrame.Type                  (DataFrame (..))
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
 import           Numeric.Scalar                          as Scalar

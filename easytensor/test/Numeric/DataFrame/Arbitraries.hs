@@ -17,11 +17,9 @@
 --   traversals with monadic actions.
 module Numeric.DataFrame.Arbitraries where
 
-import           Data.Proxy
 import           Test.QuickCheck
 
 import           Numeric.DataFrame
-import           Numeric.DataFrame.Internal.Array.Family (inferASing, inferPrim)
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
 
@@ -31,10 +29,10 @@ instance (Arbitrary t, PrimBytes t, Dimensions ds)
         | -- First, we need to find out exact array implementation to use
           -- inside this DataFrame.
           -- We need to do that whenever exact value of ds is not known
-          E <- inferASing @t @ds
+          E <- inferASing' @t @ds
           -- Then, we need to get basic byte manipulation type classes, such as
           -- PrimBytes and PrimArray.
-        , E <- inferPrim @t @ds
+        , E <- inferPrim' @t @ds
           -- After that, GHC can infer all necessary fancy things like SubSpace
           -- to do complex operations on sub-dimensions of a DataFrame.
           --
@@ -46,8 +44,8 @@ instance (Arbitrary t, PrimBytes t, Dimensions ds)
         f :: Arbitrary a => Scalar a -> Gen (Scalar a)
         f _ = scalar <$> arbitrary
     shrink
-        | E <- inferASing @t @ds
-        , E <- inferPrim @t @ds
+        | E <- inferASing' @t @ds
+        , E <- inferPrim' @t @ds
         = elementWise @_ @_ @ds f
       where
         -- Unfortunately, Scalar is not a proper second-rank data type
@@ -100,7 +98,7 @@ instance (Arbitrary t, PrimBytes t)
       --  This gives Dimensions ds evidence immediately.
       SomeDims (Dims :: Dims ds) <- arbitrary
       -- We also need to figure out an array implementation...
-      case inferASing @t @ds of
+      case inferASing' @t @ds of
         -- ... and generating a random DataFrame becomes a one-liner
         E -> SomeDataFrame <$> arbitrary @(DataFrame t ds)
 
@@ -109,13 +107,5 @@ instance (All Arbitrary ts, All PrimBytes ts, RepresentableList ts)
       => Arbitrary (SomeDataFrame ts) where
     arbitrary = do
       SomeDims (Dims :: Dims ds) <- arbitrary
-      case inferASings @ts @ds of
+      case inferASing' @ts @ds of
         E -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
-
-inferASings :: forall ts ds
-             . (All PrimBytes ts, RepresentableList ts, Dimensions ds)
-            => Evidence (ArraySingletons ts ds)
-inferASings = case tList @_ @ts of
-    U -> E
-    (_ :: Proxy t) :* (TypeList :: TypeList ts') ->
-      case (inferASing @t @ds, inferASings @ts' @ds) of (E, E) -> E
