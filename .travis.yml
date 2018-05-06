@@ -1,16 +1,13 @@
 language: haskell
+
 ghc:
   - "8.2"
   - "8.4"
-env:
-  - PACKAGEDIR="dimensions"
-  - PACKAGEDIR="easytensor"
-before_install: cd ${PACKAGEDIR}
+
 install:
-  - cabal install cpphs
-  - cabal install --only-dependencies --enable-tests
+  - cabal update
+  - cabal new-build all --ghc-options="-O0" --enable-tests --dependencies-only
 
 script:
-  - cabal configure --enable-tests --ghc-options="-O0"
-  - cabal build
-  - cabal test
+  - cabal new-build all --ghc-options="-O0" --enable-tests
+  - cabal new-test all --ghc-options="-O0"

@@ -21,7 +21,6 @@ module Numeric.DataFrame.SubSpaceTest (runTests) where
 import           Numeric.DataFrame
 import           Numeric.DataFrame.Arbitraries
 import           Numeric.Dimensions
-import           Numeric.TypeLits (Proxy (..))
 import           Test.QuickCheck
 
 

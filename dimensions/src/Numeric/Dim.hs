@@ -64,6 +64,8 @@ module Numeric.Dim
     -- * Re-export part of `GHC.TypeLits` for convenience
   , Nat, CmpNat, type (+), type (-), type (*), type (^)
   , MinDim, FixedDim, inferDimLE
+    -- * Inferring kind of type-level dimension
+  , KnownDimKind (..), DimKind (..)
   ) where
 
 
@@ -92,7 +94,6 @@ data XNatType :: XNat -> Type where
 
 -- | Same as `SomeNat`
 type SomeDim = Dim ('XN 0)
-
 
 -- | Singleton type to store type-level dimension value.
 --
@@ -389,6 +390,26 @@ powerDim (DimSing a) (DimSing b) = unsafeCoerce# (a ^ b)
 --   This function assures the type system that the relation takes place.
 inferDimLE :: forall m n . MinDim m n => Evidence (m <= n)
 inferDimLE = unsafeCoerce# (E @(n <= n))
+
+
+-- | GADT to support `KnownDimKind` type class.
+--   Match against its constructors to know if @k@ is @Nat@ or @XNat@
+data DimKind :: k -> Type where
+    -- | Working on @Nat@.
+    DimNat  :: DimKind Nat
+    -- | Working on @XNat@.
+    DimXNat :: DimKind XNat
+
+-- | Figure out whether the type-level dimension is `Nat` or `XNat`.
+--   Useful for generalized inference functions.
+class KnownDimKind k where
+    dimKind :: DimKind k
+
+instance KnownDimKind Nat where
+    dimKind = DimNat
+
+instance KnownDimKind XNat where
+    dimKind = DimXNat
 
 --------------------------------------------------------------------------------
 

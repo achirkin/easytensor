@@ -53,7 +53,7 @@ library
         Numeric.DataFrame.Internal.Array.Class
         Numeric.DataFrame.Internal.Array.Family
         Numeric.DataFrame.Internal.Array.Family.ArrayBase
-        Numeric.DataFrame.Internal.Array.Family.Scalar
+        Numeric.DataFrame.Internal.Array.Family.ScalarBase
         Numeric.DataFrame.Internal.Array.Family.FloatX2
         Numeric.DataFrame.Internal.Array.Family.FloatX3
         Numeric.DataFrame.Internal.Array.Family.FloatX4
@@ -81,12 +81,12 @@ test-suite et-test
     main-is: Spec.hs
     other-modules:
         Numeric.DataFrame.Arbitraries
-        Numeric.DataFrame.SubSpaceTest
+        -- Numeric.DataFrame.SubSpaceTest
         Numeric.DataFrame.BasicTest
-        Numeric.QuaternionTest
+        -- Numeric.QuaternionTest
     build-depends:
         base -any,
-        Cabal >=1.20,
+        Cabal -any,
         QuickCheck -any,
         easytensor -any,
         dimensions -any

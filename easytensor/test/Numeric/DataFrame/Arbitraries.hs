@@ -1,140 +1,121 @@
------------------------------------------------------------------------------
--- |
--- Module      :  Numeric.DataFrame.BasicTest
--- Copyright   :  (c) Artem Chirkin
--- License     :  BSD3
---
--- Maintainer  :  chirkin@arch.ethz.ch
---
--- A set of basic validity tests for DataFrame type.
--- Num, Ord, Fractional, Floating, etc
---
------------------------------------------------------------------------------
-{-# LANGUAGE ConstraintKinds           #-}
-{-# LANGUAGE DataKinds                 #-}
-{-# LANGUAGE FlexibleContexts          #-}
-{-# LANGUAGE GADTs                     #-}
-{-# LANGUAGE KindSignatures            #-}
-{-# LANGUAGE PartialTypeSignatures     #-}
-{-# LANGUAGE PolyKinds                 #-}
-{-# LANGUAGE Rank2Types                #-}
-{-# LANGUAGE ScopedTypeVariables       #-}
-{-# LANGUAGE TypeApplications          #-}
-{-# LANGUAGE TypeOperators             #-}
-{-# LANGUAGE UndecidableInstances      #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE KindSignatures        #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
+{-# OPTIONS_GHC -fno-warn-orphans  #-}
+-- | Provide instance of Arbitrary for all DataFrame types.
+--   Also, this module is an example of fancy type inference and DataFrame
+--   traversals with monadic actions.
 module Numeric.DataFrame.Arbitraries where
 
-import           Data.Type.Equality
+import           Data.Proxy
 import           Test.QuickCheck
-import           Unsafe.Coerce
 
-import           Numeric.Commons
 import           Numeric.DataFrame
+import           Numeric.DataFrame.Internal.Array.Family (inferASing, inferPrim)
 import           Numeric.Dimensions
+import           Numeric.PrimBytes
+
+instance (Arbitrary t, PrimBytes t, Dimensions ds)
+      => Arbitrary (DataFrame t (ds :: [Nat])) where
+    arbitrary
+        | -- First, we need to find out exact array implementation to use
+          -- inside this DataFrame.
+          -- We need to do that whenever exact value of ds is not known
+          E <- inferASing @t @ds
+          -- Then, we need to get basic byte manipulation type classes, such as
+          -- PrimBytes and PrimArray.
+        , E <- inferPrim @t @ds
+          -- After that, GHC can infer all necessary fancy things like SubSpace
+          -- to do complex operations on sub-dimensions of a DataFrame.
+          --
+          -- Note, we could put SubSpace into constraints of this instance as well.
+          -- That would render the above lines unnecessary, but would make
+          -- inference more difficult later.
+        = arbitrary >>= elementWise @_ @_ @ds f . ewgen . scalar
+      where
+        f :: Arbitrary a => Scalar a -> Gen (Scalar a)
+        f _ = scalar <$> arbitrary
+    shrink
+        | E <- inferASing @t @ds
+        , E <- inferPrim @t @ds
+        = elementWise @_ @_ @ds f
+      where
+        -- Unfortunately, Scalar is not a proper second-rank data type
+        -- (it is just type alias for DataFrame t []).
+        -- So it cannot be functor or traversable.
+        f :: Arbitrary a => Scalar a -> [Scalar a]
+        f = fmap scalar . shrink . unScalar
+
+instance (All Arbitrary ts, All PrimBytes ts, RepresentableList ts, Dimensions ds)
+      => Arbitrary (DataFrame ts (ds :: [Nat])) where
+    -- We create arbitrary MultiFrame by combining several SingleFrames.
+    -- SingleFrames are "variables" or "columns" of a MultiFrame that are
+    -- independent byte arrays bounded by a common dimensions type signature.
+    arbitrary = -- Use RepresentableList to find out how many columns are there.
+                case tList @_ @ts of
+        -- Zero columns, empty MultiFrame
+        U -> return Z
+        -- Cons-like construction.
+        -- Note, pattern matching TypeList brings RepresentableList evidence
+        -- for Tail ts.
+        _ :* (TypeList :: TypeList ts') -> do
+          at   <- arbitrary
+          ats' <- arbitrary @(DataFrame ts' ds)
+          return (at :*: ats')
+    shrink Z = []
+    -- MultiFrame is a newtype wrapper on a TypedList.
+    -- Thus, we can always recover RepresentableList ts by using function @types@
+    shrink (at :*: ats@(MultiFrame ats'))
+      | TypeList <- types ats'
+      = (:*:) <$> shrink at <*> shrink ats
 
 
-
-maxDims :: Int
+maxDims :: Word
 maxDims = 5
 
-maxDimSize :: Int
+maxDimSize :: Word
 maxDimSize = 7
 
--- | Fool typechecker by saying that a ~ b
-unsafeEqProof :: forall (a :: k) (b :: k) . a :~: b
-unsafeEqProof = unsafeCoerce Refl
+instance Arbitrary SomeDims where
+    arbitrary = do
+      dimN <- choose (0, maxDims) :: Gen Word
+      wdims <- mapM (\_ -> choose (2, maxDimSize) :: Gen Word) [1..dimN]
+      return $ someDimsVal wdims
 
+instance (Arbitrary t, PrimBytes t)
+      => Arbitrary (SomeDataFrame t) where
+    arbitrary = do
+      -- Generate random dimension list
+      --  and pattern-match against it with Dims pattern.
+      --  This gives Dimensions ds evidence immediately.
+      SomeDims (Dims :: Dims ds) <- arbitrary
+      -- We also need to figure out an array implementation...
+      case inferASing @t @ds of
+        -- ... and generating a random DataFrame becomes a one-liner
+        E -> SomeDataFrame <$> arbitrary @(DataFrame t ds)
 
+-- All same as above, just change constraints a bit
+instance (All Arbitrary ts, All PrimBytes ts, RepresentableList ts)
+      => Arbitrary (SomeDataFrame ts) where
+    arbitrary = do
+      SomeDims (Dims :: Dims ds) <- arbitrary
+      case inferASings @ts @ds of
+        E -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
 
--- | Generating random DataFrames
-newtype SimpleDF (ds :: [Nat] ) = SDF { getDF :: DataFrame Float ds}
-data SomeSimpleDF = forall (ds :: [Nat])
-                  . NumericFrame Float ds
-                 => SSDF !(SimpleDF ds)
-data SomeSimpleDFNonScalar
-    = forall (ds :: [Nat]) (a :: Nat) (as :: [Nat])
-    . ( Dimensions ds, FiniteList ds, KnownDims ds
-      , NumericFrame Float ds
-      , ds ~ (a :+ as)
-      )
-   => SSDFN !(SimpleDF ds)
-data SomeSimpleDFPair = forall (ds :: [Nat])
-                      . NumericFrame Float ds
-                     => SSDFP !(SimpleDF ds) !(SimpleDF ds)
-
-instance ( Dimensions ds
-         , NumericFrame Float ds
-         , PrimBytes (DataFrame Float ds)
-         ) => Arbitrary (SimpleDF (ds :: [Nat])) where
-  arbitrary = SDF <$> elementWise @_ @_ @ds f 0
-    where
-      f :: Scalar Float -> Gen (Scalar Float)
-      f _ = scalar <$> choose (-10000,100000)
-  shrink sdf = SDF <$> elementWise @_ @_ @ds f (getDF sdf)
-    where
-      f :: Scalar Float -> [Scalar Float]
-      f = fmap scalar . shrink . unScalar
-
-
-instance Arbitrary SomeSimpleDF where
-  arbitrary = do
-    dimN <- choose (0, maxDims) :: Gen Int
-    intDims <- mapM (\_ -> choose (2, maxDimSize) :: Gen Int) [1..dimN]
-    let eGen = case someDimsVal intDims of
-          Just (SomeDims (dds :: Dim ds)) -> case inferGoodDims dds of
-              Evidence -> Right $ SSDF <$> (arbitrary :: Gen (SimpleDF ds))
-          Nothing -> Left "cannot construct Dim value."
-    case eGen of
-      Left s  -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
-      Right v -> v
-  shrink (SSDF x) = SSDF <$> shrink x
-
-
-instance Arbitrary SomeSimpleDFNonScalar where
-  arbitrary = do
-    dimN <- choose (1, maxDims) :: Gen Int
-    intDims <- mapM (\_ -> choose (2, maxDimSize) :: Gen Int) [1..dimN]
-    let eGen = case someDimsVal intDims of
-          Just (SomeDims (dds :: Dim ds)) -> case inferGoodDims dds of
-              Evidence -> case ( unsafeEqProof :: ds :~: (Head ds :+ Tail ds)
-                                           , unsafeEqProof :: ds :~: (Init ds +: Last ds)
-                                           ) of
-                (Refl, Refl) -> Right $ SSDFN <$> (arbitrary :: Gen (SimpleDF ds))
-          Nothing -> Left "cannot construct Dim value."
-    case eGen of
-      Left s  -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
-      Right v -> v
-  shrink (SSDFN x) = SSDFN <$> shrink x
-
-
-instance Arbitrary SomeSimpleDFPair where
-  arbitrary = do
-    dimN <- choose (0, maxDims) :: Gen Int
-    intDims <- mapM (\_ -> choose (2, maxDimSize) :: Gen Int) [1..dimN]
-    let eGen = case someDimsVal intDims of
-          Just (SomeDims (dds :: Dim ds)) -> case inferGoodDims dds of
-              Evidence -> Right $ SSDFP
-                          <$> (arbitrary :: Gen (SimpleDF ds))
-                          <*> (arbitrary :: Gen (SimpleDF ds))
-          Nothing -> Left "cannot construct Dim value."
-    case eGen of
-      Left s  -> error $ "Cannot generate arbitrary SomeSimpleDF: " ++ s
-      Right v -> v
-  shrink (SSDFP x y) = SSDFP <$> shrink x <*> shrink y
-
-
-inferGoodDims :: forall (ds :: [Nat]) . Dim ds -> Evidence (Dimensions ds, FiniteList ds, KnownDims ds, NumericFrame Float ds)
-inferGoodDims ds = case reifyDimensions ds of
-  Evidence -> case inferDimKnownDims @ds `sumEvs` inferDimFiniteList @ds of
-    Evidence -> case inferArrayInstance @Float @ds of
-      Evidence -> case inferNumericFrame @Float @ds of
-        Evidence -> Evidence
-
-instance Show (DataFrame Float ds) => Show (SimpleDF ds) where
-  show (SDF sdf) = show sdf
-instance Show SomeSimpleDF where
-  show (SSDF sdf) = show sdf
-instance Show SomeSimpleDFNonScalar where
-  show (SSDFN sdf) = show sdf
-instance Show SomeSimpleDFPair where
-  show (SSDFP x y) = "Pair:\n" ++ show (x,y)
+inferASings :: forall ts ds
+             . (All PrimBytes ts, RepresentableList ts, Dimensions ds)
+            => Evidence (ArraySingletons ts ds)
+inferASings = case tList @_ @ts of
+    U -> E
+    (_ :: Proxy t) :* (TypeList :: TypeList ts') ->
+      case (inferASing @t @ds, inferASings @ts' @ds) of (E, E) -> E

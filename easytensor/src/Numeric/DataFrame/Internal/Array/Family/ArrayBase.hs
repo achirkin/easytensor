@@ -240,7 +240,7 @@ instance (Ord t, PrimBytes t) => Ord (ArrayBase t ds)  where
     (>=) = accumV2Idempotent True (\x y r -> r && x >= y)
     {-# INLINE (>=) #-}
     -- | Partiall ordering: all elements LE
-    (<=) = accumV2Idempotent True (\x y r -> r && x < y)
+    (<=) = accumV2Idempotent True (\x y r -> r && x <= y)
     {-# INLINE (<=) #-}
     -- | Compare lexicographically
     compare = accumV2Idempotent EQ (\x y  -> flip mappend (compare x y))
@@ -269,7 +269,7 @@ instance (Dimensions ds, PrimBytes t, Show t)
                                 ) " }" [1..n]
           loopOuter ::  Idxs dss -> String -> String
           loopOuter U s  = "\n" ++ loopInner U maxBound ++ s
-          loopOuter ds s = "\n(i j" ++ drop 3 (show ds) ++ "):\n"
+          loopOuter ds s = "\n(i j" ++ drop 4 (show ds) ++ "):\n"
                                 ++ loopInner ds maxBound ++ s
       in drop 1 $ foldr loopOuter "" [minBound..maxBound]
 

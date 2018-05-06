@@ -28,7 +28,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.Internal.Array.Family
-  ( Array, Scalar (..), ArrayBase (..)
+  ( Array, ScalarBase (..), ArrayBase (..)
   , ArraySingleton (..)
   , ArraySing (..), aSingEv, inferASing
   , inferPrimElem, inferPrim, inferEq, inferShow, inferOrd, inferNum
@@ -47,7 +47,7 @@ import           Numeric.DataFrame.Internal.Array.Family.DoubleX4
 import           Numeric.DataFrame.Internal.Array.Family.FloatX2
 import           Numeric.DataFrame.Internal.Array.Family.FloatX3
 import           Numeric.DataFrame.Internal.Array.Family.FloatX4
-import           Numeric.DataFrame.Internal.Array.Family.Scalar
+import           Numeric.DataFrame.Internal.Array.Family.ScalarBase
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
 
@@ -62,7 +62,7 @@ import           Numeric.PrimBytes
 --
 --   Data family would not work here, because it would give overlapping instances.
 type family Array (t :: Type) (ds :: [Nat]) = (v :: Type) | v -> t ds where
-    Array t      '[]    = Scalar t
+    Array t      '[]    = ScalarBase t
     Array Float  '[2]   = FloatX2
     Array Float  '[3]   = FloatX3
     Array Float  '[4]   = FloatX4
@@ -77,7 +77,7 @@ class ArraySingleton (t :: Type) (ds :: [Nat]) where
     aSing :: ArraySing t ds
 
 data ArraySing t (ds :: [Nat]) where
-    AScalar :: (Array t ds ~ Scalar t)       => ArraySing t      '[]
+    AScalar :: (Array t ds ~ ScalarBase t)   => ArraySing t      '[]
     AF2     :: (Array t ds ~ FloatX2)        => ArraySing Float  '[2]
     AF3     :: (Array t ds ~ FloatX3)        => ArraySing Float  '[3]
     AF4     :: (Array t ds ~ FloatX4)        => ArraySing Float  '[4]

@@ -5,7 +5,7 @@
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE UnboxedTuples              #-}
-module Numeric.DataFrame.Internal.Array.Family.Scalar (Scalar (..)) where
+module Numeric.DataFrame.Internal.Array.Family.ScalarBase (ScalarBase (..)) where
 
 
 import           GHC.Base
@@ -13,31 +13,31 @@ import           Numeric.DataFrame.Internal.Array.Class
 import           Numeric.DataFrame.Internal.Array.PrimOps
 import           Numeric.PrimBytes
 
--- | Specialize scalar type without any arrays
-newtype Scalar t = Scalar { _unScalar :: t }
+-- | Specialize ScalarBase type without any arrays
+newtype ScalarBase t = ScalarBase { _unScalarBase :: t }
   deriving ( Enum, Eq, Integral
            , Num, Fractional, Floating, Ord, Read, Real, RealFrac, RealFloat
            , PrimBytes)
 
-instance Show t => Show (Scalar t) where
-  show (Scalar t) = "{ " ++ show t ++ " }"
+instance Show t => Show (ScalarBase t) where
+  show (ScalarBase t) = "{ " ++ show t ++ " }"
 
-deriving instance {-# OVERLAPPABLE #-} Bounded t => Bounded (Scalar t)
-instance {-# OVERLAPPING #-} Bounded (Scalar Double) where
-  maxBound = Scalar inftyD
-  minBound = Scalar $ negate inftyD
-instance {-# OVERLAPPING #-} Bounded (Scalar Float) where
-  maxBound = Scalar inftyF
-  minBound = Scalar $ negate inftyF
+deriving instance {-# OVERLAPPABLE #-} Bounded t => Bounded (ScalarBase t)
+instance {-# OVERLAPPING #-} Bounded (ScalarBase Double) where
+  maxBound = ScalarBase inftyD
+  minBound = ScalarBase $ negate inftyD
+instance {-# OVERLAPPING #-} Bounded (ScalarBase Float) where
+  maxBound = ScalarBase inftyF
+  minBound = ScalarBase $ negate inftyF
 
-instance PrimBytes t => PrimArray t (Scalar t) where
+instance PrimBytes t => PrimArray t (ScalarBase t) where
   broadcast = unsafeCoerce#
   {-# INLINE broadcast #-}
   ix# _ = unsafeCoerce#
   {-# INLINE ix# #-}
   gen# _ = unsafeCoerce#
   {-# INLINE gen# #-}
-  upd# _ 0# = const . Scalar
+  upd# _ 0# = const . ScalarBase
   upd# _ _  = const id
   {-# INLINE upd# #-}
   elemOffset _ = 0#
