@@ -1,8 +1,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 
 module Numeric.DataFrame
-  ( DataFrame (..), SomeDataFrame (..)
-  , pattern (:*:), pattern Z, ArraySingletons
+  ( module Numeric.DataFrame.Type
     -- * Simplified type aliases
   , module Numeric.Scalar
   , module Numeric.Vector

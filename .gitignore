@@ -12,7 +12,8 @@ dist
 */.ghcjs-sandbox
 */.stack-work
 */.vscode
-
+dist-newstyle
+.ghc.*
 
 cabal.config
 *.o

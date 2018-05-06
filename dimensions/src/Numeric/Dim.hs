@@ -394,7 +394,7 @@ inferDimLE = unsafeCoerce# (E @(n <= n))
 
 -- | GADT to support `KnownDimKind` type class.
 --   Match against its constructors to know if @k@ is @Nat@ or @XNat@
-data DimKind :: k -> Type where
+data DimKind :: Type -> Type where
     -- | Working on @Nat@.
     DimNat  :: DimKind Nat
     -- | Working on @XNat@.

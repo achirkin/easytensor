@@ -6,6 +6,7 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE TypeSynonymInstances       #-}
 {-# LANGUAGE UnboxedTuples              #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}

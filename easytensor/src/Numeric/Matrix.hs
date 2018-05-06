@@ -44,7 +44,7 @@ module Numeric.Matrix
 import           GHC.Base
 import           Numeric.DataFrame.Contraction                     ((%*))
 import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.Family
+import           Numeric.DataFrame.Internal.Array.Family as AFam
 import           Numeric.DataFrame.Shape
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
@@ -116,7 +116,7 @@ instance ( KnownDim n, KnownDim m
 instance MatrixCalculus t (xn :: XNat) (xm :: XNat) where
     transpose (XFrame (df :: DataFrame t ns))
       | ((D :: Dim n) :* (D :: Dim m) :* U) <- dims @Nat @ns
-      , E <- inferPrimElem @t @n @'[m]
+      , E <- AFam.inferPrimElem @t @n @'[m]
       = XFrame (transpose df :: Matrix t m n)
     transpose _ = error "MatrixCalculus/transpose: impossible argument"
 
