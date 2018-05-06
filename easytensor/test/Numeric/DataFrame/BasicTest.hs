@@ -21,18 +21,24 @@
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -fno-warn-overlapping-patterns #-}
 
 module Numeric.DataFrame.BasicTest (runTests) where
 
-import           Numeric.DataFrame.Arbitraries
+import           Numeric.DataFrame
+import           Numeric.DataFrame.Arbitraries           ()
+import           Numeric.DataFrame.Internal.Array.Family
+import           Numeric.Dimensions
 import           Test.QuickCheck
 
 
 
 
 {-# ANN prop_Comparisons "HLint: ignore" #-}
-prop_Comparisons :: SomeSimpleDFPair -> Bool
-prop_Comparisons (SSDFP (SDF x) (SDF y))
+prop_Comparisons :: SomeDataFrame '[Float, Float] -> Bool
+prop_Comparisons (SomeDataFrame (x :*: y :*: Z :: DataFrame '[Float, Float] ds))
+  | E <- inferOrd @Float @ds
+  , E <- inferFractional @Float @ds
   = and
     [ abs x >= abs x / 2
     , abs x <= abs x + abs y
@@ -52,22 +58,27 @@ prop_Comparisons (SSDFP (SDF x) (SDF y))
     a ===> b = not a || b
     infix 2 ===>
 
-
-prop_Numeric :: SomeSimpleDFPair -> Bool
-prop_Numeric (SSDFP (SDF x) (SDF y))
+prop_Numeric :: SomeDataFrame '[Int, Int] -> Bool
+prop_Numeric (SomeDataFrame (x :*: y :*: Z :: DataFrame '[Int, Int] ds))
+  | E <- inferOrd @Int @ds
+  , E <- inferNum @Int @ds
   = and
     [ x + x == 2 * x
     , x + y == y + x
     , x + y == max x y + min x y
     , abs x * signum x == x
-    , x / 2 + x / 2 == x
     , x * y == y * x
     , x * 0 + y == y
     ]
 
 
-prop_Floating :: SomeSimpleDFPair -> Bool
-prop_Floating (SSDFP (SDF x) (SDF y))
+prop_Floating :: SomeDataFrame '[Double, Double] -> Bool
+prop_Floating (SomeDataFrame (x :*: y :*: Z :: DataFrame '[Double, Double] ds))
+  | E <- inferOrd @Double @ds
+  , E <- inferFloating @Double @ds
+  , lx <- log (0.01 + abs x)
+  , ly <- log (0.01 + abs y)
+  , eps <- 0.001
   = all ((eps >=) . abs)
     [ sin x * sin x + cos x * cos x - 1
     , exp lx * exp ly  / exp (lx + ly) - 1
@@ -75,10 +86,6 @@ prop_Floating (SSDFP (SDF x) (SDF y))
     , sin (asin (sin y)) - sin y
     , cos (acos (cos x)) - cos x
     ]
-  where
-    lx = log (0.01 + abs x)
-    ly = log (0.01 + abs y)
-    eps = 0.001
 
 
 return []

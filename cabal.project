@@ -1,0 +1,3 @@
+packages:
+  dimensions/dimensions.cabal
+  easytensor/easytensor.cabal

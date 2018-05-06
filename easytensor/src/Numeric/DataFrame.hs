@@ -1,16 +1,8 @@
------------------------------------------------------------------------------
--- |
--- Module      :  Numeric.DataFrame
--- Copyright   :  (c) Artem Chirkin
--- License     :  BSD3
---
--- Maintainer  :  chirkin@arch.ethz.ch
---
---
------------------------------------------------------------------------------
+{-# LANGUAGE PatternSynonyms #-}
 
 module Numeric.DataFrame
   ( DataFrame (..), SomeDataFrame (..)
+  , pattern (:*:), pattern Z, ArraySingletons
     -- * Simplified type aliases
   , module Numeric.Scalar
   , module Numeric.Vector

@@ -21,6 +21,7 @@
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE ViewPatterns               #-}
+{-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 -----------------------------------------------------------------------------
 -- |
@@ -38,17 +39,18 @@ module Numeric.DataFrame.Type
     DataFrame (..)
   , SomeDataFrame (..), DataFrame'
   , pattern (:*:), pattern Z
-
+  , ArraySingletons
   --   -- * Bring type classes into scope
   -- , NumericFrame
   --   -- * Utility type families and constraints
   -- , FPFRame, IntegralFrame, NumericVariantFrame, CommonOpFrame
   ) where
 
--- #include "MachDeps.h"
--- import           Foreign.Storable                        (Storable (..))
-import           GHC.Base
 
+import           Foreign.Storable                        (Storable (..))
+import           GHC.Base
+import           GHC.Ptr (Ptr (..))
+import Data.Proxy (Proxy)
 
 import           Numeric.DataFrame.Family
 import           Numeric.DataFrame.Internal.Array.Class
@@ -74,7 +76,8 @@ data instance DataFrame (ts :: l) (xns :: [XNat])
 -- | Data frame that has an unknown dimensionality at compile time.
 --   Pattern-match against its constructor to get a Nat-indexed data frame
 data SomeDataFrame (t :: l)
-  = forall (ns :: [Nat]) . Dimensions ns => SomeDataFrame (DataFrame t ns)
+  = forall (ns :: [Nat]) . (Dimensions ns, ArraySingletons t ns)
+  => SomeDataFrame (DataFrame t ns)
 
 -- | DataFrame with its type arguments swapped.
 newtype DataFrame' (xs :: [k]) (t :: l) = DataFrame' (DataFrame t xs)
@@ -100,6 +103,10 @@ pattern Z :: forall (xs :: [Type]) (ns :: [Nat])
 pattern Z = MultiFrame U
 
 
+--------------------------------------------------------------------------------
+-- All Show instances
+--------------------------------------------------------------------------------
+
 instance ( Show (Array t ds)
          , Dimensions ds
          ) => Show (DataFrame (t :: Type) (ds :: [Nat])) where
@@ -116,18 +123,35 @@ instance ( Dimensions ds
       : showAll 1 dfs
     where
       dds = dims @_ @ds
-      showAll :: ImplAllows Show xs ds => Word -> DataFrame (xs :: [Type]) ds -> [String]
+      showAll :: ImplAllows Show xs ds
+              => Word -> DataFrame (xs :: [Type]) ds -> [String]
       showAll _ Z = []
-      showAll n (SingleFrame arr :*: fs) = ("Var " ++ show n) : show arr : showAll (n+1) fs
-
+      showAll n (SingleFrame arr :*: fs)
+        = ("Var " ++ show n) : show arr : showAll (n+1) fs
 
 instance Show t => Show (DataFrame (t :: Type) (xns :: [XNat])) where
   show (XFrame (df :: DataFrame t ns))
     | E <- inferShow @t @ns = 'X': show df
 
--- instance All Show ts => Show (DataFrame (ts :: [Type]) (xns :: [XNat])) where
---   show (XFrame (df :: DataFrame t ns))
---     | E <- inferShow @t @ns = show df
+instance All Show ts => Show (DataFrame (ts :: [Type]) (xns :: [XNat])) where
+  show (XFrame (df@(MultiFrame mf) :: DataFrame ts ns))
+    | TypeList <- types mf
+    , E <- inferShows @ts @ns = 'X': show df
+  show _ = error "DataFrame/show: impossible argument"
+
+instance Show t => Show (SomeDataFrame (t :: Type)) where
+  show (SomeDataFrame (df :: DataFrame t ns))
+    | E <- inferShow @t @ns = "Some" ++ show df
+
+instance All Show ts => Show (SomeDataFrame (ts :: [Type])) where
+  show (SomeDataFrame (df@(MultiFrame mf) :: DataFrame ts ns))
+    | TypeList <- types mf
+    , E <- inferShows @ts @ns = "Some" ++ show df
+  show _ = error "DataFrame/show: impossible argument"
+
+--------------------------------------------------------------------------------
+
+
 
 
 
@@ -137,13 +161,15 @@ type family ImplAllows (f :: Type -> Constraint) (ts :: l) (ds :: [Nat])
     ImplAllows _ ('[] :: [Type]) _ = ()
     ImplAllows f (t ': ts :: [Type]) ds = (f (Array t ds), ImplAllows f ts ds)
 
+
+
 type family ArraySingletons (ts :: l) (ns :: [Nat]) :: Constraint where
     ArraySingletons (t :: Type) ns = ArraySingleton t ns
     ArraySingletons ('[] :: [Type]) _ = ()
     ArraySingletons (t ': ts :: [Type]) ns
       = (ArraySingleton t ns, ArraySingletons ts ns)
 
--- TODO: shall I add all these instances to MultiFrame?
+
 deriving instance Bounded (Array t ds) => Bounded (DataFrame t ds)
 deriving instance Enum (Array t ds) => Enum (DataFrame t ds)
 deriving instance Eq (Array t ds) => Eq (DataFrame t ds)
@@ -172,60 +198,30 @@ deriving instance PrimBytes (Array t ds)
 
 
 
--- instance ( Dimensions ds
---          , ElementWise (Idx ds) t (Array t ds)
---          ) => ElementWise (Idx ds) t (DataFrame t ds) where
---   indexOffset#  = indexOffset# . _getDF
---   {-# INLINE indexOffset# #-}
---   (!) = (!) . _getDF
---   {-# INLINE (!) #-}
---   ewmap f = KnownDataFrame . ewmap f . _getDF
---   {-# INLINE ewmap #-}
---   ewgen = KnownDataFrame . ewgen
---   {-# INLINE ewgen #-}
---   ewgenA = fmap KnownDataFrame . ewgenA
---   {-# INLINE ewgenA #-}
---   ewfoldl f x0 = ewfoldl f x0 . _getDF
---   {-# INLINE ewfoldl #-}
---   ewfoldr f x0 = ewfoldr f x0 . _getDF
---   {-# INLINE ewfoldr #-}
---   elementWise f = fmap KnownDataFrame . elementWise f . _getDF
---   {-# INLINE elementWise #-}
---   indexWise f = fmap KnownDataFrame . indexWise f . _getDF
---   {-# INLINE indexWise #-}
---   broadcast = KnownDataFrame . broadcast
---   {-# INLINE broadcast #-}
---   update i x = KnownDataFrame . update i x . _getDF
---   {-# INLINE update #-}
+instance PrimBytes (DataFrame t ds) => Storable (DataFrame t ds) where
+    sizeOf x = I# (byteSize x)
+    alignment x = I# (byteAlign x)
+    peekElemOff ptr (I# offset) =
+      peekByteOff ptr (I# (offset *# byteSize @(DataFrame t ds) undefined))
+    pokeElemOff ptr (I# offset) =
+      pokeByteOff ptr (I# (offset *# byteSize @(DataFrame t ds) undefined))
+    peekByteOff (Ptr addr) (I# offset)
+      | bsize <- byteSize @(DataFrame t ds) undefined
+      = IO $ \s0 -> case newByteArray# bsize s0 of
+         (# s1, marr #) -> case unsafeFreezeByteArray# marr
+                                 ( copyAddrToByteArray#
+                                     (addr `plusAddr#` offset)
+                                      marr 0# bsize s1
+                                 ) of
+           (# s2, arr #) -> (# s2, fromBytes 0# arr #)
+    pokeByteOff (Ptr addr) (I# offset) x = IO
+            $ \s -> (# copyByteArrayToAddr# (getBytes x) (byteOffset x)
+                                            (addr `plusAddr#` offset)
+                                            (byteSize x) s
+                     , () #)
+    peek ptr = peekByteOff ptr 0
+    poke ptr = pokeByteOff ptr 0
 
-
--- instance PrimBytes (DataFrame t ds) => Storable (DataFrame t ds) where
---   sizeOf x = I# (byteSize x)
---   alignment x = I# (byteAlign x)
---   peekElemOff ptr (I# offset) =
---     peekByteOff ptr (I# (offset *# byteSize (undefined :: DataFrame t ds)))
---   pokeElemOff ptr (I# offset) =
---     pokeByteOff ptr (I# (offset *# byteSize (undefined :: DataFrame t ds)))
---   peekByteOff (Ptr addr) (I# offset) = IO $ \s0 -> case newByteArray# bsize s0 of
---     (# s1, marr #) -> case copyAddrToByteArray# (addr `plusAddr#` offset)
---                                                  marr 0# bsize s1 of
---       s2 -> case unsafeFreezeByteArray# marr s2 of
---         (# s3, arr #) -> (# s3, fromBytes (# 0#, bsize `quotInt#` ebsize, arr #) #)
---     where
---       bsize = byteSize (undefined :: DataFrame t ds)
---       ebsize = elementByteSize (undefined :: DataFrame t ds)
---   pokeByteOff (Ptr addr) (I# offset) x = IO
---           $ \s0 -> case copyByteArrayToAddr# xbytes xboff
---                                              (addr `plusAddr#` offset)
---                                               bsize s0 of
---        s2 -> (# s2, () #)
---     where
---       !(# elOff, elNum, xbytes #) = toBytes x
---       bsize = elementByteSize x *# elNum
---       xboff  = elementByteSize x *# elOff
---   peek ptr = peekByteOff ptr 0
---   poke ptr = pokeByteOff ptr 0
---
 
 
 --
@@ -240,54 +236,19 @@ deriving instance PrimBytes (Array t ds)
 
 
 
+inferShows :: forall ts ds
+             . (All Show ts, RepresentableList ts, ArraySingletons ts ds, Dimensions ds)
+            => Evidence (ImplAllows Show ts ds)
+inferShows = case tList @_ @ts of
+    U -> E
+    (_ :: Proxy t) :* (TypeList :: TypeList ts') ->
+      case (inferShow @t @ds, inferShows @ts' @ds) of (E, E) -> E
 
---
--- instance (RepresentableList xs, All Bounded xs) => Bounded (Tuple xs) where
---     minBound = go (tList @Type @xs)
---       where
---         go :: forall (ys :: [Type])
---             . All Bounded ys => TypeList ys -> Tuple ys
---         go U         = U
---         go (_ :* xs) = minBound *! go xs
---     maxBound = go (tList @Type @xs)
---       where
---         go :: forall (ys :: [Type])
---             . All Bounded ys => TypeList ys -> Tuple ys
---         go U         = U
---         go (_ :* xs) = maxBound *! go xs
---
--- instance All Eq xs => Eq (Tuple xs) where
---     (==) U U                 = True
---     (==) (x :* tx) (y :* ty) = x == y && tx == ty
---     (/=) U U                 = False
---     (/=) (x :* tx) (y :* ty) = x /= y || tx /= ty
---
--- -- | Ord instance of the Tuple implements inverse lexicorgaphic ordering.
--- --   That is, the last element in the tuple is the most significant one.
--- --
--- --   Note, this will never work on infinite-dimensional tuples!
--- instance (All Eq xs, All Ord xs) => Ord (Tuple xs) where
---     compare U U                 = EQ
---     compare (x :* tx) (y :* ty) = compare tx ty <> compare x y
---
--- instance All Show xs => Show (Tuple xs) where
---     show U         = "U"
---     show (x :* xs) = show x ++ " :* " ++ show xs
---     showsPrec _ U = showString "U"
---     showsPrec p (x :* xs) = showParen (p >= 5)
---                           $ showsPrec 5 x
---                           . showString " :* "
---                           . showsPrec 5 xs
---
---
--- instance (RepresentableList xs, All Read xs) => Read (Tuple xs) where
---     readPrec = go (tList @Type @xs)
---       where
---         go :: forall (ys :: [Type])
---             . All Read ys => TypeList ys -> Read.ReadPrec (Tuple ys)
---         go U = U <$ Read.expectP (Read.Symbol "U")
---         go (_ :* ts) = Read.parens $ Read.prec 5 $ do
---           x <- Read.step Read.readPrec
---           Read.expectP (Read.Symbol ":*")
---           xs <- Read.step $ go ts
---           return (x :* xs)
+
+
+class DataFrameInference (t :: l) (ds :: [Nat]) where
+    -- | Bring an evidence of `ArraySingleton` instance into
+    --   a scope at runtime.
+    --   This is often used to let GHC infer other complex type class instances,
+    --   such as `SubSpace`.
+    inferASing :: Evidence (ArraySingletons ts ds)
