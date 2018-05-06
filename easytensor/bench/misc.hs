@@ -18,23 +18,29 @@ import qualified Numeric.DataFrame.ST as ST
 main :: IO ()
 main = do
     putStrLn "Hello world!"
-    print (Dn @3 :* Dn @2 :* (D :: Dim ('[] :: [Nat])))
+    print (D @3 :* D @2 :* U)
 
-    print (fromList [vec2 1 0, vec2 2 3, vec2 3 4, vec2 5 6] :: DataFrame Int '[N 2, XN 2])
-    print (fromList [vec4 1 0 2 11, vec4 2 22 3 0, vec4 3 4 0 0] :: DataFrame Double '[N 4, XN 2])
-    print (fromList [vec2 0 0, vec2 2 22, vec2 2 22] :: DataFrame Float '[N 2, XN 2])
-    print (fromList [0, 1, 3, 5, 7] :: DataFrame Float '[XN 2])
-    print (fromList [9, 13, 2] :: DataFrame Float '[N 5, N 2, XN 2])
-    print $ vec2 1 1 %* mat22 (vec2 1 1) (vec2 2 (3 :: Float))
+    print (fromList D [vec2 1 0, vec2 2 3, vec2 3 4, vec2 5 6]
+             :: Maybe (DataFrame Int '[N 2, XN 2]))
+    print (fromList D [vec4 1 0 2 11, vec4 2 22 3 0, vec4 3 4 0 0]
+             :: Maybe (DataFrame Double '[N 4, XN 0]))
+    print (fromList D [vec2 0 0, vec2 2 22, vec2 2 22]
+             :: Maybe (DataFrame Float '[N 2, XN 4]))
+    print $ fromList (D @3) [0 :: Scf, 1, 3, 5, 7]
+    print ( fromList D [9, 13, 2]
+             :: Maybe (DataFrame Float '[N 5, N 2, XN 2]))
+    print $ vec2 1 1 %* mat22 1 (vec2 2 (3 :: Float))
     print (toList (42 :: DataFrame Int '[4,3,2]))
-    -- Seems like I have to specify known dimension explicitly,
-    -- because the inference process within the pattern match
-    -- cannot escape the case expression.
-    -- On the other hand, if I type wrong dimension it will throw a nice type-level error.
-    () <- case fromList [10, 100, 1000] :: DataFrame Double '[N 4, N 2, XN 2] of
-                    -- Amazing inference!
-                    -- m :: KnownNat k => DataFrame '[4,2,k]
-        SomeDataFrame m -> print $ vec4 1 2.25 3 0.162 %* m
+    -- TODO: FIX THIS
+    -- -- Seems like I have to specify known dimension explicitly,
+    -- -- because the inference process within the pattern match
+    -- -- cannot escape the case expression.
+    -- -- On the other hand, if I type wrong dimension it will throw a nice type-level error.
+    -- () <- case fromList D [10, 100, 1000] :: Maybe (DataFrame Double '[N 4, N 2, XN 2]) of
+    --                 -- Amazing inference!
+    --                 -- m :: KnownNat k => DataFrame '[4,2,k]
+    --     Just (XFrame m) -> print $ vec4 1 2.25 3 0.162 %* m
+    --     Nothing -> print "Failed to construct a DataFrame!"
     putStrLn "Constructing larger matrices"
     let x :: DataFrame Double '[2,5,4]
         x =   transpose ( (56707.4   <::> 73558.41  <+:> 47950.074  <+:> 83394.61  <+:> 25611.629 )
@@ -62,7 +68,7 @@ main = do
     -- For example, we can do tensor produt of every sub-tensor.
     putStrLn "\nConversions between element types and frame sizes."
     print $ iwmap @Int @'[2,2] @'[7] @_
-                  (\(i:!Z) v -> fromScalar . (scalar i +) . round
+                  (\(Idx i:*U) v -> fromScalar . (scalar (fromIntegral i) +) . round
                                      $ vec3 0.02 (-0.01) 0.001 %* v
                   ) y
 
@@ -77,8 +83,8 @@ main = do
     print rVec
 
     -- Updating existing frames
-    print $ update (2:!Z) (scalar 777) rVec
-    print $ update (2:!3:!Z) (vec2 999 999) x
+    print $ update (2:*U) (scalar 777) rVec
+    print $ update (2:*3:*U) (vec2 999 999) x
 
     let matX = iwgen (scalar . fromEnum) :: DataFrame Int '[2,5,4]
         matY = iwgen (scalar . fromEnum) :: DataFrame Int '[5,4]
@@ -91,7 +97,7 @@ main = do
     -- Working with mutable frames
     print $ ST.runST $ do
       sdf <- ST.thawDataFrame matY
-      ST.writeDataFrame sdf (1:!1:!Z) 900101
-      ST.writeDataFrame sdf (3:!3:!Z) 900303
-      ST.writeDataFrame sdf (5:!3:!Z) 900503
+      ST.writeDataFrame sdf (1:*1:*U) 900101
+      ST.writeDataFrame sdf (3:*3:*U) 900303
+      ST.writeDataFrame sdf (5:*3:*U) 900503
       ST.unsafeFreezeDataFrame sdf
