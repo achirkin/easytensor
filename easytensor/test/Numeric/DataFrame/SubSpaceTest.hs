@@ -23,48 +23,43 @@ import           Numeric.DataFrame.Arbitraries ()
 import           Numeric.Dimensions
 import           Test.QuickCheck
 
+type SFull = '[2,5,4,3,7]
+type SPref = '[2,5,4]
+type SSuff = '[3,7]
 
-
--- prop_Eye :: SomeDataFrame Double -> Bool
--- prop_Eye (SomeDataFrame (x :: DataFrame Double ds))
---   | Cons (D :: Dim dh) (Dims :: Dims dt) <- dims `inSpaceOf` x
---   , Snoc (Dims :: Dims di) (D :: Dim dl) <- dims `inSpaceOf` x
---   -- | Just Evidence <- sumEvs <$> inferUnConsDimensions @ds
---   --                           <*> inferUnSnocDimensions @ds
---     = (eye :: DataFrame Double '[dh, dh]) %* x == x
---     -- && x == x %* (eye :: DataFrame Double '[dh, dh])
---   -- | otherwise = False
-
-
-prop_IndexDimMax :: DataFrame Int '[2,5,4] -> DataFrame Int '[3,7] -> Bool
+prop_IndexDimMax :: DataFrame Int SPref -> DataFrame Int SSuff -> Bool
 prop_IndexDimMax x y =
    ((maxBound `inSpaceOf` y) !. z) == x
   where
-    z = ewgen x :: DataFrame Int '[2,5,4,3,7]
+    z = ewgen x :: DataFrame Int SFull
 
-prop_IndexCustom1 :: DataFrame Word '[2,5,4] -> DataFrame Word '[3,7] -> Bool
-prop_IndexCustom1 x _ = (1:*3 !. z) == x
+prop_IndexCustom1 :: DataFrame Word SPref -> Bool
+prop_IndexCustom1 x = (1:*3 !. z) == x
   where
-    z = ewgen x :: DataFrame Word '[2,5,4,3,7]
+    z = ewgen x :: DataFrame Word SFull
 
 
-prop_IndexCustom2 :: DataFrame Double '[2,5,4] -> DataFrame Double '[3,7] -> Bool
-prop_IndexCustom2 x _ = (2:*2 !. z) %* eye == x
+prop_IndexCustom2 :: DataFrame Double SPref -> Bool
+prop_IndexCustom2 x = (2:*2 !. z) %* eye == x
   where
-    z = ewgen x :: DataFrame Double '[2,5,4,3,7]
+    z = ewgen x :: DataFrame Double SFull
 
--- TODO: following never finishes!
--- prop_Foldlr :: DataFrame Double '[2,5,4] -> DataFrame Double '[3,7] -> Bool
--- prop_Foldlr x _ =
---    abs (ewfoldl (+) 10 z - ewfoldr @_ @'[2,5,4] (+) 0 z - 10) <= fromScalar (zmax * 0.0001)
---   where
---     z = ewgen x :: DataFrame Double '[2,5,4,3,7]
---     zmax = ewfoldl @Double @'[] @'[2,5,4,3,7] (max . abs) 0.001 z
+prop_Foldlr :: DataFrame Double SPref -> Bool
+prop_Foldlr x =
+    abs (ewfoldl (+) 10 z - ewfoldr @_ @SPref (+) 0 z - 10)
+      <= fromScalar (zmax * 0.0001)
+  where
+    z = ewgen x :: DataFrame Double SFull
+    zmax = ewfoldl @Double @'[] @SFull (max . abs) 0.001 z
 
-prop_Ewmap :: DataFrame Float '[2,5,4] -> DataFrame Float '[3,7] -> Bool
-prop_Ewmap _ y =
-   y * 2 == ewmap @_ @'[3] (*2) y
+prop_Ewmap :: DataFrame Double SFull -> Bool
+prop_Ewmap x = x * 2 == ewmap @_ @'[Head SFull] (*2) x
 
+prop_ProdTranspose :: DataFrame Double '[2,6] -> DataFrame Double '[6,7] -> Bool
+prop_ProdTranspose x y = transpose (x %* y) == transpose y %* transpose x
+
+prop_Eye :: DataFrame Double SFull -> Bool
+prop_Eye x = eye %* x == x && x %* eye == x
 
 return []
 runTests :: IO Bool
