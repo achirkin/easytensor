@@ -290,10 +290,11 @@ instance ( ConcatList as bs asbs
         , W# lenBSW <- totalDim' @bs
         , lenBS <- word2Int# lenBSW
         , lenASBS <- lenAS *# lenBS
+        , bsize <- lenASBS *# elS
         -> case runRW#
-            ( \s0 -> case newByteArray# (lenASBS *# elS) s0 of
+            ( \s0 -> case newByteArray# bsize s0 of
               (# s1, mba #) -> unsafeFreezeByteArray# mba
-                ( loop# 0# lenAS lenASBS
+                ( loop# 0# (lenAS *# elS) bsize
                   (\off -> writeBytes mba off x)
                   s1
                 )

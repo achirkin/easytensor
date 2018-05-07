@@ -44,6 +44,7 @@ for example, `Vector t n` implemented as `ByteArray#` is overloaded by a special
 
 ### Implemenation status and plan
 
+  - [ ] Improve ConcatList and FixedDims inference.
   - [x] Basic implementation of generic ns-dimensional dataframes matrices based on type Float
   - [x] Basic implementation of generic ns-dimensional dataframes based on other types (Double, Int, Word, Int8.. etc.)
   - [ ] Overloaded fast implementation for low-dimensional vectors and matrices: only FloatX2, FloatX3, FloatX4, DoubleX2, DoubleX3, DoubleX4, and Scalar is done.
