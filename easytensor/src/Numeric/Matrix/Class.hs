@@ -3,11 +3,15 @@
 {-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE UndecidableInstances  #-}
 module Numeric.Matrix.Class
-  ( MatrixCalculus (..)
-  , SquareMatrixCalculus (..)
+  ( MatrixTranspose (..)
+  , SquareMatrix (..)
+  , MatrixDeterminant (..)
   , MatrixInverse (..)
+  , MatrixLU (..), LUFact (..)
   , Matrix
   , HomTransform4 (..)
   , Mat22f, Mat23f, Mat24f
@@ -26,24 +30,49 @@ import           Numeric.Vector
 -- | Alias for DataFrames of rank 2
 type Matrix t (n :: k) (m :: k) = DataFrame t '[n,m]
 
-class MatrixCalculus t (n :: k) (m :: k) where
+class MatrixTranspose t (n :: k) (m :: k) where
     -- | Transpose Mat
     transpose :: Matrix t n m -> Matrix t m n
-  -- (MatrixCalculus t m n, PrimBytes (Matrix t m n)) =>
+  -- (MatrixTranspose t m n, PrimBytes (Matrix t m n)) =>
 
-class SquareMatrixCalculus t (n :: Nat) where
+class SquareMatrix t (n :: Nat) where
     -- | Mat with 1 on diagonal and 0 elsewhere
     eye :: Matrix t n n
     -- | Put the same value on the Mat diagonal, 0 otherwise
     diag :: Scalar t -> Matrix t n n
-    -- | Determinant of  Mat
-    det :: Matrix t n n -> Scalar t
     -- | Sum of diagonal elements
     trace :: Matrix t n n -> Scalar t
+
+class MatrixDeterminant t (n :: Nat) where
+    -- | Determinant of  Mat
+    det :: Matrix t n n -> Scalar t
 
 class MatrixInverse t (n :: Nat) where
     -- | Matrix inverse
     inverse :: Matrix t n n -> Matrix t n n
+
+
+-- | Result of LU factorization with Partial Pivoting
+--   @ PA = LU @.
+data LUFact t n
+  = LUFact
+  { luLower    :: Matrix t n n
+    -- ^ Lower triangular matrix @L@.
+    --   All elements on the diagonal of @L@ equal @1@.
+  , luUpper    :: Matrix t n n
+    -- ^ Upper triangular matrix @U@
+  , luPerm     :: Matrix t n n
+    -- ^ Row permutation matrix @P@
+  , luPermSign :: Scalar t
+    -- ^ Sign of permutation @luPermSign == det . luPerm@
+  }
+
+deriving instance (Show (Matrix t n n), Show t) => Show (LUFact t n)
+deriving instance (Eq (Matrix t n n), Eq t) => Eq (LUFact t n)
+
+class MatrixLU t (n :: Nat) where
+    -- | Compute LU factorization with Partial Pivoting
+    lu :: Matrix t n n -> LUFact t n
 
 
 -- | Operations on 4x4 transformation matrices and vectors in homogeneous coordinates.
