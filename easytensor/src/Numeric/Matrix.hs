@@ -8,13 +8,13 @@
 {-# LANGUAGE MagicHash                 #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE RecordWildCards           #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE UnboxedSums               #-}
 {-# LANGUAGE UnboxedTuples             #-}
 {-# LANGUAGE UndecidableInstances      #-}
-{-# LANGUAGE RecordWildCards      #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 -----------------------------------------------------------------------------
 -- |
@@ -46,8 +46,9 @@ module Numeric.Matrix
   ) where
 
 
+import           Control.Monad                           (foldM)
+import           Data.Foldable                           (forM_, foldl')
 import           Data.List                               (delete)
-import           Data.Foldable (foldl')
 import           GHC.Base
 import           Numeric.DataFrame.Contraction           ((%*))
 import           Numeric.DataFrame.Internal.Array.Class
@@ -61,8 +62,6 @@ import           Numeric.PrimBytes
 import           Numeric.Scalar
 import           Numeric.Vector
 
-import Data.Foldable
-import Control.Monad
 import           Control.Monad.ST
 import           Numeric.DataFrame.ST
 
@@ -177,7 +176,7 @@ instance ( KnownDim n, Ord t, Fractional t
       nn1 = n *# n -# 1#
       prodF a = scalar $ prodF' nn1 a
       prodF' 0# a = ix# 0# a
-      prodF' k  a  = ix# k a * prodF' (k -# n1) a
+      prodF' k  a = ix# k a * prodF' (k -# n1) a
 
 
 instance ( KnownDim n, Ord t, Fractional t
@@ -202,7 +201,7 @@ instance ( KnownDim n, Ord t, Fractional t
         loop f i k x s
           | isTrue# (i ==# k) = (# s, x #)
           | otherwise = case f i x s of
-              (# s', y #) -> loop f ( i+# 1# ) k y s'
+              (# s', y #) -> loop f ( i +# 1# ) k y s'
         go s0
           | (# s1, mbl #) <- newByteArray# bsize s0
           , (# s2, mbu #) <- newByteArray# bsize s1
@@ -256,34 +255,33 @@ luSolve :: forall t n
         => LUFact t n -> Vector t n -> Vector t n
 luSolve LUFact {..} b = x
   where
+    -- Pb = LUx
     pb = luPerm %* b
     !n@(I# n#) = fromIntegral $ dimVal' @n
+    -- Ly = Pb
     y :: Vector t n
     y = runST $ do
       my <- newDataFrame
       let ixA (I# i) (I# j) = scalar $ ix# (i +# n# *# j) luLower
           ixB (I# i) = scalar $ ix# i pb
-          wr = writeDataFrameOff my
-          rr = readDataFrameOff my
-      for_ [0..n-1] $ \i -> do
-        v <- foldM ( \x j -> do
-                      dj <- rr j
-                      return $ x - dj * ixA i j
+      forM_ [0..n-1] $ \i -> do
+        v <- foldM ( \v j -> do
+                      dj <- readDataFrameOff my j
+                      return $ v - dj * ixA i j
                    ) (ixB i) [0..i-1]
-        wr i v
+        writeDataFrameOff my i v
       unsafeFreezeDataFrame my
+    -- Ux = y
     x = runST $ do
       mx <- newDataFrame
       let ixA (I# i) (I# j) = scalar $ ix# (i +# n# *# j) luUpper
           ixB (I# i) = scalar $ ix# i y
-          wr = writeDataFrameOff mx
-          rr = readDataFrameOff mx
-      for_ [n-1, n-2 .. 0] $ \i -> do
-        v <- foldM ( \x j -> do
-                      dj <- rr j
-                      return $ x - dj * ixA i j
-                   ) (ixB i) [i..n-1]
-        wr i (v / ixA i i)
+      forM_ [n-1, n-2 .. 0] $ \i -> do
+        v <- foldM ( \v j -> do
+                      dj <- readDataFrameOff mx j
+                      return $ v - dj * ixA i j
+                   ) (ixB i) [i+1..n-1]
+        writeDataFrameOff mx i (v / ixA i i)
       unsafeFreezeDataFrame mx
 
 
@@ -303,11 +301,10 @@ pivotMat m
             f ( j, i:is ) = (# (j, is), ix i j #)
         in case gen# nn f (0,rowOrder) of
             (# _, r #) -> r
-      , let f ( _, [] ) = (# (0, []), 0 #)
-            f ( i, x:xs )
-               | i == x    = (# ( i+1, x:xs), 1 #)
-               | i == n    = f  ( 0, xs)
-               | otherwise = (# ( i+1, x:xs), 0 #)
+      , let f ( j, [] ) = f (j+1, rowOrder)
+            f ( j, x:xs )
+               | j == x    = (# ( j, xs), 1 #)
+               | otherwise = (# ( j, xs), 0 #)
         in case gen# nn f (0,rowOrder) of
             (# _, r #) -> r
       , if countMisordered rowOrder `rem` 2 == 1

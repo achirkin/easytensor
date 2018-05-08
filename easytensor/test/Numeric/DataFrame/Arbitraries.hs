@@ -2,6 +2,7 @@
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE PartialTypeSignatures #-}
@@ -84,11 +85,37 @@ maxDims = 5
 maxDimSize :: Word
 maxDimSize = 7
 
+instance KnownDim a => Arbitrary (Dim (N a)) where
+    arbitrary = return $ Dn (dim @_ @a)
+    shrink _ = []
+
+instance KnownDim m => Arbitrary (Dim (XN m)) where
+    arbitrary = do
+      dimN <- choose (dimVal' @m, maxDims)
+      case constrain @m (someDimVal dimN) of
+        Nothing -> error "impossible argument"
+        Just d  -> return d
+    shrink _ = []
+
 instance Arbitrary SomeDims where
     arbitrary = do
       dimN <- choose (0, maxDims) :: Gen Word
       wdims <- mapM (\_ -> choose (2, maxDimSize) :: Gen Word) [1..dimN]
       return $ someDimsVal wdims
+    shrink (SomeDims U)         = []
+    shrink (SomeDims (_ :* ds)) = [SomeDims ds]
+
+instance Arbitrary (Dims '[]) where
+    arbitrary = return U
+    shrink _ = []
+
+instance (KnownDim n, Arbitrary (Dims xs)) => Arbitrary (Dims (N n ': xs)) where
+    arbitrary = (:*) <$> arbitrary <*> arbitrary
+    shrink _ = []
+
+instance (KnownDim m, Arbitrary (Dims xs)) => Arbitrary (Dims (XN m ': xs)) where
+    arbitrary = (:*) <$> arbitrary <*> arbitrary
+    shrink _ = []
 
 instance (Arbitrary t, PrimBytes t)
       => Arbitrary (SomeDataFrame t) where
@@ -101,6 +128,7 @@ instance (Arbitrary t, PrimBytes t)
       case inferASing' @t @ds of
         -- ... and generating a random DataFrame becomes a one-liner
         E -> SomeDataFrame <$> arbitrary @(DataFrame t ds)
+    shrink _ = []
 
 -- All same as above, just change constraints a bit
 instance (All Arbitrary ts, All PrimBytes ts, RepresentableList ts)
@@ -109,3 +137,22 @@ instance (All Arbitrary ts, All PrimBytes ts, RepresentableList ts)
       SomeDims (Dims :: Dims ds) <- arbitrary
       case inferASing' @ts @ds of
         E -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
+    shrink _ = []
+
+instance ( Arbitrary t, PrimBytes t
+         , Arbitrary (Dims xs), All KnownXNatType xs)
+      => Arbitrary (DataFrame t (xs :: [XNat])) where
+    arbitrary = do
+      XDims (_ :: Dims ds) <- arbitrary @(Dims xs)
+      case inferASing' @t @ds of
+        E -> XFrame <$> arbitrary @(DataFrame t ds)
+    shrink (XFrame df) = XFrame <$> shrink df
+
+instance ( All Arbitrary ts, All PrimBytes ts, RepresentableList ts
+         , Arbitrary (Dims xs), All KnownXNatType xs)
+      => Arbitrary (DataFrame ts (xs :: [XNat])) where
+    arbitrary = do
+      XDims (_ :: Dims ds) <- arbitrary @(Dims xs)
+      case inferASing' @ts @ds of
+        E -> XFrame <$> arbitrary @(DataFrame ts ds)
+    shrink (XFrame df) = XFrame <$> shrink df

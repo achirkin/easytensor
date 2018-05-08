@@ -40,7 +40,8 @@
 
 module Numeric.Dimensions.Dims
   ( Dims, SomeDims (..), Dimensions (..)
-  , TypedList (Dims, XDims, AsXDims, U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
+  , TypedList ( Dims, XDims, AsXDims, KnownDims
+              , U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
   , listDims, someDimsVal, totalDim, totalDim'
   , sameDims, sameDims'
   , compareDims, compareDims'
@@ -77,16 +78,25 @@ type Dims (xs :: [k]) = TypedList Dim xs
 {-# COMPLETE Dims #-}
 {-# COMPLETE XDims #-}
 {-# COMPLETE AsXDims #-}
+{-# COMPLETE KnownDims #-}
 #endif
 
--- | Pattern-matching against this constructor brings a `Dimensions` instance
---   into the scope.
+-- | @O(1)@ Pattern-matching against this constructor brings a `Dimensions`
+--   instance into the scope.
 --   Thus, you can do arbitrary operations on your dims and use this pattern
 --   at any time to reconstruct the class instance at runtime.
 pattern Dims :: forall ds . () => Dimensions ds => Dims ds
 pattern Dims <- (dimsEv -> E)
   where
     Dims = dims @_ @ds
+
+-- | @O(Length ds)@ `Dimensions` and `KnownDim` for each individual dimension.
+pattern KnownDims :: forall ds . ()
+                  => (All KnownDim ds, Dimensions ds) => Dims ds
+pattern KnownDims <- (patKDims -> PatKDims)
+  where
+    KnownDims = dims @_ @ds
+
 
 -- | Pattern-matching against this constructor reveals Nat-kinded list of dims,
 --   pretending the dimensionality is known at compile time within the scope
@@ -298,8 +308,11 @@ type family AsDims (xns::[XNat]) = (ns :: [Nat]) | ns -> xns where
 
 -- | Constrain @Nat@ dimensions hidden behind @XNat@s.
 type family FixedDims (xns::[XNat]) (ns :: [Nat]) :: Constraint where
-    FixedDims '[] '[] = ()
-    FixedDims (xn ': xns)  (n ': ns) = (FixedDim xn n, FixedDims xns ns)
+    FixedDims '[] ns = (ns ~ '[])
+    FixedDims (xn ': xns) ns
+      = ( ns ~ (Head ns ': Tail ns)
+        , FixedDim xn (Head ns)
+        , FixedDims xns (Tail ns))
 
 -- | Know the structure of each dimension
 type KnownXNatTypes xns = All KnownXNatType xns
@@ -374,3 +387,19 @@ patAsXDims (n@D :* ns) = case patAsXDims ns of
 patAsXDims _ = error "AsXDims/patAsXDims: impossible argument"
 #endif
 {-# INLINE patAsXDims #-}
+
+
+
+data PatKDims (ns :: [k])
+  = (All KnownDim ns, Dimensions ns) => PatKDims
+
+
+patKDims :: Dims ns -> PatKDims ns
+patKDims U = PatKDims
+patKDims (Dim :* ns) = case patKDims ns of
+  PatKDims -> PatKDims
+#if __GLASGOW_HASKELL__ >= 802
+#else
+patKDims _ = error "Dims/patKDims: impossible argument"
+#endif
+{-# INLINE patKDims #-}

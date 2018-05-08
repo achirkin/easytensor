@@ -1,10 +1,11 @@
 module Main (tests, main) where
 
-import           System.Exit
 import           Distribution.TestSuite
+import           System.Exit
 
 import qualified Numeric.DataFrame.BasicTest
 import qualified Numeric.DataFrame.SubSpaceTest
+import qualified Numeric.MatrixTest
 import qualified Numeric.QuaternionTest
 
 
@@ -13,6 +14,7 @@ tests :: IO [Test]
 tests = return
   [ test "DataFrame.Basic"    Numeric.DataFrame.BasicTest.runTests
   , test "DataFrame.SubSpace" Numeric.DataFrame.SubSpaceTest.runTests
+  , test "Matrix"             Numeric.MatrixTest.runTests
   , test "Quaternion"         Numeric.QuaternionTest.runTests
   ]
 
@@ -31,7 +33,7 @@ main = do
         exitFailure
   where
     isGood (_, Finished Pass) = True
-    isGood _ = False
+    isGood _                  = False
 
 
 -- | Convert QuickCheck props into Cabal tests
