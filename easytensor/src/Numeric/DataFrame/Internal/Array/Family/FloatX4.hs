@@ -304,6 +304,20 @@ instance PrimBytes FloatX4 where
       ( writeFloatArray# mba  i        a1 s )))
     {-# INLINE writeBytes #-}
 
+    readAddr addr s0
+      = case readFloatOffAddr# addr 0# s0 of
+      (# s1, a1 #) -> case readFloatOffAddr# addr 1# s1 of
+        (# s2, a2 #) -> case readFloatOffAddr# addr 2# s2 of
+          (# s3, a3 #) -> case readFloatOffAddr# addr 3# s3 of
+            (# s4, a4 #) -> (# s4, FloatX4# a1 a2 a3 a4 #)
+    {-# INLINE readAddr #-}
+
+    writeAddr (FloatX4# a1 a2 a3 a4) addr s
+      = writeFloatOffAddr# addr 3# a4
+      ( writeFloatOffAddr# addr 2# a3
+      ( writeFloatOffAddr# addr 1# a2
+      ( writeFloatOffAddr# addr 0# a1 s )))
+    {-# INLINE writeAddr #-}
 
     byteSize _ = byteSize @Float undefined *# ELEM_N#
     {-# INLINE byteSize #-}

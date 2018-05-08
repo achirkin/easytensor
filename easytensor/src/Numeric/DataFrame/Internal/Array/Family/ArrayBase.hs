@@ -38,12 +38,12 @@ import           Numeric.PrimBytes
 data ArrayBase (t :: Type) (ds :: [Nat])
   = ArrayBase
     (# t
-       -- ^ Same value for each element;
-       --   this is the cheapest way to initialize an array.
-       --   It is also used for Num instances to avoid dependency on Dimensions.
-     | (# Int#  -- ^ Offset measured in elements.
-        , Int#  -- ^ Number of elements.
-        , ByteArray# -- ^ Content.
+       --  Same value for each element;
+       --  this is the cheapest way to initialize an array.
+       --  It is also used for Num instances to avoid dependency on Dimensions.
+     | (# Int#  -- Offset measured in elements.
+        , Int#  -- Number of elements.
+        , ByteArray# -- Content.
         #)
      #)
 
@@ -105,6 +105,26 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
         (# | (# offN, n, arr #) #) ->
           copyByteArray# arr (offN *# tbs) mba bOff (n *# tbs)
     {-# INLINE writeBytes #-}
+
+    readAddr addr s0
+      | W# nw <- totalDim' @ds
+      , n <- word2Int# nw
+      , tbs <- byteSize (undefined :: t)
+      , bsize <- tbs *# n
+      = case newByteArray# bsize s0 of
+         (# s1, mba1 #) -> case unsafeFreezeByteArray# mba1
+                                (copyAddrToByteArray# addr mba1 0# bsize s1) of
+           (# s2, ba #) -> (# s2, ArrayBase (# | (# 0# , n , ba #) #) #)
+    {-# INLINE readAddr #-}
+
+    writeAddr (ArrayBase c) addr
+      | tbs <- byteSize (undefined :: t) = case c of
+        (# t | #) | W# n <- totalDim' @ds ->
+          loop# 0# tbs (word2Int# n *# tbs) (\i -> writeAddr t (plusAddr# addr i))
+        (# | (# offN, n, arr #) #) ->
+          copyByteArrayToAddr# arr (offN *# tbs) addr (n *# tbs)
+    {-# INLINE writeAddr #-}
+
 
     byteSize  _ = case totalDim' @ds of -- WARNING: slow!
       W# n -> byteSize (undefined :: t) *# word2Int# n
