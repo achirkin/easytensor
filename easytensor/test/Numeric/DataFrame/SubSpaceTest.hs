@@ -1,13 +1,3 @@
------------------------------------------------------------------------------
--- |
--- Module      :  Numeric.DataFrame.SubSpaceTest
--- Copyright   :  (c) Artem Chirkin
--- License     :  BSD3
---
--- Maintainer  :  chirkin@arch.ethz.ch
---
---
------------------------------------------------------------------------------
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE PolyKinds           #-}

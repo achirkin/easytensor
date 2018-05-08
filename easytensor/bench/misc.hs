@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE GADTs            #-}
-{-# LANGUAGE KindSignatures   #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators    #-}
 
@@ -31,16 +30,17 @@ main = do
              :: Maybe (DataFrame Float '[N 5, N 2, XN 2]))
     print $ vec2 1 1 %* mat22 1 (vec2 2 (3 :: Float))
     print (toList (42 :: DataFrame Int '[4,3,2]))
-    -- TODO: FIX THIS
-    -- -- Seems like I have to specify known dimension explicitly,
-    -- -- because the inference process within the pattern match
-    -- -- cannot escape the case expression.
-    -- -- On the other hand, if I type wrong dimension it will throw a nice type-level error.
-    -- () <- case fromList D [10, 100, 1000] :: Maybe (DataFrame Double '[N 4, N 2, XN 2]) of
-    --                 -- Amazing inference!
-    --                 -- m :: KnownNat k => DataFrame '[4,2,k]
-    --     Just (XFrame m) -> print $ vec4 1 2.25 3 0.162 %* m
-    --     Nothing -> print "Failed to construct a DataFrame!"
+    -- Seems like I have to specify known dimension explicitly,
+    -- because the inference process within the pattern match
+    -- cannot escape the case expression.
+    -- On the other hand, if I type wrong dimension it will throw a nice type-level error.
+    () <- case fromList D [10, 100, 1000] :: Maybe (DataFrame Double '[N 4, N 2, XN 2]) of
+        Just (XFrame m)
+          | KnownDims <- dims `inSpaceOf` m
+              -- Amazing inference!
+              -- m :: KnownNat k => DataFrame '[4,2,k]
+            -> print $ vec4 1 2.25 3 0.162 %* m
+        Nothing -> print "Failed to construct a DataFrame!"
     putStrLn "Constructing larger matrices"
     let x :: DataFrame Double '[2,5,4]
         x =   transpose ( (56707.4   <::> 73558.41  <+:> 47950.074  <+:> 83394.61  <+:> 25611.629 )

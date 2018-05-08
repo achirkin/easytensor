@@ -5,9 +5,10 @@
 {-# LANGUAGE UnboxedTuples          #-}
 module Numeric.DataFrame.Internal.Array.Class
   ( PrimArray (..)
+  , ixOff, unsafeFromFlatList
   ) where
 
-import           GHC.Base          (ByteArray#, Int#)
+import           GHC.Base          (ByteArray#, Int#, Int (..))
 import           Numeric.PrimBytes
 
 
@@ -37,3 +38,14 @@ class PrimBytes t => PrimArray t a | a -> t where
     -- | Get array by its offset and size in a ByteArray.
     --   Both offset and size are given in element number.
     fromElems :: Int# -> Int# -> ByteArray# -> a
+
+-- | Index array by an integer offset (starting from 0).
+ixOff :: PrimArray t a => Int -> a -> t
+ixOff (I# i) = ix# i
+
+-- | Construct an array from a flat list and length
+unsafeFromFlatList :: PrimArray t a => Int -> [t] -> a
+unsafeFromFlatList (I# n) vs = case gen# n f vs of (# _, r #) -> r
+  where
+    f [] = (# [], undefined #)
+    f (x:xs) = (# xs, x #)
