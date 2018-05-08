@@ -280,6 +280,18 @@ instance PrimBytes DoubleX3 where
       ( writeDoubleArray# mba  i        a1 s ))
     {-# INLINE writeBytes #-}
 
+    readAddr addr s0
+      = case readDoubleOffAddr# addr 0# s0 of
+      (# s1, a1 #) -> case readDoubleOffAddr# addr 1# s1 of
+        (# s2, a2 #) -> case readDoubleOffAddr# addr 2# s2 of
+          (# s3, a3 #) -> (# s3, DoubleX3# a1 a2 a3 #)
+    {-# INLINE readAddr #-}
+
+    writeAddr (DoubleX3# a1 a2 a3) addr s
+      = writeDoubleOffAddr# addr 2# a3
+      ( writeDoubleOffAddr# addr 1# a2
+      ( writeDoubleOffAddr# addr 0# a1 s ))
+    {-# INLINE writeAddr #-}
 
     byteSize _ = byteSize @Double undefined *# ELEM_N#
     {-# INLINE byteSize #-}

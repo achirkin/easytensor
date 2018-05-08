@@ -174,7 +174,7 @@ class KnownDim (n :: k) where
     dim :: Dim n
 
 
-  -- | Find out the type of `XNat` constructor
+-- | Find out the type of `XNat` constructor
 class KnownXNatType (n :: XNat) where
   -- | Pattern-match against this to out the type of `XNat` constructor
   xNatType :: XNatType n

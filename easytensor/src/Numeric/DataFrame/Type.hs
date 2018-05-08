@@ -214,26 +214,8 @@ deriving instance PrimBytes (Array t ds)
 instance PrimBytes (DataFrame t ds) => Storable (DataFrame t ds) where
     sizeOf x = I# (byteSize x)
     alignment x = I# (byteAlign x)
-    peekElemOff ptr (I# offset) =
-      peekByteOff ptr (I# (offset *# byteSize @(DataFrame t ds) undefined))
-    pokeElemOff ptr (I# offset) =
-      pokeByteOff ptr (I# (offset *# byteSize @(DataFrame t ds) undefined))
-    peekByteOff (Ptr addr) (I# offset)
-      | bsize <- byteSize @(DataFrame t ds) undefined
-      = IO $ \s0 -> case newByteArray# bsize s0 of
-         (# s1, marr #) -> case unsafeFreezeByteArray# marr
-                                 ( copyAddrToByteArray#
-                                     (addr `plusAddr#` offset)
-                                      marr 0# bsize s1
-                                 ) of
-           (# s2, arr #) -> (# s2, fromBytes 0# arr #)
-    pokeByteOff (Ptr addr) (I# offset) x = IO
-            $ \s -> (# copyByteArrayToAddr# (getBytes x) (byteOffset x)
-                                            (addr `plusAddr#` offset)
-                                            (byteSize x) s
-                     , () #)
-    peek ptr = peekByteOff ptr 0
-    poke ptr = pokeByteOff ptr 0
+    peek (Ptr addr) = IO (readAddr addr)
+    poke (Ptr addr) a = IO (\s -> (# writeAddr a addr s, () #))
 
 
 
