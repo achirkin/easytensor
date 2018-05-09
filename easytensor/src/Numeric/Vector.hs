@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs            #-}
 {-# LANGUAGE KindSignatures   #-}
+{-# LANGUAGE PolyKinds        #-}
 -- | Vector is an alias to a DataFrame with order 1.
 module Numeric.Vector
     ( -- * Type aliases
@@ -26,7 +27,7 @@ import           Numeric.Scalar
 -- * Vector type
 --------------------------------------------------------------------------------
 
-type Vector t (n :: Nat) = DataFrame t '[n]
+type Vector (t :: *) (n :: k) = DataFrame t '[n]
 
 type Vec2f = Vector Float 2
 type Vec3f = Vector Float 3

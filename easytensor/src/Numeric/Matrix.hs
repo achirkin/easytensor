@@ -249,7 +249,7 @@ instance ( KnownDim n, Ord t, Fractional t
 
 
 -- | Solve @Ax = b@ problem given LU decomposition of A.
-luSolve :: forall t n
+luSolve :: forall (t :: Type) (n :: Nat)
          . ( KnownDim n, Ord t, Fractional t
            , PrimBytes t, PrimArray t (Matrix t n n), PrimArray t (Vector t n))
         => LUFact t n -> Vector t n -> Vector t n

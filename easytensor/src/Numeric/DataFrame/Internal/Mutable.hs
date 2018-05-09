@@ -31,6 +31,7 @@ module Numeric.DataFrame.Internal.Mutable
     , thawDataFrame#, thawPinDataFrame#, unsafeThawDataFrame#
     , writeDataFrame#, writeDataFrameOff#
     , readDataFrame#, readDataFrameOff#
+    , withDataFramePtr#
     ) where
 
 
@@ -98,7 +99,9 @@ copyMDataFrame# :: forall (t :: Type) (as :: [Nat]) (b' :: Nat) (b :: Nat)
 copyMDataFrame# (MDataFrame# offA lenA arrA) ei (MDataFrame# offM _ arrM) s
     | elS <- byteSize @t undefined
     , I# i <- fromEnum ei
-    = (# copyMutableByteArray# arrA (offA *# elS) arrM ((offM +# i) *# elS) (lenA *# elS) s, () #)
+    = (# copyMutableByteArray# arrA (offA *# elS)
+                               arrM ((offM +# i) *# elS) (lenA *# elS) s
+       , () #)
 {-# INLINE copyMDataFrame# #-}
 
 -- | Make a mutable DataFrame immutable, without copying.
@@ -196,3 +199,18 @@ readDataFrame# :: forall (t :: Type) (ns :: [Nat]) s
                => MDataFrame s t ns -> Idxs ns -> State# s -> (# State# s, t #)
 readDataFrame# mdf ei | I# i <- fromEnum ei = readDataFrameOff# mdf i
 {-# INLINE readDataFrame# #-}
+
+-- | Allow arbitrary operations on a pointer to the beginning of the data.
+--   Only possible with @RealWord@ state (thus, in @IO@) due to semantics of
+--   @touch#@ operation that keeps the data from being garbage collected.
+withDataFramePtr# :: forall (t :: Type) (ns :: [Nat]) (r :: Type)
+                   . PrimBytes t
+                  => MDataFrame RealWorld t ns
+                  -> ( Addr# -> State# RealWorld -> (# State# RealWorld, r #) )
+                  -> State# RealWorld -> (# State# RealWorld, r #)
+withDataFramePtr# (MDataFrame# off _ mba) k s0
+  | (# s1, a #) <- unsafeFreezeByteArray# mba s0
+  , (# s2, r #) <- k ( byteArrayContents# a
+                       `plusAddr#` (off *# byteSize @t undefined)
+                     ) s1
+  = (# touch# mba s2, r #)
