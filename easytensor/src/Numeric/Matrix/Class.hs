@@ -28,7 +28,7 @@ import           Numeric.Scalar
 import           Numeric.Vector
 
 -- | Alias for DataFrames of rank 2
-type Matrix (t :: *) (n :: k) (m :: k) = DataFrame t '[n,m]
+type Matrix (t :: l) (n :: k) (m :: k) = DataFrame t '[n,m]
 
 class MatrixTranspose t (n :: k) (m :: k) where
     -- | Transpose Mat

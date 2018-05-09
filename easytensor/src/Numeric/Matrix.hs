@@ -68,14 +68,14 @@ import           Numeric.DataFrame.ST
 
 
 -- | Compose a 2x2D matrix
-mat22 :: ( PrimBytes (Vector t 2)
+mat22 :: ( PrimBytes (Vector (t :: Type) 2)
          , PrimBytes (Matrix t 2 2)
          )
       => Vector t 2 -> Vector t 2 -> Matrix t 2 2
 mat22 = (<::>)
 
 -- | Compose a 3x3D matrix
-mat33 :: ( PrimBytes t
+mat33 :: ( PrimBytes (t :: Type)
          , PrimBytes (Vector t 3)
          , PrimBytes (Matrix t 3 3)
          )
@@ -88,7 +88,7 @@ mat33 a b c = runST $ do
   unsafeFreezeDataFrame mmat
 
 -- | Compose a 4x4D matrix
-mat44 :: forall t
+mat44 :: forall (t :: Type)
        . ( PrimBytes t
          , PrimBytes (Vector t (4 :: Nat))
          , PrimBytes (Matrix t (4 :: Nat) (4 :: Nat))
