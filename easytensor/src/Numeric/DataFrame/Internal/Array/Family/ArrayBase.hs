@@ -82,9 +82,25 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
     {-# INLINE getBytes #-}
 
     fromBytes bOff ba
-      | W# n <- totalDim' @ds
+      | W# nw <- totalDim' @ds
+      , n <- word2Int# nw
       , tbs <- byteSize (undefined :: t)
-      = ArrayBase (# | (# quotInt# bOff tbs, word2Int# n , ba #) #)
+      , (# offN, offRem #) <- quotRemInt# bOff tbs
+      = case offRem of
+          0# -> ArrayBase (# | (# offN, n , ba #) #)
+          _  -> go n (tbs *# n)
+      where
+        go n bsize = case runRW#
+         ( \s0 -> case ( if isTrue# (isByteArrayPinned# ba)
+                         then newAlignedPinnedByteArray# bsize
+                                (byteAlign @t undefined)
+                         else newByteArray# bsize
+                       ) s0
+                  of
+            (# s1, mba #) -> unsafeFreezeByteArray# mba
+                              (copyByteArray# ba bOff mba 0# bsize s1)
+         ) of (# _, r #) -> ArrayBase (# | (# 0# , n , r #) #)
+        {-# NOINLINE go #-}
     {-# INLINE fromBytes #-}
 
     readBytes mba bOff s0

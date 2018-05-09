@@ -27,7 +27,7 @@ import           Numeric.Scalar
 -- * Vector type
 --------------------------------------------------------------------------------
 
-type Vector (t :: *) (n :: k) = DataFrame t '[n]
+type Vector (t :: l) (n :: k) = DataFrame t '[n]
 
 type Vec2f = Vector Float 2
 type Vec3f = Vector Float 3
