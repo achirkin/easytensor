@@ -9,6 +9,7 @@
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
+{-# LANGUAGE TypeInType                #-}
 {-# LANGUAGE TypeOperators             #-}
 -----------------------------------------------------------------------------
 -- |
@@ -30,11 +31,13 @@ module Numeric.DataFrame.IO
     , thawDataFrame, thawPinDataFrame, unsafeThawDataFrame
     , writeDataFrame, writeDataFrameOff
     , readDataFrame, readDataFrameOff
+    , withDataFramePtr
     ) where
 
 
 import           GHC.Base
 import           GHC.IO                                 (IO (..))
+import           GHC.Ptr                                (Ptr (..))
 
 import           Numeric.DataFrame.Family
 import           Numeric.DataFrame.Internal.Array.Class
@@ -172,3 +175,25 @@ readDataFrameOff :: forall (t :: Type) (ns :: [Nat])
 readDataFrameOff (IODataFrame mdf) (I# i)
   = unsafeCoerce# (IO (readDataFrameOff# mdf i))
 {-# INLINE readDataFrameOff #-}
+
+
+-- | Allow arbitrary IO operations on a pointer to the beginning of the data
+--   keeping the data from garbage collecting until the arg function returns.
+--
+--   Warning: do not let @Ptr t@ leave the scope of the arg function,
+--            the data may be garbage-collected by then.
+--
+--   Warning: use this function on a pinned DataFrame only;
+--            otherwise, the data may be relocated before the arg fun finishes.
+withDataFramePtr :: forall (t :: Type) (ns :: [k]) (r :: Type)
+                  . (PrimBytes t, KnownDimKind k)
+                 => IODataFrame t ns
+                 -> ( Ptr t -> IO r )
+                 -> IO r
+withDataFramePtr df k = case dimKind @k of
+    DimNat -> case df of
+      IODataFrame x
+        -> IO $ withDataFramePtr# x (unsafeCoerce# k)
+    DimXNat -> case df of
+      XIOFrame (IODataFrame x)
+        -> IO $ withDataFramePtr# x (unsafeCoerce# k)

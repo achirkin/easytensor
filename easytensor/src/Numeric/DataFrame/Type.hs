@@ -33,6 +33,8 @@ module Numeric.DataFrame.Type
   , inferOrd, inferNum, inferFractional, inferFloating
   , inferOrd', inferNum', inferFractional', inferFloating'
   , inferASing', inferEq', inferShow', inferPrim', inferPrimElem'
+    -- * Misc
+  , ixOff, unsafeFromFlatList
   ) where
 
 
