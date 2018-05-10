@@ -154,12 +154,11 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
       (# | (# off, _, _ #) #) -> off *# byteSize (undefined :: t)
     {-# INLINE byteOffset #-}
 
-    -- TODO: write nice overloaded functions ***Array
-    -- indexArray ba off
-    --   | W# nw <- totalDim' @ds
-    --   , n <- word2Int# nw
-    --   = ArrayBase (# | (# quotInt# off n, n, ba #) #)
-    -- {-# INLINE indexArray #-}
+    indexArray ba off
+      | W# nw <- totalDim' @ds
+      , n <- word2Int# nw
+      = ArrayBase (# | (# off *# n, n, ba #) #)
+    {-# INLINE indexArray #-}
 
 
 
