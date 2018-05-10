@@ -20,7 +20,6 @@ module Numeric.Vector
 
 import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type
-import           Numeric.Dimensions
 import           Numeric.Scalar
 
 --------------------------------------------------------------------------------
