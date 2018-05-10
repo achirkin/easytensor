@@ -35,6 +35,11 @@ module Numeric.DataFrame.Type
   , inferASing', inferEq', inferShow', inferPrim', inferPrimElem'
     -- * Misc
   , ixOff, unsafeFromFlatList
+  , Dim1 (..), Dim2 (..), Dim3 (..)
+  , dimSize1, dimSize2, dimSize3
+  , bSizeOf, bAlignOf
+    -- * Re-exports from dimensions
+  , Dim (..), Idx (..), XNat (..), Dims, Idxs, TypedList (..)
   ) where
 
 
@@ -380,3 +385,80 @@ inferFloating :: forall t ds
                . (Floating t, ArraySingleton t ds)
               => DataFrame t ds -> Evidence (Floating (DataFrame t ds))
 inferFloating = const (inferFloating' @t @ds)
+
+
+--------------------------------------------------------------------------------
+-- * Misc
+--------------------------------------------------------------------------------
+
+-- | A wrapper on `byteSize`
+bSizeOf :: PrimBytes a => a -> Int
+bSizeOf a = I# (byteSize a)
+
+-- | A wrapper on `byteAlign`
+bAlignOf :: PrimBytes a => a -> Int
+bAlignOf a = I# (byteAlign a)
+
+-- | Number of elements along the 1st dimension.
+dimSize1 :: Dim1 t ds => t ds -> Word
+dimSize1 = dimVal . dim1
+
+-- | Number of elements along the 2nd dimension.
+dimSize2 :: Dim2 t ds => t ds -> Word
+dimSize2 = dimVal . dim2
+
+-- | Number of elements along the 3rd dimension.
+dimSize3 :: Dim3 t ds => t ds -> Word
+dimSize3 = dimVal . dim3
+
+class Dim1 (t :: [k] -> Type) (ds :: [k]) where
+    dim1 :: t ds -> Dim (Head ds)
+
+class Dim2 (t :: [k] -> Type) (ds :: [k]) where
+    dim2 :: t ds -> Dim (Head (Tail ds))
+
+class Dim3 (t :: [k] -> Type) (ds :: [k]) where
+    dim3 :: t ds -> Dim (Head (Tail (Tail ds)))
+
+
+instance {-# OVERLAPPABLE #-}
+         Dimensions (d ': ds)
+         => Dim1 t (d ': ds :: [k]) where
+    dim1 _ = case dims @k @(d ': ds) of d :* _ -> d
+
+instance {-# OVERLAPPING #-}
+         Dim1 (TypedList Dim) (d ': ds) where
+    dim1 (d :* _) = d
+
+instance {-# OVERLAPPING #-}
+         Dim1 (DataFrame l) (d ': ds :: [XNat]) where
+    dim1 (XFrame (_ :: DataFrame l ns))
+      = case xDims' @(d ': ds) @ns of d :* _  -> d
+
+instance {-# OVERLAPPABLE #-}
+         Dimensions (d1 ': d2 ': ds)
+         => Dim2 t (d1 ': d2 ': ds :: [k]) where
+    dim2 _ = case dims @k @(d1 ': d2 ': ds) of _ :* d :* _ -> d
+
+instance {-# OVERLAPPING #-}
+         Dim2 (TypedList Dim) (d1 ': d2 ': ds) where
+    dim2 (_ :* d :* _) = d
+
+instance {-# OVERLAPPING #-}
+         Dim2 (DataFrame l) (d1 ': d2 ': ds :: [XNat]) where
+    dim2 (XFrame (_ :: DataFrame l ns))
+      = case xDims' @(d1 ': d2 ': ds) @ns of _ :* d :* _  -> d
+
+instance {-# OVERLAPPABLE #-}
+         Dimensions (d1 ': d2 ': d3 ': ds)
+         => Dim3 t (d1 ': d2 ': d3 ': ds :: [k]) where
+    dim3 _ = case dims @k @(d1 ': d2 ': d3 ': ds) of _ :* _ :* d :* _ -> d
+
+instance {-# OVERLAPPING #-}
+         Dim3 (TypedList Dim) (d1 ': d2 ': d3 ': ds) where
+    dim3 (_ :* _ :* d :* _) = d
+
+instance {-# OVERLAPPING #-}
+         Dim3 (DataFrame l) (d1 ': d2 ': d3 ': ds :: [XNat]) where
+    dim3 (XFrame (_ :: DataFrame l ns))
+      = case xDims' @(d1 ': d2 ': d3 ': ds) @ns of _ :* _ :* d :* _  -> d
