@@ -9,6 +9,7 @@
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
+{-# LANGUAGE TypeInType                #-}
 {-# LANGUAGE TypeOperators             #-}
 -----------------------------------------------------------------------------
 -- |
@@ -30,6 +31,7 @@ module Numeric.DataFrame.ST
     , thawDataFrame, thawPinDataFrame, unsafeThawDataFrame
     , writeDataFrame, writeDataFrameOff
     , readDataFrame, readDataFrameOff
+    , isDataFramePinned
     ) where
 
 
@@ -172,3 +174,15 @@ readDataFrameOff :: forall (t :: Type) (ns :: [Nat]) s
 readDataFrameOff (STDataFrame mdf) (I# i)
   = unsafeCoerce# (ST (readDataFrameOff# mdf i))
 {-# INLINE readDataFrameOff #-}
+
+
+-- | Check if the byte array wrapped by this DataFrame is pinned,
+--   which means cannot be relocated by GC.
+isDataFramePinned :: forall (t :: Type) (ns :: [k]) s
+                   . KnownDimKind k
+                  => STDataFrame s t ns -> Bool
+isDataFramePinned df = case dimKind @k of
+    DimNat -> case df of
+      STDataFrame x -> isDataFramePinned# x
+    DimXNat -> case df of
+      XSTFrame (STDataFrame x) -> isDataFramePinned# x
