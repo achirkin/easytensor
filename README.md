@@ -39,7 +39,7 @@ Data type `DataFrame` is presented in two versions:
  * `DataFrame t (ds :: [Nat])` - dimensionality of a dataframe is totally known at compile time.
  * `DataFrame t (ds :: [XNat]` - some dimensions may be known at runtime only.
 
-Parameter @t@ of a DataFrame can be arbitrary type that has an instance of `PrimBytes`.
+Parameter `t` of a DataFrame can be arbitrary type that has an instance of `PrimBytes`.
 `PrimBytes` typeclass can be automatically derived using `Generics`.
 This mechanics allows creating interleaved arrays, e.g. `DataFrame (Double, Float, Float) ds`.
 
