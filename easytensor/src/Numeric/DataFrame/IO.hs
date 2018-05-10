@@ -31,7 +31,7 @@ module Numeric.DataFrame.IO
     , thawDataFrame, thawPinDataFrame, unsafeThawDataFrame
     , writeDataFrame, writeDataFrameOff
     , readDataFrame, readDataFrameOff
-    , withDataFramePtr
+    , withDataFramePtr, isDataFramePinned
     ) where
 
 
@@ -197,3 +197,15 @@ withDataFramePtr df k = case dimKind @k of
     DimXNat -> case df of
       XIOFrame (IODataFrame x)
         -> IO $ withDataFramePtr# x (unsafeCoerce# k)
+
+
+-- | Check if the byte array wrapped by this DataFrame is pinned,
+--   which means cannot be relocated by GC.
+isDataFramePinned :: forall (t :: Type) (ns :: [k])
+                   . KnownDimKind k
+                  => IODataFrame t ns -> Bool
+isDataFramePinned df = case dimKind @k of
+    DimNat -> case df of
+      IODataFrame x -> isDataFramePinned# x
+    DimXNat -> case df of
+      XIOFrame (IODataFrame x) -> isDataFramePinned# x

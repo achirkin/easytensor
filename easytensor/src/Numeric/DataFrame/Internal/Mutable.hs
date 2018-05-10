@@ -31,7 +31,7 @@ module Numeric.DataFrame.Internal.Mutable
     , thawDataFrame#, thawPinDataFrame#, unsafeThawDataFrame#
     , writeDataFrame#, writeDataFrameOff#
     , readDataFrame#, readDataFrameOff#
-    , withDataFramePtr#
+    , withDataFramePtr#, isDataFramePinned#
     ) where
 
 
@@ -214,3 +214,10 @@ withDataFramePtr# (MDataFrame# off _ mba) k s0
                        `plusAddr#` (off *# byteSize @t undefined)
                      ) s1
   = (# touch# mba s2, r #)
+
+-- | Check if the byte array wrapped by this DataFrame is pinned,
+--   which means cannot be relocated by GC.
+isDataFramePinned# :: forall (t :: Type) (ns :: [Nat]) s
+                    . MDataFrame s t ns -> Bool
+isDataFramePinned# (MDataFrame# _ _ mba)
+  = isTrue# (isMutableByteArrayPinned# mba)
