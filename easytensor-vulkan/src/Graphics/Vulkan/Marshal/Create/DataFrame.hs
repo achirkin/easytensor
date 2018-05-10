@@ -13,12 +13,11 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -- | This module provides an orphan instance of `PrimBytes` for `VulkanMarshalPrim`
 --   structures.
---   This enables them to be stored in `DataFrames` from @easytensor@ package.
+--   This enables them to be stored in @DataFrames@ from @easytensor@ package.
 --   Thanks to internal structure of Vulkan structures, they can be manipulated
 --   inside DataFrames in a very efficient way (just by copying byte arrays).
---   Be warned, however, `fromBytes` function is a zero-copy operation;
---   it is a user responsibility to check if an underlying byte array is pinned
---   before submitting it into Vulkan FFI functions!
+--   However, original @DataFrames@ are based on unpinned arrays;
+--   functions here check this and copy data to new pinned arrays if needed.
 --
 --   In addition to the orphan instance, this module provides a few
 --   handy helper functions.
@@ -44,7 +43,7 @@ import           Numeric.Dimensions
 import           Numeric.PrimBytes
 
 
-
+-- | Write an array of values in one go.
 setVec :: forall fname x t
         . ( FieldType fname x ~ t
           , PrimBytes (Vector t (FieldArrayLength fname x))
@@ -53,7 +52,8 @@ setVec :: forall fname x t
        => Vector t (FieldArrayLength fname x) -> CreateVkStruct x '[fname] ()
 setVec v = unsafeIOCreate $ \p -> pokeByteOff p (fieldOffset @fname @x) v
 
-
+-- | Get an array of values, possibly without copying
+--   (if vector implementation allows).
 getVec :: forall fname x t
         . ( FieldType fname x ~ t
           , PrimBytes (Vector t (FieldArrayLength fname x))
@@ -109,7 +109,7 @@ instance {-# OVERLAPPABLE#-}
 --
 --     * Sometimes, @Ptr a@ points to the original DF; sometimes, to a copied one.
 --     * If the original DF is based on unpinned `ByteArray#`, using this
---       function is unsafe (data may be relocated before the arg fun finishes).
+--       performs a copy anyway.
 --
 withDFPtr :: VulkanDataFrame a ds
           => DataFrame a ds -> (Ptr a -> IO b) -> IO b
@@ -167,7 +167,8 @@ fillDataFrame _ _ = error "fillDataFrame: impossible combination of arguments."
 
 
 
--- | Special data type used to provide @VulkanMarshal@ instance for DataFrames
+-- | Special data type used to provide @VulkanMarshal@ instance for DataFrames.
+--   It is guaranteed to be pinned.
 data VkDataFrame (t :: l) (ds :: [k]) = VkDataFrame# Addr# ByteArray#
 
 instance PrimBytes (DataFrame t ds) => Storable (VkDataFrame t ds) where
@@ -198,9 +199,7 @@ instance PrimBytes (DataFrame t ds) => VulkanMarshal (VkDataFrame t ds) where
 
 class VulkanDataFrame a (ds :: [k]) where
     -- | Construct a new @VkDataFrame@ possibly without copying.
-    --
-    --   Warning: @VkDataFrame@ should always be pinned, but it won't be if
-    --            the original DataFrame was represented as not pinned @ByteArray#@
+    --   It performs no copy if the @DataFrame@ implementation is a pinned @ByteArray#@.
     frameToVkData :: DataFrame a ds -> VkDataFrame a ds
     -- | Construct a new (pinned if implementation allows) DataFrame from VK data,
     --   possibly without copying.
@@ -213,9 +212,11 @@ class VulkanDataFrame a (ds :: [k]) where
 instance (PrimBytes a, ArraySingleton a ds, Dimensions ds)
       => VulkanDataFrame a (ds :: [Nat]) where
     frameToVkData x = case aSing @a @ds of
-      -- Generic ByteArray implementation,
-      --  let's hope it is pinned!
-      ABase -> unsafeFromByteArrayOffset (byteOffset x) (getBytes x)
+      -- Generic ByteArray implementation
+      ABase
+        | ba <- getBytes x
+        , isTrue# (isByteArrayPinned# ba) -- check if it is pinned
+        -> unsafeFromByteArrayOffset (byteOffset x) ba
       -- For other implementations we have no other options than just to copy the data
       _ | E <- inferPrim x -> case runRW#
         ( \s0 -> case newAlignedPinnedByteArray#
