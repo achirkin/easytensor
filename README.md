@@ -90,7 +90,10 @@ The library was developed with this idea in mind to allow the room for optimizat
   - [ ] Implement fast comparison with partial help of sameMutableByteArray#
          (e.g. `Numeric.DataFrame.Internal.Array.Family.ArrayBase`)
   - [ ] Add more low-dimensional specialized Array family instances
-         (`Numeric.DataFrame.Internal.Array.Family` a few of them are already implemented).
+         (`Numeric.DataFrame.Internal.Array.Family`)
+    - [x] `FloatX[2|3|4]`, `DoubleX[2|3|4]` vectors
+    - [ ] `FloatX[22|33|44]`, `DoubleX[22|33|44]` matrices
+    - [ ] Other options? `FloatX[2|3|4][2|3|4]` matrices? `[Int|Word][8|16|32|64]` types?
   - [ ] Add lots of rewrite rules for specialized Array family instances.
   - [ ] Specialize class instances for Array family instances.
   - [ ] Implement the same Array family instances using SIMD, activated by a dedicated flag.
