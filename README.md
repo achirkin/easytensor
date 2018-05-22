@@ -24,7 +24,7 @@ favouring element-wise operations:
 functions like `+`, `*`, `/` are all element-wise.
 Common matrix and vector operations are provided separately.
 
-A special care should be taken when using `Ord` instances:
+A special care should be taken when using `Ord` controversial instances (never use a DataFrame as a polymorphic `Ord a`!):
 
  * `<`, `>`, `<=`, `>=` provide Pareto dominance inequalities (partial ordering);
  * `compare` provides  lexicographical ordering;
@@ -50,14 +50,37 @@ Behind the scenes all data types are implemented as primitive values or primitiv
 Tricky layers of newtypes and closed type families (*which are not exposed to a user*) allow some kind of ad-hoc polymorphism:
 for example, `Vector t n` implemented as `ByteArray#` is overloaded by a specialized `FloatX2 Float# Float#` in case of `Vector Float 2`.
 
-### Implemenation status and plan
 
-  - [ ] Improve ConcatList and FixedDims inference.
+### Feature TODO
+
+There is a bunch of things I have implemented earlier but have not re-implemented in the new easytensor version or planned to implement for the use-cases I already have.
+
   - [x] Basic implementation of generic ns-dimensional dataframes
   - [x] Quaternions
-  - [ ] `Tensor t [Nat] [Nat]` rank (n,m) flexible tensor wrapper
+  - [ ] Matrix-specific operations
+    - [x] [Transpose, eye, etc.](https://github.com/achirkin/easytensor/blob/master/easytensor/src/Numeric/Matrix/Class.hs)
+      - [ ] Check if it makes sense to generalize these for higher ranks
+      - [ ] Investigate if more typcial matrix functions are needed
+    - [x] LU decomposition, determinant and inverse
+    - [ ] SVD decomposition
+    - [ ] Homogenous coordinate operations
+      - [x] Class [`HomTransform`](https://github.com/achirkin/easytensor/blob/master/easytensor/src/Numeric/Matrix/Class.hs#L80) (borrowed from the previous version of the lib)
+      - [ ] Implementation of the class
+      - [ ] Change interface if needed
   - [x] Lens-like interfaces - `Numeric.DataFrame.SubSpace`
-  - [ ] Smart MATLAB- or R-like indexing of rows and columns.
+  - [ ] `Tensor t [Nat] [Nat]` rank (n,m) flexible tensor wrapper
+  - [ ] Smart MATLAB- or R-like indexing of rows and columns: investigate options.
+  - [ ] (`easytensor-tc`) Type-checker plugin to reduce necessary `E <- inferXXX` patterns number and simplify the user interface:
+    - [ ] `KnownDim` inference for basic operations; look at [ghc-typelits-natnormalise](https://github.com/clash-lang/ghc-typelits-natnormalise)
+    - [ ] `Dimensions ds ==> All KnownDim ds`
+    - [ ] Better `FixedDims xnd ns` inference of `ns` when pattern-matching against `XNat`-indexed `DataFrame` or `Dims`
+    - [ ] Better `ConcatList as bs asbs` inference
+    - [ ] Investigate other use-cases
+  - [ ] `easytensor-extra` extra features and helpers:
+    - [ ] Quasiquotes for constructing fixed-dimensional matrices and vectors using a MATLAB-like syntax
+    - [ ] Investigate options for binary and csv serialization
+    - [ ] Polygon triangulation
+
 
 ### Performance TODO
 
@@ -72,3 +95,15 @@ The library was developed with this idea in mind to allow the room for optimizat
   - [ ] Specialize class instances for Array family instances.
   - [ ] Implement the same Array family instances using SIMD, activated by a dedicated flag.
         (different Array implementations would stay in different folders, e.g. `src-base`, `src-avx` or `src-sse`)
+
+### Documentation and tutorials
+
+  - [ ] Write a proper tutirual blog post and put a link here.
+  - [ ] Put more links to code examples here
+        (you are welcome to put a link to your use-case repository here via a PR):
+    - A few simple examples are available in [`bench/misc.hs`](https://github.com/achirkin/easytensor/blob/master/easytensor/bench/misc.hs).
+    - Using `SubSpace` operations to iterate over many-dimensional single-var frames in [`bench/subspacefolds`](https://github.com/achirkin/easytensor/blob/master/easytensor/bench/subspacefolds.hs).
+    - Writing highly-generic typeclass instances for generating random frames in [`tests`](https://github.com/achirkin/easytensor/blob/master/easytensor/test/Numeric/DataFrame/Arbitraries.hs).
+    - Using multi-variable frames and matrices (run-time-only-known dimensionality) in [`tests`](https://github.com/achirkin/easytensor/blob/master/easytensor/test/Numeric/MatrixTest.hs).
+    - Deriving `PrimBytes` to use custom element types for frames in [`vulkan-triangles`](https://github.com/achirkin/vulkan/blob/master/vulkan-triangles/src/Lib/Vulkan/Vertex.hs);
+      this is an example of creating an interleaved array to be sent to the GPU rendering pipeline.
