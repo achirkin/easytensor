@@ -75,6 +75,7 @@ There is a bunch of things I have implemented earlier but have not re-implemente
     - [ ] `Dimensions ds ==> All KnownDim ds`
     - [ ] Better `FixedDims xnd ns` inference of `ns` when pattern-matching against `XNat`-indexed `DataFrame` or `Dims`
     - [ ] Better `ConcatList as bs asbs` inference
+    - [ ] Shortcut for inferring injective type families `Reverse` and `Snoc`
     - [ ] Investigate other use-cases
   - [ ] `easytensor-extra` extra features and helpers:
     - [ ] Quasiquotes for constructing fixed-dimensional matrices and vectors using a MATLAB-like syntax
