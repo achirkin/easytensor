@@ -20,7 +20,7 @@ author: Artem Chirkin
 source-repository head
     type: git
     location: https://github.com/achirkin/easytensor.git
-    subdir: easytensor
+    subdir: easytensor-vulkan
 
 
 library
