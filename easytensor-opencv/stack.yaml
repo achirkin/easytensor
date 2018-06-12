@@ -1,0 +1,11 @@
+resolver: ../snapshot-8.2.yaml
+
+packages:
+  - '.'
+  - location: ../dimensions
+    extra-dep: true
+  - location: ../easytensor
+    extra-dep: true
+
+extra-deps:
+  - opencv-0.0.2.1
