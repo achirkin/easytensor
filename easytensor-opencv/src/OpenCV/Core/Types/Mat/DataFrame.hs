@@ -67,26 +67,6 @@ newtype MChMatDF (t :: Type) (d :: k) (ds :: [k])
   = MChMatDF { unMChMatDF :: DataFrame t (d ': ds) }
 
 
-class XDimensions (xds :: [XNat]) where
-    wrapDims :: Dims (ds :: [Nat]) -> Maybe (Dims xds)
-
-
-instance XDimensions '[] where
-    wrapDims U = Just U
-    {-# INLINE wrapDims #-}
-
-instance (XDimensions xs, KnownDim m) => XDimensions (XN m ': xs) where
-    wrapDims (d :* ds) = case constrain d of
-      Nothing -> Nothing
-      Just xd -> (xd :*) <$> wrapDims ds
-    wrapDims Empty = Nothing
-
-instance (XDimensions xs, KnownDim n) => XDimensions (N n ': xs) where
-    wrapDims (d :* ds) = case sameDim d (Dim.D @n) of
-      Nothing -> Nothing
-      Just E  -> (Dn Dim.D :*) <$> wrapDims ds
-    wrapDims Empty = Nothing
-
 
 -- | Type-level function to correspond easytensor's dimensions
 --   and opencv shape and channel information.
@@ -269,14 +249,14 @@ instance Storable (DataFrame t (d ': ds))
     {-# NOINLINE fromMat #-}
     fromMat m = unsafePerformIO . withMatData m $ \_ -> fmap MChMatDF . peek . unsafeCoerce
 
-instance ( XDimensions xds, KnownXNatTypes xds, PrimBytes t)
+instance ( XDimensions xds, PrimBytes t)
          => FromMat (SChMatDF t (xds :: [XNat])) where
     {-# NOINLINE fromMat #-}
     fromMat m
       | E <- inferDimsShapeDims1 @XNat @xds
       = unsafePerformIO . withMatData' m $ \xds -> fmap SChMatDF . readMatData @t xds
 
-instance ( XDimensions (xd ': xds), KnownXNatTypes (xd ': xds), PrimBytes t)
+instance ( XDimensions (xd ': xds), PrimBytes t)
          => FromMat (MChMatDF t xd (xds :: [XNat])) where
     {-# NOINLINE fromMat #-}
     fromMat m
@@ -309,7 +289,6 @@ instance {-# OVERLAPS #-}
          ( XDimensions xds
          , ShapeChannelsToDimsKind shape channels ~ XNat
          , ShapeChannelsToDims shape channels ~~ xds
-         , KnownXNatTypes xds
          , PrimBytes t
          )
       => DataFrameOpenCVMat shape channels t XNat xds where
@@ -387,6 +366,6 @@ readDims channels ptr n = do
     return $ case someDimsVal xs of
       SomeDims xds -> fromMaybe
          (error "readDims: read dimensions do not agree with the specified XDim")
-         (wrapDims @xds xds)
+         (constrainDims @xds xds)
   where
     withChannels c xs = if c > 1 then c : xs else xs

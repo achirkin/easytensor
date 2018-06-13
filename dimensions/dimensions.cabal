@@ -1,5 +1,5 @@
 name: dimensions
-version: 1.0.0.0
+version: 1.0.1.0
 cabal-version: >=1.22
 build-type: Simple
 license: BSD3

@@ -26,7 +26,7 @@ library
         OpenCV.Core.Types.Mat.DataFrame
     build-depends:
         base >=4.10 && <5,
-        dimensions >=1,
+        dimensions >=1.0.1,
         easytensor >=1,
         opencv >=0.0.2.1,
         inline-c -any,
