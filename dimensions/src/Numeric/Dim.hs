@@ -29,9 +29,9 @@
 --
 -- This module is based on `GHC.TypeLits` and re-exports its functionality.
 -- It provides `KnownDim` class that is similar to `KnownNat`, but keeps
--- `Int`s instead of `Integer`s;
--- Also it provides `Dim` data family serving as a customized `Proxy` type
--- and a singleton suitable for recovering an instance of the `KnownDim` class.
+-- `Word`s instead of `Integer`s;
+-- Also it provides `Dim` data type serving as a singleton
+-- suitable for recovering an instance of the `KnownDim` class.
 -- A set of utility functions provide inference functionality, so
 -- that `KnownDim` can be preserved over some type-level operations.
 --

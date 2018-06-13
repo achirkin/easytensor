@@ -22,6 +22,7 @@
 {-# LANGUAGE TypeInType                #-}
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UndecidableInstances      #-}
+{-# LANGUAGE UndecidableSuperClasses   #-}
 {-# LANGUAGE ViewPatterns              #-}
 -----------------------------------------------------------------------------
 -- |
@@ -39,7 +40,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.Dimensions.Dims
-  ( Dims, SomeDims (..), Dimensions (..)
+  ( Dims, SomeDims (..), Dimensions (..), XDimensions (..)
   , TypedList ( Dims, XDims, AsXDims, KnownDims
               , U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
   , listDims, someDimsVal, totalDim, totalDim'
@@ -125,6 +126,10 @@ pattern AsXDims xns <- (patAsXDims -> PatAsXDims xns)
 --   Hide all information about Dimensions inside
 data SomeDims = forall (ns :: [Nat]) . SomeDims (Dims ns)
 
+-- | Put runtime evidence of `Dims` value inside function constraints.
+--   Similar to `KnownDim` or `KnownNat`, but for lists of numbers.
+--   Normally, the kind paramater is `Nat` (known dimenionality)
+--   or `XNat` (either known or constrained dimensionality).
 class Dimensions (ds :: [k]) where
     -- | Get dimensionality of a space at runtime,
     --   represented as a list of `Dim`.
@@ -155,6 +160,36 @@ instance Dimensions ('[] :: [k]) where
 instance (KnownDim d, Dimensions ds) => Dimensions (d ': ds :: [k]) where
     dims = dim :* dims
     {-# INLINE dims #-}
+
+-- | Analogous to `Dimensions`, but weaker and more specific (list of `XNat`).
+--   This class is used to check if an existing fixed `Dims` satisfy
+--   constraints imposed by some interface (e.g. all dimensions are greater than 2).
+--   It is weaker than `Dimensions` in that it only requires knowledge of constraints
+--   rather than exact dimension values.
+class KnownXNatTypes xds => XDimensions (xds :: [XNat]) where
+    -- | Given a `Dims`, test if its runtime value satisfies constraints imposed by
+    --   @XDimensions@, and returns it back being `XNat`-indexed on success.
+    --
+    --   This function allows to guess safely individual dimension values,
+    --   as well as the length of the dimension list.
+    constrainDims :: Dims (ds :: [k]) -> Maybe (Dims xds)
+
+instance XDimensions '[] where
+    constrainDims U = Just U
+    constrainDims _ = Nothing
+    {-# INLINE constrainDims #-}
+
+instance (XDimensions xs, KnownDim m) => XDimensions (XN m ': xs) where
+    constrainDims (d :* ds) = case constrain d of
+      Nothing -> Nothing
+      Just xd -> (xd :*) <$> constrainDims ds
+    constrainDims Empty = Nothing
+
+instance (XDimensions xs, KnownDim n) => XDimensions (N n ': xs) where
+    constrainDims (d :* ds)
+      | unsafeCoerce# d == dimVal' @n = (Dn D :*) <$> constrainDims ds
+      | otherwise                     = Nothing
+    constrainDims Empty = Nothing
 
 
 -- | Convert `Dims xs` to a plain haskell list of dimension sizes @O(1)@.
