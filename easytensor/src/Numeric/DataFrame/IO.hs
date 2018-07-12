@@ -193,10 +193,10 @@ withDataFramePtr :: forall (t :: Type) (ns :: [k]) (r :: Type)
 withDataFramePtr df k = case dimKind @k of
     DimNat -> case df of
       IODataFrame x
-        -> IO $ withDataFramePtr# x (unsafeCoerce# k)
+        -> IO $ withDataFramePtr# x (\p -> case k (Ptr p) of IO f -> f)
     DimXNat -> case df of
       XIOFrame (IODataFrame x)
-        -> IO $ withDataFramePtr# x (unsafeCoerce# k)
+        -> IO $ withDataFramePtr# x (\p -> case k (Ptr p) of IO f -> f)
 
 
 -- | Check if the byte array wrapped by this DataFrame is pinned,
