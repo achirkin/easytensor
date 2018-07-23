@@ -318,7 +318,7 @@ sameDim (DimSing a) (DimSing b)
 sameDim' :: forall (x :: Nat) (y :: Nat) p q
           . (KnownDim x, KnownDim y)
          => p x -> q y -> Maybe (Evidence (x ~ y))
-sameDim' _ _ = sameDim' (dim @Nat @x) (dim @Nat @y)
+sameDim' _ _ = sameDim (dim @Nat @x) (dim @Nat @y)
 {-# INLINE sameDim' #-}
 
 -- | Ordering of dimension values.
