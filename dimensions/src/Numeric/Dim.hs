@@ -62,7 +62,7 @@ module Numeric.Dim
     --   their @Word@ counterparts.
   , plusDim, minusDim, minusDimM, timesDim, powerDim
     -- * Re-export part of `GHC.TypeLits` for convenience
-  , Nat, CmpNat, type (+), type (-), type (*), type (^)
+  , TL.Nat, TL.CmpNat, type (TL.+), type (TL.-), type (TL.*), type (TL.^)
   , MinDim, FixedDim, inferDimLE
     -- * Inferring kind of type-level dimension
   , KnownDimKind (..), DimKind (..)
@@ -73,7 +73,7 @@ import           Data.Type.Bool
 import           Data.Type.Equality
 import           GHC.Base           (Type)
 import           GHC.Exts           (Constraint, Proxy#, proxy#, unsafeCoerce#)
-import           GHC.TypeLits
+import           GHC.TypeLits       as TL
 
 import           Numeric.Type.Evidence
 
@@ -377,11 +377,11 @@ minusDimM (DimSing a) (DimSing b)
   | otherwise = Nothing
 {-# INLINE minusDimM #-}
 
-timesDim :: Dim n -> Dim m -> Dim ((*) n m)
+timesDim :: Dim n -> Dim m -> Dim ((TL.*) n m)
 timesDim (DimSing a) (DimSing b) = unsafeCoerce# (a * b)
 {-# INLINE timesDim #-}
 
-powerDim :: Dim n -> Dim m -> Dim ((^) n m)
+powerDim :: Dim n -> Dim m -> Dim ((TL.^) n m)
 powerDim (DimSing a) (DimSing b) = unsafeCoerce# (a ^ b)
 {-# INLINE powerDim #-}
 

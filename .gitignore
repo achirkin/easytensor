@@ -5,6 +5,7 @@ dist
 .ghcjs-sandbox
 .stack-work
 .vscode
+.cabal-sandbox
 */cabal-helper*
 */out
 */dist
