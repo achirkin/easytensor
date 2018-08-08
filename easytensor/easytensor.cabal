@@ -38,6 +38,8 @@ library
         Numeric.DataFrame.ST
         Numeric.Matrix
         Numeric.Matrix.Class
+        Numeric.Matrix.Mat44d
+        Numeric.Matrix.Mat44f
         Numeric.Vector
         Numeric.Scalar
         Numeric.Quaternion
