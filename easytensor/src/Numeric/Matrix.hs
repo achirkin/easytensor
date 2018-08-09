@@ -58,6 +58,8 @@ import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
 import           Numeric.Matrix.Class
+import           Numeric.Matrix.Mat44d ()
+import           Numeric.Matrix.Mat44f ()
 import           Numeric.PrimBytes
 import           Numeric.Scalar
 import           Numeric.Vector
