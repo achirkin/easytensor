@@ -38,8 +38,6 @@ library
         Numeric.DataFrame.ST
         Numeric.Matrix
         Numeric.Matrix.Class
-        Numeric.Matrix.Mat44d
-        Numeric.Matrix.Mat44f
         Numeric.Vector
         Numeric.Scalar
         Numeric.Quaternion
@@ -69,6 +67,8 @@ library
     default-language: Haskell2010
     hs-source-dirs: src
     other-modules:
+        Numeric.Matrix.Mat44d
+        Numeric.Matrix.Mat44f
         Numeric.Quaternion.Class
         Numeric.Quaternion.QDouble
         Numeric.Quaternion.QFloat
