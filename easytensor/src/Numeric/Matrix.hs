@@ -34,6 +34,7 @@ module Numeric.Matrix
   , MatrixInverse (..)
   , MatrixLU (..), LUFact (..)
   , Matrix
+  , HomTransform4 (..)
   , Mat22f, Mat23f, Mat24f
   , Mat32f, Mat33f, Mat34f
   , Mat42f, Mat43f, Mat44f
