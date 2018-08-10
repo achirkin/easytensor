@@ -78,9 +78,9 @@ class MatrixLU t (n :: Nat) where
 -- | Operations on 4x4 transformation matrices and vectors in homogeneous coordinates.
 --   All angles are specified in radians.
 class HomTransform4 t where
-    -- | Create a translation matrix from a vector
+    -- | Create a translation matrix from a vector.  The 4th coordinate is ignored.
     translate4  :: Vector t 4 -> Matrix t 4 4
-    -- | Create a translation matrix from a vector
+    -- | Create a translation matrix from a vector.
     translate3  :: Vector t 3 -> Matrix t 4 4
     -- | Rotation matrix for a rotation around the X axis, angle is given in radians.
     rotateX     :: t -> Matrix t 4 4
