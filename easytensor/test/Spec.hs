@@ -5,7 +5,8 @@ import           System.Exit
 
 import qualified Numeric.DataFrame.BasicTest
 import qualified Numeric.DataFrame.SubSpaceTest
-import qualified Numeric.MatrixTest
+import qualified Numeric.MatrixDoubleTest
+import qualified Numeric.MatrixFloatTest
 import qualified Numeric.QuaternionTest
 
 
@@ -14,7 +15,8 @@ tests :: IO [Test]
 tests = return
   [ test "DataFrame.Basic"    Numeric.DataFrame.BasicTest.runTests
   , test "DataFrame.SubSpace" Numeric.DataFrame.SubSpaceTest.runTests
-  , test "Matrix"             Numeric.MatrixTest.runTests
+  , test "MatrixDouble"       Numeric.MatrixDoubleTest.runTests
+  , test "MatrixFloat"       Numeric.MatrixFloatTest.runTests
   , test "Quaternion"         Numeric.QuaternionTest.runTests
   ]
 
