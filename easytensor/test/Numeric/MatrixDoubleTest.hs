@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module Numeric.MatrixTest (runTests) where
+module Numeric.MatrixDoubleTest (runTests) where
 
 
 import           Data.Fixed

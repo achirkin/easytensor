@@ -130,10 +130,10 @@ instance HomTransform4 Float where
 
   {-# INLINE rotateEuler #-}
   rotateEuler x y z = mat44f
-    (cy*cz)  (cx*sz+sx*sy*cz) (sx*sz-cx*sy*cz) 0
-    (-cy*sz) (cx*cz-sx*sy*sz) (sx*cz+cx*sy*sz) 0
-    sy       (-sx*cy)         (cx*cy)          0
-    0        0                0                1
+    (cy*cz)          (-cy*sz)         sy       0
+    (cx*sz+sx*sy*cz) (cx*cz-sx*sy*sz) (-sx*cy) 0
+    (sx*sz-cx*sy*cz) (sx*cz+cx*sy*sz) (cx*cy)  0
+    0                0                0        1
     where
       cx = scalar $ cos x
       sx = scalar $ sin x
@@ -149,9 +149,9 @@ instance HomTransform4 Float where
     (zb!1) (zb!2) (zb!3) tz
     0      0      0      1
     where
-      xb = normalized $ up `cross` zb
-      yb = zb `cross` xb
-      zb = normalized $ foc - cam
+      zb = normalized $ cam - foc -- Basis vector for "backward", since +Z is behind the camera
+      xb = normalized $ up `cross` zb -- Basis vector for "right"
+      yb = zb `cross` xb -- Basis vector for "up"
       ncam = -cam
       tx = xb `dot` ncam
       ty = yb `dot` ncam

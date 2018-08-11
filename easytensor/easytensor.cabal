@@ -83,7 +83,8 @@ test-suite et-test
         Numeric.DataFrame.Arbitraries
         Numeric.DataFrame.SubSpaceTest
         Numeric.DataFrame.BasicTest
-        Numeric.MatrixTest
+        Numeric.MatrixDoubleTest
+        Numeric.MatrixFloatTest
         Numeric.QuaternionTest
     build-depends:
         base -any,
