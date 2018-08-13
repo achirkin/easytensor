@@ -90,13 +90,15 @@ class HomTransform4 t where
     rotateZ     :: t -> Matrix t 4 4
     -- | Rotation matrix for a rotation around an arbitrary normalized vector
     rotate      :: Vector t 3 -> t -> Matrix t 4 4
-    -- | Rotation matrix from the Euler angles yaw (axis @Z@), pitch (axis @Y'@), and roll (axis @X''@).
+    -- | Rotation matrix from the Euler angles roll (axis @Z@), yaw (axis @Y'@), and pitch (axis @X''@).
     --   This order is known as Tait-Bryan angles (@Z-Y'-X''@ intrinsic rotations), or nautical angles, or Cardan angles.
+    --  
+    --   > rotateEuler pitch yaw roll == rotateX pitch %* rotateY yaw %* rotateZ roll
     --
     --   https://en.wikipedia.org/wiki/Euler_angles#Conventions_2
-    rotateEuler :: t -- ^ yaw (axis @Z@)
-                -> t -- ^ pitch (axis @Y'@)
-                -> t -- ^ roll (axis @X''@)
+    rotateEuler :: t -- ^ pitch (axis @X''@)
+                -> t -- ^ yaw (axis @Y'@)
+                -> t -- ^ roll (axis @Z@)
                 -> Matrix t 4 4
     -- | Create a transform matrix using up direction, camera position and a point to look at.
     --   Just the same as GluLookAt.
