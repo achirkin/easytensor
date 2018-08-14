@@ -16,7 +16,7 @@ tests = return
   [ test "DataFrame.Basic"    Numeric.DataFrame.BasicTest.runTests
   , test "DataFrame.SubSpace" Numeric.DataFrame.SubSpaceTest.runTests
   , test "MatrixDouble"       Numeric.MatrixDoubleTest.runTests
-  , test "MatrixFloat"       Numeric.MatrixFloatTest.runTests
+  , test "MatrixFloat"        Numeric.MatrixFloatTest.runTests
   , test "Quaternion"         Numeric.QuaternionTest.runTests
   ]
 

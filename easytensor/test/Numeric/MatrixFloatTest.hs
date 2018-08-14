@@ -13,7 +13,9 @@ module Numeric.MatrixFloatTest (runTests) where
 import           Data.Fixed
 import           Numeric.DataFrame
 import           Numeric.DataFrame.Arbitraries ()
+import           Numeric.DataFrame.Internal.Array.Class
 import           Numeric.Dimensions
+import           Numeric.PrimBytes
 import           Test.QuickCheck
 
 eps :: Scf
@@ -22,17 +24,17 @@ eps = 0.01
 dropW :: (SubSpace t '[] '[3] '[3], SubSpace t '[] '[4] '[4]) => Vector t 4 -> Vector t 3
 dropW v | (x,y,z,_) <- unpackV4 v = vec3 x y z
 
-approxEqF3 :: Vector Float 3 -> Vector Float 3 -> Bool
-approxEqF3 a b = (eps >=) . ewfoldl @_ @'[] max 0 . abs $ a - b
-infix 4 `approxEqF3`
-
-approxEqF4 :: Vector Float 4 -> Vector Float 4 -> Bool
-approxEqF4 a b = (eps >=) . ewfoldl @_ @'[] max 0 . abs $ a - b
-infix 4 `approxEqF4`
-
-approxEqF44 :: Matrix Float 4 4 -> Matrix Float 4 4 -> Bool
-approxEqF44 a b = (eps >=) . ewfoldl @_ @'[] max 0 . abs $ a - b
-infix 4 `approxEqF44`
+approxEq ::
+  forall (ds :: [Nat]).
+  (
+    Dimensions ds,
+    Num (DataFrame Float ds),
+    PrimBytes (DataFrame Float ds),
+    PrimArray Float (DataFrame Float ds)
+  ) =>
+  DataFrame Float ds -> DataFrame Float ds -> Bool
+approxEq a b = (eps >=) . ewfoldl @_ @'[] max 0 . abs $ a - b
+infix 4 `approxEq`
 
 prop_detTranspose :: Matrix '[Float, Float] (XN 2) (XN 2) -> Bool
 prop_detTranspose (XFrame (x :*: y :*: Z))
@@ -82,64 +84,64 @@ prop_translate3 a b = translate3 a %* toHomPoint b == toHomPoint (a + b)
 prop_rotateX :: Vector Float 4 -> Bool
 prop_rotateX v | (x,y,z,w) <- unpackV4 v =
   and [
-    rotateX (-2 * pi)   %* v `approxEqF4` v,
-    rotateX (-1.5 * pi) %* v `approxEqF4` vec4 x (-z) y w,
-    rotateX (-pi)       %* v `approxEqF4` vec4 x (-y) (-z) w,
-    rotateX (-0.5 * pi) %* v `approxEqF4` vec4 x z (-y) w,
-    rotateX 0           %* v `approxEqF4` v,
-    rotateX (0.5 * pi)  %* v `approxEqF4` vec4 x (-z) y w,
-    rotateX pi          %* v `approxEqF4` vec4 x (-y) (-z) w,
-    rotateX (1.5 * pi)  %* v `approxEqF4` vec4 x z (-y) w,
-    rotateX (2 * pi)    %* v `approxEqF4` v
+    rotateX (-2 * pi)   %* v `approxEq` v,
+    rotateX (-1.5 * pi) %* v `approxEq` vec4 x (-z) y w,
+    rotateX (-pi)       %* v `approxEq` vec4 x (-y) (-z) w,
+    rotateX (-0.5 * pi) %* v `approxEq` vec4 x z (-y) w,
+    rotateX 0           %* v `approxEq` v,
+    rotateX (0.5 * pi)  %* v `approxEq` vec4 x (-z) y w,
+    rotateX pi          %* v `approxEq` vec4 x (-y) (-z) w,
+    rotateX (1.5 * pi)  %* v `approxEq` vec4 x z (-y) w,
+    rotateX (2 * pi)    %* v `approxEq` v
   ]
 
 prop_rotateY :: Vector Float 4 -> Bool
 prop_rotateY v | (x,y,z,w) <- unpackV4 v =
   and [
-    rotateY (-2 * pi)   %* v `approxEqF4` v,
-    rotateY (-1.5 * pi) %* v `approxEqF4` vec4 z y (-x) w,
-    rotateY (-pi)       %* v `approxEqF4` vec4 (-x) y (-z) w,
-    rotateY (-0.5 * pi) %* v `approxEqF4` vec4 (-z) y x w,
-    rotateY 0           %* v `approxEqF4` v,
-    rotateY (0.5 * pi)  %* v `approxEqF4` vec4 z y (-x) w,
-    rotateY pi          %* v `approxEqF4` vec4 (-x) y (-z) w,
-    rotateY (1.5 * pi)  %* v `approxEqF4` vec4 (-z) y x w,
-    rotateY (2 * pi)    %* v `approxEqF4` v
+    rotateY (-2 * pi)   %* v `approxEq` v,
+    rotateY (-1.5 * pi) %* v `approxEq` vec4 z y (-x) w,
+    rotateY (-pi)       %* v `approxEq` vec4 (-x) y (-z) w,
+    rotateY (-0.5 * pi) %* v `approxEq` vec4 (-z) y x w,
+    rotateY 0           %* v `approxEq` v,
+    rotateY (0.5 * pi)  %* v `approxEq` vec4 z y (-x) w,
+    rotateY pi          %* v `approxEq` vec4 (-x) y (-z) w,
+    rotateY (1.5 * pi)  %* v `approxEq` vec4 (-z) y x w,
+    rotateY (2 * pi)    %* v `approxEq` v
   ]
 
 prop_rotateZ :: Vector Float 4 -> Bool
 prop_rotateZ v | (x,y,z,w) <- unpackV4 v =
   and [
-    rotateZ (-2 * pi)   %* v `approxEqF4` v,
-    rotateZ (-1.5 * pi) %* v `approxEqF4` vec4 (-y) x z w,
-    rotateZ (-pi)       %* v `approxEqF4` vec4 (-x) (-y) z w,
-    rotateZ (-0.5 * pi) %* v `approxEqF4` vec4 y (-x) z w,
-    rotateZ 0           %* v `approxEqF4` v,
-    rotateZ (0.5 * pi)  %* v `approxEqF4` vec4 (-y) x z w,
-    rotateZ pi          %* v `approxEqF4` vec4 (-x) (-y) z w,
-    rotateZ (1.5 * pi)  %* v `approxEqF4` vec4 y (-x) z w,
-    rotateZ (2 * pi)    %* v `approxEqF4` v
+    rotateZ (-2 * pi)   %* v `approxEq` v,
+    rotateZ (-1.5 * pi) %* v `approxEq` vec4 (-y) x z w,
+    rotateZ (-pi)       %* v `approxEq` vec4 (-x) (-y) z w,
+    rotateZ (-0.5 * pi) %* v `approxEq` vec4 y (-x) z w,
+    rotateZ 0           %* v `approxEq` v,
+    rotateZ (0.5 * pi)  %* v `approxEq` vec4 (-y) x z w,
+    rotateZ pi          %* v `approxEq` vec4 (-x) (-y) z w,
+    rotateZ (1.5 * pi)  %* v `approxEq` vec4 y (-x) z w,
+    rotateZ (2 * pi)    %* v `approxEq` v
   ]
 
 prop_rotate :: Float -> Bool
 prop_rotate a =
   and [
-    rotate (vec3 1 0 0) a `approxEqF44` rotateX a,
-    rotate (vec3 0 1 0) a `approxEqF44` rotateY a,
-    rotate (vec3 0 0 1) a `approxEqF44` rotateZ a
+    rotate (vec3 1 0 0) a `approxEq` rotateX a,
+    rotate (vec3 0 1 0) a `approxEq` rotateY a,
+    rotate (vec3 0 0 1) a `approxEq` rotateZ a
   ]
 
 prop_rotateEuler :: Float -> Float -> Float -> Bool
-prop_rotateEuler x y z = rotateEuler x y z `approxEqF44` rotateX x %* rotateY y %* rotateZ z
+prop_rotateEuler pitch yaw roll = rotateEuler pitch yaw roll `approxEq` rotateX pitch %* rotateY yaw %* rotateZ roll
 
 prop_lookAt :: Vector Float 3 -> Vector Float 3 -> Vector Float 3 -> Bool
 prop_lookAt up cam foc =
   and [
-    (normalized . fromHom $ m %* toHomPoint foc) `approxEqF3` vec3 0 0 (-1),
-    fromHom (m %* toHomPoint cam) `approxEqF3` 0,
-    fromHom (m %* toHomVector xb) `approxEqF3` vec3 1 0 0,
-    fromHom (m %* toHomVector yb) `approxEqF3` vec3 0 1 0,
-    fromHom (m %* toHomVector zb) `approxEqF3` vec3 0 0 1
+    (normalized . fromHom $ m %* toHomPoint foc) `approxEq` vec3 0 0 (-1),
+    fromHom (m %* toHomPoint cam) `approxEq` 0,
+    fromHom (m %* toHomVector xb) `approxEq` vec3 1 0 0,
+    fromHom (m %* toHomVector yb) `approxEq` vec3 0 1 0,
+    fromHom (m %* toHomVector zb) `approxEq` vec3 0 0 1
   ]
   where
     m = lookAt up cam foc
@@ -150,16 +152,16 @@ prop_lookAt up cam foc =
 prop_perspective :: Float -> Float -> Float -> Float -> Bool
 prop_perspective a b c d =
   and [
-    projectTo 0 0 n       `approxEqF3` vec3 0 0 (-1),
-    projectTo 0 0 f       `approxEqF3` vec3 0 0 1,
-    projectTo 1 1 n       `approxEqF3` vec3 1 1 (-1),
-    projectTo 1 (-1) n    `approxEqF3` vec3 1 (-1) (-1),
-    projectTo (-1) 1 n    `approxEqF3` vec3 (-1) 1 (-1),
-    projectTo (-1) (-1) n `approxEqF3` vec3 (-1) (-1) (-1),
-    projectTo 1 1 f       `approxEqF3` vec3 1 1 1,
-    projectTo 1 (-1) f    `approxEqF3` vec3 1 (-1) 1,
-    projectTo (-1) 1 f    `approxEqF3` vec3 (-1) 1 1,
-    projectTo (-1) (-1) f `approxEqF3` vec3 (-1) (-1) 1
+    projectTo 0 0 n       `approxEq` vec3 0 0 (-1),
+    projectTo 0 0 f       `approxEq` vec3 0 0 1,
+    projectTo 1 1 n       `approxEq` vec3 1 1 (-1),
+    projectTo 1 (-1) n    `approxEq` vec3 1 (-1) (-1),
+    projectTo (-1) 1 n    `approxEq` vec3 (-1) 1 (-1),
+    projectTo (-1) (-1) n `approxEq` vec3 (-1) (-1) (-1),
+    projectTo 1 1 f       `approxEq` vec3 1 1 1,
+    projectTo 1 (-1) f    `approxEq` vec3 1 (-1) 1,
+    projectTo (-1) 1 f    `approxEq` vec3 (-1) 1 1,
+    projectTo (-1) (-1) f `approxEq` vec3 (-1) (-1) 1
   ]
   where
     n = 1.0 + mod' a 9.0 -- Near plane in range [1, 10)
@@ -174,16 +176,16 @@ prop_perspective a b c d =
 prop_orthogonal :: Float -> Float -> Float -> Float -> Bool
 prop_orthogonal a b c d =
   and [
-    projectTo 0 0 n       `approxEqF3` vec3 0 0 (-1),
-    projectTo 0 0 f       `approxEqF3` vec3 0 0 1,
-    projectTo 1 1 n       `approxEqF3` vec3 1 1 (-1),
-    projectTo 1 (-1) n    `approxEqF3` vec3 1 (-1) (-1),
-    projectTo (-1) 1 n    `approxEqF3` vec3 (-1) 1 (-1),
-    projectTo (-1) (-1) n `approxEqF3` vec3 (-1) (-1) (-1),
-    projectTo 1 1 f       `approxEqF3` vec3 1 1 1,
-    projectTo 1 (-1) f    `approxEqF3` vec3 1 (-1) 1,
-    projectTo (-1) 1 f    `approxEqF3` vec3 (-1) 1 1,
-    projectTo (-1) (-1) f `approxEqF3` vec3 (-1) (-1) 1
+    projectTo 0 0 n       `approxEq` vec3 0 0 (-1),
+    projectTo 0 0 f       `approxEq` vec3 0 0 1,
+    projectTo 1 1 n       `approxEq` vec3 1 1 (-1),
+    projectTo 1 (-1) n    `approxEq` vec3 1 (-1) (-1),
+    projectTo (-1) 1 n    `approxEq` vec3 (-1) 1 (-1),
+    projectTo (-1) (-1) n `approxEq` vec3 (-1) (-1) (-1),
+    projectTo 1 1 f       `approxEq` vec3 1 1 1,
+    projectTo 1 (-1) f    `approxEq` vec3 1 (-1) 1,
+    projectTo (-1) 1 f    `approxEq` vec3 (-1) 1 1,
+    projectTo (-1) (-1) f `approxEq` vec3 (-1) (-1) 1
   ]
   where
     n = 1.0 + mod' a 9.0 -- Near plane in range [1, 10)
@@ -203,7 +205,7 @@ prop_fromHom :: Vector Float 4 -> Bool
 prop_fromHom v | (x,y,z,w) <- unpackV4 v =
   case w of
     0 -> fromHom v == vec3 x y z
-    _ -> fromHom v `approxEqF3` vec3 (x/w) (y/w) (z/w)
+    _ -> fromHom v `approxEq` vec3 (x/w) (y/w) (z/w)
 
 return []
 runTests :: IO Bool
