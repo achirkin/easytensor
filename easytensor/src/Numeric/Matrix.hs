@@ -53,7 +53,7 @@ import           Data.List                               (delete)
 import           GHC.Base
 import           Numeric.DataFrame.Contraction           ((%*))
 import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.Family as AFam
+import           Numeric.DataFrame.Internal.Array as AFam
 import           Numeric.DataFrame.Shape
 import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type

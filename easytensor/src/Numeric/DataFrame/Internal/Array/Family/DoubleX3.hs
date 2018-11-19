@@ -1,37 +1,47 @@
 {-# LANGUAGE CPP                   #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE UnboxedTuples         #-}
+{-# OPTIONS_GHC -fno-warn-orphans  #-}
 module Numeric.DataFrame.Internal.Array.Family.DoubleX3 (DoubleX3 (..)) where
 
 
 import           GHC.Base
+import           Numeric.DataFrame.Family
 import           Numeric.DataFrame.Internal.Array.Class
+import {-# SOURCE #-} Numeric.DataFrame.Internal.Array.Family  (Array)
 import           Numeric.DataFrame.Internal.Array.PrimOps
 import           Numeric.PrimBytes
 
 
 data DoubleX3 = DoubleX3# Double# Double# Double#
 
+#define IS_ARRAY Array Double '[3] ~ DoubleX3
 
-instance Bounded DoubleX3 where
-    maxBound = case inftyD of D# x -> DoubleX3# x x x
-    minBound = case negate inftyD of D# x -> DoubleX3# x x x
-
-
-instance Show DoubleX3 where
-    show (DoubleX3# a1 a2 a3)
-      =  "{ " ++ show (D# a1)
-      ++ ", " ++ show (D# a2)
-      ++ ", " ++ show (D# a3)
-      ++ " }"
+instance {-# OVERLAPPING #-} Bounded (DataFrame Double '[3]) where
+    maxBound = case inftyD of D# x -> unsafeCoerce# (DoubleX3# x x x)
+    {-# INLINE maxBound #-}
+    minBound = case negate inftyD of D# x -> unsafeCoerce# (DoubleX3# x x x)
+    {-# INLINE minBound #-}
 
 
+-- instance {-# OVERLAPPING #-} Show (DataFrame Double '[3]) where
+--     show (SingleFrame (DoubleX3# a1 a2 a3))
+--       =  "{ " ++ show (D# a1)
+--       ++ ", " ++ show (D# a2)
+--       ++ ", " ++ show (D# a3)
+--       ++ " }"
 
-instance Eq DoubleX3 where
 
-    DoubleX3# a1 a2 a3 == DoubleX3# b1 b2 b3 =
+
+instance {-# OVERLAPPING #-} IS_ARRAY => Eq (DataFrame Double '[3]) where
+
+    SingleFrame (DoubleX3# a1 a2 a3) == SingleFrame (DoubleX3# b1 b2 b3) =
       isTrue#
       (       (a1 ==## b1)
       `andI#` (a2 ==## b2)
@@ -39,7 +49,7 @@ instance Eq DoubleX3 where
       )
     {-# INLINE (==) #-}
 
-    DoubleX3# a1 a2 a3 /= DoubleX3# b1 b2 b3 =
+    SingleFrame (DoubleX3# a1 a2 a3) /= SingleFrame (DoubleX3# b1 b2 b3) =
       isTrue#
       (      (a1 /=## b1)
       `orI#` (a2 /=## b2)
@@ -51,8 +61,8 @@ instance Eq DoubleX3 where
 
 -- | Implement partial ordering for `>`, `<`, `>=`, `<=`
 --           and lexicographical ordering for `compare`
-instance Ord DoubleX3 where
-    DoubleX3# a1 a2 a3 > DoubleX3# b1 b2 b3 =
+instance {-# OVERLAPPING #-} IS_ARRAY => Ord (DataFrame Double '[3]) where
+    SingleFrame (DoubleX3# a1 a2 a3) > SingleFrame (DoubleX3# b1 b2 b3) =
       isTrue#
       (       (a1 >## b1)
       `andI#` (a2 >## b2)
@@ -60,7 +70,7 @@ instance Ord DoubleX3 where
       )
     {-# INLINE (>) #-}
 
-    DoubleX3# a1 a2 a3 < DoubleX3# b1 b2 b3 =
+    SingleFrame (DoubleX3# a1 a2 a3) < SingleFrame (DoubleX3# b1 b2 b3) =
       isTrue#
       (       (a1 <## b1)
       `andI#` (a2 <## b2)
@@ -68,7 +78,7 @@ instance Ord DoubleX3 where
       )
     {-# INLINE (<) #-}
 
-    DoubleX3# a1 a2 a3 >= DoubleX3# b1 b2 b3 =
+    SingleFrame (DoubleX3# a1 a2 a3) >= SingleFrame (DoubleX3# b1 b2 b3) =
       isTrue#
       (       (a1 >=## b1)
       `andI#` (a2 >=## b2)
@@ -76,7 +86,7 @@ instance Ord DoubleX3 where
       )
     {-# INLINE (>=) #-}
 
-    DoubleX3# a1 a2 a3 <= DoubleX3# b1 b2 b3 =
+    SingleFrame (DoubleX3# a1 a2 a3) <= SingleFrame (DoubleX3# b1 b2 b3) =
       isTrue#
       (       (a1 <=## b1)
       `andI#` (a2 <=## b2)
@@ -85,7 +95,7 @@ instance Ord DoubleX3 where
     {-# INLINE (<=) #-}
 
     -- | Compare lexicographically
-    compare (DoubleX3# a1 a2 a3) (DoubleX3# b1 b2 b3)
+    compare (SingleFrame (DoubleX3# a1 a2 a3)) (SingleFrame (DoubleX3# b1 b2 b3))
       | isTrue# (a1 >## b1) = GT
       | isTrue# (a1 <## b1) = LT
       | isTrue# (a2 >## b2) = GT
@@ -96,15 +106,15 @@ instance Ord DoubleX3 where
     {-# INLINE compare #-}
 
     -- | Element-wise minimum
-    min (DoubleX3# a1 a2 a3) (DoubleX3# b1 b2 b3) = DoubleX3#
-      (if isTrue# (a1 >## b1) then b1 else a1)
+    min (SingleFrame (DoubleX3# a1 a2 a3)) (SingleFrame (DoubleX3# b1 b2 b3)) = unsafeCoerce# (DoubleX3#
+      (if isTrue# (a1 >## b1) then b1 else a1))
       (if isTrue# (a2 >## b2) then b2 else a2)
       (if isTrue# (a3 >## b3) then b3 else a3)
     {-# INLINE min #-}
 
     -- | Element-wise maximum
-    max (DoubleX3# a1 a2 a3) (DoubleX3# b1 b2 b3) = DoubleX3#
-      (if isTrue# (a1 >## b1) then a1 else b1)
+    max (SingleFrame (DoubleX3# a1 a2 a3)) (SingleFrame (DoubleX3# b1 b2 b3)) = unsafeCoerce# (DoubleX3#
+      (if isTrue# (a1 >## b1) then a1 else b1))
       (if isTrue# (a2 >## b2) then a2 else b2)
       (if isTrue# (a3 >## b3) then a3 else b3)
     {-# INLINE max #-}
@@ -112,33 +122,33 @@ instance Ord DoubleX3 where
 
 
 -- | element-wise operations for vectors
-instance Num DoubleX3 where
+instance {-# OVERLAPPING #-} IS_ARRAY => Num (DataFrame Double '[3]) where
 
-    DoubleX3# a1 a2 a3 + DoubleX3# b1 b2 b3
-      = DoubleX3# ((+##) a1 b1) ((+##) a2 b2) ((+##) a3 b3)
+    SingleFrame (DoubleX3# a1 a2 a3) + SingleFrame (DoubleX3# b1 b2 b3)
+      = unsafeCoerce# (DoubleX3# ((+##) a1 b1) ((+##) a2 b2) ((+##) a3 b3))
     {-# INLINE (+) #-}
 
-    DoubleX3# a1 a2 a3 - DoubleX3# b1 b2 b3
-      = DoubleX3# ((-##) a1 b1) ((-##) a2 b2) ((-##) a3 b3)
+    SingleFrame (DoubleX3# a1 a2 a3) - SingleFrame (DoubleX3# b1 b2 b3)
+      = unsafeCoerce# (DoubleX3# ((-##) a1 b1) ((-##) a2 b2) ((-##) a3 b3))
     {-# INLINE (-) #-}
 
-    DoubleX3# a1 a2 a3 * DoubleX3# b1 b2 b3
-      = DoubleX3# ((*##) a1 b1) ((*##) a2 b2) ((*##) a3 b3)
+    SingleFrame (DoubleX3# a1 a2 a3) * SingleFrame (DoubleX3# b1 b2 b3)
+      = unsafeCoerce# (DoubleX3# ((*##) a1 b1) ((*##) a2 b2) ((*##) a3 b3))
     {-# INLINE (*) #-}
 
-    negate (DoubleX3# a1 a2 a3) = DoubleX3#
-      (negateDouble# a1) (negateDouble# a2) (negateDouble# a3)
+    negate (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      (negateDouble# a1) (negateDouble# a2) (negateDouble# a3))
     {-# INLINE negate #-}
 
-    abs (DoubleX3# a1 a2 a3)
-      = DoubleX3#
-      (if isTrue# (a1 >=## 0.0##) then a1 else negateDouble# a1)
+    abs (SingleFrame (DoubleX3# a1 a2 a3))
+      = unsafeCoerce# (DoubleX3#
+      (if isTrue# (a1 >=## 0.0##) then a1 else negateDouble# a1))
       (if isTrue# (a2 >=## 0.0##) then a2 else negateDouble# a2)
       (if isTrue# (a3 >=## 0.0##) then a3 else negateDouble# a3)
     {-# INLINE abs #-}
 
-    signum (DoubleX3# a1 a2 a3)
-      = DoubleX3# (if isTrue# (a1 >## 0.0##)
+    signum (SingleFrame (DoubleX3# a1 a2 a3))
+      = unsafeCoerce# (DoubleX3# (if isTrue# (a1 >## 0.0##)
                   then 1.0##
                   else if isTrue# (a1 <## 0.0##) then -1.0## else 0.0## )
                  (if isTrue# (a2 >## 0.0##)
@@ -146,87 +156,87 @@ instance Num DoubleX3 where
                   else if isTrue# (a2 <## 0.0##) then -1.0## else 0.0## )
                  (if isTrue# (a3 >## 0.0##)
                   then 1.0##
-                  else if isTrue# (a3 <## 0.0##) then -1.0## else 0.0## )
+                  else if isTrue# (a3 <## 0.0##) then -1.0## else 0.0## ))
     {-# INLINE signum #-}
 
-    fromInteger n = case fromInteger n of D# x -> DoubleX3# x x x
+    fromInteger n = case fromInteger n of D# x -> SingleFrame (DoubleX3# x x x)
     {-# INLINE fromInteger #-}
 
 
 
-instance Fractional DoubleX3 where
+instance {-# OVERLAPPING #-} IS_ARRAY => Fractional (DataFrame Double '[3]) where
 
-    DoubleX3# a1 a2 a3 / DoubleX3# b1 b2 b3 = DoubleX3#
-      ((/##) a1 b1) ((/##) a2 b2) ((/##) a3 b3)
+    SingleFrame (DoubleX3# a1 a2 a3) / SingleFrame (DoubleX3# b1 b2 b3) = unsafeCoerce# (DoubleX3#
+      ((/##) a1 b1) ((/##) a2 b2) ((/##) a3 b3))
     {-# INLINE (/) #-}
 
-    recip (DoubleX3# a1 a2 a3) = DoubleX3#
-      ((/##) 1.0## a1) ((/##) 1.0## a2) ((/##) 1.0## a3)
+    recip (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      ((/##) 1.0## a1) ((/##) 1.0## a2) ((/##) 1.0## a3))
     {-# INLINE recip #-}
 
-    fromRational r = case fromRational r of D# x -> DoubleX3# x x x
+    fromRational r = case fromRational r of D# x -> SingleFrame (DoubleX3# x x x)
     {-# INLINE fromRational #-}
 
 
 
-instance Floating DoubleX3 where
+instance {-# OVERLAPPING #-} IS_ARRAY => Floating (DataFrame Double '[3]) where
 
-    pi = DoubleX3#
-      3.141592653589793238##
+    pi = unsafeCoerce# (DoubleX3#
+      3.141592653589793238##)
       3.141592653589793238##
       3.141592653589793238##
     {-# INLINE pi #-}
 
-    exp (DoubleX3# a1 a2 a3) = DoubleX3#
-      (expDouble# a1) (expDouble# a2) (expDouble# a3)
+    exp (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      (expDouble# a1) (expDouble# a2) (expDouble# a3))
     {-# INLINE exp #-}
 
-    log (DoubleX3# a1 a2 a3) = DoubleX3#
-      (logDouble# a1) (logDouble# a2) (logDouble# a3)
+    log (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      (logDouble# a1) (logDouble# a2) (logDouble# a3))
     {-# INLINE log #-}
 
-    sqrt (DoubleX3# a1 a2 a3) = DoubleX3#
-      (sqrtDouble# a1) (sqrtDouble# a2) (sqrtDouble# a3)
+    sqrt (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      (sqrtDouble# a1) (sqrtDouble# a2) (sqrtDouble# a3))
     {-# INLINE sqrt #-}
 
-    sin (DoubleX3# a1 a2 a3) = DoubleX3#
-      (sinDouble# a1) (sinDouble# a2) (sinDouble# a3)
+    sin (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      (sinDouble# a1) (sinDouble# a2) (sinDouble# a3))
     {-# INLINE sin #-}
 
-    cos (DoubleX3# a1 a2 a3) = DoubleX3#
-      (cosDouble# a1) (cosDouble# a2) (cosDouble# a3)
+    cos (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      (cosDouble# a1) (cosDouble# a2) (cosDouble# a3))
     {-# INLINE cos #-}
 
-    tan (DoubleX3# a1 a2 a3) = DoubleX3#
-      (tanDouble# a1) (tanDouble# a2) (tanDouble# a3)
+    tan (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      (tanDouble# a1) (tanDouble# a2) (tanDouble# a3))
     {-# INLINE tan #-}
 
-    asin (DoubleX3# a1 a2 a3) = DoubleX3#
-      (asinDouble# a1) (asinDouble# a2) (asinDouble# a3)
+    asin (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      (asinDouble# a1) (asinDouble# a2) (asinDouble# a3))
     {-# INLINE asin #-}
 
-    acos (DoubleX3# a1 a2 a3) = DoubleX3#
-      (acosDouble# a1) (acosDouble# a2) (acosDouble# a3)
+    acos (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      (acosDouble# a1) (acosDouble# a2) (acosDouble# a3))
     {-# INLINE acos #-}
 
-    atan (DoubleX3# a1 a2 a3) = DoubleX3#
-      (atanDouble# a1) (atanDouble# a2) (atanDouble# a3)
+    atan (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      (atanDouble# a1) (atanDouble# a2) (atanDouble# a3))
     {-# INLINE atan #-}
 
-    sinh (DoubleX3# a1 a2 a3) = DoubleX3#
-      (sinhDouble# a1) (sinhDouble# a2) (sinhDouble# a3)
+    sinh (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      (sinhDouble# a1) (sinhDouble# a2) (sinhDouble# a3))
     {-# INLINE sinh #-}
 
-    cosh (DoubleX3# a1 a2 a3) = DoubleX3#
-      (coshDouble# a1) (coshDouble# a2) (coshDouble# a3)
+    cosh (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      (coshDouble# a1) (coshDouble# a2) (coshDouble# a3))
     {-# INLINE cosh #-}
 
-    tanh (DoubleX3# a1 a2 a3) = DoubleX3#
-      (tanhDouble# a1) (tanhDouble# a2) (tanhDouble# a3)
+    tanh (SingleFrame (DoubleX3# a1 a2 a3)) = unsafeCoerce# (DoubleX3#
+      (tanhDouble# a1) (tanhDouble# a2) (tanhDouble# a3))
     {-# INLINE tanh #-}
 
-    DoubleX3# a1 a2 a3 ** DoubleX3# b1 b2 b3 = DoubleX3#
-      ((**##) a1 b1) ((**##) a2 b2) ((**##) a3 b3)
+    SingleFrame (DoubleX3# a1 a2 a3) ** SingleFrame (DoubleX3# b1 b2 b3) = unsafeCoerce# (DoubleX3#
+      ((**##) a1 b1) ((**##) a2 b2) ((**##) a3 b3))
     {-# INLINE (**) #-}
 
     logBase x y         =  log y / log x
@@ -246,10 +256,10 @@ instance Floating DoubleX3 where
 #define BOFF_TO_PRIMOFF(off) uncheckedIShiftRL# off 3#
 #define ELEM_N 3
 
-instance PrimBytes DoubleX3 where
+instance {-# OVERLAPPING #-} IS_ARRAY => PrimBytes (DataFrame Double '[3]) where
 
-    getBytes (DoubleX3# a1 a2 a3) = case runRW#
-       ( \s0 -> case newByteArray# (byteSize @DoubleX3 undefined) s0 of
+    getBytes (SingleFrame (DoubleX3# a1 a2 a3)) = case runRW#
+       ( \s0 -> case newByteArray# (byteSize @(DataFrame Double '[3]) undefined) s0 of
            (# s1, marr #) -> case writeDoubleArray# marr 0# a1 s1 of
              s2 -> case writeDoubleArray# marr 1# a2 s2 of
                s3 -> case writeDoubleArray# marr 2# a3 s3 of
@@ -259,8 +269,8 @@ instance PrimBytes DoubleX3 where
 
     fromBytes off arr
       | i <- BOFF_TO_PRIMOFF(off)
-      = DoubleX3#
-      (indexDoubleArray# arr i)
+      = unsafeCoerce# (DoubleX3#
+      (indexDoubleArray# arr i))
       (indexDoubleArray# arr (i +# 1#))
       (indexDoubleArray# arr (i +# 2#))
     {-# INLINE fromBytes #-}
@@ -270,10 +280,10 @@ instance PrimBytes DoubleX3 where
       = case readDoubleArray# mba i s0 of
       (# s1, a1 #) -> case readDoubleArray# mba (i +# 1#) s1 of
         (# s2, a2 #) -> case readDoubleArray# mba (i +# 2#) s2 of
-          (# s3, a3 #) -> (# s3, DoubleX3# a1 a2 a3 #)
+          (# s3, a3 #) -> (# s3, SingleFrame (DoubleX3# a1 a2 a3) #)
     {-# INLINE readBytes #-}
 
-    writeBytes mba off (DoubleX3# a1 a2 a3) s
+    writeBytes mba off (SingleFrame (DoubleX3# a1 a2 a3)) s
       | i <- BOFF_TO_PRIMOFF(off)
       = writeDoubleArray# mba (i +# 2#) a3
       ( writeDoubleArray# mba (i +# 1#) a2
@@ -284,10 +294,10 @@ instance PrimBytes DoubleX3 where
       = case readDoubleOffAddr# addr 0# s0 of
       (# s1, a1 #) -> case readDoubleOffAddr# addr 1# s1 of
         (# s2, a2 #) -> case readDoubleOffAddr# addr 2# s2 of
-          (# s3, a3 #) -> (# s3, DoubleX3# a1 a2 a3 #)
+          (# s3, a3 #) -> (# s3, SingleFrame (DoubleX3# a1 a2 a3) #)
     {-# INLINE readAddr #-}
 
-    writeAddr (DoubleX3# a1 a2 a3) addr s
+    writeAddr (SingleFrame (DoubleX3# a1 a2 a3)) addr s
       = writeDoubleOffAddr# addr 2# a3
       ( writeDoubleOffAddr# addr 1# a2
       ( writeDoubleOffAddr# addr 0# a1 s ))
@@ -304,8 +314,8 @@ instance PrimBytes DoubleX3 where
 
     indexArray ba off
       | i <- off *# ELEM_N#
-      = DoubleX3#
-      (indexDoubleArray# ba i)
+      = unsafeCoerce# (DoubleX3#
+      (indexDoubleArray# ba i))
       (indexDoubleArray# ba (i +# 1#))
       (indexDoubleArray# ba (i +# 2#))
     {-# INLINE indexArray #-}
@@ -315,10 +325,10 @@ instance PrimBytes DoubleX3 where
       = case readDoubleArray# mba i s0 of
       (# s1, a1 #) -> case readDoubleArray# mba (i +# 1#) s1 of
         (# s2, a2 #) -> case readDoubleArray# mba (i +# 2#) s2 of
-          (# s3, a3 #) -> (# s3, DoubleX3# a1 a2 a3 #)
+          (# s3, a3 #) -> (# s3, SingleFrame (DoubleX3# a1 a2 a3) #)
     {-# INLINE readArray #-}
 
-    writeArray mba off (DoubleX3# a1 a2 a3) s
+    writeArray mba off (SingleFrame (DoubleX3# a1 a2 a3)) s
       | i <- off *# ELEM_N#
       = writeDoubleArray# mba (i +# 2#) a3
       ( writeDoubleArray# mba (i +# 1#) a2
@@ -326,26 +336,25 @@ instance PrimBytes DoubleX3 where
     {-# INLINE writeArray #-}
 
 
-instance PrimArray Double DoubleX3 where
+instance {-# OVERLAPPING #-} IS_ARRAY => PrimArray Double (DataFrame Double '[3]) where
 
-    broadcast (D# x) = DoubleX3# x x x
+    broadcast (D# x) = SingleFrame (DoubleX3# x x x)
     {-# INLINE broadcast #-}
 
-    ix# 0# (DoubleX3# a1 _ _) = D# a1
-    ix# 1# (DoubleX3# _ a2 _) = D# a2
-    ix# 2# (DoubleX3# _ _ a3) = D# a3
+    ix# 0# (SingleFrame (DoubleX3# a1 _ _)) = D# a1
+    ix# 1# (SingleFrame (DoubleX3# _ a2 _)) = D# a2
+    ix# 2# (SingleFrame (DoubleX3# _ _ a3)) = D# a3
     ix# _   _                 = undefined
     {-# INLINE ix# #-}
 
     gen# _ f s0 = case f s0 of
       (# s1, D# a1 #) -> case f s1 of
         (# s2, D# a2 #) -> case f s2 of
-          (# s3, D# a3 #) -> (# s3, DoubleX3# a1 a2 a3 #)
+          (# s3, D# a3 #) -> (# s3, SingleFrame (DoubleX3# a1 a2 a3) #)
 
-
-    upd# _ 0# (D# q) (DoubleX3# _ y z) = DoubleX3# q y z
-    upd# _ 1# (D# q) (DoubleX3# x _ z) = DoubleX3# x q z
-    upd# _ 2# (D# q) (DoubleX3# x y _) = DoubleX3# x y q
+    upd# _ 0# (D# q) (SingleFrame (DoubleX3# _ y z)) = SingleFrame (DoubleX3# q y z)
+    upd# _ 1# (D# q) (SingleFrame (DoubleX3# x _ z)) = SingleFrame (DoubleX3# x q z)
+    upd# _ 2# (D# q) (SingleFrame (DoubleX3# x y _)) = SingleFrame (DoubleX3# x y q)
     upd# _ _ _ x                       = x
     {-# INLINE upd# #-}
 
@@ -355,8 +364,8 @@ instance PrimArray Double DoubleX3 where
     elemSize0 _  = ELEM_N#
     {-# INLINE elemSize0 #-}
 
-    fromElems off _ ba = DoubleX3#
-      (indexDoubleArray# ba off)
+    fromElems off _ ba = unsafeCoerce# (DoubleX3#
+      (indexDoubleArray# ba off))
       (indexDoubleArray# ba (off +# 1#))
       (indexDoubleArray# ba (off +# 2#))
     {-# INLINE fromElems #-}

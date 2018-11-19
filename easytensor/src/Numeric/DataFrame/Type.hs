@@ -50,14 +50,11 @@ import           GHC.Ptr (Ptr (..))
 
 import           Numeric.DataFrame.Family
 import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.Family (Array, ArraySingleton (..))
-import qualified Numeric.DataFrame.Internal.Array.Family as AFam
+import           Numeric.DataFrame.Internal.Array (Array, ArraySingleton (..))
+import qualified Numeric.DataFrame.Internal.Array as AFam
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
 
--- | Single frame
-newtype instance DataFrame (t :: Type) (ns :: [Nat])
-  = SingleFrame { _getDF :: Array t ns }
 
 -- | Multiple "columns" of data frames of the same shape
 newtype instance DataFrame (ts :: [Type]) (ns :: [Nat])
@@ -213,8 +210,8 @@ deriving instance RealFloat (Array t ds)
                => RealFloat (DataFrame t ds)
 deriving instance (PrimArray t (Array t ds), PrimBytes t)
                => PrimArray t (DataFrame t ds)
-deriving instance PrimBytes (Array t ds)
-               => PrimBytes (DataFrame t ds)
+-- deriving instance PrimBytes (Array t ds)
+--                => PrimBytes (DataFrame t ds)
 
 
 

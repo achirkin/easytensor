@@ -36,7 +36,7 @@ module Numeric.DataFrame.Shape
 import           GHC.Base
 
 import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.Family (inferASing, inferPrim,
+import           Numeric.DataFrame.Internal.Array (inferASing, inferPrim,
                                                           inferPrimElem)
 import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type                  (DataFrame (..))

@@ -60,6 +60,7 @@ library
         Numeric.DataFrame.Internal.Array.Family.DoubleX2
         Numeric.DataFrame.Internal.Array.Family.DoubleX3
         Numeric.DataFrame.Internal.Array.Family.DoubleX4
+        Numeric.DataFrame.Internal.Array.Singleton
         Numeric.DataFrame.Internal.Array.PrimOps
     build-depends:
         base >=4.10 && <5,
