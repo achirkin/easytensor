@@ -185,10 +185,35 @@ inferPrim :: forall t ds
           => Evidence (PrimBytes (Array t ds), PrimArray t (Array t ds))
 inferPrim = WITNESS
 
+
+inferElemInstance ::
+     forall t ds c
+   . ( ArraySingleton t ds
+     , c (ScalarBase t)
+     , c FloatX2
+     , c FloatX3
+     , c FloatX4
+     , c DoubleX2
+     , c DoubleX3
+     , c DoubleX4
+     , c (ArrayBase t ds)
+     )
+  => Evidence (c (Array t ds))
+inferElemInstance = case (aSing :: ArraySing t ds) of
+  AScalar -> E
+  AF2     -> E
+  AF3     -> E
+  AF4     -> E
+  AD2     -> E
+  AD3     -> E
+  AD4     -> E
+  ABase   -> E
+{-# INLINE inferElemInstance #-}
+
 inferEq :: forall t ds
          . (Eq t, ArraySingleton t ds)
         => Evidence (Eq (Array t ds))
-inferEq = WITNESS
+inferEq = inferElemInstance
 
 inferOrd :: forall t ds
             . (Ord t, ArraySingleton t ds)
