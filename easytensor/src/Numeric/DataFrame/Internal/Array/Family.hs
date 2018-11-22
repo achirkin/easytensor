@@ -1,21 +1,22 @@
-{-# LANGUAGE AllowAmbiguousTypes    #-}
-{-# LANGUAGE CPP                    #-}
-{-# LANGUAGE ConstraintKinds        #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE MagicHash              #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE Rank2Types             #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE StandaloneDeriving     #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE TypeInType             #-}
-{-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE AllowAmbiguousTypes     #-}
+{-# LANGUAGE ConstraintKinds         #-}
+{-# LANGUAGE DataKinds               #-}
+{-# LANGUAGE FlexibleContexts        #-}
+{-# LANGUAGE FlexibleInstances       #-}
+{-# LANGUAGE GADTs                   #-}
+{-# LANGUAGE MagicHash               #-}
+{-# LANGUAGE MultiParamTypeClasses   #-}
+{-# LANGUAGE PolyKinds               #-}
+{-# LANGUAGE Rank2Types              #-}
+{-# LANGUAGE ScopedTypeVariables     #-}
+{-# LANGUAGE StandaloneDeriving      #-}
+{-# LANGUAGE TypeApplications        #-}
+{-# LANGUAGE TypeFamilies            #-}
+{-# LANGUAGE TypeFamilyDependencies  #-}
+{-# LANGUAGE TypeInType              #-}
+{-# LANGUAGE TypeOperators           #-}
+{-# LANGUAGE UndecidableInstances    #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Internal.Array.Family
@@ -165,17 +166,6 @@ inferPrimElem = case (aSing :: ArraySing t (d ': ds)) of
   AD4   -> E
   ABase -> E
 
--- Rather verbose way to show that there is an instance of a required type class
--- for every instance of the type family.
-#define WITNESS case (aSing :: ArraySing t ds) of {\
-  AScalar -> E;\
-  AF2     -> E;\
-  AF3     -> E;\
-  AF4     -> E;\
-  AD2     -> E;\
-  AD3     -> E;\
-  AD4     -> E;\
-  ABase   -> E}
 
 inferPrim :: forall t ds
            . ( PrimBytes t
@@ -183,23 +173,7 @@ inferPrim :: forall t ds
              , Dimensions ds
              )
           => Evidence (PrimBytes (Array t ds), PrimArray t (Array t ds))
-inferPrim = WITNESS
-
-
-inferElemInstance ::
-     forall t ds c
-   . ( ArraySingleton t ds
-     , c (ScalarBase t)
-     , c FloatX2
-     , c FloatX3
-     , c FloatX4
-     , c DoubleX2
-     , c DoubleX3
-     , c DoubleX4
-     , c (ArrayBase t ds)
-     )
-  => Evidence (c (Array t ds))
-inferElemInstance = case (aSing :: ArraySing t ds) of
+inferPrim = case (aSing :: ArraySing t ds) of
   AScalar -> E
   AF2     -> E
   AF3     -> E
@@ -208,7 +182,41 @@ inferElemInstance = case (aSing :: ArraySing t ds) of
   AD3     -> E
   AD4     -> E
   ABase   -> E
-{-# INLINE inferElemInstance #-}
+
+
+class ( c (ScalarBase t)
+      , c FloatX2
+      , c FloatX3
+      , c FloatX4
+      , c DoubleX2
+      , c DoubleX3
+      , c DoubleX4
+      , c (ArrayBase t ds)
+      ) => InferElemInstance t ds c where
+    inferElemInstance :: Evidence (c (Array t ds))
+
+instance ( ArraySingleton t ds
+         , c (ScalarBase t)
+         , c FloatX2
+         , c FloatX3
+         , c FloatX4
+         , c DoubleX2
+         , c DoubleX3
+         , c DoubleX4
+         , c (ArrayBase t ds)
+         ) => InferElemInstance t ds c where
+    inferElemInstance = case (aSing :: ArraySing t ds) of
+      AScalar -> E
+      AF2     -> E
+      AF3     -> E
+      AF4     -> E
+      AD2     -> E
+      AD3     -> E
+      AD4     -> E
+      ABase   -> E
+    {-# INLINE inferElemInstance #-}
+
+
 
 inferEq :: forall t ds
          . (Eq t, ArraySingleton t ds)
@@ -218,24 +226,24 @@ inferEq = inferElemInstance
 inferOrd :: forall t ds
             . (Ord t, ArraySingleton t ds)
            => Evidence (Ord (Array t ds))
-inferOrd = WITNESS
+inferOrd = inferElemInstance
 
 inferNum :: forall t ds
           . (Num t, ArraySingleton t ds)
          => Evidence (Num (Array t ds))
-inferNum = WITNESS
+inferNum = inferElemInstance
 
 inferFractional :: forall t ds
                  . (Fractional t, ArraySingleton t ds)
                 => Evidence (Fractional (Array t ds))
-inferFractional = WITNESS
+inferFractional = inferElemInstance
 
 inferFloating :: forall t ds
                . (Floating t, ArraySingleton t ds)
               => Evidence (Floating (Array t ds))
-inferFloating = WITNESS
+inferFloating = inferElemInstance
 
 inferShow :: forall t ds
            . (Show t, Dimensions ds, ArraySingleton t ds)
           => Evidence (Show (Array t ds))
-inferShow = WITNESS
+inferShow = inferElemInstance

@@ -290,7 +290,7 @@ instance Ord t => Ord (ArrayBase t ds)  where
 instance (Dimensions ds, Show t)
       => Show (ArrayBase t ds) where
   show x = case dims @_ @ds of
-    U -> "{ " ++ show (ix 0 x) ++ " }"
+    U -> "{ " ++ show (ix U x) ++ " }"
     Dim :* U -> ('{' :) . drop 1 $
                     foldr (\i s -> ", " ++ show (ix i x) ++ s) " }"
                             [minBound .. maxBound]
