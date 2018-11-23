@@ -51,7 +51,7 @@ import           Numeric.DataFrame.Internal.Array.Family.FloatX4
 import           Numeric.DataFrame.Internal.Array.Family.ScalarBase
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
-
+import           Numeric.Type.Evidence.Internal
 
 -- | This type family aggregates all types used for arrays with different
 --   dimensioinality.
@@ -184,16 +184,8 @@ inferPrim = case (aSing :: ArraySing t ds) of
   ABase   -> E
 
 
-class ( c (ScalarBase t)
-      , c FloatX2
-      , c FloatX3
-      , c FloatX4
-      , c DoubleX2
-      , c DoubleX3
-      , c DoubleX4
-      , c (ArrayBase t ds)
-      ) => InferElemInstance t ds c where
-    inferElemInstance :: Evidence (c (Array t ds))
+class InferBackendInstance t ds c where
+    inferBackendInstance :: BareConstraint (c (Array t ds))
 
 instance ( ArraySingleton t ds
          , c (ScalarBase t)
@@ -204,46 +196,48 @@ instance ( ArraySingleton t ds
          , c DoubleX3
          , c DoubleX4
          , c (ArrayBase t ds)
-         ) => InferElemInstance t ds c where
-    inferElemInstance = case (aSing :: ArraySing t ds) of
-      AScalar -> E
-      AF2     -> E
-      AF3     -> E
-      AF4     -> E
-      AD2     -> E
-      AD3     -> E
-      AD4     -> E
-      ABase   -> E
-    {-# INLINE inferElemInstance #-}
+         ) => InferBackendInstance t ds c where
+    inferBackendInstance = case ev of EvValue c -> c
+      where
+        ev = case (aSing :: ArraySing t ds) of
+          AScalar -> E
+          AF2     -> E
+          AF3     -> E
+          AF4     -> E
+          AD2     -> E
+          AD3     -> E
+          AD4     -> E
+          ABase   -> E
+    {-# INLINE inferBackendInstance #-}
 
 
 
 inferEq :: forall t ds
          . (Eq t, ArraySingleton t ds)
         => Evidence (Eq (Array t ds))
-inferEq = inferElemInstance
+inferEq = EvValue inferBackendInstance
 
 inferOrd :: forall t ds
             . (Ord t, ArraySingleton t ds)
            => Evidence (Ord (Array t ds))
-inferOrd = inferElemInstance
+inferOrd = EvValue inferBackendInstance
 
 inferNum :: forall t ds
           . (Num t, ArraySingleton t ds)
          => Evidence (Num (Array t ds))
-inferNum = inferElemInstance
+inferNum = EvValue inferBackendInstance
 
 inferFractional :: forall t ds
                  . (Fractional t, ArraySingleton t ds)
                 => Evidence (Fractional (Array t ds))
-inferFractional = inferElemInstance
+inferFractional = EvValue inferBackendInstance
 
 inferFloating :: forall t ds
                . (Floating t, ArraySingleton t ds)
               => Evidence (Floating (Array t ds))
-inferFloating = inferElemInstance
+inferFloating = EvValue inferBackendInstance
 
 inferShow :: forall t ds
            . (Show t, Dimensions ds, ArraySingleton t ds)
           => Evidence (Show (Array t ds))
-inferShow = inferElemInstance
+inferShow = EvValue inferBackendInstance

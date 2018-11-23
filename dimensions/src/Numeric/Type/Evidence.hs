@@ -2,8 +2,8 @@
 {-# LANGUAGE DataKinds       #-}
 {-# LANGUAGE GADTs           #-}
 {-# LANGUAGE KindSignatures  #-}
-{-# LANGUAGE Rank2Types      #-}
 {-# LANGUAGE PolyKinds       #-}
+{-# LANGUAGE Rank2Types      #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Type.Evidence
@@ -21,8 +21,7 @@ module Numeric.Type.Evidence
   ) where
 
 
-import           GHC.Base (Type)
-import           GHC.Exts (Constraint)
+import           GHC.Base (Constraint, Type)
 
 
 -- | Bring an instance of certain class or constaint satisfaction evidence into scope.

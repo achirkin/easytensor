@@ -1,5 +1,5 @@
 name: dimensions
-version: 1.0.1.1
+version: 1.0.2.0
 cabal-version: >=1.22
 build-type: Simple
 license: BSD3
@@ -35,6 +35,7 @@ library
         Numeric.Tuple.Lazy
         Numeric.Tuple.Strict
         Numeric.Type.Evidence
+        Numeric.Type.Evidence.Internal
         Numeric.Type.List
         Numeric.TypedList
         Numeric.Dimensions
