@@ -268,6 +268,40 @@ solveArrayWanted
   WantedArrayInstance {..} = do
 
     printIt $ ppr $ instanceHead inferBIInst
+    {-
+     A very useful function:
+       instanceSig :: ClsInst -> ([TyVar], [Type], Class, [Type])
+                                 (tvs, theta, clas, tys)
+                    for my thing:
+            ( [t, n, c],
+            , [ ArraySingleton t n, c (UnitBase t), c (ScalarBase t)
+              , c (Vec2Base t), c (ListBase t n)]
+            , InferBackendInstance
+            , [t, n, c]
+            )
+
+     Its content:
+       1. [TyVar] used type variables
+       2. [Type] -- looks like predicate types -- constraints
+       3. Class  -- the class itself
+       4. [Type] -- type paramaters of the instance
+
+     From TcType.hs:
+
+        -- Split the type of a dictionary function
+        -- We don't use tcSplitSigmaTy,  because a DFun may (with NDP)
+        -- have non-Pred arguments, such as
+        --     df :: forall m. (forall b. Eq b => Eq (m b)) -> C m
+        --
+        -- Also NB splitFunTys, not tcSplitFunTys;
+        -- the latter  specifically stops at PredTy arguments,
+        -- and we don't want to do that here
+
+      Afterwards, I shall use substTyVar or substTyVars to replace occurrences
+      of the type variables in the found instance to put them correctly
+      into the EvTerm being constructed.
+    -}
+    printIt $ ppr $ instanceSig inferBIInst
     printIt $ ppr [arrElemType, arrDims, unaryClass]
 
     (a0b, c0) <- lookupConstraint "UnitBase"   [arrElemType]
@@ -288,11 +322,11 @@ solveArrayWanted
     return (TcPluginOk
               [(EvDFunApp (is_dfun inferBIInst)
                 [arrElemType, arrDims, unaryClass]
-                [ toEvTerm wArraySingletonTyCon
-                , toEvTerm w0b
-                , toEvTerm w1b
-                , toEvTerm w2b
-                , toEvTerm wnb
+                [ ctEvTerm wArraySingletonTyCon
+                , ctEvTerm w0b
+                , ctEvTerm w1b
+                , ctEvTerm w2b
+                , ctEvTerm wnb
                 ], origWanted)]
               [ CDictCan wArraySingletonTyCon arraySingletonClass [arrElemType, arrDims] False
               , CDictCan w0b wantedClass a0b False
@@ -301,9 +335,6 @@ solveArrayWanted
               , CDictCan wnb wantedClass anb False
               ])
   where
-    toEvTerm CtWanted {ctev_dest = EvVarDest ev} = EvId ev
-    toEvTerm CtGiven {ctev_evar = ev } = EvId ev
-    toEvTerm _ = undefined
     origLoc = ctev_loc $ cc_ev origWanted
     lookupConstraint n xs = do
       t <- lookupATyCon n
