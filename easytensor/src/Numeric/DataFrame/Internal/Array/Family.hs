@@ -32,6 +32,7 @@ module Numeric.DataFrame.Internal.Array.Family
   ( Array, ScalarBase (..), ArrayBase (..)
   , ArraySingleton (..)
   , ArraySing (..), aSingEv, inferASing
+  , InferBackendInstance (..)
   , inferPrimElem, inferPrim, inferEq, inferShow, inferOrd, inferNum
   , inferFractional, inferFloating
   ) where

@@ -123,6 +123,8 @@ data EtTcState = EtTcState
     -- ^ [Ty]pe [Con]structor for the class `ArraySingleton`.
     --   I hook up special solving behavior to this, otherwise ordinary,
     --   class with a single function.
+  , arraySingletonClass :: Class
+    -- ^ The corresponding class
   , arrayTyCon :: TyCon
     -- ^ [Ty]pe [Con]structor for the type family `Array`.
     --   Its equations enumerate possible DataFrame backends.
@@ -140,6 +142,7 @@ initEtTcState = do
     md <- lookupModule afModule (fsLit "easytensor")
 
     arraySingletonTyCon <- lookupArraySingletonTyCon md
+    arraySingletonClass <- lookupArraySingletonClass md
     arrayTyCon <- lookupArrayTyCon md
     inferBackendClass <- lookupInferBackendClass md
     arrayInstances <- lookupArrayFamily md arrayTyCon
@@ -167,6 +170,13 @@ lookupArraySingletonTyCon :: Module -> TcPluginM TyCon
 lookupArraySingletonTyCon md = do
     n  <- lookupName md (mkTcOcc "ArraySingleton")
     tcLookupTyCon n
+
+-- | Lookup the class which will serve as our special constraint.
+lookupArraySingletonClass :: Module -> TcPluginM Class
+lookupArraySingletonClass md = do
+    n  <- lookupName md (mkTcOcc "ArraySingleton")
+    tcLookupClass n
+
 
 -- | Lookup the class which will serve as our special constraint.
 lookupArrayTyCon :: Module -> TcPluginM TyCon
@@ -245,7 +255,9 @@ checkArrayClassCt EtTcState {..} origWanted =
 
 
 
-
+-- So far, this works, but tracing of the instance lookup function shows
+-- that is is invoked on every function call, which is not so good.
+-- I need to figure out the way to reduce number of lookups.
 solveArrayWanted :: EtTcState -- ^ plugin state
                  -> ClsInst -- ^ InferBackendInstance
                  -> WantedArrayInstance -- ^ Single constraint that involves Array
@@ -258,49 +270,35 @@ solveArrayWanted
     printIt $ ppr $ instanceHead inferBIInst
     printIt $ ppr [arrElemType, arrDims, unaryClass]
 
-    (asb, cScalarBase) <- lookupConstraint "ScalarBase" [arrElemType]
-    (af2, cFloatX2)    <- lookupConstraint "FloatX2" []
-    (af3, cFloatX3)    <- lookupConstraint "FloatX2" []
-    (af4, cFloatX4)    <- lookupConstraint "FloatX4" []
-    (ad2, cDoubleX2)   <- lookupConstraint "DoubleX2" []
-    (ad3, cDoubleX3)   <- lookupConstraint "DoubleX3" []
-    (ad4, cDoubleX4)   <- lookupConstraint "DoubleX4" []
-    (aab, cArrayBase)  <- lookupConstraint "ArrayBase" [arrElemType, arrDims]
+    (a0b, c0) <- lookupConstraint "UnitBase"   [arrElemType]
+    (a1b, c1) <- lookupConstraint "ScalarBase" [arrElemType]
+    (a2b, c2) <- lookupConstraint "Vec2Base"   [arrElemType]
+    (anb, cn) <- lookupConstraint "ListBase"   [arrElemType, arrDims]
 
-    wArraySingletonTyCon <- newWanted origLoc
-      $ mkTyConApp arraySingletonTyCon [arrElemType, arrDims]
-    wScalarBase <- newWanted origLoc cScalarBase
-    wFloatX2    <- newWanted origLoc cFloatX2
-    wFloatX3    <- newWanted origLoc cFloatX3
-    wFloatX4    <- newWanted origLoc cFloatX4
-    wDoubleX2   <- newWanted origLoc cDoubleX2
-    wDoubleX3   <- newWanted origLoc cDoubleX3
-    wDoubleX4   <- newWanted origLoc cDoubleX4
-    wArrayBase  <- newWanted origLoc cArrayBase
+
+    wArraySingletonTyCon
+        <- newWanted origLoc
+                        $ mkTyConApp arraySingletonTyCon [arrElemType, arrDims]
+    w0b <- newWanted origLoc c0
+    w1b <- newWanted origLoc c1
+    w2b <- newWanted origLoc c2
+    wnb <- newWanted origLoc cn
 
     -- TODO: tedious: need to lookup all instances manually?..
     return (TcPluginOk
               [(EvDFunApp (is_dfun inferBIInst)
                 [arrElemType, arrDims, unaryClass]
                 [ toEvTerm wArraySingletonTyCon
-                , toEvTerm wScalarBase
-                , toEvTerm wFloatX2
-                , toEvTerm wFloatX3
-                , toEvTerm wFloatX4
-                , toEvTerm wDoubleX2
-                , toEvTerm wDoubleX3
-                , toEvTerm wDoubleX4
-                , toEvTerm wArrayBase
+                , toEvTerm w0b
+                , toEvTerm w1b
+                , toEvTerm w2b
+                , toEvTerm wnb
                 ], origWanted)]
-              [ CDictCan wArraySingletonTyCon wantedClass asb False -- wrong! do etest lib first and then copy here
-              , CDictCan wScalarBase wantedClass asb False
-              , CDictCan wFloatX2 wantedClass af2 False
-              , CDictCan wFloatX3 wantedClass af3 False
-              , CDictCan wFloatX4 wantedClass af4 False
-              , CDictCan wDoubleX2 wantedClass ad2 False
-              , CDictCan wDoubleX3 wantedClass ad3 False
-              , CDictCan wDoubleX4 wantedClass ad4 False
-              , CDictCan wArrayBase wantedClass aab False
+              [ CDictCan wArraySingletonTyCon arraySingletonClass [arrElemType, arrDims] False
+              , CDictCan w0b wantedClass a0b False
+              , CDictCan w1b wantedClass a1b False
+              , CDictCan w2b wantedClass a2b False
+              , CDictCan wnb wantedClass anb False
               ])
   where
     toEvTerm CtWanted {ctev_dest = EvVarDest ev} = EvId ev
@@ -310,13 +308,13 @@ solveArrayWanted
     lookupConstraint n xs = do
       t <- lookupATyCon n
       let args = staticArgs ++ [mkTyConApp t xs]
+      printIt $ ppr (staticArgs, xs, args, mkTyConApp (classTyCon wantedClass) args)
       return (args, mkTyConApp (classTyCon wantedClass) args)
     staticArgs = take (length wantedClassArgs - 1) wantedClassArgs
     unaryClass = mkTyConApp (classTyCon wantedClass) staticArgs
 
     lookupATyCon n = do
-        let afModule = mkModuleName
-              $ "Numeric.DataFrame.Internal.Array.Family." ++ n
+        let afModule = mkModuleName "Numeric.DataFrame.Internal.Array.Family"
         md <- lookupModule afModule (fsLit "easytensor")
         na  <- lookupName md (mkTcOcc n)
         tcLookupTyCon na

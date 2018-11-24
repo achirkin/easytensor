@@ -1,0 +1,10 @@
+resolver: ../snapshot-8.2.yaml
+
+flags:
+  ghc-tcplugins-extra:
+    deverror: true
+
+packages:
+  - '.'
+  - location: ../dimensions
+    extra-dep: true
