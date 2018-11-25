@@ -27,9 +27,9 @@ data SomeDataFrame (t :: Type) where
 newtype DataFrame (t :: Type) (n :: Nat)
   = DataFrame { _getDF :: Array t n }
 
-deriving instance ( Eq t, ArraySingleton t n)   => Eq (DataFrame t n)
-deriving instance ( Ord t, ArraySingleton t n)  => Ord (DataFrame t n)
+deriving instance ( Eq t0, ArraySingleton t0 n) => Eq (DataFrame t0 n)
+deriving instance ( Ord z, ArraySingleton z k)  => Ord (DataFrame z k)
 deriving instance ( Show t, ArraySingleton t n) => Show (DataFrame t n)
-deriving instance ( Num t, ArraySingleton t n)  => Semigroup (DataFrame t n)
+deriving instance ( Num t, ArraySingleton t f)  => Semigroup (DataFrame t f)
 deriving instance ( Num t, KnownDim n, ArraySingleton t n)
                                                 => Monoid (DataFrame t n)

@@ -27,3 +27,12 @@ main = do
 
 f :: ( Semigroup t, Monoid t) => t -> t
 f x = x <> x <> x <> mempty <> x
+{-
+ Pragma NOINLINE reduces the number of calls to the dictionary function.
+ With optimization enabled, this is 5 vs 3.
+ Assuming one call is for Show instance, f invokes the DFun  once for each type.
+
+ If the function is inlined,  DFun seems to be invoked every time the Monoid
+ or Semigroup functions are called.
+ -}
+{-# NOINLINE f #-}
