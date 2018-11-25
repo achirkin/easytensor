@@ -9,9 +9,10 @@ import           Data.Function       ((&))
 import           Data.Maybe          (catMaybes)
 import           GHC.TcPluginM.Extra (lookupModule, lookupName, tracePlugin)
 import           GhcPlugins
-import           InstEnv
+import           InstEnv             (ClsInst, classInstances, instanceDFunId,
+                                      instanceSig)
 import           Panic               (panicDoc)
-import           TcEvidence
+import           TcEvidence          (EvTerm (EvDFunApp))
 import           TcPluginM
 import           TcRnTypes
 
@@ -112,12 +113,12 @@ To find a proper DFunId, I use a novel trick:
 
 
 data EtTcState = EtTcState
-  { arrayTyCon          :: TyCon
+  { arrayTyCon        :: TyCon
     -- ^ [Ty]pe [Con]structor for the type family `Array`.
     --   Its equations enumerate possible DataFrame backends.
   -- , arrayInstances      :: CoAxiom Branched
   --   -- ^ List of family instances
-  , inferBackendClass   :: Class
+  , inferBackendClass :: Class
     -- ^ Our magic class that is used to find other instances
   }
 
