@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE LambdaCase   #-}
 {-# OPTIONS_GHC -fno-warn-orphans       #-}
 module Numeric.DataFrame.TcPlugin (plugin) where
 
@@ -9,20 +10,24 @@ import           Bag
 import           Class
 import           Control.Arrow       (first, (***))
 import           Data.Function       ((&))
-import           Data.Maybe          (catMaybes)
-import           Data.Monoid         (First (..))
-import           GHC.TcPluginM.Extra (lookupModule, lookupName, tracePlugin)
+import           Data.Maybe          (catMaybes, mapMaybe, maybeToList, fromMaybe)
+import           Data.Monoid         (First (..), Any (..))
 import           GhcPlugins
-import           InstEnv             (ClsInst, classInstances, instanceDFunId,
-                                      instanceSig)
+import           InstEnv
 import           Panic               (panicDoc)
 import           TcEvidence          (EvTerm (..))
 import           TcPluginM
 import           TcRnTypes
 
+import CoAxiom
+import qualified TcRnMonad
+import qualified IfaceEnv
+import qualified Finder
+
 -- import           TcSMonad (emitNewDerivedEq, runTcSDeriveds)
 import           IOEnv
 -- import           ErrUtils
+
 
 -- | To use the plugin, add
 --
@@ -33,17 +38,215 @@ import           IOEnv
 -- To the header of your file.
 plugin :: Plugin
 plugin = defaultPlugin
-  { tcPlugin = const $ Just
-                     $ tracePlugin "Numeric.DataFrame.TcPlugin"
-                       TcPlugin
+  { tcPlugin = const $ Just TcPlugin
       { tcPluginInit  = initEtTcState
       , tcPluginSolve = runPluginSolve
       , tcPluginStop  = const (return ())
       }
+  , installCoreToDos = install
 #if MIN_VERSION_ghc(8,6,0)
   , pluginRecompile = purePlugin
 #endif
   }
+
+install :: [CommandLineOption] -> [CoreToDo] -> CoreM [CoreToDo]
+install _ todo = do
+  bf <- lookupBackendFamily
+  return (CoreDoPluginPass "Numeric.DataFrame.CorePlugin" (pass bf) : todo)
+
+{-
+  The plan for CoreToDo in DataFrame.Type
+
+  I want to make all specific instances for DFBackend and different backend types
+
+  Since I guarantee that DFBackend is a newtype wrapper with exactly the same
+  behavior as the backends, I don't even want to derive the instance using
+  the usual machinery. Just declare all instances with existing DFunIds.
+
+  Steps V1:
+
+  1. Lookup type family instances (branches of CoAxiom) of Backend t n
+
+  1. Check out all KnownBackend-based instances of DFBackend
+
+  2. Run the following for every class:
+
+    * Run the following for every Backend type family instance:
+
+      I.  Lookup specific class instance with found paramaters t n b (lookupInstEnv)
+      II. Use mkLocalInstance with parameters of found instance and replaced RHS types
+      III.  Add new instance to (mg_insts :: ![ClsInst]) of ModGuts
+
+  Steps V2:
+
+  1. Lookup type family instances (branches of CoAxiom) of Backend t n
+
+  2. For every type instance:
+
+     2.1 Lookup all class instances
+
+     2.2 For every class instance:
+
+         * Use mkLocalInstance with parameters of found instance
+           and replaced RHS types
+         * Add new instance to (mg_insts :: ![ClsInst]) of ModGuts
+
+ -}
+pass :: CoAxiom Branched -> ModGuts -> CoreM ModGuts
+pass backendFamily guts = do
+
+
+    mapM_ (putMsg . ppr) typeMaps
+    mapM_ (putMsg . ppr) matchedInstances
+
+
+    -- TODO: hmm, looks like just adding new instances into
+    --       mg_insts and mg_inst_env is not enough...
+    return guts
+      { mg_insts = matchedInstances ++ mg_insts guts
+      , mg_inst_env = extendInstEnvList (mg_inst_env guts) matchedInstances
+      }
+  where
+    -- backends for which I derive class instances
+    backendInstances = fromBranches $ coAxiomBranches backendFamily
+
+    -- list of backends with overlapping mods:
+    --  just substitute class instances and we are done.
+    typeMaps :: [(OverlapMode, [TyVar], Type, Type)]
+    typeMaps = map mapBackend backendInstances
+      where
+        mapBackend coaxb = ( overlap coaxb
+                           , coAxBranchTyVars coaxb
+                           , coAxBranchRHS coaxb
+                           , mkTyConApp dfBackendTyCon
+                               $ coAxBranchLHS coaxb ++ [coAxBranchRHS coaxb]
+                           )
+        overlap coaxb = if null $ coAxBranchIncomps coaxb
+                        then Overlapping NoSourceText
+                        else Incoherent NoSourceText
+
+    -- lookup for class instances here
+    instances = InstEnv.instEnvElts $ mg_inst_env guts
+
+    -- DFbackend type constructor is supposed to be defined in this module
+    dfBackendTyCon
+      = let checkDfBackendTyCon tc
+                = if occName (tyConName tc) == mkTcOcc "DFBackend"
+                  then First $ Just tc
+                  else First Nothing
+         in fromMaybe (
+               panicDoc "Numeric.DataFrame.TcPlugin"
+                        "Could not find DFBackend type constructor"
+            ) . getFirst $ foldMap checkDfBackendTyCon $ mg_tcs guts
+
+    matchedInstances = catMaybes
+      [ matchInstance tm (instanceDFunId ci) (instanceHead ci)
+      | tm <- typeMaps
+      , ci <- instances
+      ]
+
+    matchInstance :: (OverlapMode, [TyVar], Type, Type)
+                  -> DFunId
+                  -> ([TyVar], Class, [Type])
+                  -> Maybe ClsInst
+    matchInstance (overlapMode, bTyVars, bOrigT, bNewT)
+                  iDFunId
+                  (iTyVars, iclass, iTyPams)
+      | (Any True, newTyPams) <- matchTys iTyPams
+      , (_, newDFunTy) <- matchTy (idType iDFunId)
+        = Just $ mkLocalInstance
+                    (setIdType iDFunId newDFunTy)
+                    (OverlapFlag overlapMode False)
+                    iTyVars iclass newTyPams
+      | otherwise
+        = Nothing
+      where
+        matchTy = maybeReplaceTypeOccurrences bTyVars bOrigT bNewT
+        matchTys = mapM matchTy
+
+-- | Look through the type recursively;
+--   If the type occurrence found, replace it with the new type.
+--   While the type is checked, the function also tracks how type variables
+--   are renamed.
+--   So the result is the changed type and an indication if it has been changed.
+maybeReplaceTypeOccurrences :: [TyVar] -> Type -> Type -> Type -> (Any, Type)
+maybeReplaceTypeOccurrences tv told tnew = replace
+  where
+    mkSubsts xs = mkSubsts' tv $ map mkTyVarTy xs
+    mkSubsts' [] [] = Just emptyTCvSubst
+    mkSubsts' (x:xs) (t:ts) = (\s -> extendTCvSubst s x t)
+                           <$> mkSubsts' xs ts
+    mkSubsts' _ _ = Nothing
+    replace :: Type -> (Any, Type)
+    replace t
+      | tvars <- tyCoVarsOfTypeWellScoped t
+      , Just sub <- mkSubsts tvars
+      , told' <- substTyAddInScope sub told
+      , eqType t told'
+        = (Any True, substTyAddInScope sub tnew)
+        -- split type constructors
+      | Just (tyCon, tys) <- splitTyConApp_maybe t
+        = mkTyConApp tyCon <$> mapM replace tys
+        -- split foralls
+      | (bndrs@(_:_), t') <- splitPiTys t
+        = mkPiTys bndrs <$> replace t'
+        -- split arrow types
+      | Just (at, rt) <- splitFunTy_maybe t
+        = mkFunTy <$> replace at <*> replace rt
+      | otherwise
+        = (Any False, t)
+
+
+
+
+lookupBackendFamily :: CoreM (CoAxiom Branched)
+lookupBackendFamily = do
+    hscEnv <- getHscEnv
+    md <- liftIO $ lookupModule hscEnv mdName pkgNameFS
+    backendName <- liftIO
+        $ TcRnMonad.initTcRnIf '?' hscEnv () ()
+        $ IfaceEnv.lookupOrig md (mkTcOcc "Backend")
+    (eps, hpt) <- liftIO $
+        TcRnMonad.initTcRnIf '?' hscEnv () () TcRnMonad.getEpsAndHpt
+    backendTyCon <- lookupTyCon backendName
+
+    let getArrayAxiom ca@CoAxiom {..}
+          | co_ax_tc == backendTyCon = Just ca
+          | otherwise                = Nothing
+        cas =  mapMaybe getArrayAxiom $ (do
+          hmi <- maybeToList $ lookupHpt hpt (moduleName md)
+          typeEnvCoAxioms . md_types $ hm_details hmi
+          ) ++ typeEnvCoAxioms (eps_PTE eps)
+
+    return $ case cas of
+      []   -> panicDoc "Numeric.DataFrame.TcPlugin" $
+        "Could not find instances of the closed type family" <> ppr backendTyCon
+      ca:_ -> ca
+  where
+    mdName = mkModuleName "Numeric.DataFrame.Internal.Array.Family"
+    pkgNameFS = fsLit "easytensor"
+
+
+
+
+lookupModule :: HscEnv
+             -> ModuleName
+             -> FastString
+             -> IO Module
+lookupModule hscEnv mdName pkg = go [Just pkg, Just (fsLit "this")]
+  where
+    go [] = panicDoc "Numeric.DataFrame.TcPlugin" $
+      "Could not find module " <> ppr mdName
+    go (x:xs) = findIt x >>= \case
+      Nothing -> go xs
+      Just md -> return md
+
+    findIt = fmap getIt . Finder.findImportedModule hscEnv mdName
+    getIt (Found _ md) = Just md
+    getIt (FoundMultiple ((md, _):_)) = Just md
+    getIt _ = Nothing
+
+
 
 
 -- data TcPluginResult
@@ -80,25 +283,7 @@ runPluginSolve ets@EtTcState {..} givens _deriveds wanteds =
           minferBackendInstance <- lookupInferBackendInstance ets
           case minferBackendInstance of
             Nothing -> return (TcPluginOk [] [])
-            Just inferBackendInstance -> do
-              -- printIt $ "givens: " <> ppr givens
-              -- printIt $ "deriveds: " <> ppr  _deriveds
-              -- printIt $ "wanteds: " <> ppr wanteds
-              -- printIt $ "GLoc: " <> ppr (ctLoc $ origGiven dfGiven)
-              -- printIt $ ppr knownBackendClass
-              -- printIt $ ppr ets
-              -- printIt $ ppr dfGiven
-              -- let l = ctLoc $ origGiven dfGiven
-              -- printIt $ "Given CtLoc: "  <> ppr l
-              -- -- unsafeTcPluginTcM (readMutVar (tcl_tyvars (ctl_env l))) >>= printIt . ppr
-              -- unsafeTcPluginTcM (readMutVar (tcl_lie (ctl_env l))) >>= printIt . ppr
-              --   . map lookupDFBackendBinding . ctsElts . wc_simple
-              -- printIt "Over wanteds..."
-              -- flip mapM_ backendWanteds $ \w ->
-              --   unsafeTcPluginTcM (readMutVar . tcl_lie . ctl_env . ctLoc $ origWanted w)
-              --     >>= printIt . ppr . map lookupDFBackendBinding . ctsElts . wc_simple
-              -- unsafeTcPluginTcM (readMutVar (tcl_errs (ctl_env l))) >>= printIt .
-              --   (\(a,b) -> vcat $ pprErrMsgBagWithLoc a ++ pprErrMsgBagWithLoc b )
+            Just inferBackendInstance ->
               firstChecked
                 (solveBackendWanted ets inferBackendInstance dfGiven) backendWanteds
   where
@@ -173,7 +358,8 @@ instance Outputable EtTcState where
 -- | Lookup necessary definitions
 initEtTcState :: TcPluginM EtTcState
 initEtTcState = do
-    md <- lookupModule afModule (fsLit "easytensor")
+    hscEnv <- getTopEnv
+    md <- tcPluginIO $ lookupModule hscEnv afModule (fsLit "easytensor")
     inferBackendInstanceClass <- lookupClass md "InferBackendInstance"
     knownBackendClass <- lookupClass md "KnownBackend"
     dataFrameTyCon <- lookupDataFrameTyCon
@@ -184,7 +370,7 @@ initEtTcState = do
 
 lookupClass :: Module -> String -> TcPluginM Class
 lookupClass md n
-  = lookupName md (mkTcOcc n) >>= tcLookupClass
+  = lookupOrig md (mkTcOcc n) >>= tcLookupClass
 
 
 lookupInferBackendInstance :: EtTcState -> TcPluginM (Maybe ClsInst)
@@ -197,30 +383,13 @@ lookupInferBackendInstance EtTcState {..} = do
 
 lookupDataFrameTyCon :: TcPluginM TyCon
 lookupDataFrameTyCon = do
-    md <- lookupModule dfm (fsLit "easytensor")
-    n  <- lookupName md (mkTcOcc "DataFrame")
+    hscEnv <- getTopEnv
+    md <- tcPluginIO $ lookupModule hscEnv dfm (fsLit "easytensor")
+    n  <- lookupOrig md (mkTcOcc "DataFrame")
     tcLookupTyCon n
   where
     dfm = mkModuleName "Numeric.DataFrame.Internal.Array.Family"
 
--- Not needed right now.
--- lookupArrayFamily :: Module -> TyCon -> TcPluginM (CoAxiom Branched)
--- lookupArrayFamily md arrTyCon = do
---     (eps, hpt) <- unsafeTcPluginTcM getEpsAndHpt
---
---     let cas =  mapMaybe getArrayAxiom $ (do
---           hmi <- maybeToList $ lookupHpt hpt (moduleName md)
---           typeEnvCoAxioms . md_types $ hm_details hmi
---           ) ++ typeEnvCoAxioms (eps_PTE eps)
---
---     return $ case cas of
---       []   -> panicDoc "Numeric.DataFrame.TcPlugin" $
---         "Could not find instances of the closed type family" <> ppr arrTyCon
---       ca:_ -> ca
---   where
---     getArrayAxiom ca@CoAxiom {..}
---           | co_ax_tc == arrTyCon = Just ca
---           | otherwise            = Nothing
 
 
 -- | Expanded description of a constraint like `SomeClass a1 .. an (Array t ds)`
@@ -431,7 +600,7 @@ replaceTypeOccurrences told tnew = replace
   where
     replace :: Type -> Type
     replace t
-      | eqTypes [t] [told]
+      | eqType t told
         = tnew
       | Just (tyCon, tys) <- splitTyConApp_maybe t
         = mkTyConApp tyCon $ map replace tys
@@ -620,8 +789,9 @@ solveBackendWanted
     -- pprET x = ppr x
 
     lookupTCon s = do
-        md <- lookupModule dfm (fsLit "easytensor")
-        n  <- lookupName md (mkTcOcc s)
+        hscEnv <- getTopEnv
+        md <- tcPluginIO $ lookupModule hscEnv dfm (fsLit "easytensor")
+        n  <- lookupOrig md (mkTcOcc s)
         tcLookupTyCon n
       where
         dfm = mkModuleName "Numeric.DataFrame.Internal.Array.Family"
@@ -679,6 +849,6 @@ getCtEvTerm = ctEvTerm . ctEvidence
 
 --------------------------------------------------------------------------------
 -- DEBUG things
---
+
 -- printIt :: SDoc -> TcPluginM ()
 -- printIt = tcPluginIO . putStrLn . showSDocUnsafe

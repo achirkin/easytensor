@@ -93,6 +93,7 @@ deriving instance Eq (BackendSing backend)
 deriving instance Ord (BackendSing backend)
 deriving instance Show (BackendSing backend)
 
+
 -- | A framework for using Array type family instances.
 class KnownBackend (t :: Type) where
     -- | Get Array type family instance
