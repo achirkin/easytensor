@@ -13,14 +13,14 @@ compiling with `-dcore-lint` fails.
 
 TODO:
 
-  [ ] Fix coercion in InferBackendInstance
-  [ ] Add cast in the instance binds
-  [ ] Think whether I should auto-gemerate KnownBackend instance
-      or do it manually.
-      I guess, currently I have both which will turn out as duplicate instances.
-  [ ] Cleanup the code
-  [ ] Analyze plugin running performance
-  [ ] Merge into easytensor
+  * [ ] Fix coercion in InferBackendInstance
+  * [ ] Add cast in the instance binds
+  * [ ] Think whether I should auto-gemerate KnownBackend instance
+        or do it manually.
+        I guess, currently I have both which will turn out as duplicate instances.
+  * [ ] Cleanup the code
+  * [ ] Analyze plugin running performance
+  * [ ] Merge into easytensor
 
 Some Core dumps for the reference:
 
