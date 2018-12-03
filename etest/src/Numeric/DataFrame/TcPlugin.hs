@@ -95,18 +95,20 @@ install _ todo = do
 pass :: CoAxiom Branched -> ModGuts -> CoreM ModGuts
 pass backendFamily guts = do
 
+    matchedInstances <- matchInstances <$> getUniquesM
+    -- mapM_ (putMsg . ppr) typeMaps
+    -- mapM_ (putMsg . ppr) matchedInstances
+    --
+    -- mapM_ (\b -> putMsg (ppr b) >> putMsg "------") $ mg_binds guts
 
-    mapM_ (putMsg . ppr) typeMaps
-    mapM_ (putMsg . ppr) matchedInstances
-
-
-    -- TODO: hmm, looks like just adding new instances into
-    --       mg_insts and mg_inst_env is not enough...
     return guts
-      { mg_insts = matchedInstances ++ mg_insts guts
-      , mg_inst_env = extendInstEnvList (mg_inst_env guts) matchedInstances
+      { mg_insts = map snd matchedInstances ++ mg_insts guts
+      , mg_inst_env = extendInstEnvList (mg_inst_env guts)
+                    $ map snd matchedInstances
+      , mg_binds = map fst matchedInstances ++ mg_binds guts
       }
   where
+
     -- backends for which I derive class instances
     backendInstances = fromBranches $ coAxiomBranches backendFamily
 
@@ -139,23 +141,29 @@ pass backendFamily guts = do
                         "Could not find DFBackend type constructor"
             ) . getFirst $ foldMap checkDfBackendTyCon $ mg_tcs guts
 
-    matchedInstances = catMaybes
-      [ matchInstance tm (instanceDFunId ci) (instanceHead ci)
+    matchInstances uniques = catMaybes $ zipWith ($)
+      [ \u -> let refId = instanceDFunId ci
+                  f i = (mkBind refId i, i)
+               in f <$> matchInstance u tm refId (instanceHead ci)
       | tm <- typeMaps
       , ci <- instances
-      ]
+      ] uniques
 
-    matchInstance :: (OverlapMode, [TyVar], Type, Type)
+    matchInstance :: Unique
+                  -> (OverlapMode, [TyVar], Type, Type)
                   -> DFunId
                   -> ([TyVar], Class, [Type])
                   -> Maybe ClsInst
-    matchInstance (overlapMode, bTyVars, bOrigT, bNewT)
+    matchInstance uniq
+                  (overlapMode, bTyVars, bOrigT, bNewT)
                   iDFunId
                   (iTyVars, iclass, iTyPams)
       | (Any True, newTyPams) <- matchTys iTyPams
       , (_, newDFunTy) <- matchTy (idType iDFunId)
+      , newDFunId <- mkExportedLocalId
+          (DFunId isNewType) newName newDFunTy
         = Just $ mkLocalInstance
-                    (setIdType iDFunId newDFunTy)
+                    newDFunId
                     (OverlapFlag overlapMode False)
                     iTyVars iclass newTyPams
       | otherwise
@@ -163,6 +171,27 @@ pass backendFamily guts = do
       where
         matchTy = maybeReplaceTypeOccurrences bTyVars bOrigT bNewT
         matchTys = mapM matchTy
+        isNewType = isNewTyCon (classTyCon iclass)
+        newName = mkExternalName uniq (mg_module guts)
+                   newOccName
+                   (mg_loc guts)
+        newOccName
+          = let oname = occName (idName $ iDFunId)
+             in mkOccName (occNameSpace oname)
+                          (occNameString oname ++ "DFBackend")
+
+    mkBind :: DFunId -> ClsInst -> CoreBind
+    mkBind oldId newInst
+        = NonRec newId (Var oldId) -- TODO: make a proper cast expression.
+      where
+        newId = instanceDFunId newInst
+
+
+-- mkOccName :: NameSpace -> String -> OccName
+-- mkOccNameFS :: NameSpace -> FastString -> OccName
+-- UniqSupply.hs
+--   getUniqueM :: m Unique
+--   mkExternalName :: Unique -> Module -> OccName -> SrcSpan -> Name
 
 -- | Look through the type recursively;
 --   If the type occurrence found, replace it with the new type.
@@ -742,7 +771,31 @@ solveBackendWanted
           -- printIt $ "given evterm: " <> pprET (getCtEvTerm origGiven)
           let newEv = EvCast (getCtEvTerm origGiven)
                     $ mkUnsafeCo Representational dfbBackType dataFrameType
-
+                    -- TODO: incorrect type!
+                    -- *** Core Lint errors : in result of Desugar (after optimization) ***
+                    -- <no location info>: warning:
+                    --
+                    --     In the expression: $fInferBackendInstancebc
+                    -- <no location info>: error:
+                    --                          @ b_aU9q
+                    -- Compilation had errors
+                    --                          @ Eq
+                    --
+                    --                          ($dKnownBackend_aU9r
+                    --
+                    --                           `cast` (UnsafeCo representational
+                    --                                     b_aU9q (DataFrame * Nat t_aU9o n_aU9p)
+                    --                                   :: (b_aU9q :: *) ~R# (DataFrame * Nat t_aU9o n_aU9p :: *)))
+                    --                          ($fEqUnitBase @ t_aU9o)
+                    --                          ($fEqScalarBase @ t_aU9o $dEq_aU9s)
+                    --                          ($fEqVec2Base @ t_aU9o $dEq_aU9s)
+                    --                          ($fEqListBase @ t_aU9o @ n_aU9p $dEq_aU9s)
+                    --     From-type of Cast differs from type of enclosed expression
+                    --     From-type: b_aU9q
+                    --     Type of enclosed expr: KnownBackend (DataFrame * Nat t_aU9o n_aU9p)
+                    --     Actual enclosed expr: $dKnownBackend_aU9r
+                    --     Coercion used in cast: UnsafeCo representational
+                    --                              b_aU9q (DataFrame * Nat t_aU9o n_aU9p)
           -- md1 <- mkDerivedCt "DataElemType" [dfbBackType] dataElemType
           -- md2 <- mkDerivedCt "DataDims" [dfbBackType] dataDims
           -- md3 <- mkDerivedCt "Backend" [dataElemType,dataDims] dfbBackType

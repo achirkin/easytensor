@@ -7,12 +7,10 @@ license-file: LICENSE
 copyright: (c) Artem Chirkin
 maintainer: chirkin@arch.ethz.ch
 homepage: https://github.com/achirkin/easytensor#readme
-synopsis: Pure, type-indexed haskell vector, matrix, and tensor library.
+synopsis: Experiment with class deriving using GHC plugins
 description:
-    Pure, type-indexed haskell vector, matrix, and tensor library.
-    Features dimensionality type-checking for all operations.
-    Generic n-dimensional versions are implemented using low-level prim ops.
-    Allows ad-hoc replacement with fixed low-dimensionality vectors and matrices without changing user interface.
+    An absolutely amazing experiment with class deriving for
+    newtypes over closed type families using typechecker and core plugins.
 category: Math, Geometry
 author: Artem Chirkin
 
