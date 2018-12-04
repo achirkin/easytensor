@@ -764,52 +764,22 @@ solveBackendWanted
     parseConstraints _ [] = return (Just ([],[]))
     parseConstraints dfbb@DFBackendBinding {..} (pt:pts) = case classifyPredType pt of
       ClassPred cl args
-        | True <- cl == knownBackendClass
-        , [dfc] <- args
-        , eqTypes [dfc, dataElemType, dataDims] [dfbBackType, dfbElemType, dfbDimsType]
-          -> do
-          -- printIt $ "given evterm: " <> pprET (getCtEvTerm origGiven)
-          let newEv = EvCast (getCtEvTerm origGiven)
-                    $ mkUnsafeCo Representational dfbBackType dataFrameType
-                    -- TODO: incorrect type!
-                    -- *** Core Lint errors : in result of Desugar (after optimization) ***
-                    -- <no location info>: warning:
-                    --
-                    --     In the expression: $fInferBackendInstancebc
-                    -- <no location info>: error:
-                    --                          @ b_aU9q
-                    -- Compilation had errors
-                    --                          @ Eq
-                    --
-                    --                          ($dKnownBackend_aU9r
-                    --
-                    --                           `cast` (UnsafeCo representational
-                    --                                     b_aU9q (DataFrame * Nat t_aU9o n_aU9p)
-                    --                                   :: (b_aU9q :: *) ~R# (DataFrame * Nat t_aU9o n_aU9p :: *)))
-                    --                          ($fEqUnitBase @ t_aU9o)
-                    --                          ($fEqScalarBase @ t_aU9o $dEq_aU9s)
-                    --                          ($fEqVec2Base @ t_aU9o $dEq_aU9s)
-                    --                          ($fEqListBase @ t_aU9o @ n_aU9p $dEq_aU9s)
-                    --     From-type of Cast differs from type of enclosed expression
-                    --     From-type: b_aU9q
-                    --     Type of enclosed expr: KnownBackend (DataFrame * Nat t_aU9o n_aU9p)
-                    --     Actual enclosed expr: $dKnownBackend_aU9r
-                    --     Coercion used in cast: UnsafeCo representational
-                    --                              b_aU9q (DataFrame * Nat t_aU9o n_aU9p)
-          -- md1 <- mkDerivedCt "DataElemType" [dfbBackType] dataElemType
-          -- md2 <- mkDerivedCt "DataDims" [dfbBackType] dataDims
-          -- md3 <- mkDerivedCt "Backend" [dataElemType,dataDims] dfbBackType
-          fmap (first (newEv:)) -- catMaybes [md1,md2,md3] ++
-            <$> parseConstraints dfbb pts
+        | True    <- cl == knownBackendClass
+        , [dfc]   <- args
+        , True    <- eqTypes [dfc, dataElemType, dataDims]
+                             [dfbBackType, dfbElemType, dfbDimsType]
+        , clTyCon <- classTyCon cl
+        , newEv   <- EvCast (getCtEvTerm origGiven) $
+                       mkUnsafeCo Representational
+                                  (mkTyConApp clTyCon [dataFrameType])
+                                  (mkTyConApp clTyCon [dfbBackType])
+          -> fmap (first (newEv:)) <$> parseConstraints dfbb pts
         | otherwise -> do
-          told1 <- mkType "DataElemType" [dfbBackType]
-          told2 <- mkType "DataDims" [dfbBackType]
-          -- printIt $ ppr (told1, told2)
-          -- printIt $ ppr (dataElemType, dataDims)
-          let repl = replaceTypeOccurrences told1 dataElemType
-                   . replaceTypeOccurrences told2 dataDims
+          oldEltT <- mkType "DataElemType" [dfbBackType]
+          oldDimT <- mkType "DataDims" [dfbBackType]
+          let repl = replaceTypeOccurrences oldEltT dataElemType
+                   . replaceTypeOccurrences oldDimT dataDims
           newCt <- newWantedInstance origLoc (repl pt) cl (map repl args)
-          -- printIt $ ppr newCt
           fmap ((getCtEvTerm newCt :) *** (newCt :))
             <$> parseConstraints dfbb pts
       -- TODO: probably, I can extend this to other constraint types
@@ -819,27 +789,6 @@ solveBackendWanted
       tcon <- lookupTCon n
       return $  mkTyConApp tcon args
 
-    -- mkDerivedCt n bts xt = do
-    --   cc_fun <- lookupTCon n
-    --   cc_ev <- newDerived origLoc $ mkPrimEqPredRole Nominal xt $ mkTyConApp cc_fun bts
-    --   let cc_tyargs = bts
-    --   case getTyVar_maybe xt of
-    --     Nothing -> do
-    --       printIt $ "Shoit!" <> ppr (cc_fun, cc_ev, cc_tyargs, xt)
-    --       return Nothing
-    --     Just cc_fsk -> do
-    --       printIt $ "Noice!" <> ppr CFunEqCan {..}
-    --       return $ Just CFunEqCan {..}
-
-    -- pprET (EvDFunApp fi cts tys) = vcat
-    --   [ "EvDFunApp"
-    --   , "{ funId = " <> ppr fi
-    --   , ", cts   = " <> ppr cts
-    --   , ", tys   = " <> ppr tys
-    --   , "}"
-    --   ]
-    -- pprET (EvId ei) = "EvId " <> ppr ei
-    -- pprET x = ppr x
 
     lookupTCon s = do
         hscEnv <- getTopEnv
