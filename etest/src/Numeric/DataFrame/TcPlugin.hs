@@ -23,6 +23,7 @@ import CoAxiom
 import qualified TcRnMonad
 import qualified IfaceEnv
 import qualified Finder
+import qualified TcType
 
 -- import           TcSMonad (emitNewDerivedEq, runTcSDeriveds)
 import           IOEnv
@@ -43,7 +44,7 @@ plugin = defaultPlugin
       , tcPluginSolve = runPluginSolve
       , tcPluginStop  = const (return ())
       }
-  , installCoreToDos = install
+  -- , installCoreToDos = install
 #if MIN_VERSION_ghc(8,6,0)
   , pluginRecompile = purePlugin
 #endif
@@ -605,39 +606,28 @@ lookupDFBackendBinding ct = lookupB $ ctPred ct
             -> Just DFBackendBinding {..}
           _ -> getFirst $ foldMap (First . lookupB) tys
 
--- replaceTypeOccurrences :: Type -> Type -> Ct -> Ct
--- replaceTypeOccurrences told tnew ct
---     = repXi ct { cc_ev = (ctEvidence ct) {ctev_pred = newCtPred} }
---   where
---     newCtPred = replace (ctPred ct)
---     repXi c@CDictCan{ cc_tyargs = xi} = c { cc_tyargs = map replace xi}
---     repXi c@CFunEqCan{ cc_tyargs = xi} = c { cc_tyargs = map replace xi}
---     repXi c@CTyEqCan{ cc_rhs = t} = c { cc_rhs = replace t}
---     repXi c = c
---
---     replace :: Type -> Type
---     replace t
---       | eqTypes [t] [told]
---         = tnew
---       | Just (tyCon, tys) <- splitTyConApp_maybe t
---         = mkTyConApp tyCon $ map replace tys
---       | otherwise
---         = t
 
+-- | Replace all occurrences of one type in another.
 replaceTypeOccurrences :: Type -> Type -> Type -> Type
 replaceTypeOccurrences told tnew = replace
   where
     replace :: Type -> Type
     replace t
+        -- found occurrence
       | eqType t told
         = tnew
+        -- split type constructors
       | Just (tyCon, tys) <- splitTyConApp_maybe t
         = mkTyConApp tyCon $ map replace tys
+        -- split foralls
+      | (bndrs@(_:_), t') <- splitPiTys t
+        = mkPiTys bndrs $ replace t'
+        -- split arrow types
+      | Just (at, rt) <- splitFunTy_maybe t
+        = mkFunTy (replace at) (replace rt)
+        -- could not find anything
       | otherwise
         = t
-
-
-
 
 
 lookForDFBackendBinding :: GivenKnownBackend
@@ -664,9 +654,6 @@ lookForDFBackendBinding
           lookupEveryWhere (newRef:pastRefs) $ cts ++ ncts
 
 
-
-
-
 -- So far, this works, but tracing of the instance lookup function shows
 -- that is is invoked on every function call, which is not so good.
 -- I need to figure out the way to reduce number of lookups.
@@ -676,6 +663,113 @@ solveBackendWanted :: EtTcState
                    -> WantedBackendInstance
                    -> TcPluginM (Maybe TcPluginResult)
 solveBackendWanted
+  EtTcState {..}
+  inferBIInst
+  ctg@GivenKnownBackend {..}
+  ctw@WantedBackendInstance {..} = do
+    mdfbb <- lookForDFBackendBinding ctg ctw
+    case mdfbb of
+      Nothing -> return Nothing
+      Just dfbb@DFBackendBinding {..} -> do
+        wConstraints <- traverse (substSpecific dfbb) $ substTheta subst wConstraints'
+        let replDFunType
+               = -- mkSpecForAllTys tyVars
+                                 -- [ getTyVar "oops t" dfbElemType
+                                 -- , getTyVar "oops d" dfbDimsType
+                                 -- , getTyVar "oops b" dfbBackType]
+                 mkFunTys wConstraints
+               $ mkTyConApp (classTyCon wantedClass) (wantedClassArgsInit ++ [wantedClassLastArg])
+            replDFunType2 = case splitForAllTys origDFunType of
+              (tv, funt) -> mkSpecForAllTys tv $
+                 mkCastTy funt
+                     (mkUnsafeCo Nominal funt replDFunType)
+            replDFunId = setIdType origDFunId
+              $ mkSpecForAllTys tyVars replDFunType
+            replDFunIdC = setIdType origDFunId replDFunType2
+        printIt $ "Orig type:" <> ppr origDFunType
+        printIt $ "Repl type:" <> ppr replDFunType
+        (ev, newWanteds) <- createInstanceEvTerm tyVarFun (ctLoc origWanted) replDFunId
+        printIt $ "Created evidence:" <> ppr (ev, origWanted)
+        return . Just $ TcPluginOk
+          [ (ev, origWanted) ]
+          newWanteds
+  where
+    origDFunId = instanceDFunId inferBIInst
+    origDFunType = idType origDFunId
+  --(dFunTyVars, dFunTyBody) = TcType.tcSplitForAllTys origDFunType
+    -- replDFunType = origDFunType
+    --              & replaceTypeOccurrences _ _
+    --              & replaceTypeOccurrences _ _
+
+
+    (tyVars, wConstraints', _, _) = instanceSig inferBIInst
+    -- create a map of substitions {type vars -> required types}
+    subst = case tyVars of
+      [b, c] -> let add var ty s = extendTCvSubst s var ty
+                   in emptyTCvSubst
+                      & add c unaryClass
+                      & add b wantedClassLastArg
+      xs -> panicDoc "Numeric.DataFrame.TcPlugin" $
+                     "Unexpected type variables: " <> ppr xs
+    -- .. and substitute type variables in the instance declaration with real types.
+    -- icTyArgs = substTys subst icTyArgs'
+    -- addArgs =
+    tyVarFun [_b, _c] =
+          [ wantedClassLastArg
+          , unaryClass
+          ]
+    tyVarFun xs = panicDoc "Numeric.DataFrame.TcPlugin" $
+                       "Unexpected type variables: " <> ppr xs
+
+    -- Create a type of kind (Type -> Constraint),
+    -- so that mutli-parameter type classes can be derived
+    --  if DF backend is their last type argument.
+    unaryClass :: Type
+    unaryClass = mkTyConApp (classTyCon wantedClass) wantedClassArgsInit
+
+    mkType n args = do
+      tcon <- lookupTCon n
+      return $  mkTyConApp tcon args
+
+
+    lookupTCon s = do
+        hscEnv <- getTopEnv
+        md <- tcPluginIO $ lookupModule hscEnv dfm (fsLit "easytensor")
+        n  <- lookupOrig md (mkTcOcc s)
+        tcLookupTyCon n
+      where
+        dfm = mkModuleName "Numeric.DataFrame.Internal.Array.Family"
+
+    substSpecific :: DFBackendBinding -> PredType -> TcPluginM PredType
+    substSpecific DFBackendBinding {..} pt = case classifyPredType pt of
+      ClassPred cl args
+        | True    <- cl == knownBackendClass
+        , [dfc]   <- args
+        , True    <- eqTypes [dfc, dataElemType, dataDims]
+                             [dfbBackType, dfbElemType, dfbDimsType]
+        , clTyCon <- classTyCon cl
+          -> pure $ mkTyConApp clTyCon [dataFrameType]
+        | otherwise -> do
+          oldEltT <- mkType "DataElemType" [dfbBackType]
+          oldDimT <- mkType "DataDims" [dfbBackType]
+          let repl = replaceTypeOccurrences oldEltT dataElemType
+                   . replaceTypeOccurrences oldDimT dataDims
+          return $ repl pt
+      _ -> pure pt
+
+
+    -- NB: mkCastTy :: Type -> Coercion -> Type
+
+
+-- So far, this works, but tracing of the instance lookup function shows
+-- that is is invoked on every function call, which is not so good.
+-- I need to figure out the way to reduce number of lookups.
+solveBackendWanted' :: EtTcState
+                   -> ClsInst
+                   -> GivenKnownBackend
+                   -> WantedBackendInstance
+                   -> TcPluginM (Maybe TcPluginResult)
+solveBackendWanted'
   EtTcState {..}
   inferBIInst
   ctg@GivenKnownBackend {..}
@@ -780,7 +874,12 @@ solveBackendWanted
           let repl = replaceTypeOccurrences oldEltT dataElemType
                    . replaceTypeOccurrences oldDimT dataDims
           newCt <- newWantedInstance origLoc (repl pt) cl (map repl args)
-          fmap ((getCtEvTerm newCt :) *** (newCt :))
+          fmap (( (EvCast (getCtEvTerm newCt) $
+                     mkUnsafeCo Representational
+                                (repl pt)
+                                pt
+                  )
+                  :) *** (newCt :))
             <$> parseConstraints dfbb pts
       -- TODO: probably, I can extend this to other constraint types
       _ -> pure Nothing
@@ -849,8 +948,39 @@ getCtEvTerm :: Ct -> EvTerm
 getCtEvTerm = ctEvTerm . ctEvidence
 {-# INLINE getCtEvTerm #-}
 
+
+-- | Create EvTerm from a dictionary function by asking for all its arguments
+--   via newWanteds.
+createInstanceEvTerm :: ([TyVar] -> [Type]) -> CtLoc -> DFunId -> TcPluginM (EvTerm, [Ct])
+createInstanceEvTerm tyArgF loc dFunId = do
+    newWanteds <- traverse (newWantedConstraint loc) wConstraints
+    return ( EvDFunApp dFunId (tyArgF tyVars) $ map getCtEvTerm newWanteds
+           , newWanteds
+           )
+  where
+    (tyVars, wConstraints, _, _) = TcType.tcSplitDFunTy $ idType dFunId
+
+createInstanceEvTerm' :: ([TyVar] -> [Type]) -> CtLoc -> DFunId -> DFunId -> TcPluginM (EvTerm, [Ct])
+createInstanceEvTerm' tyArgF loc dFunId dFunIdCasted = do
+    newWanteds <- traverse (newWantedConstraint loc) wConstraints
+    return ( EvDFunApp dFunIdCasted (tyArgF tyVars) $ map getCtEvTerm newWanteds
+           , newWanteds
+           )
+  where
+    (tyVars, wConstraints, _, _) = TcType.tcSplitDFunTy $ idType dFunId
+
+
+
+
+newWantedConstraint :: CtLoc -> PredType -> TcPluginM Ct
+newWantedConstraint loc = fmap mkNonCanonical . newWanted loc
+  -- w <- newWanted loc predTy
+  -- return $ case classifyPredType predTy of
+  --   ClassPred cl args -> CDictCan w cl args False
+  --   _ -> mkNonCanonical w
+
 --------------------------------------------------------------------------------
 -- DEBUG things
 
--- printIt :: SDoc -> TcPluginM ()
--- printIt = tcPluginIO . putStrLn . showSDocUnsafe
+printIt :: SDoc -> TcPluginM ()
+printIt = tcPluginIO . putStrLn . showSDocUnsafe

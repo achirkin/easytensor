@@ -3,19 +3,18 @@
 {-# LANGUAGE RecordWildCards   #-}
 module Numeric.DataFrame.TcPlugin (plugin) where
 
-import           GHC.TcPluginM.Extra
-                    (lookupName, lookupModule, tracePlugin
-                    )
+import           Class               (Class, classTyCon)
+import           Control.Arrow       (first)
+import           Data.Function       ((&))
+import           Data.Maybe          (catMaybes)
+import           GHC.TcPluginM.Extra (lookupModule, lookupName, tracePlugin)
 import           GhcPlugins
+import           InstEnv             (ClsInst, classInstances, instanceDFunId,
+                                      instanceSig)
+import           Panic               (panicDoc)
+import           TcEvidence          (EvTerm (EvDFunApp))
 import           TcPluginM
 import           TcRnTypes
-import           Class (Class, classTyCon)
-import           Data.Maybe (catMaybes, mapMaybe, maybeToList)
-import           TcRnMonad (getEpsAndHpt)
-import           CoAxiom (CoAxiom (..), fromBranches, Branched)
-import           Panic (panicDoc)
-import           InstEnv
-import           TcEvidence
 
 -- | To use the plugin, add
 --
@@ -61,7 +60,7 @@ runPluginSolve ::
 -- there is really nothing to do if wanteds are empty
 runPluginSolve _ _ _ [] = return (TcPluginOk [] [])
 -- actual solving is done here
-runPluginSolve ets@EtTcState {..} givens deriveds wanteds = do
+runPluginSolve ets@EtTcState {..} _givens _deriveds wanteds = do
     arrayWanteds <- catMaybes <$> mapM (checkArrayClassCt ets) wanteds
     if null arrayWanteds
     then return (TcPluginOk [] [])
@@ -69,21 +68,13 @@ runPluginSolve ets@EtTcState {..} givens deriveds wanteds = do
       minferBackendInstance <- lookupInferBackendInstance ets
       case minferBackendInstance of
         Nothing -> return (TcPluginOk [] [])
-        Just inferBackendInstance -> do
+        Just inferBackendInstance ->
+          solveArrayWanted inferBackendInstance (head arrayWanteds)
 
-          printIt $ "Givens: " <> ppr givens
-          printIt $ "Deriveds: " <> ppr deriveds
-          printIt $ "Wanteds: " <> ppr arrayWanteds
-          printIt $ ppr arrayInstances
-          printIt $ ppr inferBackendInstance
 
-          solveArrayWanted ets inferBackendInstance (head arrayWanteds)
+{- Background materials:
 
-          -- return (TcPluginOk [] [])
-
-{- Roadmap:
-
-Lookup usage of EvDFunApp in
+Lookup example usage of EvDFunApp in
 https://github.com/isovector/constraints-emerge/blob/master/Data/Constraint/Emerge/Plugin.hs
 
 Related Dict type is exactly the same as my Evidence type
@@ -104,30 +95,29 @@ Summary:
 
     * DFunId can be taken from class instance ClsInst using  instanceDFunId
 
-    * in Emerge, [Type] is the list of PredTypes;
-      looks like it comes from splitTyConApp_maybe types - i.e. a list of types
-        this class was applied to in the Wanted constraint.
+    * [Type] is the list of type parameters of the class
 
     * [EvTerm] obvisouly is the list of resolved constraints of the class
 
-What missing here is how am I supposed to create a new DFunId or a new instance?
-Probably, I need to make a special class that can be used in a generalized way
-like inferClassInstace :: c t => ArraySing t ds -> Evidence (c (Array t ds))
+To find a proper DFunId, I use a novel trick:
+  Extract a class dictionary from the Evidence type (BareConstraint type).
+  Then,  'InferBackendInstance t n c' class does the rest:
+    * A InferBackendInstance is a dictionary (function)
+    * but it is also just a newtype wrapper on top of its single function inferBackendInstance
+    * inferBackendInstance is a no-parameter function - a BareConstraint value
+    * BareConstraint is just an unsafeCoerced dictionary of 'c'
+    * thus, 'InferBackendInstance t ds c' is the same as 'c'
 
 -}
 
 
 
 data EtTcState = EtTcState
-  { arraySingletonTyCon :: TyCon
-    -- ^ [Ty]pe [Con]structor for the class `ArraySingleton`.
-    --   I hook up special solving behavior to this, otherwise ordinary,
-    --   class with a single function.
-  , arrayTyCon :: TyCon
+  { arrayTyCon        :: TyCon
     -- ^ [Ty]pe [Con]structor for the type family `Array`.
     --   Its equations enumerate possible DataFrame backends.
-  , arrayInstances :: CoAxiom Branched
-    -- ^ List of family instances
+  -- , arrayInstances      :: CoAxiom Branched
+  --   -- ^ List of family instances
   , inferBackendClass :: Class
     -- ^ Our magic class that is used to find other instances
   }
@@ -139,10 +129,9 @@ initEtTcState :: TcPluginM EtTcState
 initEtTcState = do
     md <- lookupModule afModule (fsLit "easytensor")
 
-    arraySingletonTyCon <- lookupArraySingletonTyCon md
     arrayTyCon <- lookupArrayTyCon md
     inferBackendClass <- lookupInferBackendClass md
-    arrayInstances <- lookupArrayFamily md arrayTyCon
+    -- arrayInstances <- lookupArrayFamily md arrayTyCon
 
     return EtTcState {..}
   where
@@ -159,14 +148,8 @@ lookupInferBackendInstance EtTcState {..} = do
     ie <- getInstEnvs
     return $ case classInstances ie inferBackendClass of
       [x] -> Just x
-      _ -> Nothing
+      _   -> Nothing
 
-
--- | Lookup the class which will serve as our special constraint.
-lookupArraySingletonTyCon :: Module -> TcPluginM TyCon
-lookupArraySingletonTyCon md = do
-    n  <- lookupName md (mkTcOcc "ArraySingleton")
-    tcLookupTyCon n
 
 -- | Lookup the class which will serve as our special constraint.
 lookupArrayTyCon :: Module -> TcPluginM TyCon
@@ -174,54 +157,53 @@ lookupArrayTyCon md = do
     n  <- lookupName md (mkTcOcc "Array")
     tcLookupTyCon n
 
-
-
-lookupArrayFamily :: Module -> TyCon -> TcPluginM (CoAxiom Branched)
-lookupArrayFamily md arrTyCon = do
-    (eps, hpt) <- unsafeTcPluginTcM getEpsAndHpt
-
-    let cas =  mapMaybe getArrayAxiom $ (do
-          hmi <- maybeToList $ lookupHpt hpt (moduleName md)
-          typeEnvCoAxioms . md_types $ hm_details hmi
-          ) ++ typeEnvCoAxioms (eps_PTE eps)
-
-
-    printIt . ppr $ flip map cas $ \ca@CoAxiom {..} ->
-      (co_ax_unique, co_ax_name, co_ax_role, co_ax_tc, fromBranches co_ax_branches, co_ax_implicit, ca)
-
-    return $ case cas of
-      []   -> panicDoc "Numeric.DataFrame.TcPlugin" $
-        "Could not find instances of the closed type family" <> ppr arrTyCon
-      ca:_ -> ca
-  where
-    getArrayAxiom ca@CoAxiom {..}
-          | co_ax_tc == arrTyCon = Just ca
-          | otherwise            = Nothing
+-- Not needed right now.
+-- lookupArrayFamily :: Module -> TyCon -> TcPluginM (CoAxiom Branched)
+-- lookupArrayFamily md arrTyCon = do
+--     (eps, hpt) <- unsafeTcPluginTcM getEpsAndHpt
+--
+--     let cas =  mapMaybe getArrayAxiom $ (do
+--           hmi <- maybeToList $ lookupHpt hpt (moduleName md)
+--           typeEnvCoAxioms . md_types $ hm_details hmi
+--           ) ++ typeEnvCoAxioms (eps_PTE eps)
+--
+--     return $ case cas of
+--       []   -> panicDoc "Numeric.DataFrame.TcPlugin" $
+--         "Could not find instances of the closed type family" <> ppr arrTyCon
+--       ca:_ -> ca
+--   where
+--     getArrayAxiom ca@CoAxiom {..}
+--           | co_ax_tc == arrTyCon = Just ca
+--           | otherwise            = Nothing
 
 
 -- | Expanded description of a constraint like `SomeClass a1 .. an (Array t ds)`
 data WantedArrayInstance = WantedArrayInstance
-  { origWanted :: Ct
+  { origWanted          :: Ct
     -- ^ Original wanted constraint
-  , wantedClass :: Class
+  , wantedClass         :: Class
     -- ^ The class I want to derive
-  , wantedClassArgs :: [Type]
+  , wantedClassArgsInit :: [Type]
     -- ^ Arguments of the wanted class, as appeared in the constraint.
-    --   Note, the last argument must be `Array t1 t2` here.
-  , arrElemType :: Type
+    --   Note, the last argument of the class must be `Array t1 t2`,
+    --   but this list does not include it.
+  , wantedClassLastArg  :: Type
+    -- ^ The last argument of the wanted class. Must be `Array t1 t2`.
+  , arrElemType         :: Type
     -- ^ The first argument of the type family `Array`
-  , arrDims :: Type
+  , arrDims             :: Type
     -- ^ The second argument of the type family `Array`
   }
 
 instance Outputable WantedArrayInstance where
   ppr WantedArrayInstance {..} = vcat
     [ "Wanted Array Instance"
-    , "{ origWanted      = " <> ppr origWanted
-    , ", wantedClass     = " <> ppr wantedClass
-    , ", wantedClassArgs = " <> ppr wantedClassArgs
-    , ", arrElemType     = " <> ppr arrElemType
-    , ", arrDims         = " <> ppr arrDims
+    , "{ origWanted          = " <> ppr origWanted
+    , ", wantedClass         = " <> ppr wantedClass
+    , ", wantedClassArgsInit = " <> ppr wantedClassArgsInit
+    , ", wantedClassLastArg  = " <> ppr wantedClassLastArg
+    , ", arrElemType         = " <> ppr arrElemType
+    , ", arrDims             = " <> ppr arrDims
     , "}"
     ]
 
@@ -232,99 +214,153 @@ checkArrayClassCt :: EtTcState -> Ct -> TcPluginM (Maybe WantedArrayInstance)
 checkArrayClassCt EtTcState {..} origWanted =
   -- first, filter the class predicates with a single
   case classifyPredType $ ctEvPred $ ctEvidence origWanted of
-    ClassPred wantedClass wantedClassArgs@(_:_) -> do
-      ty <- zonkTcType (last wantedClassArgs)
+    ClassPred wantedClass wcArgs
+      | Just (wantedClassArgsInit, ty') <- unSnoc wcArgs -> do
+      wantedClassLastArg <- zonkTcType ty'
       return $ do
-        (possiblyArrayTyCon, possiblyArrayArgs) <- tcSplitTyConApp_maybe ty
+        (possiblyArrayTyCon, possiblyArrayArgs) <- tcSplitTyConApp_maybe wantedClassLastArg
         case (possiblyArrayTyCon == arrayTyCon, possiblyArrayArgs) of
             (True, [arrElemType, arrDims])
               -> return WantedArrayInstance {..}
             _ -> Nothing
     _ -> pure Nothing
+  where
+    unSnoc []     = Nothing
+    unSnoc [x]    = Just ([], x)
+    unSnoc (x:xs) = first (x:) <$> unSnoc xs
 
 
 
-
-
-solveArrayWanted :: EtTcState -- ^ plugin state
-                 -> ClsInst -- ^ InferBackendInstance
+-- So far, this works, but tracing of the instance lookup function shows
+-- that is is invoked on every function call, which is not so good.
+-- I need to figure out the way to reduce number of lookups.
+solveArrayWanted :: ClsInst -- ^ InferBackendInstance
                  -> WantedArrayInstance -- ^ Single constraint that involves Array
                  -> TcPluginM TcPluginResult
 solveArrayWanted
-  EtTcState {..}
   inferBIInst
   WantedArrayInstance {..} = do
-
-    printIt $ ppr $ instanceHead inferBIInst
-    printIt $ ppr [arrElemType, arrDims, unaryClass]
-
-    (asb, cScalarBase) <- lookupConstraint "ScalarBase" [arrElemType]
-    (af2, cFloatX2)    <- lookupConstraint "FloatX2" []
-    (af3, cFloatX3)    <- lookupConstraint "FloatX2" []
-    (af4, cFloatX4)    <- lookupConstraint "FloatX4" []
-    (ad2, cDoubleX2)   <- lookupConstraint "DoubleX2" []
-    (ad3, cDoubleX3)   <- lookupConstraint "DoubleX3" []
-    (ad4, cDoubleX4)   <- lookupConstraint "DoubleX4" []
-    (aab, cArrayBase)  <- lookupConstraint "ArrayBase" [arrElemType, arrDims]
-
-    wArraySingletonTyCon <- newWanted origLoc
-      $ mkTyConApp arraySingletonTyCon [arrElemType, arrDims]
-    wScalarBase <- newWanted origLoc cScalarBase
-    wFloatX2    <- newWanted origLoc cFloatX2
-    wFloatX3    <- newWanted origLoc cFloatX3
-    wFloatX4    <- newWanted origLoc cFloatX4
-    wDoubleX2   <- newWanted origLoc cDoubleX2
-    wDoubleX3   <- newWanted origLoc cDoubleX3
-    wDoubleX4   <- newWanted origLoc cDoubleX4
-    wArrayBase  <- newWanted origLoc cArrayBase
-
-    -- TODO: tedious: need to lookup all instances manually?..
-    return (TcPluginOk
-              [(EvDFunApp (is_dfun inferBIInst)
-                [arrElemType, arrDims, unaryClass]
-                [ toEvTerm wArraySingletonTyCon
-                , toEvTerm wScalarBase
-                , toEvTerm wFloatX2
-                , toEvTerm wFloatX3
-                , toEvTerm wFloatX4
-                , toEvTerm wDoubleX2
-                , toEvTerm wDoubleX3
-                , toEvTerm wDoubleX4
-                , toEvTerm wArrayBase
-                ], origWanted)]
-              [ CDictCan wArraySingletonTyCon wantedClass asb False -- wrong! do etest lib first and then copy here
-              , CDictCan wScalarBase wantedClass asb False
-              , CDictCan wFloatX2 wantedClass af2 False
-              , CDictCan wFloatX3 wantedClass af3 False
-              , CDictCan wFloatX4 wantedClass af4 False
-              , CDictCan wDoubleX2 wantedClass ad2 False
-              , CDictCan wDoubleX3 wantedClass ad3 False
-              , CDictCan wDoubleX4 wantedClass ad4 False
-              , CDictCan wArrayBase wantedClass aab False
-              ])
+    newWanteds <- mapM (newWantedConstraint origLoc) wConstraints
+    return $
+      TcPluginOk
+        [ ( EvDFunApp (instanceDFunId inferBIInst) icTyArgs (map getCtEvTerm newWanteds)
+          , origWanted)
+        ]
+        newWanteds
   where
-    toEvTerm CtWanted {ctev_dest = EvVarDest ev} = EvId ev
-    toEvTerm CtGiven {ctev_evar = ev } = EvId ev
-    toEvTerm _ = undefined
-    origLoc = ctev_loc $ cc_ev origWanted
-    lookupConstraint n xs = do
-      t <- lookupATyCon n
-      let args = staticArgs ++ [mkTyConApp t xs]
-      return (args, mkTyConApp (classTyCon wantedClass) args)
-    staticArgs = take (length wantedClassArgs - 1) wantedClassArgs
-    unaryClass = mkTyConApp (classTyCon wantedClass) staticArgs
+    {-
+     A very useful function:
+       instanceSig :: ClsInst -> ([TyVar], [Type], Class, [Type])
+                                 (tvs, theta, clas, tys)
 
-    lookupATyCon n = do
-        let afModule = mkModuleName
-              $ "Numeric.DataFrame.Internal.Array.Family." ++ n
-        md <- lookupModule afModule (fsLit "easytensor")
-        na  <- lookupName md (mkTcOcc n)
-        tcLookupTyCon na
+     Its content:
+       1. [TyVar] used type variables
+       2. [Type] -- looks like predicate types -- constraints.
+                    However, notes in TcType.hs suggest it may be a non-Pred type.
+       3. Class  -- the class itself
+       4. [Type] -- type paramaters of the instance
 
+     From TcType.hs:
+
+        -- Split the type of a dictionary function
+        -- We don't use tcSplitSigmaTy,  because a DFun may (with NDP)
+        -- have non-Pred arguments, such as
+        --     df :: forall m. (forall b. Eq b => Eq (m b)) -> C m
+        --
+        -- Also NB splitFunTys, not tcSplitFunTys;
+        -- the latter  specifically stops at PredTy arguments,
+        -- and we don't want to do that here
+
+    -}
+    (tyVars, wConstraints', _, icTyArgs') = instanceSig inferBIInst
+    -- create a map of substitions {type vars -> required types}
+    subst = case tyVars of
+      [t, n, c] -> let add var ty s = extendTCvSubst s var ty
+                   in emptyTCvSubst
+                      & add t arrElemType
+                      & add n arrDims
+                      & add c unaryClass
+      xs -> panicDoc "Numeric.DataFrame.TcPlugin" $
+                     "Unexpected type variables: " <> ppr xs
+    -- .. and substitute type variables in the instance declaration with real types.
+    wConstraints = substTheta subst wConstraints'
+    icTyArgs = substTys subst icTyArgs'
+
+
+    {- TODO: If I pass this CtLoc unmodified, the reported error location is incorrect.
+       Here is an example:
+
+          src/Numeric/DataFrame/Type.hs:1:1: error:
+          Could not deduce (Eq t0) arising from a use of ‘/=’
+          from the context: ArraySingleton t0 n
+            bound by the instance declaration
+            at src/Numeric/DataFrame/Type.hs:30:1-63
+          Possible fix:
+            add (Eq t0) to the context of the instance declaration
+     -}
+    origLoc = ctLoc origWanted
+
+    -- Create a type of kind (Type -> Constraint),
+    -- so that mutli-parameter type classes can be derived
+    --  if DF backend is their last type argument.
+    unaryClass :: Type
+    unaryClass = mkTyConApp (classTyCon wantedClass) wantedClassArgsInit
+
+
+newWantedConstraint :: CtLoc -> PredType -> TcPluginM Ct
+newWantedConstraint l pt =
+  -- first, filter the class predicates with a single
+  case classifyPredType pt of
+    ClassPred cl args -> newWantedInstance l pt cl args
+         -- TODO: probably, I can extend this to other constraint types
+    _ -> panicDoc "Numeric.DataFrame.TcPlugin" $
+                   "Expected class constraint, but got: " <> ppr pt
+
+
+-- | The InferBackendInstance instance for resolving the instance of the wanted
+--   class pulls a few more instances;
+--   this function creates a new wanted constraint for a required instance.
+--   Feed the class constraint and its argument types here and get back
+--   an evidence term for DFunId and a new wanted Ct.
+newWantedInstance ::
+     CtLoc -- ^ Location (where the error message pops up).
+           --   The simplest option is to get location of the original wanted Ct.
+  -> PredType -- ^ Wanted class (with type variables already substituted)
+  -> Class -- ^ Wanted class itself
+  -> [Xi]
+     -- ^ Type arguments of the class.
+     --
+     -- From TcRnTypes.hs:
+     -- cc_tyargs are function-free, hence Xi
+     -- The syntax of xi (ξ) types:
+     -- xi ::= a | T xis | xis -> xis | ... | forall a. tau
+     -- Two important notes:
+     --      (i) No type families, unless we are under a ForAll
+     --      (ii) Note that xi types can contain unexpanded type synonyms;
+     --           however, the (transitive) expansions of those type synonyms
+     --           will not contain any type functions, unless we are under a ForAll.
+     -- We enforce the structure of Xi types when we flatten (TcCanonical)
+  -> TcPluginM Ct
+newWantedInstance loc predTy cls tyArgs = do
+    w <- newWanted loc predTy
+    return $ CDictCan w cls tyArgs False
+        -- Not sure about the last argument.
+        -- From TcRnTypes.hs:
+        -- See Note [The superclass story] in TcCanonical
+        -- True <=> (a) cc_class has superclasses
+        --          (b) we have not (yet) added those
+        --              superclasses as Givens
+
+
+-- | Ct always contains an EvTerm.
+--   Thus, if I create a new wanted Ct then I always can get the corresponding
+--   EvTerm (e.g. to put it into some EvDFunApp)
+getCtEvTerm :: Ct -> EvTerm
+getCtEvTerm = ctEvTerm . ctEvidence
+{-# INLINE getCtEvTerm #-}
 
 --------------------------------------------------------------------------------
--- DEBUG things, delete it later.
+-- DEBUG things
 
-
-printIt :: SDoc -> TcPluginM ()
-printIt = tcPluginIO . putStrLn . showSDocUnsafe
+-- printIt :: SDoc -> TcPluginM ()
+-- printIt = tcPluginIO . putStrLn . showSDocUnsafe

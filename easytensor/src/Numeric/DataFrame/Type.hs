@@ -21,7 +21,7 @@
 {-# LANGUAGE ViewPatterns               #-}
 {-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# OPTIONS_GHC -fno-warn-orphans       #-}
--- {-# OPTIONS_GHC -fplugin Numeric.DataFrame.TcPlugin #-}
+{-# OPTIONS_GHC -fplugin Numeric.DataFrame.TcPlugin #-}
 
 module Numeric.DataFrame.Type
   ( -- * Data types
@@ -105,7 +105,7 @@ pattern Z = MultiFrame U
 -- All Eq instances
 --------------------------------------------------------------------------------
 
-deriving instance Eq (Array t ds) => Eq (DataFrame (t :: Type) (ds :: [Nat]))
+deriving instance (Eq t, ArraySingleton t ds) => Eq (DataFrame (t :: Type) (ds :: [Nat]))
 
 instance ImplAllows Eq ts ds => Eq (DataFrame (ts :: [Type]) ds) where
     Z == Z = True
@@ -130,8 +130,9 @@ instance (AllTypes Eq t, DataFrameInference t)
 -- All Show instances
 --------------------------------------------------------------------------------
 
-instance ( Show (Array t ds)
+instance ( Show t
          , Dimensions ds
+         , ArraySingleton t ds
          ) => Show (DataFrame (t :: Type) (ds :: [Nat])) where
   show (SingleFrame arr) = unlines
                             [ "DF " ++ drop 5 (show $ dims @_ @ds) ++ ":"
@@ -202,7 +203,7 @@ deriving instance Fractional (Array t ds)
                => Fractional (DataFrame t ds)
 deriving instance Floating (Array t ds)
                => Floating (DataFrame t ds)
-deriving instance Ord (Array t ds)
+deriving instance (Ord t, ArraySingleton t ds)
                => Ord (DataFrame t ds)
 deriving instance ( Read (Array t ds), Dimensions ds )
                => Read (DataFrame t ds)

@@ -46,18 +46,18 @@ instance KnownBackend (DataFrame t n) => KnownBackend (DFBackend t n b) where
   {-# INLINE bSing #-}
 
 
-deriving instance
+instance
    {-# OVERLAPPABLE #-}
    ( KnownBackend (DataFrame t n), Eq t ) => Eq (DFBackend t n b)
-deriving instance
+instance
    {-# OVERLAPPABLE #-}
    ( KnownBackend (DataFrame t n), Ord t ) => Ord (DFBackend t n b)
-deriving instance
+instance
    {-# OVERLAPPABLE #-}
    ( KnownBackend (DataFrame t n), Show t ) => Show (DFBackend t n b)
-deriving instance
+instance
    {-# OVERLAPPABLE #-}
    ( KnownBackend (DataFrame t n), Num t ) => Semigroup (DFBackend t n b)
-deriving instance
+instance
    {-# OVERLAPPABLE #-}
    ( KnownBackend (DataFrame t n), Num t, KnownDim n) => Monoid (DFBackend t n b)
