@@ -5,10 +5,9 @@
 {-# OPTIONS_GHC -fno-warn-orphans       #-}
 module Numeric.DataFrame.TcPlugin (plugin) where
 
--- import Control.Monad (join)
 import           Bag
 import           Class
-import           Control.Arrow       (first, (***))
+import           Control.Arrow       (first)
 import           Data.Function       ((&))
 import           Data.Maybe          (catMaybes, mapMaybe, maybeToList, fromMaybe)
 import           Data.Monoid         (First (..), Any (..))
@@ -44,7 +43,7 @@ plugin = defaultPlugin
       , tcPluginSolve = runPluginSolve
       , tcPluginStop  = const (return ())
       }
-  -- , installCoreToDos = install
+  , installCoreToDos = install
 #if MIN_VERSION_ghc(8,6,0)
   , pluginRecompile = purePlugin
 #endif
@@ -181,9 +180,13 @@ pass backendFamily guts = do
              in mkOccName (occNameSpace oname)
                           (occNameString oname ++ "DFBackend")
 
+    -- Create a new DFunId by casting
+    -- the original DFunId to a required type
     mkBind :: DFunId -> ClsInst -> CoreBind
     mkBind oldId newInst
-        = NonRec newId (Var oldId) -- TODO: make a proper cast expression.
+        = NonRec newId
+        $ Cast (Var oldId)
+        $ mkUnsafeCo Representational (idType oldId) (idType newId)
       where
         newId = instanceDFunId newInst
 
@@ -679,13 +682,13 @@ solveBackendWanted
                                  -- , getTyVar "oops b" dfbBackType]
                  mkFunTys wConstraints
                $ mkTyConApp (classTyCon wantedClass) (wantedClassArgsInit ++ [wantedClassLastArg])
-            replDFunType2 = case splitForAllTys origDFunType of
-              (tv, funt) -> mkSpecForAllTys tv $
-                 mkCastTy funt
-                     (mkUnsafeCo Nominal funt replDFunType)
+            -- replDFunType2 = case splitForAllTys origDFunType of
+            --   (tv, funt) -> mkSpecForAllTys tv $
+            --      mkCastTy funt
+            --          (mkUnsafeCo Nominal funt replDFunType)
             replDFunId = setIdType origDFunId
               $ mkSpecForAllTys tyVars replDFunType
-            replDFunIdC = setIdType origDFunId replDFunType2
+            -- replDFunIdC = setIdType origDFunId replDFunType2
         printIt $ "Orig type:" <> ppr origDFunType
         printIt $ "Repl type:" <> ppr replDFunType
         (ev, newWanteds) <- createInstanceEvTerm tyVarFun (ctLoc origWanted) replDFunId
@@ -761,141 +764,6 @@ solveBackendWanted
     -- NB: mkCastTy :: Type -> Coercion -> Type
 
 
--- So far, this works, but tracing of the instance lookup function shows
--- that is is invoked on every function call, which is not so good.
--- I need to figure out the way to reduce number of lookups.
-solveBackendWanted' :: EtTcState
-                   -> ClsInst
-                   -> GivenKnownBackend
-                   -> WantedBackendInstance
-                   -> TcPluginM (Maybe TcPluginResult)
-solveBackendWanted'
-  EtTcState {..}
-  inferBIInst
-  ctg@GivenKnownBackend {..}
-  ctw@WantedBackendInstance {..} = do
-    mdfbb <- lookForDFBackendBinding ctg ctw
-    -- printIt $ ppr $ instanceSig inferBIInst
-    -- printIt $ ppr mdfbb
-    case mdfbb of
-      Nothing -> return Nothing
-      Just dfbb -> do
-        mevs <- parseConstraints dfbb wConstraints
-        -- printIt $ ppr mevs
-        return $ case mevs of
-          Nothing -> Nothing
-          Just (evTerms, newWanteds) -> Just $ TcPluginOk
-              [ ( EvDFunApp (instanceDFunId inferBIInst) icTyArgs evTerms
-                , origWanted)
-              ]
-              newWanteds
-        -- mnewWanteds <- sequence <$> mapM (newWantedConstraint origLoc) wConstraints
-        -- return $ flip fmap mnewWanteds $ \newWanteds ->
-        --   TcPluginOk
-        --     [ ( EvDFunApp (instanceDFunId inferBIInst) icTyArgs (map getCtEvTerm newWanteds)
-        --       , origWanted)
-        --     ]
-        --     newWanteds
-  where
-    {-
-     A very useful function:
-       instanceSig :: ClsInst -> ([TyVar], [Type], Class, [Type])
-                                 (tvs, theta, clas, tys)
-
-     Its content:
-       1. [TyVar] used type variables
-       2. [Type] -- looks like predicate types -- constraints.
-                    However, notes in TcType.hs suggest it may be a non-Pred type.
-       3. Class  -- the class itself
-       4. [Type] -- type paramaters of the instance
-
-     From TcType.hs:
-
-        -- Split the type of a dictionary function
-        -- We don't use tcSplitSigmaTy,  because a DFun may (with NDP)
-        -- have non-Pred arguments, such as
-        --     df :: forall m. (forall b. Eq b => Eq (m b)) -> C m
-        --
-        -- Also NB splitFunTys, not tcSplitFunTys;
-        -- the latter  specifically stops at PredTy arguments,
-        -- and we don't want to do that here
-
-    -}
-    (tyVars, wConstraints', _, icTyArgs') = instanceSig inferBIInst
-    -- create a map of substitions {type vars -> required types}
-    subst = case tyVars of
-      [b, c] -> let add var ty s = extendTCvSubst s var ty
-                   in emptyTCvSubst
-                      & add c unaryClass
-                      & add b wantedClassLastArg
-      xs -> panicDoc "Numeric.DataFrame.TcPlugin" $
-                     "Unexpected type variables: " <> ppr xs
-    -- .. and substitute type variables in the instance declaration with real types.
-    wConstraints = substTheta subst wConstraints'
-    icTyArgs = substTys subst icTyArgs'
-
-
-    {- TODO: If I pass this CtLoc unmodified, the reported error location is incorrect.
-       Here is an example:
-
-          src/Numeric/DataFrame/Type.hs:1:1: error:
-          Could not deduce (Eq t0) arising from a use of ‘/=’
-          from the context: ArraySingleton t0 n
-            bound by the instance declaration
-            at src/Numeric/DataFrame/Type.hs:30:1-63
-          Possible fix:
-            add (Eq t0) to the context of the instance declaration
-     -}
-    origLoc = ctLoc origWanted
-
-    -- Create a type of kind (Type -> Constraint),
-    -- so that mutli-parameter type classes can be derived
-    --  if DF backend is their last type argument.
-    unaryClass :: Type
-    unaryClass = mkTyConApp (classTyCon wantedClass) wantedClassArgsInit
-
-    parseConstraints :: DFBackendBinding -> [PredType] -> TcPluginM (Maybe ([EvTerm], [Ct]))
-    parseConstraints _ [] = return (Just ([],[]))
-    parseConstraints dfbb@DFBackendBinding {..} (pt:pts) = case classifyPredType pt of
-      ClassPred cl args
-        | True    <- cl == knownBackendClass
-        , [dfc]   <- args
-        , True    <- eqTypes [dfc, dataElemType, dataDims]
-                             [dfbBackType, dfbElemType, dfbDimsType]
-        , clTyCon <- classTyCon cl
-        , newEv   <- EvCast (getCtEvTerm origGiven) $
-                       mkUnsafeCo Representational
-                                  (mkTyConApp clTyCon [dataFrameType])
-                                  (mkTyConApp clTyCon [dfbBackType])
-          -> fmap (first (newEv:)) <$> parseConstraints dfbb pts
-        | otherwise -> do
-          oldEltT <- mkType "DataElemType" [dfbBackType]
-          oldDimT <- mkType "DataDims" [dfbBackType]
-          let repl = replaceTypeOccurrences oldEltT dataElemType
-                   . replaceTypeOccurrences oldDimT dataDims
-          newCt <- newWantedInstance origLoc (repl pt) cl (map repl args)
-          fmap (( (EvCast (getCtEvTerm newCt) $
-                     mkUnsafeCo Representational
-                                (repl pt)
-                                pt
-                  )
-                  :) *** (newCt :))
-            <$> parseConstraints dfbb pts
-      -- TODO: probably, I can extend this to other constraint types
-      _ -> pure Nothing
-
-    mkType n args = do
-      tcon <- lookupTCon n
-      return $  mkTyConApp tcon args
-
-
-    lookupTCon s = do
-        hscEnv <- getTopEnv
-        md <- tcPluginIO $ lookupModule hscEnv dfm (fsLit "easytensor")
-        n  <- lookupOrig md (mkTcOcc s)
-        tcLookupTyCon n
-      where
-        dfm = mkModuleName "Numeric.DataFrame.Internal.Array.Family"
 
 
 -- newWantedConstraint :: CtLoc -> PredType -> TcPluginM (Maybe Ct)
@@ -906,39 +774,39 @@ solveBackendWanted'
 --     _ -> pure Nothing
 
 
--- | The InferBackendInstance instance for resolving the instance of the wanted
---   class pulls a few more instances;
---   this function creates a new wanted constraint for a required instance.
---   Feed the class constraint and its argument types here and get back
---   an evidence term for DFunId and a new wanted Ct.
-newWantedInstance ::
-     CtLoc -- ^ Location (where the error message pops up).
-           --   The simplest option is to get location of the original wanted Ct.
-  -> PredType -- ^ Wanted class (with type variables already substituted)
-  -> Class -- ^ Wanted class itself
-  -> [Xi]
-     -- ^ Type arguments of the class.
-     --
-     -- From TcRnTypes.hs:
-     -- cc_tyargs are function-free, hence Xi
-     -- The syntax of xi (ξ) types:
-     -- xi ::= a | T xis | xis -> xis | ... | forall a. tau
-     -- Two important notes:
-     --      (i) No type families, unless we are under a ForAll
-     --      (ii) Note that xi types can contain unexpanded type synonyms;
-     --           however, the (transitive) expansions of those type synonyms
-     --           will not contain any type functions, unless we are under a ForAll.
-     -- We enforce the structure of Xi types when we flatten (TcCanonical)
-  -> TcPluginM Ct
-newWantedInstance loc predTy cls tyArgs = do
-    w <- newWanted loc predTy
-    return $ CDictCan w cls tyArgs False
-        -- Not sure about the last argument.
-        -- From TcRnTypes.hs:
-        -- See Note [The superclass story] in TcCanonical
-        -- True <=> (a) cc_class has superclasses
-        --          (b) we have not (yet) added those
-        --              superclasses as Givens
+-- -- | The InferBackendInstance instance for resolving the instance of the wanted
+-- --   class pulls a few more instances;
+-- --   this function creates a new wanted constraint for a required instance.
+-- --   Feed the class constraint and its argument types here and get back
+-- --   an evidence term for DFunId and a new wanted Ct.
+-- newWantedInstance ::
+--      CtLoc -- ^ Location (where the error message pops up).
+--            --   The simplest option is to get location of the original wanted Ct.
+--   -> PredType -- ^ Wanted class (with type variables already substituted)
+--   -> Class -- ^ Wanted class itself
+--   -> [Xi]
+--      -- ^ Type arguments of the class.
+--      --
+--      -- From TcRnTypes.hs:
+--      -- cc_tyargs are function-free, hence Xi
+--      -- The syntax of xi (ξ) types:
+--      -- xi ::= a | T xis | xis -> xis | ... | forall a. tau
+--      -- Two important notes:
+--      --      (i) No type families, unless we are under a ForAll
+--      --      (ii) Note that xi types can contain unexpanded type synonyms;
+--      --           however, the (transitive) expansions of those type synonyms
+--      --           will not contain any type functions, unless we are under a ForAll.
+--      -- We enforce the structure of Xi types when we flatten (TcCanonical)
+--   -> TcPluginM Ct
+-- newWantedInstance loc predTy cls tyArgs = do
+--     w <- newWanted loc predTy
+--     return $ CDictCan w cls tyArgs False
+--         -- Not sure about the last argument.
+--         -- From TcRnTypes.hs:
+--         -- See Note [The superclass story] in TcCanonical
+--         -- True <=> (a) cc_class has superclasses
+--         --          (b) we have not (yet) added those
+--         --              superclasses as Givens
 
 
 -- | Ct always contains an EvTerm.
@@ -960,14 +828,14 @@ createInstanceEvTerm tyArgF loc dFunId = do
   where
     (tyVars, wConstraints, _, _) = TcType.tcSplitDFunTy $ idType dFunId
 
-createInstanceEvTerm' :: ([TyVar] -> [Type]) -> CtLoc -> DFunId -> DFunId -> TcPluginM (EvTerm, [Ct])
-createInstanceEvTerm' tyArgF loc dFunId dFunIdCasted = do
-    newWanteds <- traverse (newWantedConstraint loc) wConstraints
-    return ( EvDFunApp dFunIdCasted (tyArgF tyVars) $ map getCtEvTerm newWanteds
-           , newWanteds
-           )
-  where
-    (tyVars, wConstraints, _, _) = TcType.tcSplitDFunTy $ idType dFunId
+-- createInstanceEvTerm' :: ([TyVar] -> [Type]) -> CtLoc -> DFunId -> DFunId -> TcPluginM (EvTerm, [Ct])
+-- createInstanceEvTerm' tyArgF loc dFunId dFunIdCasted = do
+--     newWanteds <- traverse (newWantedConstraint loc) wConstraints
+--     return ( EvDFunApp dFunIdCasted (tyArgF tyVars) $ map getCtEvTerm newWanteds
+--            , newWanteds
+--            )
+--   where
+--     (tyVars, wConstraints, _, _) = TcType.tcSplitDFunTy $ idType dFunId
 
 
 
