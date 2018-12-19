@@ -1,33 +1,42 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE LambdaCase   #-}
 {-# OPTIONS_GHC -fno-warn-orphans       #-}
-module Numeric.DataFrame.TcPlugin (plugin) where
+module Numeric.DataFrame.TcPlugin (plugin, ToInstance (..)) where
 
 import           Bag
 import           Class
-import           Control.Arrow       (first)
-import           Data.Function       ((&))
-import           Data.Maybe          (catMaybes, mapMaybe, maybeToList, fromMaybe)
-import           Data.Monoid         (First (..), Any (..))
+import           Control.Arrow (first)
+import           Data.Function ((&))
+import           Data.Maybe (catMaybes, mapMaybe, maybeToList, fromMaybe)
+import           Data.Monoid (First (..), Any (..))
 import           GhcPlugins
 import           InstEnv
-import           Panic               (panicDoc)
-import           TcEvidence          (EvTerm (..))
+import           Panic (panicDoc)
+import           TcEvidence (EvTerm (..))
 import           TcPluginM
 import           TcRnTypes
 
-import CoAxiom
-import qualified TcRnMonad
-import qualified IfaceEnv
+import           CoAxiom
 import qualified Finder
+import           IOEnv
+import qualified IfaceEnv
+import qualified TcRnMonad
 import qualified TcType
 
--- import           TcSMonad (emitNewDerivedEq, runTcSDeriveds)
-import           IOEnv
--- import           ErrUtils
+import Data.Data (Data)
 
+-- | A marker to tell the core plugin to convert BareConstraint top-level binding into
+--   an instance declaration.
+data ToInstance
+  = ToInstance
+  | ToInstanceOverlappable
+  | ToInstanceOverlapping
+  | ToInstanceOverlaps
+  | ToInstanceIncoherent
+  deriving (Eq, Show, Data)
 
 -- | To use the plugin, add
 --
@@ -52,7 +61,10 @@ plugin = defaultPlugin
 install :: [CommandLineOption] -> [CoreToDo] -> CoreM [CoreToDo]
 install _ todo = do
   bf <- lookupBackendFamily
-  return (CoreDoPluginPass "Numeric.DataFrame.CorePlugin" (pass bf) : todo)
+  bc <- lookupBareConstraintT
+  return (CoreDoPluginPass "Numeric.DataFrame.CorePlugin" (pass bf)
+         : CoreDoPluginPass "Numeric.DataFrame.CorePlugin" (toInstancePass bc)
+         : todo)
 
 {-
   The plan for CoreToDo in DataFrame.Type
@@ -191,11 +203,81 @@ pass backendFamily guts = do
         newId = instanceDFunId newInst
 
 
--- mkOccName :: NameSpace -> String -> OccName
--- mkOccNameFS :: NameSpace -> FastString -> OccName
--- UniqSupply.hs
---   getUniqueM :: m Unique
---   mkExternalName :: Unique -> Module -> OccName -> SrcSpan -> Name
+toInstancePass :: TyCon -> ModGuts -> CoreM ModGuts
+toInstancePass bareConstraintTc guts = do
+
+    -- mapM_ (putMsg . ppr) $ mg_anns guts
+
+    let (newInsts, parsedBinds) = mapM toInstance $ mg_binds guts
+        
+    return guts
+      { mg_insts = newInsts ++ mg_insts guts
+      , mg_inst_env = extendInstEnvList (mg_inst_env guts)
+                    $ newInsts
+      , mg_binds = parsedBinds
+      }
+  where
+    aenv = mkAnnEnv $ mg_anns guts
+
+    getToInstanceAnns :: CoreBind -> [ToInstance]
+    getToInstanceAnns (NonRec b _)
+      = findAnns deserializeWithData aenv . NamedTarget $ varName b
+    getToInstanceAnns (Rec _)      = []
+
+    -- Possibly transform a function into an instance,
+    -- Keep an instance declaration if succeeded.
+    toInstance :: CoreBind -> ([ClsInst], CoreBind)
+    toInstance cb@(NonRec cbVar  cbE)
+      | [omode] <- getOFlag <$> getToInstanceAnns cb
+      , otype <- idType cbVar
+      , (First (Just (cls, tys)), ntype') <- replace otype
+      , (tvs, ntype) <- extractTyVars ntype'
+      , isNewType <- isNewTyCon (classTyCon cls)
+      , ncbVar <- flip setIdDetails (DFunId isNewType)
+                $ setIdType cbVar ntype
+       -- TODO: hmm, maybe I need to remove this id from mg_exports at least...
+       -- mkLocalInstance :: DFunId -> OverlapFlag -> [TyVar] -> Class -> [Type] -> ClsInst
+      = ([mkLocalInstance ncbVar omode tvs cls tys]
+        , NonRec ncbVar
+          $ Cast cbE $ mkUnsafeCo Representational otype ntype
+        )
+    toInstance cb = ([], cb)
+
+    getOFlag i = OverlapFlag (getOMode i) False
+    getOMode ToInstance             = NoOverlap NoSourceText
+    getOMode ToInstanceOverlapping  = Overlapping NoSourceText
+    getOMode ToInstanceOverlappable = Overlappable NoSourceText
+    getOMode ToInstanceOverlaps     = Overlaps NoSourceText
+    getOMode ToInstanceIncoherent   = Incoherent NoSourceText
+
+    extractTyVars :: Type -> ([TyVar], Type)
+    extractTyVars t
+      | tvs <- tyCoVarsOfTypeWellScoped t
+      , bndrs <- catMaybes
+               . map (\b -> caseBinder b (Just . binderVar) (const Nothing))
+               . fst $ splitPiTys t
+      = ( tvs ++ bndrs , mkSpecForAllTys tvs t)
+
+    -- tyCoVarsOfTypeWellScoped
+    replace :: Type -> (First (Class, [Type]), Type)
+    replace t
+        -- split type constructors
+      | Just (tyCon, tys) <- splitTyConApp_maybe t
+        = case (tyCon == bareConstraintTc, tys) of
+            (True, [ty]) -> (First $ extractClass ty, ty)
+            _ -> mkTyConApp tyCon <$> mapM replace tys
+        -- split foralls
+      | (bndrs@(_:_), t') <- splitPiTys t
+        = mkPiTys bndrs <$> replace t'
+        -- split arrow types
+      | Just (at, rt) <- splitFunTy_maybe t
+        = mkFunTy <$> replace at <*> replace rt
+      | otherwise
+        = (First Nothing, t)
+
+    extractClass t = splitTyConApp_maybe t
+                 >>= \(tc, ts) -> flip (,) ts <$> tyConClass_maybe tc
+
 
 -- | Look through the type recursively;
 --   If the type occurrence found, replace it with the new type.
@@ -260,6 +342,19 @@ lookupBackendFamily = do
     pkgNameFS = fsLit "easytensor"
 
 
+lookupBareConstraintT :: CoreM TyCon
+lookupBareConstraintT = do
+    hscEnv <- getHscEnv
+    md <- liftIO $ lookupModule hscEnv mdName pkgNameFS
+    backendName <- liftIO
+        $ TcRnMonad.initTcRnIf '?' hscEnv () ()
+        $ IfaceEnv.lookupOrig md (mkTcOcc "BareConstraint")
+    lookupTyCon backendName
+  where
+    mdName = mkModuleName "Numeric.Type.Evidence.Internal"
+    pkgNameFS = fsLit "dimensions"
+
+
 
 
 lookupModule :: HscEnv
@@ -303,6 +398,7 @@ runPluginSolve ::
   -> TcPluginM TcPluginResult
 -- there is really nothing to do if wanteds are empty
 runPluginSolve _ _ _ [] = return (TcPluginOk [] [])
+runPluginSolve _ _ _ _  = return (TcPluginOk [] [])
 -- actual solving is done here
 runPluginSolve ets@EtTcState {..} givens _deriveds wanteds =
     case getFirst $ foldMap (First . checkGivenKnownBackend ets) givens of
@@ -655,6 +751,7 @@ lookForDFBackendBinding
                     ++ (bagToList (wc_impl wcs) >>= f . ic_wanted)
               ncts = f moreWanteds
           lookupEveryWhere (newRef:pastRefs) $ cts ++ ncts
+
 
 
 -- So far, this works, but tracing of the instance lookup function shows
