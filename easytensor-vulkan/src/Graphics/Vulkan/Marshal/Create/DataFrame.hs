@@ -47,7 +47,7 @@ import           Numeric.PrimBytes
 setVec :: forall fname x t
         . ( FieldType fname x ~ t
           , PrimBytes (Vector t (FieldArrayLength fname x))
-          , CanWriteFieldArray fname 0 x
+          , CanWriteFieldArray fname x
           )
        => Vector t (FieldArrayLength fname x) -> CreateVkStruct x '[fname] ()
 setVec v = unsafeIOCreate $ \p -> pokeByteOff p (fieldOffset @fname @x) v
@@ -57,7 +57,7 @@ setVec v = unsafeIOCreate $ \p -> pokeByteOff p (fieldOffset @fname @x) v
 getVec :: forall fname x t
         . ( FieldType fname x ~ t
           , PrimBytes (Vector t (FieldArrayLength fname x))
-          , CanReadFieldArray fname 0 x
+          , CanReadFieldArray fname x
           , VulkanMarshalPrim x
           )
        => x -> Vector t (FieldArrayLength fname x)
