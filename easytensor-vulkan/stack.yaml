@@ -8,4 +8,4 @@ packages:
     extra-dep: true
 
 extra-deps:
-  - vulkan-api-1.1.2.1
+  - vulkan-api-1.1.3.1
