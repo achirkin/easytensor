@@ -163,9 +163,9 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
 
 -- | Accumulates only idempotent operations!
 --   Being applied to FromScalars, executes only once!
---   Here, idempotance means: assuming @f a b = g @, @g (g x) = g x@
+--   Here, idempotance means: assuming @f a b = g x@, @g (g x) = g x@
 --
---   Also, I assume the size of arrays is the same
+--   Also, I assume the sizes of arrays are the same
 accumV2Idempotent :: a
                   -> (t -> t -> a -> a)
                   -> ArrayBase t ds -> ArrayBase t ds -> a
