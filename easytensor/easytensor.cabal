@@ -1,5 +1,5 @@
 name: easytensor
-version: 1.0.0.1
+version: 1.0.1.0
 cabal-version: >=1.22
 build-type: Simple
 license: BSD3
@@ -65,6 +65,8 @@ library
         base >=4.10 && <5,
         dimensions >=1.0.0.0
     default-language: Haskell2010
+    if impl(ghc >= 8.6)
+        default-extensions: NoStarIsType
     hs-source-dirs: src
     other-modules:
         Numeric.Matrix.Mat44d
@@ -72,7 +74,11 @@ library
         Numeric.Quaternion.Class
         Numeric.Quaternion.QDouble
         Numeric.Quaternion.QFloat
-    ghc-options: -Wall -fwarn-tabs -fwarn-unused-do-bind -fwarn-monomorphism-restriction
+    ghc-options:
+      -Wall
+      -fwarn-tabs
+      -fwarn-unused-do-bind
+      -fwarn-monomorphism-restriction
 
 
 test-suite et-test
@@ -93,6 +99,8 @@ test-suite et-test
         easytensor -any,
         dimensions -any
     default-language: Haskell2010
+    if impl(ghc >= 8.6)
+        default-extensions: NoStarIsType, NoMonadFailDesugaring
     hs-source-dirs: test
     ghc-options: -Wall -fwarn-tabs -O2
 
@@ -106,6 +114,8 @@ benchmark et-bench-misc
         easytensor -any,
         dimensions -any
     default-language: Haskell2010
+    if impl(ghc >= 8.6)
+        default-extensions: NoStarIsType, NoMonadFailDesugaring
     hs-source-dirs: bench
     ghc-options: -Wall -fwarn-tabs -O2
 
@@ -120,5 +130,7 @@ benchmark et-bench-spfolds
         dimensions -any,
         time -any
     default-language: Haskell2010
+    if impl(ghc >= 8.6)
+        default-extensions: NoStarIsType, NoMonadFailDesugaring
     hs-source-dirs: bench
     ghc-options: -Wall -fwarn-tabs -O2
