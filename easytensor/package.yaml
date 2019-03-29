@@ -1,0 +1,90 @@
+name:                easytensor
+version:             2.0.0.0
+github:              "achirkin/easytensor/easytensor"
+license:             BSD3
+author:              "Artem Chirkin"
+maintainer:          "achirkin@users.noreply.github.com"
+copyright:           "Copyright: (c) 2019 Artem Chirkin"
+synopsis:            Pure, type-indexed haskell vector, matrix, and tensor library.
+category:            Math, Geometry
+description:
+    Pure, type-indexed haskell vector, matrix, and tensor library.
+    Features dimensionality type-checking for all operations.
+    Generic n-dimensional versions are implemented using low-level prim ops.
+    Allows ad-hoc replacement with fixed low-dimensionality vectors and matrices without changing user interface.
+    Please see the README on GitHub at <https://github.com/achirkin/easytensor#readme>
+
+flags:
+
+  unsafeindices:
+    description:
+      Disable bound checks when accessing elements of a tensor, matrix, or vector.
+    default: false
+    manual: true
+
+
+ghc-options:
+  - -Wall
+  - -Wcompat
+  - -Wtabs
+  - -Wmonomorphism-restriction
+  - -Wmissing-local-signatures
+  - -Wmissing-home-modules
+  - -Widentities
+  - -Wredundant-constraints
+
+dependencies:
+  - base >= 4.10 && < 5
+  - dimensions >= 2
+
+library:
+  source-dirs: src
+  other-modules:
+  - Numeric.Matrix.Mat44d
+  - Numeric.Matrix.Mat44f
+  - Numeric.Quaternion.Class
+  - Numeric.Quaternion.QDouble
+  - Numeric.Quaternion.QFloat
+  ghc-options: -O2
+  when:
+  - condition: flag(unsafeindices)
+    cpp-options: -DUNSAFE_INDICES
+  - condition: impl(ghc >= 8.6)
+    default-extensions: NoStarIsType
+
+tests:
+
+  et-test:
+    main:                Spec.hs
+    source-dirs:         test
+    dependencies:
+    - Cabal
+    - QuickCheck
+    - easytensor
+    ghc-options: -O2
+    when:
+    - condition: impl(ghc >= 8.6)
+      default-extensions: NoStarIsType, NoMonadFailDesugaring
+
+benchmarks:
+
+  et-bench-misc:
+    main:                misc.hs
+    source-dirs:         bench
+    dependencies:
+    - easytensor
+    ghc-options: -O2
+    when:
+    - condition: impl(ghc >= 8.6)
+      default-extensions: NoStarIsType, NoMonadFailDesugaring
+
+  et-bench-spfolds:
+    main:                subspacefolds.hs
+    source-dirs:         bench
+    dependencies:
+    - time
+    - easytensor
+    ghc-options: -O2
+    when:
+    - condition: impl(ghc >= 8.6)
+      default-extensions: NoStarIsType, NoMonadFailDesugaring
