@@ -1,23 +1,21 @@
-{-# LANGUAGE ConstraintKinds            #-}
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE ExistentialQuantification  #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MagicHash                  #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE PolyKinds                  #-}
-{-# LANGUAGE Rank2Types                 #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE StandaloneDeriving         #-}
-{-# LANGUAGE TypeApplications           #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE TypeFamilyDependencies     #-}
-{-# LANGUAGE TypeInType                 #-}
-{-# LANGUAGE TypeOperators              #-}
-{-# LANGUAGE UnboxedSums                #-}
-{-# LANGUAGE UnboxedTuples              #-}
+{-# LANGUAGE ConstraintKinds           #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE MagicHash                 #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE TypeFamilies              #-}
+{-# LANGUAGE TypeFamilyDependencies    #-}
+{-# LANGUAGE TypeInType                #-}
+{-# LANGUAGE TypeOperators             #-}
+{-# LANGUAGE UnboxedSums               #-}
+{-# LANGUAGE UnboxedTuples             #-}
 
 module Numeric.DataFrame.Internal.Array.Family.ArrayBase
   ( ArrayBase (..)
@@ -25,7 +23,7 @@ module Numeric.DataFrame.Internal.Array.Family.ArrayBase
 
 import           Data.Int
 import           Data.Word
-import           GHC.Base                                        hiding (foldr)
+import           GHC.Base                                 hiding (foldr)
 import           Numeric.DataFrame.Internal.Array.Class
 import           Numeric.DataFrame.Internal.Array.PrimOps
 import           Numeric.Dimensions
@@ -44,6 +42,7 @@ data ArrayBase (t :: Type) (ds :: [Nat])
      | (# Int#  -- Offset measured in elements.
         , Int#  -- Number of elements.
         , ByteArray# -- Content.
+        , Evidence (PrimBytes t)
         #)
      #)
 
@@ -67,7 +66,7 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
           | W# nw <- totalDim' @ds
           , n <- word2Int# nw
           , tbs <- byteSize t   -> go tbs (tbs *# n) t
-        (# | (# _, _, arr #) #) ->
+        (# | (# _, _, arr, _ #) #) ->
           -- very weird trick with touch# allows to workaround GHC bug
           --  "internal error: ARR_WORDS object entered!"
           -- TODO: report this
@@ -87,7 +86,7 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
       , tbs <- byteSize (undefined :: t)
       , (# offN, offRem #) <- quotRemInt# bOff tbs
       = case offRem of
-          0# -> ArrayBase (# | (# offN, n , ba #) #)
+          0# -> ArrayBase (# | (# offN, n , ba, E #) #)
           _  -> go n (tbs *# n)
       where
         go n bsize = case runRW#
@@ -99,7 +98,7 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
                   of
             (# s1, mba #) -> unsafeFreezeByteArray# mba
                               (copyByteArray# ba bOff mba 0# bsize s1)
-         ) of (# _, r #) -> ArrayBase (# | (# 0# , n , r #) #)
+         ) of (# _, r #) -> ArrayBase (# | (# 0# , n , r, E #) #)
         {-# NOINLINE go #-}
     {-# INLINE fromBytes #-}
 
@@ -111,14 +110,14 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
       = case newByteArray# bsize s0 of
          (# s1, mba1 #) -> case unsafeFreezeByteArray# mba1
                                 (copyMutableByteArray# mba bOff mba1 0# bsize s1) of
-           (# s2, ba #) -> (# s2, ArrayBase (# | (# 0# , n , ba #) #) #)
+           (# s2, ba #) -> (# s2, ArrayBase (# | (# 0# , n , ba, E #) #) #)
     {-# INLINE readBytes #-}
 
     writeBytes mba bOff (ArrayBase c)
       | tbs <- byteSize (undefined :: t) = case c of
         (# t | #) | W# n <- totalDim' @ds ->
           loop# bOff tbs (bOff +# word2Int# n *# tbs) (\i -> writeBytes mba i t)
-        (# | (# offN, n, arr #) #) ->
+        (# | (# offN, n, arr, _ #) #) ->
           copyByteArray# arr (offN *# tbs) mba bOff (n *# tbs)
     {-# INLINE writeBytes #-}
 
@@ -130,14 +129,14 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
       = case newByteArray# bsize s0 of
          (# s1, mba1 #) -> case unsafeFreezeByteArray# mba1
                                 (copyAddrToByteArray# addr mba1 0# bsize s1) of
-           (# s2, ba #) -> (# s2, ArrayBase (# | (# 0# , n , ba #) #) #)
+           (# s2, ba #) -> (# s2, ArrayBase (# | (# 0# , n , ba, E #) #) #)
     {-# INLINE readAddr #-}
 
     writeAddr (ArrayBase c) addr
       | tbs <- byteSize (undefined :: t) = case c of
         (# t | #) | W# n <- totalDim' @ds ->
           loop# 0# tbs (word2Int# n *# tbs) (\i -> writeAddr t (plusAddr# addr i))
-        (# | (# offN, n, arr #) #) ->
+        (# | (# offN, n, arr, _ #) #) ->
           copyByteArrayToAddr# arr (offN *# tbs) addr (n *# tbs)
     {-# INLINE writeAddr #-}
 
@@ -150,14 +149,14 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
     {-# INLINE byteAlign #-}
 
     byteOffset (ArrayBase a) = case a of
-      (# _ | #)               -> 0#
-      (# | (# off, _, _ #) #) -> off *# byteSize (undefined :: t)
+      (# _ | #)                  -> 0#
+      (# | (# off, _, _, _ #) #) -> off *# byteSize (undefined :: t)
     {-# INLINE byteOffset #-}
 
     indexArray ba off
       | W# nw <- totalDim' @ds
       , n <- word2Int# nw
-      = ArrayBase (# | (# off *# n, n, ba #) #)
+      = ArrayBase (# | (# off *# n, n, ba, E #) #)
     {-# INLINE indexArray #-}
 
 
@@ -167,8 +166,7 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
 --   Here, idempotance means: assuming @f a b = g @, @g (g x) = g x@
 --
 --   Also, I assume the size of arrays is the same
-accumV2Idempotent :: PrimBytes t
-                  => a
+accumV2Idempotent :: a
                   -> (t -> t -> a -> a)
                   -> ArrayBase t ds -> ArrayBase t ds -> a
 accumV2Idempotent x f
@@ -176,23 +174,23 @@ accumV2Idempotent x f
   (ArrayBase (# b | #))
     = f a b x
 accumV2Idempotent x f
-  a@(ArrayBase (# | (# _, nA, _ #) #))
-  b@(ArrayBase (# | (# _, nB, _ #) #))
+  a@(ArrayBase (# | (# _, nA, _, E #) #))
+  b@(ArrayBase (# | (# _, nB, _, _ #) #))
     = loop1a# (minInt# nA nB) (\i -> f (ix# i a) (ix# i b)) x
 accumV2Idempotent x f
     (ArrayBase (# a | #))
-  b@(ArrayBase (# | (# _, n, _ #) #))
+  b@(ArrayBase (# | (# _, n, _, E #) #))
     = loop1a# n (\i -> f a (ix# i b)) x
 accumV2Idempotent x f
-  a@(ArrayBase (# | (# _, n, _ #) #))
+  a@(ArrayBase (# | (# _, n, _, E #) #))
     (ArrayBase (# b | #))
     = loop1a# n (\i -> f (ix# i a) b) x
 {-# INLINE accumV2Idempotent #-}
 
-mapV :: PrimBytes t => (t -> t) -> ArrayBase t ds -> ArrayBase t ds
+mapV :: (t -> t) -> ArrayBase t ds -> ArrayBase t ds
 mapV f (ArrayBase (# t | #))
     = ArrayBase (# f t | #)
-mapV f x@(ArrayBase (# | (# offN, n, ba #) #))
+mapV f x@(ArrayBase (# | (# offN, n, ba, E #) #))
     | tbs <- byteSize (undefEl x)
     = go (tbs *# n)
   where
@@ -202,18 +200,18 @@ mapV f x@(ArrayBase (# | (# offN, n, ba #) #))
            ( loop1# n
                (\i -> writeArray mba i (f (indexArray ba (offN +# i)))) s1
            )
-     ) of (# _, r #) -> ArrayBase (# | (# 0#, n, r #) #)
+     ) of (# _, r #) -> ArrayBase (# | (# 0#, n, r, E #) #)
     {-# NOINLINE go #-}
 {-# INLINE mapV #-}
 
 
-zipV :: PrimBytes t => (t -> t -> t)
+zipV :: (t -> t -> t)
      -> ArrayBase t ds -> ArrayBase t ds -> ArrayBase t ds
 zipV f (ArrayBase (# x | #)) b = mapV (f x) b
-zipV f a (ArrayBase (# y | #)) = mapV (flip f y) a
-zipV f a@(ArrayBase (# | (# oa, na, ba #) #))
-         (ArrayBase (# | (# ob, nb, bb #) #))
-    | n <- (minInt# na nb)
+zipV f a (ArrayBase (# y | #)) = mapV (`f` y) a
+zipV f a@(ArrayBase (# | (# oa, na, ba, E #) #))
+         (ArrayBase (# | (# ob, nb, bb, _ #) #))
+    | n <- minInt# na nb
     = go n (byteSize (undefEl a) *# n)
   where
     go n bsize = case runRW#
@@ -226,7 +224,7 @@ zipV f a@(ArrayBase (# | (# oa, na, ba #) #))
                         )
                ) s1
            )
-     ) of (# _, r #) -> ArrayBase (# | (# 0#, n, r #) #)
+     ) of (# _, r #) -> ArrayBase (# | (# 0#, n, r, E #) #)
     {-# NOINLINE go #-}
 {-# INLINE zipV #-}
 
@@ -234,7 +232,7 @@ zipV f a@(ArrayBase (# | (# oa, na, ba #) #))
 -- TODO: to improve performance, I can either compare bytearrays using memcmp
 --       or implement early termination if the first elements do not match.
 --       On the other hand, hopefully @(&&)@ and @(||)@ ops take care of that.
-instance (Eq t, PrimBytes t) => Eq (ArrayBase t ds) where
+instance Eq t => Eq (ArrayBase t ds) where
     {-# SPECIALIZE instance Eq (ArrayBase Float ds)  #-}
     {-# SPECIALIZE instance Eq (ArrayBase Double ds) #-}
     {-# SPECIALIZE instance Eq (ArrayBase Int ds)    #-}
@@ -252,7 +250,7 @@ instance (Eq t, PrimBytes t) => Eq (ArrayBase t ds) where
 
 -- | Implement partial ordering for `>`, `<`, `>=`, `<=`
 --     and lexicographical ordering for `compare`
-instance (Ord t, PrimBytes t) => Ord (ArrayBase t ds)  where
+instance Ord t => Ord (ArrayBase t ds)  where
     {-# SPECIALIZE instance Ord (ArrayBase Float ds)  #-}
     {-# SPECIALIZE instance Ord (ArrayBase Double ds) #-}
     {-# SPECIALIZE instance Ord (ArrayBase Int ds)    #-}
@@ -287,10 +285,10 @@ instance (Ord t, PrimBytes t) => Ord (ArrayBase t ds)  where
     max = zipV max
     {-# INLINE max #-}
 
-instance (Dimensions ds, PrimBytes t, Show t)
+instance (Dimensions ds, Show t)
       => Show (ArrayBase t ds) where
   show x = case dims @_ @ds of
-    U -> "{ " ++ show (ix# 0# x) ++ " }"
+    U -> "{ " ++ show (ix U x) ++ " }"
     Dim :* U -> ('{' :) . drop 1 $
                     foldr (\i s -> ", " ++ show (ix i x) ++ s) " }"
                             [minBound .. maxBound]
@@ -330,7 +328,7 @@ instance {-# OVERLAPPABLE #-} Bounded t => Bounded (ArrayBase t ds) where
     maxBound = ArrayBase (# maxBound | #)
     minBound = ArrayBase (# minBound | #)
 
-instance (Num t, PrimBytes t) => Num (ArrayBase t ds)  where
+instance Num t => Num (ArrayBase t ds)  where
     {-# SPECIALIZE instance Num (ArrayBase Float ds)  #-}
     {-# SPECIALIZE instance Num (ArrayBase Double ds) #-}
     {-# SPECIALIZE instance Num (ArrayBase Int ds)    #-}
@@ -358,7 +356,7 @@ instance (Num t, PrimBytes t) => Num (ArrayBase t ds)  where
     fromInteger i = ArrayBase (# fromInteger i | #)
     {-# INLINE fromInteger #-}
 
-instance (Fractional t, PrimBytes t) => Fractional (ArrayBase t ds)  where
+instance Fractional t => Fractional (ArrayBase t ds)  where
     {-# SPECIALIZE instance Fractional (ArrayBase Float ds)  #-}
     {-# SPECIALIZE instance Fractional (ArrayBase Double ds) #-}
     (/) = zipV (/)
@@ -369,7 +367,7 @@ instance (Fractional t, PrimBytes t) => Fractional (ArrayBase t ds)  where
     {-# INLINE fromRational #-}
 
 
-instance (Floating t, PrimBytes t) => Floating (ArrayBase t ds) where
+instance Floating t => Floating (ArrayBase t ds) where
     {-# SPECIALIZE instance Floating (ArrayBase Float ds)  #-}
     {-# SPECIALIZE instance Floating (ArrayBase Double ds) #-}
     pi = ArrayBase (# pi | #)
@@ -427,8 +425,8 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
     {-# INLINE broadcast #-}
 
     ix# i (ArrayBase a) = case a of
-      (# t | #)                 -> t
-      (# | (# off, _, arr #) #) -> indexArray arr (off +# i)
+      (# t | #)                    -> t
+      (# | (# off, _, arr, _ #) #) -> indexArray arr (off +# i)
     {-# INLINE ix# #-}
 
     gen# n f z0 = go (byteSize @t undefined *# n)
@@ -438,7 +436,7 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
              (# s1, mba #) -> case loop0 mba 0# z0 s1 of
                (# s2, z1 #) -> case unsafeFreezeByteArray# mba s2 of
                  (# s3, ba #) -> (# s3, (# z1, ba #) #)
-         ) of (# _, (# z1, ba #) #) -> (# z1, ArrayBase (# | (# 0# , n , ba #) #) #)
+         ) of (# _, (# z1, ba #) #) -> (# z1, ArrayBase (# | (# 0# , n , ba, E #) #) #)
         {-# NOINLINE go #-}
         loop0 mba i z s
           | isTrue# (i ==# n) = (# s, z #)
@@ -454,9 +452,9 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
                (writeArray mba i x
                  (loop1# n (\j -> writeArray mba j a) s1)
                )
-         ) of (# _, r #) -> ArrayBase (# | (# 0# , n , r #) #)
+         ) of (# _, r #) -> ArrayBase (# | (# 0# , n , r, E #) #)
         {-# NOINLINE go #-}
-    upd# _ i x (ArrayBase (# | (# offN , n , ba #) #)) = go (byteSize x)
+    upd# _ i x (ArrayBase (# | (# offN , n , ba, E #) #)) = go (byteSize x)
       where
         go tbs = case runRW#
          ( \s0 -> case newByteArray# (tbs *# n) s0 of
@@ -464,21 +462,21 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
                (writeArray mba i x
                  (copyByteArray# ba (offN *# tbs) mba 0# (tbs *# n) s1)
                )
-         ) of (# _, r #) -> ArrayBase (# | (# 0# , n , r #) #)
+         ) of (# _, r #) -> ArrayBase (# | (# 0# , n , r, E #) #)
         {-# NOINLINE go #-}
     {-# INLINE upd# #-}
 
     elemOffset (ArrayBase a) = case a of
-      (# _ | #)               -> 0#
-      (# | (# off, _, _ #) #) -> off
+      (# _ | #)                  -> 0#
+      (# | (# off, _, _, _ #) #) -> off
     {-# INLINE elemOffset #-}
 
     elemSize0 (ArrayBase a) = case a of
-      (# _ | #)             -> 0#
-      (# | (# _, n, _ #) #) -> n
+      (# _ | #)                -> 0#
+      (# | (# _, n, _, _ #) #) -> n
     {-# INLINE elemSize0 #-}
 
-    fromElems off n ba = ArrayBase (# | (# off , n , ba #) #)
+    fromElems off n ba = ArrayBase (# | (# off , n , ba, E #) #)
     {-# INLINE fromElems #-}
 
 
@@ -488,10 +486,10 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
 --------------------------------------------------------------------------------
 
 
-ix :: (PrimBytes t, Dimensions ds) => Idxs ds -> ArrayBase t ds -> t
+ix :: Dimensions ds => Idxs ds -> ArrayBase t ds -> t
 ix i (ArrayBase a) = case a of
   (# t | #)  -> t
-  (# | (# off, _, arr #) #) -> case fromEnum i of
+  (# | (# off, _, arr, E #) #) -> case fromEnum i of
     I# i# -> indexArray arr (off +# i#)
 {-# INLINE ix #-}
 
