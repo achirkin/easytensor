@@ -1,0 +1,50 @@
+name:                dimensions
+version:             2.0.0.0
+github:              "achirkin/easytensor/dimensions"
+license:             BSD3
+author:              "Artem Chirkin"
+maintainer:          "achirkin@users.noreply.github.com"
+copyright:           "Copyright: (c) 2019 Artem Chirkin"
+synopsis:            Safe type-level dimensionality for multidimensional data.
+category:            Math, Geometry
+description:         Safe type-level dimensionality for multidimensional data.
+                     Please see the README on GitHub at <https://github.com/achirkin/easytensor#readme>
+
+flags:
+
+  unsafeindices:
+    description:
+      Disable bound checks on Idx and Idxs types.
+    default: false
+    manual: true
+
+
+ghc-options:
+  - -Wall
+  - -Wcompat
+  - -Wtabs
+  - -Wmonomorphism-restriction
+  - -Wmissing-local-signatures
+  - -Wmissing-home-modules
+  - -Widentities
+  - -Wredundant-constraints
+
+dependencies:
+  - base >= 4.10 && < 5
+
+library:
+  source-dirs: src
+  when:
+  - condition: flag(unsafeindices)
+    cpp-options: -DUNSAFE_INDICES
+
+tests:
+
+  dimensions-test:
+    main:                Spec.hs
+    source-dirs:         test
+    dependencies:
+    - base
+    - Cabal
+    - QuickCheck
+    - dimensions
