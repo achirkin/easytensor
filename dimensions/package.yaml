@@ -6,7 +6,7 @@ author:              "Artem Chirkin"
 maintainer:          "achirkin@users.noreply.github.com"
 copyright:           "Copyright: (c) 2019 Artem Chirkin"
 synopsis:            Safe type-level dimensionality for multidimensional data.
-category:            Math, Geometry
+category:            math, geometry
 description:         Safe type-level dimensionality for multidimensional data.
                      Please see the README on GitHub at <https://github.com/achirkin/easytensor#readme>
 
@@ -34,6 +34,7 @@ dependencies:
 
 library:
   source-dirs: src
+  other-modules: []
   when:
   - condition: flag(unsafeindices)
     cpp-options: -DUNSAFE_INDICES

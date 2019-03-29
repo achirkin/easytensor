@@ -1,0 +1,37 @@
+name:                easytensor-opencv
+version:             2.0.0.0
+github:              "achirkin/easytensor/easytensor-opencv"
+license:             BSD3
+author:              "Artem Chirkin"
+maintainer:          "achirkin@users.noreply.github.com"
+copyright:           "Copyright: (c) 2019 Artem Chirkin"
+synopsis:            Easytensor compatibility with opencv.
+category:            math, geometry, bsd3, graphics, library, opencv
+description:
+    Instances and functions for conversion between easytensor DataFrame
+    and opencv Mat types.
+
+ghc-options:
+  - -Wall
+  - -Wcompat
+  - -Wtabs
+  - -Wmonomorphism-restriction
+  - -Wmissing-local-signatures
+  - -Wmissing-home-modules
+  - -Widentities
+  - -Wredundant-constraints
+
+dependencies:
+  - base >= 4.10 && < 5
+  - dimensions >= 2 && < 3
+  - easytensor >= 2 && < 3
+  - opencv >= 0.0.2.1 && < 0.0.3
+  - inline-c -any
+  - inline-c-cpp -any
+
+pkg-config-dependencies:
+  - opencv
+
+library:
+  source-dirs: src
+  other-modules: []

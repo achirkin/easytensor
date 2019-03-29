@@ -6,7 +6,7 @@ author:              "Artem Chirkin"
 maintainer:          "achirkin@users.noreply.github.com"
 copyright:           "Copyright: (c) 2019 Artem Chirkin"
 synopsis:            Pure, type-indexed haskell vector, matrix, and tensor library.
-category:            Math, Geometry
+category:            math, geometry
 description:
     Pure, type-indexed haskell vector, matrix, and tensor library.
     Features dimensionality type-checking for all operations.
@@ -35,7 +35,7 @@ ghc-options:
 
 dependencies:
   - base >= 4.10 && < 5
-  - dimensions >= 2
+  - dimensions >= 2 && < 3
 
 library:
   source-dirs: src
@@ -45,7 +45,6 @@ library:
   - Numeric.Quaternion.Class
   - Numeric.Quaternion.QDouble
   - Numeric.Quaternion.QFloat
-  ghc-options: -O2
   when:
   - condition: flag(unsafeindices)
     cpp-options: -DUNSAFE_INDICES
