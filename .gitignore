@@ -15,6 +15,7 @@ dist
 */.vscode
 dist-newstyle
 .ghc.*
+*.cabal
 
 cabal.config
 *.o
