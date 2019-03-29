@@ -1,0 +1,72 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: e6004404686627b08d8f1390eec73b41cba510e3d7fee9727a5e89eaa63ca072
+
+name:           dimensions
+version:        2.0.0.0
+synopsis:       Safe type-level dimensionality for multidimensional data.
+description:    Safe type-level dimensionality for multidimensional data. Please see the README on GitHub at <https://github.com/achirkin/easytensor#readme>
+category:       Math, Geometry
+homepage:       https://github.com/achirkin/easytensor#readme
+bug-reports:    https://github.com/achirkin/easytensor/issues
+author:         Artem Chirkin
+maintainer:     achirkin@users.noreply.github.com
+copyright:      Copyright: (c) 2019 Artem Chirkin
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+
+source-repository head
+  type: git
+  location: https://github.com/achirkin/easytensor
+  subdir: dimensions
+
+flag unsafeindices
+  description: Disable bound checks on Idx and Idxs types.
+  manual: True
+  default: False
+
+library
+  exposed-modules:
+      Numeric.Dim
+      Numeric.Dimensions
+      Numeric.Dimensions.Dims
+      Numeric.Dimensions.Fold
+      Numeric.Dimensions.Idxs
+      Numeric.Tuple
+      Numeric.Tuple.Lazy
+      Numeric.Tuple.Strict
+      Numeric.Type.Evidence
+      Numeric.Type.List
+      Numeric.TypedList
+  other-modules:
+      Paths_dimensions
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wcompat -Wtabs -Wmonomorphism-restriction -Wmissing-local-signatures -Wmissing-home-modules -Widentities -Wredundant-constraints
+  build-depends:
+      base >=4.10 && <5
+  if flag(unsafeindices)
+    cpp-options: -DUNSAFE_INDICES
+  default-language: Haskell2010
+
+test-suite dimensions-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Numeric.Dimensions.DimsTest
+      Numeric.DimTest
+      Paths_dimensions
+  hs-source-dirs:
+      test
+  ghc-options: -Wall -Wcompat -Wtabs -Wmonomorphism-restriction -Wmissing-local-signatures -Wmissing-home-modules -Widentities -Wredundant-constraints
+  build-depends:
+      Cabal
+    , QuickCheck
+    , base
+    , dimensions
+  default-language: Haskell2010
