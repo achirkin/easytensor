@@ -15,6 +15,7 @@
 {-# LANGUAGE Strict                #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeInType            #-}
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 {-# LANGUAGE ViewPatterns          #-}
@@ -66,10 +67,10 @@ module Numeric.Dim
   ) where
 
 
-import           GHC.Base           (Type)
-import           GHC.Exts           (Constraint, Proxy#, proxy#, unsafeCoerce#)
-import           GHC.TypeNats       as TN
-import           GHC.TypeLits       (TypeError, ErrorMessage (..))
+import           GHC.Base        (Type)
+import           GHC.Exts        (Constraint, Proxy#, proxy#, unsafeCoerce#)
+import           GHC.TypeLits    (ErrorMessage (..), TypeError)
+import           GHC.TypeNats    as TN
 
 import           Data.Constraint
 
@@ -112,7 +113,7 @@ newtype Dim (x :: k) = DimSing Word
 --
 --   Match against this pattern to bring `KnownDim` instance into scope
 --   when you don't know the kind of the @Dim@ parameter.
-pattern Dim :: forall (n :: k) . () => KnownDim n => Dim n
+pattern Dim :: forall (k :: Type) (n :: k) . () => KnownDim n => Dim n
 pattern Dim <- (dimEv -> Dict)
   where
     Dim = dim @_ @n

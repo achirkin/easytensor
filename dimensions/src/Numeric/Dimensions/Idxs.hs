@@ -268,6 +268,7 @@ listIdxs = unsafeCoerce#
 idxsFromWords :: forall ds . Dimensions ds => [Word] -> Maybe (Idx ds)
 idxsFromWords = unsafeCoerce# . go (listDims (dims @_ @ds))
   where
+    go :: [Word] -> [Word] -> Maybe [Word]
     go [] [] = Just []
     go (d : ds) (i : is)
       | i > 0 && i <= d = (i:) <$> go ds is
