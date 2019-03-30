@@ -172,13 +172,13 @@ infixl 5 $*
 infixl 5 !*
 
 
-instance All Semigroup xs => Semigroup (Tuple xs) where
+instance All Semigroup xs => Sem.Semigroup (Tuple xs) where
     U <> U = U
     (x :$ xs) <> (y :$ ys) = (x <> y) *$ ( xs <> ys)
 
 instance ( RepresentableList xs
          , All Semigroup xs
-         , All Monoid xs) => Monoid (Tuple xs) where
+         , All Monoid xs) => Mon.Monoid (Tuple xs) where
     mempty = go (tList @Type @xs)
       where
         go :: forall (ys :: [Type])

@@ -39,7 +39,7 @@ overDim U k offset _step = k U offset
 overDim (d :* ds) k offset step = overDim ds k' offset (di * step)
   where
     dw = dimVal d
-    di = fromIntegral dw
+    di = fromIntegral dw :: Int
     k' is = go 1
       where
         go i off
@@ -59,7 +59,7 @@ overDimReverse U k offset _step = k U offset
 overDimReverse (d :* ds) k offset step = overDimReverse ds k' offset (di * step)
   where
     dw = dimVal d
-    di = fromIntegral dw
+    di = fromIntegral dw :: Int
     k' is = go dw
       where
         go i off
@@ -78,7 +78,7 @@ overDim_ U k offset _step = k U offset
 overDim_ (d :* ds) k offset step = overDim_ ds k' offset (di * step)
   where
     dw = dimVal d
-    di = fromIntegral dw
+    di = fromIntegral dw :: Int
     k' is = go 1
       where
         go i off
@@ -131,7 +131,7 @@ overDimOff :: Monad m
 overDimOff ds k offset step = go (totalDim ds) offset
   where
     go i off
-          | i == 0 = return
+          | i == (0 :: Word) = return
           | otherwise = k off >=> go (i-1) (off+step)
 {-# INLINE overDimOff #-}
 
@@ -145,7 +145,7 @@ overDimOff_ :: Monad m
 overDimOff_ ds k offset step = go (totalDim ds) offset
   where
     go i off
-          | i == 0 = return ()
+          | i == (0 :: Word) = return ()
           | otherwise = k off >> go (i-1) (off+step)
 {-# INLINE overDimOff_ #-}
 
@@ -180,7 +180,7 @@ foldDim U k offset _step = k U offset
 foldDim (d :* ds) k offset step = foldDim ds k' offset (di * step)
   where
     dw = dimVal d
-    di = fromIntegral dw
+    di = fromIntegral dw :: Int
     k' is = go 1
       where
         go i off
@@ -199,7 +199,7 @@ foldDimReverse U k offset _step = k U offset
 foldDimReverse (d :* ds) k offset step = foldDimReverse ds k' offset (di * step)
   where
     dw = dimVal d
-    di = fromIntegral dw
+    di = fromIntegral dw :: Int
     k' is = go dw
       where
         go i off
@@ -236,7 +236,7 @@ foldDimOff :: Dims ds -- ^ Shape of a space
 foldDimOff ds k offset step = go (totalDim ds) offset
   where
     go i off
-          | i == 0 = id
+          | i == (0 :: Word) = id
           | otherwise = go (i-1) (off+step) . k off
 {-# INLINE foldDimOff #-}
 

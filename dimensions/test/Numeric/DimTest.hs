@@ -23,10 +23,10 @@
 --
 module Numeric.DimTest (runTests) where
 
-import           Test.QuickCheck       (quickCheckAll)
+import           Data.Constraint (Dict (..))
+import           Test.QuickCheck (quickCheckAll)
 
 import           Numeric.Dim
-import           Numeric.Type.Evidence
 
 
 -- | Try inference of type-level natural values via term-level binary functions.
@@ -42,7 +42,7 @@ testBinaryOp fTerm fType da db
   , True  <- fTerm a b == dimVal (fType da db)
       -- compare the term-level function and the type-level function results
       -- as regular word values.
-  , Just E <- sameDim dr (fType da db)
+  , Just Dict <- sameDim dr (fType da db)
       -- now the type system knows that @c ~ fType a b@ and
       -- we can use ordinary equality function (which is @const True@).
   = dr == fType da db

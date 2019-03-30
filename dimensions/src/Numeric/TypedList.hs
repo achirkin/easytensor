@@ -15,6 +15,7 @@
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE TypeFamilyDependencies    #-}
+{-# LANGUAGE TypeInType                #-}
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UndecidableInstances      #-}
 {-# LANGUAGE ViewPatterns              #-}
@@ -94,7 +95,7 @@ type DictList (c :: k -> Constraint) (xs :: [k])
 -- | Pattern matching against this causes `RepresentableList` instance
 --   come into scope.
 --   Also it allows constructing a term-level list out of a constraint.
-pattern TypeList :: forall (xs :: [k])
+pattern TypeList :: forall (k :: Type) (xs :: [k])
                   . () => RepresentableList xs => TypeList xs
 pattern TypeList <- (mkRTL -> Dict)
   where
@@ -102,26 +103,26 @@ pattern TypeList <- (mkRTL -> Dict)
 
 -- | Pattern matching against this allows manipulating lists of constraints.
 --   Useful when creating functions that change the shape of dimensions.
-pattern EvList :: forall (c :: k -> Constraint) (xs :: [k])
+pattern EvList :: forall (k :: Type) (c :: k -> Constraint) (xs :: [k])
                 . () => (All c xs, RepresentableList xs) => DictList c xs
 pattern EvList <- (mkEVL -> Dict)
   where
     EvList = _evList (tList @k @xs)
 
 -- | Zero-length type list
-pattern U :: forall (f :: k -> Type) (xs :: [k])
+pattern U :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
            . () => (xs ~ '[]) => TypedList f xs
 pattern U <- (patTL @f @xs -> PatCNil)
   where
     U = unsafeCoerce# []
 
 -- | Zero-length type list; synonym to `U`.
-pattern Empty :: forall (f :: k -> Type) (xs :: [k])
+pattern Empty :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
                . () => (xs ~ '[]) => TypedList f xs
 pattern Empty = U
 
 -- | Constructing a type-indexed list
-pattern (:*) :: forall (f :: k -> Type) (xs :: [k])
+pattern (:*) :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
               . ()
              => forall (y :: k) (ys :: [k])
               . (xs ~ (y ': ys)) => f y -> TypedList f ys -> TypedList f xs
@@ -129,7 +130,7 @@ pattern (:*) x xs = Cons x xs
 infixr 5 :*
 
 -- | Constructing a type-indexed list in the canonical way
-pattern Cons :: forall (f :: k -> Type) (xs :: [k])
+pattern Cons :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
               . ()
              => forall (y :: k) (ys :: [k])
               . (xs ~ (y ': ys)) => f y -> TypedList f ys -> TypedList f xs
@@ -138,7 +139,7 @@ pattern Cons x xs <- (patTL @f @xs -> PatCons x xs)
     Cons = Numeric.TypedList.cons
 
 -- | Constructing a type-indexed list from the other end
-pattern Snoc :: forall (f :: k -> Type) (xs :: [k])
+pattern Snoc :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
               . ()
              => forall (sy :: [k]) (y :: k)
               . (xs ~ (sy +: y)) => TypedList f sy -> f y -> TypedList f xs
@@ -147,7 +148,7 @@ pattern Snoc sx x <- (unsnocTL @f @xs -> PatSnoc sx x)
     Snoc = Numeric.TypedList.snoc
 
 -- | Reverse a typed list
-pattern Reverse :: forall (f :: k -> Type) (xs :: [k])
+pattern Reverse :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
                  . ()
                 => forall (sx :: [k])
                  . (xs ~ Reverse sx, sx ~ Reverse xs)
@@ -282,7 +283,7 @@ unreverseTL (TypedList xs)
 {-# INLINE unreverseTL #-}
 
 
-mkRTL :: forall (xs :: [k])
+mkRTL :: forall (k :: Type) (xs :: [k])
        . TypeList xs
       -> Dict (RepresentableList xs)
 mkRTL xs = reifyRepList xs Dict
@@ -325,13 +326,13 @@ intD :: Dim n -> Int
 intD = (fromIntegral :: Word -> Int) . unsafeCoerce#
 
 
-mkEVL :: forall (c :: k -> Constraint) (xs :: [k])
+mkEVL :: forall (k :: Type) (c :: k -> Constraint) (xs :: [k])
        . DictList c xs -> Dict (All c xs, RepresentableList xs)
 mkEVL U              = Dict
 mkEVL (Dict1 :* evs) = case mkEVL evs of Dict -> Dict
 
 
-_evList :: forall (c :: k -> Constraint) (xs :: [k])
+_evList :: forall (k :: Type) (c :: k -> Constraint) (xs :: [k])
         . All c xs => TypeList xs -> DictList c xs
 _evList U         = U
 _evList (_ :* xs) = case _evList xs of evs -> Dict1 :* evs

@@ -60,14 +60,14 @@ module Numeric.Dimensions.Dims
 
 
 
-import           GHC.Exts              (unsafeCoerce#, Constraint)
-import qualified Text.Read             as Read
+import           Data.Constraint
+import           GHC.Exts          (Constraint, unsafeCoerce#)
+import qualified Text.Read         as Read
 
 import           Numeric.Dim
-import           Numeric.Type.Evidence
 import           Numeric.Type.List
-import           Numeric.TypedList     (RepresentableList (..), TypeList,
-                                        TypedList (..), order, order', types)
+import           Numeric.TypedList (RepresentableList (..), TypeList,
+                                    TypedList (..), order, order', types)
 
 
 -- | Type-level dimensionality O(1).
@@ -87,7 +87,7 @@ type Dims (xs :: [k]) = TypedList Dim xs
 --   Thus, you can do arbitrary operations on your dims and use this pattern
 --   at any time to reconstruct the class instance at runtime.
 pattern Dims :: forall ds . () => Dimensions ds => Dims ds
-pattern Dims <- (dimsEv -> E)
+pattern Dims <- (dimsEv -> Dict)
   where
     Dims = dims @_ @ds
 
@@ -230,10 +230,10 @@ xDims' = xDims @xns (dims @Nat @ns)
 --   Note, this function works on @Nat@-indexed dimensions only,
 --   because @Dims '[XN x]@ does not have runtime evidence to infer @x@
 --   and `KnownDim x` does not imply `KnownDim (XN x)`.
-sameDims :: Dims (as :: [Nat]) -> Dims (bs :: [Nat]) -> Maybe (Evidence (as ~ bs))
+sameDims :: Dims (as :: [Nat]) -> Dims (bs :: [Nat]) -> Maybe (Dict (as ~ bs))
 sameDims as bs
   | listDims as == listDims bs
-    = Just (unsafeCoerce# (E @('[] ~ '[])))
+    = Just (unsafeCoerce# (Dict @('[] ~ '[])))
   | otherwise = Nothing
 {-# INLINE sameDims #-}
 
@@ -242,7 +242,7 @@ sameDims as bs
 --   same type-level Dimensions, or 'Nothing' @O(Length xs)@.
 sameDims' :: forall (as :: [Nat]) (bs :: [Nat]) p q
            . (Dimensions as, Dimensions bs)
-          => p as -> q bs -> Maybe (Evidence (as ~ bs))
+          => p as -> q bs -> Maybe (Dict (as ~ bs))
 sameDims' _ _ = sameDims (dims @Nat @as) (dims @Nat @bs)
 {-# INLINE sameDims' #-}
 
@@ -385,8 +385,8 @@ reifyDims ds k = unsafeCoerce# (MagicDims k :: MagicDims ds r) ds
 {-# INLINE reifyDims #-}
 newtype MagicDims ds r = MagicDims (Dimensions ds => r)
 
-dimsEv :: Dims ds -> Evidence (Dimensions ds)
-dimsEv ds = reifyDims ds E
+dimsEv :: Dims ds -> Dict (Dimensions ds)
+dimsEv ds = reifyDims ds Dict
 {-# INLINE dimsEv #-}
 
 

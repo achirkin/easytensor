@@ -1,10 +1,10 @@
 module Main (tests, main) where
 
-import           System.Exit
 import           Distribution.TestSuite
+import           System.Exit
 
-import qualified Numeric.DimTest
 import qualified Numeric.Dimensions.DimsTest
+import qualified Numeric.DimTest
 
 
 -- | Collection of tests in detailed-0.9 format
@@ -22,14 +22,14 @@ main :: IO ()
 main = do
     ts <- tests
     trs <- mapM (\(Test ti) ->(,) (name ti) <$> run ti) ts
-    case filter (not . isGood) trs of
+    case filter (not . isGood . snd) trs of
        [] -> exitSuccess
        xs -> do
         putStrLn $ "Failed tests: " ++ unwords (fmap fst xs)
         exitFailure
   where
-    isGood (_, Finished Pass) = True
-    isGood _ = False
+    isGood (Finished Pass) = True
+    isGood _               = False
 
 
 -- | Convert QuickCheck props into Cabal tests
