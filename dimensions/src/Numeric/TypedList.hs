@@ -25,8 +25,6 @@
 -- Copyright   :  (c) Artem Chirkin
 -- License     :  BSD3
 --
--- Maintainer  :  chirkin@arch.ethz.ch
---
 --
 -- Provide a type-indexed heterogeneous list type @TypedList@.
 -- Behind the facade, @TypedList@ is just a plain list of haskell pointers.

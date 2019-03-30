@@ -23,11 +23,9 @@ ghc-options:
   - -Wall
   - -Wcompat
   - -Wtabs
-  - -Wmonomorphism-restriction
   - -Wmissing-local-signatures
   - -Wmissing-home-modules
   - -Widentities
-  - -Wredundant-constraints
 
 dependencies:
   - base >= 4.10 && < 5

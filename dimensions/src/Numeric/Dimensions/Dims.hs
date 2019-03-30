@@ -1,6 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-orphans      #-}
 {-# LANGUAGE AllowAmbiguousTypes       #-}
-{-# LANGUAGE CPP                       #-}
 {-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
@@ -30,9 +29,8 @@
 -- Copyright   :  (c) Artem Chirkin
 -- License     :  BSD3
 --
--- Maintainer  :  chirkin@arch.ethz.ch
 --
--- Provides a data type `Dims ds` to keep dimension sizes
+-- Provides a data type @Dims ds@ to keep dimension sizes
 -- for multiple-dimensional data.
 -- Lower indices go first, i.e. assumed enumeration
 --          is i = i1 + i2*n1 + i3*n1*n2 + ... + ik*n1*n2*...*n(k-1).
@@ -70,17 +68,13 @@ import           Numeric.TypedList (RepresentableList (..), TypeList,
                                     TypedList (..), order, order', types)
 
 
--- | Type-level dimensionality O(1).
+-- | Type-level dimensionality.
 type Dims (xs :: [k]) = TypedList Dim xs
 
--- Starting from GHC 8.2, compiler supports specifying lists of complete
--- pattern synonyms.
-#if __GLASGOW_HASKELL__ >= 802
 {-# COMPLETE Dims #-}
 {-# COMPLETE XDims #-}
 {-# COMPLETE AsXDims #-}
 {-# COMPLETE KnownDims #-}
-#endif
 
 -- | @O(1)@ Pattern-matching against this constructor brings a `Dimensions`
 --   instance into the scope.
@@ -401,10 +395,6 @@ patXDims (Dn n :* xns) = case patXDims xns of
   PatXDims ns -> PatXDims (n :* ns)
 patXDims (Dx n :* xns) = case patXDims xns of
   PatXDims ns -> PatXDims (n :* ns)
-#if __GLASGOW_HASKELL__ >= 802
-#else
-patXDims _ = error "XDims/patXDims: impossible argument"
-#endif
 {-# INLINE patXDims #-}
 
 
@@ -417,10 +407,6 @@ patAsXDims :: Dims ns -> PatAsXDims ns
 patAsXDims U = PatAsXDims U
 patAsXDims (n@D :* ns) = case patAsXDims ns of
   PatAsXDims xns -> PatAsXDims (Dn n :* xns)
-#if __GLASGOW_HASKELL__ >= 802
-#else
-patAsXDims _ = error "AsXDims/patAsXDims: impossible argument"
-#endif
 {-# INLINE patAsXDims #-}
 
 
@@ -433,8 +419,4 @@ patKDims :: Dims ns -> PatKDims ns
 patKDims U = PatKDims
 patKDims (Dim :* ns) = case patKDims ns of
   PatKDims -> PatKDims
-#if __GLASGOW_HASKELL__ >= 802
-#else
-patKDims _ = error "Dims/patKDims: impossible argument"
-#endif
 {-# INLINE patKDims #-}
