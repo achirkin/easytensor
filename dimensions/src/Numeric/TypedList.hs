@@ -1,22 +1,23 @@
-{-# LANGUAGE AllowAmbiguousTypes    #-}
-{-# LANGUAGE CPP                    #-}
-{-# LANGUAGE DataKinds              #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE GADTs                  #-}
-{-# LANGUAGE KindSignatures         #-}
-{-# LANGUAGE MagicHash              #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE PatternSynonyms        #-}
-{-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE Rank2Types             #-}
-{-# LANGUAGE ScopedTypeVariables    #-}
-{-# LANGUAGE TypeApplications       #-}
-{-# LANGUAGE TypeFamilies           #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE TypeOperators          #-}
-{-# LANGUAGE UndecidableInstances   #-}
-{-# LANGUAGE ViewPatterns           #-}
+{-# LANGUAGE AllowAmbiguousTypes       #-}
+{-# LANGUAGE ConstraintKinds           #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE MagicHash                 #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE PatternSynonyms           #-}
+{-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE TypeFamilies              #-}
+{-# LANGUAGE TypeFamilyDependencies    #-}
+{-# LANGUAGE TypeOperators             #-}
+{-# LANGUAGE UndecidableInstances      #-}
+{-# LANGUAGE ViewPatterns              #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.TypedList
@@ -37,6 +38,7 @@
 module Numeric.TypedList
     ( TypedList (U, (:*), Empty, TypeList, EvList, Cons, Snoc, Reverse)
     , RepresentableList (..)
+    , Dict1 (..), DictList
     , TypeList, types, order, order'
     , cons, snoc
     , Numeric.TypedList.reverse
@@ -53,23 +55,18 @@ module Numeric.TypedList
     , module Numeric.Type.List
     ) where
 
-import           Control.Arrow         (first)
+import           Control.Arrow     (first)
+import           Data.Constraint
 import           Data.Proxy
-import           GHC.Base              (Type)
+import           GHC.Base          (Type)
 import           GHC.Exts
 
 import           Numeric.Dim
-import           Numeric.Type.Evidence
 import           Numeric.Type.List
 
 
 -- | Type-indexed list
 newtype TypedList (f :: (k -> Type)) (xs :: [k]) = TypedList [Any]
-
-
--- Starting from GHC 8.2, compiler supports specifying lists of complete
--- pattern synonyms.
-#if __GLASGOW_HASKELL__ >= 802
 {-# COMPLETE TypeList #-}
 {-# COMPLETE EvList #-}
 {-# COMPLETE U, (:*) #-}
@@ -79,15 +76,19 @@ newtype TypedList (f :: (k -> Type)) (xs :: [k]) = TypedList [Any]
 {-# COMPLETE Empty, Cons #-}
 {-# COMPLETE Empty, Snoc #-}
 {-# COMPLETE Reverse #-}
-#endif
+
 
 -- | A list of type proxies
 type TypeList (xs :: [k]) = TypedList Proxy xs
 
+-- | Same as `Dict`, but allows to separate constraint function from
+--   the type it is applied to.
+data Dict1 :: (k -> Constraint) -> k -> Type where
+    Dict1 :: c a => Dict1 c a
 
--- | A list of evidence for constraints
-type EvidenceList (c :: k -> Constraint) (xs :: [k])
-  = TypedList (Evidence' c) xs
+-- | A list of dicts for the same constraint over several types.
+type DictList (c :: k -> Constraint) (xs :: [k])
+  = TypedList (Dict1 c) xs
 
 
 -- | Pattern matching against this causes `RepresentableList` instance
@@ -95,15 +96,15 @@ type EvidenceList (c :: k -> Constraint) (xs :: [k])
 --   Also it allows constructing a term-level list out of a constraint.
 pattern TypeList :: forall (xs :: [k])
                   . () => RepresentableList xs => TypeList xs
-pattern TypeList <- (mkRTL -> E)
+pattern TypeList <- (mkRTL -> Dict)
   where
     TypeList = tList @k @xs
 
 -- | Pattern matching against this allows manipulating lists of constraints.
 --   Useful when creating functions that change the shape of dimensions.
 pattern EvList :: forall (c :: k -> Constraint) (xs :: [k])
-                . () => (All c xs, RepresentableList xs) => EvidenceList c xs
-pattern EvList <- (mkEVL -> E)
+                . () => (All c xs, RepresentableList xs) => DictList c xs
+pattern EvList <- (mkEVL -> Dict)
   where
     EvList = _evList (tList @k @xs)
 
@@ -274,17 +275,17 @@ data PatReverse f xs
 
 unreverseTL :: forall f xs . TypedList f xs -> PatReverse f xs
 unreverseTL (TypedList xs)
-  = case (unsafeCoerce# (E @(xs ~ xs, xs ~ xs))
-           :: Evidence (xs ~ Reverse sx, sx ~ Reverse xs)
+  = case (unsafeCoerce# (Dict @(xs ~ xs, xs ~ xs))
+           :: Dict (xs ~ Reverse sx, sx ~ Reverse xs)
          ) of
-      E -> PatReverse (unsafeCoerce# (Prelude.reverse xs))
+      Dict -> PatReverse (unsafeCoerce# (Prelude.reverse xs))
 {-# INLINE unreverseTL #-}
 
 
 mkRTL :: forall (xs :: [k])
        . TypeList xs
-      -> Evidence (RepresentableList xs)
-mkRTL xs = reifyRepList xs E
+      -> Dict (RepresentableList xs)
+mkRTL xs = reifyRepList xs Dict
 {-# INLINE mkRTL #-}
 
 
@@ -294,13 +295,14 @@ data PatSnoc f xs where
 
 unsnocTL :: forall f xs . TypedList f xs -> PatSnoc f xs
 unsnocTL (TypedList [])
-  = case (unsafeCoerce# (E @(xs ~ xs)) :: Evidence (xs ~ '[])) of
-      E -> PatSNil
+  = case (unsafeCoerce# (Dict @(xs ~ xs)) :: Dict (xs ~ '[])) of
+      Dict -> PatSNil
 unsnocTL (TypedList (x:xs))
-  = case (unsafeCoerce# (E @(xs ~ xs)) :: Evidence (xs ~ (Init xs +: Last xs))) of
-      E -> PatSnoc (unsafeCoerce# sy) (unsafeCoerce# y)
+  = case (unsafeCoerce# (Dict @(xs ~ xs)) :: Dict (xs ~ (Init xs +: Last xs))) of
+      Dict -> PatSnoc (unsafeCoerce# sy) (unsafeCoerce# y)
   where
     (sy, y) = unsnoc x xs
+    unsnoc :: Any -> [Any] -> ([Any], Any)
     unsnoc t []     = ([], t)
     unsnoc t (z:zs) = first (t:) (unsnoc z zs)
 {-# INLINE unsnocTL #-}
@@ -312,11 +314,11 @@ data PatCons f xs where
 
 patTL :: forall f xs . TypedList f xs -> PatCons f xs
 patTL (TypedList [])
-  = case (unsafeCoerce# (E @(xs ~ xs)) :: Evidence (xs ~ '[])) of
-      E -> PatCNil
+  = case (unsafeCoerce# (Dict @(xs ~ xs)) :: Dict (xs ~ '[])) of
+      Dict -> PatCNil
 patTL (TypedList (x : xs))
-  = case (unsafeCoerce# (E @(xs ~ xs)) :: Evidence (xs ~ (Head xs ': Tail xs))) of
-      E -> PatCons (unsafeCoerce# x) (unsafeCoerce# xs)
+  = case (unsafeCoerce# (Dict @(xs ~ xs)) :: Dict (xs ~ (Head xs ': Tail xs))) of
+      Dict -> PatCons (unsafeCoerce# x) (unsafeCoerce# xs)
 {-# INLINE patTL #-}
 
 intD :: Dim n -> Int
@@ -324,20 +326,12 @@ intD = (fromIntegral :: Word -> Int) . unsafeCoerce#
 
 
 mkEVL :: forall (c :: k -> Constraint) (xs :: [k])
-       . EvidenceList c xs -> Evidence (All c xs, RepresentableList xs)
-mkEVL U = E
-mkEVL (E' :* evs) = case mkEVL evs of E -> E
-#if __GLASGOW_HASKELL__ >= 802
-#else
-mkEVL _ = error "EvList/mkEVL: impossible argument"
-#endif
+       . DictList c xs -> Dict (All c xs, RepresentableList xs)
+mkEVL U              = Dict
+mkEVL (Dict1 :* evs) = case mkEVL evs of Dict -> Dict
 
 
 _evList :: forall (c :: k -> Constraint) (xs :: [k])
-        . All c xs => TypeList xs -> EvidenceList c xs
-_evList U = U
-_evList (_ :* xs) = case _evList xs of evs -> E' :* evs
-#if __GLASGOW_HASKELL__ >= 802
-#else
-_evList _ = error "EvList/_evList: impossible argument"
-#endif
+        . All c xs => TypeList xs -> DictList c xs
+_evList U         = U
+_evList (_ :* xs) = case _evList xs of evs -> Dict1 :* evs

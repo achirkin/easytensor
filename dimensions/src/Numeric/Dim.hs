@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
-{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE ExplicitNamespaces    #-}
@@ -103,13 +102,9 @@ type SomeDim = Dim ('XN 0)
 --   if you know the size of some dimensions, but do not know the size
 --   of others, use @XNat@s to represent them.
 newtype Dim (x :: k) = DimSing Word
--- Starting from GHC 8.2, compiler supports specifying lists of complete
--- pattern synonyms.
-#if __GLASGOW_HASKELL__ >= 802
 {-# COMPLETE D #-}
 {-# COMPLETE Dn, Dx #-}
 {-# COMPLETE Dim #-}
-#endif
 
 
 -- | Independently of the kind of type-level number,
@@ -304,9 +299,8 @@ constrain (DimSing x) | dimVal' @m > x = Nothing
 --   to avoid @AllowAmbiguousTypes@.
 constrainBy :: forall m x . Dim m -> Dim x -> Maybe (Dim (XN m))
 constrainBy D = constrain @m
-#if __GLASGOW_HASKELL__ < 802
-constrainBy _ = error "Dim: Impossible pattern."
-#endif
+{-# INLINE constrainBy #-}
+
 
 -- | Decrease minimum allowed size of a @Dim (XN x)@.
 relax :: forall (m :: Nat) (n :: Nat) . (MinDim m n) => Dim (XN n) -> Dim (XN m)
