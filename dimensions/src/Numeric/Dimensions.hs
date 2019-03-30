@@ -4,7 +4,6 @@
 -- Copyright   :  (c) Artem Chirkin
 -- License     :  BSD3
 --
--- Maintainer  :  chirkin@arch.ethz.ch
 --
 -- Provides a set of data types to define and traverse through multiple dimensions.
 -- The core types are `Dims ds` and `Idxs ds`, which fix dimension sizes at compile time.

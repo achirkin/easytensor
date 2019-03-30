@@ -7,7 +7,6 @@
 -- Copyright   :  (c) Artem Chirkin
 -- License     :  BSD3
 --
--- Maintainer  :  chirkin@arch.ethz.ch
 --
 -- Fold a function over all dimensions provided dimension indices or offsets.
 -- The main purpose of this module is to fold or traverse flat data arrays
@@ -40,10 +39,10 @@ overDim (d :* ds) k offset step = overDim ds k' offset (di * step)
   where
     dw = dimVal d
     di = fromIntegral dw :: Int
-    k' is = go 1
+    k' is = go 0
       where
         go i off
-          | i > dw = return
+          | i >= dw   = return
           | otherwise = k (Idx i :* is) off >=> go (i+1) (off+step)
 {-# INLINE overDim #-}
 
@@ -60,10 +59,10 @@ overDimReverse (d :* ds) k offset step = overDimReverse ds k' offset (di * step)
   where
     dw = dimVal d
     di = fromIntegral dw :: Int
-    k' is = go dw
+    k' is = go (dw - 1)
       where
         go i off
-          | i <= 0 = return
+          | i == 0    = k (Idx i :* is) off
           | otherwise = k (Idx i :* is) off >=> go (i-1) (off-step)
 {-# INLINE overDimReverse #-}
 
@@ -79,10 +78,10 @@ overDim_ (d :* ds) k offset step = overDim_ ds k' offset (di * step)
   where
     dw = dimVal d
     di = fromIntegral dw :: Int
-    k' is = go 1
+    k' is = go 0
       where
         go i off
-          | i > dw = return ()
+          | i >= dw   = return ()
           | otherwise = k (Idx i :* is) off >> go (i+1) (off+step)
 {-# INLINE overDim_ #-}
 
@@ -96,10 +95,10 @@ overDimIdx U k = k U
 overDimIdx (d :* ds) k = overDimIdx ds k'
   where
     dw = dimVal d
-    k' is = go 1
+    k' is = go 0
       where
         go i
-          | i > dw = return
+          | i >= dw   = return
           | otherwise = k (Idx i :* is) >=> go (i+1)
 {-# INLINE overDimIdx #-}
 
@@ -112,10 +111,10 @@ overDimIdx_ U k = k U
 overDimIdx_ (d :* ds) k = overDimIdx_ ds k'
   where
     dw = dimVal d
-    k' is = go 1
+    k' is = go 0
       where
         go i
-          | i > dw = return ()
+          | i >= dw   = return ()
           | otherwise = k (Idx i :* is) >> go (i+1)
 {-# INLINE overDimIdx_ #-}
 
@@ -160,10 +159,10 @@ overDimReverseIdx U k = k U
 overDimReverseIdx (d :* ds) k = overDimReverseIdx ds k'
   where
     dw = dimVal d
-    k' is = go dw
+    k' is = go (dw - 1)
       where
         go i
-          | i <= 0 = return
+          | i == 0    = k (Idx i :* is)
           | otherwise = k (Idx i :* is) >=> go (i-1)
 {-# INLINE overDimReverseIdx #-}
 
@@ -181,10 +180,10 @@ foldDim (d :* ds) k offset step = foldDim ds k' offset (di * step)
   where
     dw = dimVal d
     di = fromIntegral dw :: Int
-    k' is = go 1
+    k' is = go 0
       where
         go i off
-          | i > dw = id
+          | i >= dw   = id
           | otherwise = go (i+1) (off+step) . k (Idx i :* is) off
 {-# INLINE foldDim #-}
 
@@ -200,10 +199,10 @@ foldDimReverse (d :* ds) k offset step = foldDimReverse ds k' offset (di * step)
   where
     dw = dimVal d
     di = fromIntegral dw :: Int
-    k' is = go dw
+    k' is = go (dw - 1)
       where
         go i off
-          | i <= 0 = id
+          | i == 0    = k (Idx i :* is) off
           | otherwise = go (i-1) (off-step) . k (Idx i :* is) off
 {-# INLINE foldDimReverse #-}
 
@@ -218,10 +217,10 @@ foldDimIdx U k = k U
 foldDimIdx (d :* ds) k = foldDimIdx ds k'
   where
     dw = dimVal d
-    k' is = go 1
+    k' is = go 0
       where
         go i
-          | i > dw = id
+          | i >= dw   = id
           | otherwise = go (i+1) . k (Idx i :* is)
 {-# INLINE foldDimIdx #-}
 
@@ -249,11 +248,10 @@ foldDimReverseIdx :: Dims ds -- ^ Shape of a space
 foldDimReverseIdx U k = k U
 foldDimReverseIdx (d :* ds) k = foldDimReverseIdx ds k'
   where
-    dw = dimVal d
-    k' is = go dw
+    k' is = go (dimVal d - 1)
       where
         go i
-          | i <= 0 = id
+          | i == 0    = k (Idx i :* is)
           | otherwise = go (i-1) . k (Idx i :* is)
 {-# INLINE foldDimReverseIdx #-}
 
