@@ -6,6 +6,3 @@ packages:
     extra-dep: true
   - location: ../easytensor
     extra-dep: true
-
-extra-deps:
-  - vulkan-api-1.1.4.0
