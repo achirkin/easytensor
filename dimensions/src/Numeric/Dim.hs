@@ -25,11 +25,9 @@
 -- Copyright   :  (c) Artem Chirkin
 -- License     :  BSD3
 --
--- Maintainer  :  chirkin@arch.ethz.ch
---
--- This module is based on `GHC.TypeLits` and re-exports its functionality.
+-- This module is based on `GHC.TypeNats` and re-exports its functionality.
 -- It provides `KnownDim` class that is similar to `KnownNat`, but keeps
--- `Word`s instead of `Integer`s;
+-- `Word`s instead of `Natural`s;
 -- Also it provides `Dim` data type serving as a singleton
 -- suitable for recovering an instance of the `KnownDim` class.
 -- A set of utility functions provide inference functionality, so
@@ -42,6 +40,7 @@ module Numeric.Dim
     -- * Term level dimension
   , Dim (Dim, D, Dn, Dx), SomeDim
   , KnownDim (..), KnownXNatType (..)
+  , MinDim, FixedDim, Compared, SOrdering (..)
   , dimVal, dimVal', someDimVal
   , sameDim, sameDim'
   , compareDim, compareDim'
@@ -61,21 +60,19 @@ module Numeric.Dim
     --   The good side is the confidence that they behave exactly as
     --   their @Word@ counterparts.
   , plusDim, minusDim, minusDimM, timesDim, powerDim
-    -- * Re-export part of `GHC.TypeLits` for convenience
-  , TL.Nat, TL.CmpNat, type (TL.+), type (TL.-), type (TL.*), type (TL.^)
-  , MinDim, FixedDim, inferDimLE
+    -- * Re-export part of `GHC.TypeNats` for convenience
+  , TN.Nat, TN.CmpNat, type (TN.+), type (TN.-), type (TN.*), type (TN.^)
     -- * Inferring kind of type-level dimension
   , KnownDimKind (..), DimKind (..)
   ) where
 
 
-import           Data.Type.Bool
-import           Data.Type.Equality
 import           GHC.Base           (Type)
 import           GHC.Exts           (Constraint, Proxy#, proxy#, unsafeCoerce#)
-import           GHC.TypeLits       as TL
+import           GHC.TypeNats       as TN
+import           GHC.TypeLits       (TypeError, ErrorMessage (..))
 
-import           Numeric.Type.Evidence
+import           Data.Constraint
 
 
 -- | Either known or unknown at compile-time natural number
@@ -87,10 +84,10 @@ type N (n::Nat) = 'N n
 
 -- | Find out whether @XNat@ is of known or constrained type.
 data XNatType :: XNat -> Type where
-  -- | Given @XNat@ is known
-  Nt  :: XNatType ('N n)
-  -- | Given @XNat@ is constrained unknown
-  XNt :: XNatType ('XN m)
+    -- | Given @XNat@ is known
+    Nt  :: XNatType ('N n)
+    -- | Given @XNat@ is constrained unknown
+    XNt :: XNatType ('XN m)
 
 -- | Same as `SomeNat`
 type SomeDim = Dim ('XN 0)
@@ -121,14 +118,14 @@ newtype Dim (x :: k) = DimSing Word
 --   Match against this pattern to bring `KnownDim` instance into scope
 --   when you don't know the kind of the @Dim@ parameter.
 pattern Dim :: forall (n :: k) . () => KnownDim n => Dim n
-pattern Dim <- (dimEv -> E)
+pattern Dim <- (dimEv -> Dict)
   where
     Dim = dim @_ @n
 
 
 -- | Same as @Dim@ pattern, but constrained to @Nat@ kind.
 pattern D :: forall (n :: Nat) . () => KnownDim n => Dim n
-pattern D <- (dimEv -> E)
+pattern D <- (dimEv -> Dict)
   where
     D = dim @_ @n
 
@@ -176,54 +173,71 @@ class KnownDim (n :: k) where
 
 -- | Find out the type of `XNat` constructor
 class KnownXNatType (n :: XNat) where
-  -- | Pattern-match against this to out the type of `XNat` constructor
-  xNatType :: XNatType n
+    -- | Pattern-match against this to out the type of `XNat` constructor
+    xNatType :: XNatType n
 
 instance KnownXNatType ('N n) where
-  xNatType = Nt
-  {-# INLINE xNatType #-}
+    xNatType = Nt
+    {-# INLINE xNatType #-}
 
 instance KnownXNatType ('XN n) where
-  xNatType = XNt
-  {-# INLINE xNatType #-}
+    xNatType = XNt
+    {-# INLINE xNatType #-}
 
 
--- | Similar to `natVal` from `GHC.TypeLits`, but returns `Word`.
+-- | Similar to `natVal` from `GHC.TypeNats`, but returns `Word`.
 dimVal :: Dim (x :: k) -> Word
 dimVal = unsafeCoerce#
 {-# INLINE dimVal #-}
 
--- | Similar to `natVal` from `GHC.TypeLits`, but returns `Word`.
+-- | Similar to `natVal` from `GHC.TypeNats`, but returns `Word`.
 dimVal' :: forall n . KnownDim n => Word
 dimVal' = unsafeCoerce# (dim @_ @n)
 {-# INLINE dimVal' #-}
 
 -- | Friendly error message if `m <= n` constraint is not satisfied.
---   Use this type family instead of @(<=)@ if possible
---   or try `inferDimLE` function as the last resort.
 type family MinDim (m :: Nat) (n :: Nat) :: Constraint where
-  MinDim m n =
-    If (CmpNat m n == 'GT)
-       (TypeError
-         ('Text "Minimum Dim size constraint ("
-            ':<>: 'ShowType m
-            ':<>: 'Text " <= "
-            ':<>: 'ShowType n
-            ':<>: 'Text ") is not satisfied."
-         ':$$: 'Text "Minimum Dim: " ':<>: 'ShowType m
-         ':$$: 'Text " Actual Dim: " ':<>: 'ShowType n
-         ) :: Constraint
-       )
-       (m <= n)
+  MinDim m n = Compared
+    (CmpNat m n)
+    (() :: Constraint)
+    (() :: Constraint)
+    (TypeError
+      ('Text "Minimum Dim size constraint ("
+          ':<>: 'ShowType m
+          ':<>: 'Text " <= "
+          ':<>: 'ShowType n
+          ':<>: 'Text ") is not satisfied."
+        ':$$: 'Text "Minimum Dim: " ':<>: 'ShowType m
+        ':$$: 'Text " Actual Dim: " ':<>: 'ShowType n
+      )
+    )
+
+-- | Act upon the result of some type-level comparison
+type family Compared
+      (c :: Ordering)
+      (lt :: k)
+      (eq :: k)
+      (gt :: k) :: k where
+    Compared 'LT lt _  _  = lt
+    Compared 'EQ _  eq _  = eq
+    Compared 'GT _  _  gt = gt
+
+-- | Singleton-style version of `Ordering`.
+--   Pattern-match againts its constructor to witness the result of
+--   type-level comparison.
+data SOrdering :: Ordering -> Type where
+    SLT :: SOrdering 'LT
+    SEQ :: SOrdering 'EQ
+    SGT :: SOrdering 'GT
 
 -- | Constraints given by an XNat type on possible values of a Nat hidden inside.
 type family FixedDim (x :: XNat) (n :: Nat) :: Constraint where
-  FixedDim ('N a)  b = a ~ b
-  FixedDim ('XN m) b = MinDim m b
+    FixedDim ('N a)  b = a ~ b
+    FixedDim ('XN m) b = MinDim m b
 
 instance {-# OVERLAPPABLE #-} KnownNat n => KnownDim n where
     {-# INLINE dim #-}
-    dim = DimSing (fromInteger (natVal' (proxy# :: Proxy# n)))
+    dim = DimSing (fromIntegral (TN.natVal' (proxy# :: Proxy# n)))
 
 instance {-# OVERLAPPING #-} KnownDim 0  where
   { {-# INLINE dim #-}; dim = DimSing 0 }
@@ -272,7 +286,7 @@ instance KnownDim n => KnownDim ('N n) where
     {-# INLINE dim #-}
     dim = unsafeCoerce# (dim @Nat @n)
 
--- | Similar to `someNatVal` from `GHC.TypeLits`.
+-- | Similar to `someNatVal` from `GHC.TypeNats`.
 someDimVal :: Word -> SomeDim
 someDimVal = unsafeCoerce#
 {-# INLINE someDimVal #-}
@@ -307,9 +321,9 @@ relax = unsafeCoerce#
 --   because @Dim (XN x)@ does not have runtime evidence to infer @x@
 --   and `KnownDim x` does not imply `KnownDim (XN x)`.
 sameDim :: forall (x :: Nat) (y :: Nat)
-         . Dim x -> Dim y -> Maybe (Evidence (x ~ y))
+         . Dim x -> Dim y -> Maybe (Dict (x ~ y))
 sameDim (DimSing a) (DimSing b)
-  | a == b    = Just (unsafeCoerce# (E @(x ~ x)))
+  | a == b    = Just (unsafeCoerce# (Dict @(x ~ x)))
   | otherwise = Nothing
 {-# INLINE sameDim #-}
 
@@ -317,19 +331,29 @@ sameDim (DimSing a) (DimSing b)
 --   was instantiated with the same type-level numbers, or Nothing.
 sameDim' :: forall (x :: Nat) (y :: Nat) p q
           . (KnownDim x, KnownDim y)
-         => p x -> q y -> Maybe (Evidence (x ~ y))
+         => p x -> q y -> Maybe (Dict (x ~ y))
 sameDim' _ _ = sameDim (dim @Nat @x) (dim @Nat @y)
 {-# INLINE sameDim' #-}
 
 -- | Ordering of dimension values.
-compareDim :: Dim a -> Dim b -> Ordering
-compareDim = unsafeCoerce# (compare :: Word -> Word -> Ordering)
+--
+--   Note: `CmpNat` forces type parameters to kind `Nat`;
+--         if you want to compare unknown `XNat`s, use `Ord` instance of `Dim`.
+compareDim :: Dim a -> Dim b -> SOrdering (CmpNat a b)
+compareDim a b
+  = case unsafeCoerce# (compare :: Word -> Word -> Ordering) a b of
+    LT -> unsafeCoerce# SLT
+    EQ -> unsafeCoerce# SEQ
+    GT -> unsafeCoerce# SGT
 {-# INLINE compareDim #-}
 
 
 -- | Ordering of dimension values.
+--
+--   Note: `CmpNat` forces type parameters to kind `Nat`;
+--         if you want to compare unknown `XNat`s, use `Ord` instance of `Dim`.
 compareDim' :: forall a b p q
-             . (KnownDim a, KnownDim b) => p a -> q b -> Ordering
+             . (KnownDim a, KnownDim b) => p a -> q b -> SOrdering (CmpNat a b)
 compareDim' _ _ = compareDim (dim @_ @a)  (dim @_ @b)
 {-# INLINE compareDim' #-}
 
@@ -347,7 +371,7 @@ instance Ord (Dim (n :: Nat)) where
     {-# INLINE compare #-}
 
 instance Ord (Dim (x :: XNat)) where
-    compare = compareDim
+    compare = unsafeCoerce# (compare :: Word -> Word -> Ordering)
     {-# INLINE compare #-}
 
 instance Show (Dim x) where
@@ -377,19 +401,14 @@ minusDimM (DimSing a) (DimSing b)
   | otherwise = Nothing
 {-# INLINE minusDimM #-}
 
-timesDim :: Dim n -> Dim m -> Dim ((TL.*) n m)
+timesDim :: Dim n -> Dim m -> Dim ((TN.*) n m)
 timesDim (DimSing a) (DimSing b) = unsafeCoerce# (a * b)
 {-# INLINE timesDim #-}
 
-powerDim :: Dim n -> Dim m -> Dim ((TL.^) n m)
+powerDim :: Dim n -> Dim m -> Dim ((TN.^) n m)
 powerDim (DimSing a) (DimSing b) = unsafeCoerce# (a ^ b)
 {-# INLINE powerDim #-}
 
-
--- | @MinDim@ implies @(<=)@, but this fact is not so clear to GHC.
---   This function assures the type system that the relation takes place.
-inferDimLE :: forall m n . MinDim m n => Evidence (m <= n)
-inferDimLE = unsafeCoerce# (E @(n <= n))
 
 
 -- | GADT to support `KnownDimKind` type class.
@@ -422,8 +441,8 @@ reifyDim d k = unsafeCoerce# (MagicDim k :: MagicDim d r) d
 {-# INLINE reifyDim #-}
 newtype MagicDim d r = MagicDim (KnownDim d => r)
 
-dimEv :: Dim d -> Evidence (KnownDim d)
-dimEv d = reifyDim d E
+dimEv :: Dim d -> Dict (KnownDim d)
+dimEv d = reifyDim d Dict
 {-# INLINE dimEv #-}
 
 data PatXDim (xn :: XNat) where
@@ -439,8 +458,8 @@ dimXNEv XNt xn@(DimSing k) = reifyDim dd (f dd xn)
     dd = DimSing @Nat @_ k
     f :: forall (d :: Nat) (m :: Nat)
        . KnownDim d => Dim d -> Dim ('XN m) -> PatXDim ('XN m)
-    f d _ = case ( unsafeCoerce# (E @((CmpNat m m == 'GT) ~ 'False, m <= m))
-                :: Evidence ((CmpNat m d == 'GT) ~ 'False, m <= d)
+    f d _ = case ( unsafeCoerce# (Dict @(MinDim m m))
+                :: Dict (MinDim m d)
                ) of
-      E -> PatXN d
+      Dict -> PatXN d
 {-# INLINE dimXNEv #-}
