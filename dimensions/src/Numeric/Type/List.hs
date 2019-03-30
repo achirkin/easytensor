@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP                    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE ExplicitNamespaces     #-}
 {-# LANGUAGE FlexibleContexts       #-}
@@ -18,10 +17,7 @@
 -- Copyright   :  (c) Artem Chirkin
 -- License     :  BSD3
 --
--- Maintainer  :  chirkin@arch.ethz.ch
---
 -- Provides type-level operations on lists.
---
 --
 --------------------------------------------------------------------------------
 
