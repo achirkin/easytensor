@@ -33,7 +33,11 @@ dependencies:
 
 library:
   source-dirs: src
-  other-modules: []
+  other-modules:
+  - Data.Type.List.InjectiveSnoc
+  - Data.Type.List.Internal
+  dependencies:
+  - ghc
   when:
   - condition: flag(unsafeindices)
     cpp-options: -DUNSAFE_INDICES

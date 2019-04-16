@@ -62,8 +62,8 @@ import           Data.Constraint
 import           GHC.Exts          (Constraint, unsafeCoerce#)
 import qualified Text.Read         as Read
 
+import           Data.Type.List
 import           Numeric.Dim
-import           Numeric.Type.List
 import           Numeric.TypedList (RepresentableList (..), TypeList,
                                     TypedList (..), order, order', types)
 

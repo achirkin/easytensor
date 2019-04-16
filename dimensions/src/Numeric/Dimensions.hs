@@ -19,13 +19,13 @@ module Numeric.Dimensions
   , module Numeric.Dimensions.Dims
   , module Numeric.Dimensions.Idxs
   , module Numeric.Dimensions.Fold
-  , module Numeric.Type.List
+  , module Data.Type.List
   , module Data.Constraint
   ) where
 
 import           Data.Constraint         (Dict (..))
+import           Data.Type.List
 import           Numeric.Dim
 import           Numeric.Dimensions.Dims
 import           Numeric.Dimensions.Fold
 import           Numeric.Dimensions.Idxs
-import           Numeric.Type.List
