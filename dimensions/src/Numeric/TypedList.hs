@@ -51,17 +51,17 @@ module Numeric.TypedList
     , Numeric.TypedList.concat
     , Numeric.TypedList.length
     , Numeric.TypedList.map
-    , module Numeric.Type.List
+    , module Data.Type.List
     ) where
 
-import           Control.Arrow     (first)
+import           Control.Arrow   (first)
 import           Data.Constraint
 import           Data.Proxy
-import           GHC.Base          (Type)
+import           GHC.Base        (Type)
 import           GHC.Exts
 
+import           Data.Type.List
 import           Numeric.Dim
-import           Numeric.Type.List
 
 
 -- | Type-indexed list

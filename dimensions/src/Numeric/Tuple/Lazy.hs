@@ -56,7 +56,7 @@ import           GHC.Generics      (Generic, Generic1)
 import qualified GHC.Read          as Read
 import qualified Text.Read         as Read
 
-import           Numeric.Type.List
+import           Data.Type.List
 import           Numeric.TypedList
 
 -- | This is an almost complete copy of `Data.Functor.Identity`
