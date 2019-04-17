@@ -210,13 +210,10 @@ instance All Eq xs => Eq (Tuple xs) where
     (/=) U U                 = False
     (/=) (x :* tx) (y :* ty) = x /= y || tx /= ty
 
--- | Ord instance of the Tuple implements inverse lexicorgaphic ordering.
---   That is, the last element in the tuple is the most significant one.
---
---   Note, this will never work on infinite-dimensional tuples!
+-- | Lexicorgaphic ordering; same as normal Haskell lists.
 instance (All Eq xs, All Ord xs) => Ord (Tuple xs) where
     compare U U                 = EQ
-    compare (x :* tx) (y :* ty) = compare tx ty <> compare x y
+    compare (x :* tx) (y :* ty) = compare x y <> compare tx ty
 
 instance All Show xs => Show (Tuple xs) where
     show U         = "U"

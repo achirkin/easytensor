@@ -15,6 +15,7 @@
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE Strict                     #-}
 {-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE UnboxedTuples              #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.Idxs
@@ -23,9 +24,10 @@
 --
 --
 -- Provides a data type Idx that enumerates through multiple dimensions.
--- Lower indices go first, i.e. assumed enumeration
---          is i = i1 + i2*n1 + i3*n1*n2 + ... + ik*n1*n2*...*n(k-1).
--- This is also to encourage column-first matrix enumeration and array layout.
+--
+-- Higher indices go first, i.e. assumed enumeration
+--          is i = i1*n1*n2*...*n(k-1) + ... + i(k-2)*n1*n2 + i(k-1)*n1 + ik
+-- This corresponds to row-first layout of matrices and multidimenional arrays.
 --
 -----------------------------------------------------------------------------
 
@@ -42,7 +44,9 @@ module Numeric.Dimensions.Idxs
 import           Control.Arrow           (first)
 import           Data.Data               (Data)
 import           Foreign.Storable        (Storable)
-import           GHC.Base
+import           GHC.Base                (Int (..), Word (..), int2Word#,
+                                          maxInt, plusWord2#, timesWord2#,
+                                          unsafeCoerce#, word2Int#)
 import           GHC.Enum
 import           GHC.Generics            (Generic, Generic1)
 
@@ -75,7 +79,7 @@ instance KnownDim n => Enum (Idx n) where
 #else
     succ x@(Idx i)
       | x /= maxBound = Idx (i + 1)
-      | otherwise = succError $ "Idx " ++ show (dim @_ @n)
+      | otherwise = succError $ showIdxType (dim @_ @n)
 #endif
     {-# INLINE succ #-}
 
@@ -84,7 +88,7 @@ instance KnownDim n => Enum (Idx n) where
 #else
     pred x@(Idx i)
       | x /= maxBound = Idx (i + 1)
-      | otherwise = predError $ "Idx " ++ show (dim @_ @n)
+      | otherwise = predError $ showIdxType (dim @_ @n)
 #endif
     {-# INLINE pred #-}
 
@@ -93,9 +97,10 @@ instance KnownDim n => Enum (Idx n) where
 #else
     toEnum i@(I# i#)
         | i >= 0 && i < d = unsafeCoerce# (W# (int2Word# i#))
-        | otherwise        = toEnumError ("Idx " ++ show d) i (0, d - 1)
+        | otherwise       = toEnumError (showIdxType di) i (0, d - 1)
       where
-        d = fromIntegral (unsafeCoerce# (dim @_ @n) :: Word)
+        di = dim @_ @n
+        d = fromIntegral (dimVal di :: Word)
 #endif
     {-# INLINE toEnum #-}
 
@@ -104,20 +109,19 @@ instance KnownDim n => Enum (Idx n) where
 #else
     fromEnum (Idx x@(W# w#))
         | x <= maxIntWord = I# (word2Int# w#)
-        | otherwise       = fromEnumError ("Idx " ++ show (dim @_ @n)) x
+        | otherwise       = fromEnumError (showIdxType (dim @_ @n)) x
         where
           maxIntWord = W# (case maxInt of I# i -> int2Word# i)
 #endif
     {-# INLINE fromEnum #-}
 
     enumFrom (Idx n)
-      = unsafeCoerce# (enumFromTo n (unsafeCoerce# (dim @_ @n) - 1))
+      = unsafeCoerce# (enumFromTo n (dimVal (dim @_ @n) - 1))
     {-# INLINE enumFrom #-}
     enumFromThen (Idx n0) (Idx n1)
-      = case compare n0 n1 of
-          LT -> unsafeCoerce# (enumFromThenTo n0 n1 (unsafeCoerce# (dim @_ @n) - 1))
-          EQ -> unsafeCoerce# (repeat n0)
-          GT -> unsafeCoerce# (enumFromThenTo n0 n1 0)
+      = unsafeCoerce# (enumFromThenTo n0 n1 lim)
+      where
+        lim = if n1 >= n0 then dimVal (dim @_ @n) - 1 else 0
     {-# INLINE enumFromThen #-}
     enumFromTo
       = unsafeCoerce# (enumFromTo :: Word -> Word -> [Word])
@@ -131,16 +135,17 @@ instance KnownDim n => Num (Idx n) where
 #ifdef UNSAFE_INDICES
     (+) = unsafeCoerce# ((+) :: Word -> Word -> Word)
 #else
-    (Idx a) + (Idx b)
-        | r >= d || r < a || r < b
+    (Idx a@(W# a#)) + b@(Idx (W# b#))
+        | ovf || r >= d
           = errorWithoutStackTrace
           $ "Num.(+){Idx " ++ show d ++ "}: sum of "
             ++ show a ++ " and " ++ show b
             ++ " is outside of index bounds."
         | otherwise = Idx r
       where
-        r = a + b
-        d = unsafeCoerce# (dim @_ @n)
+        (ovf, r) = case plusWord2# a# b# of
+          (# r2#, r1# #) -> ( W# r2# > 0 , W# r1# )
+        d = dimVal (dim @_ @n)
 #endif
     {-# INLINE (+) #-}
 
@@ -160,18 +165,17 @@ instance KnownDim n => Num (Idx n) where
 #ifdef UNSAFE_INDICES
     (*) = unsafeCoerce# ((*) :: Word -> Word -> Word)
 #else
-    (Idx 0) * (Idx _) = 0
-    (Idx _) * (Idx 0) = 0
-    (Idx a) * (Idx b)
-        | r >= d || r < a || r < b
+    (Idx a@(W# a#)) * b@(Idx (W# b#))
+        | ovf || r >= d
           = errorWithoutStackTrace
           $ "Num.(*){Idx " ++ show d ++ "}: product of "
             ++ show a ++ " and " ++ show b
             ++ " is outside of index bounds."
         | otherwise = Idx r
       where
-        r = a * b
-        d = unsafeCoerce# (dim @_ @n)
+        (ovf, r) = case timesWord2# a# b# of
+          (# r2#, r1# #) -> ( W# r2# > 0 , W# r1# )
+        d = dimVal (dim @_ @n)
 #endif
     {-# INLINE (*) #-}
 
@@ -241,7 +245,7 @@ listIdxs = unsafeCoerce#
 {-# INLINE listIdxs #-}
 
 
-idxsFromWords :: forall ds . Dimensions ds => [Word] -> Maybe (Idx ds)
+idxsFromWords :: forall ds . Dimensions ds => [Word] -> Maybe (Idxs ds)
 idxsFromWords = unsafeCoerce# . go (listDims (dims @_ @ds))
   where
     go :: [Word] -> [Word] -> Maybe [Word]
@@ -257,21 +261,20 @@ instance Eq (Idxs xs) where
     {-# INLINE (==) #-}
 
 -- | Compare indices by their importance in lexicorgaphic order
---   from the last dimension to the first dimension
---   (the last dimension is the most significant one) @O(Length xs)@.
+--   from the first dimension to the last dimension
+--   (the first dimension is the most significant one).
 --
 --   Literally,
 --
---   > compare a b = compare (reverse $ listIdxs a) (reverse $ listIdxs b)
+--   > compare a b = compare (listIdxs a) (listIdxs b)
 --
 --   This is the same @compare@ rule, as for `Dims`.
---   Another reason to reverse the list of indices is to have a consistent
---   behavior when calculating index offsets:
+--   This is also consistent with offsets:
 --
 --   > sort == sortOn fromEnum
 --
 instance Ord (Idxs xs) where
-    compare a b = compare (reverse $ listIdxs a) (reverse $ listIdxs b)
+    compare a b = compare (listIdxs a) (listIdxs b)
     {-# INLINE compare #-}
 
 
@@ -316,89 +319,133 @@ instance Dimensions ds => Bounded (Idxs ds) where
 
 instance Dimensions ds => Enum (Idxs ds) where
 
-    succ = go (dims @_ @ds)
-      where
-        go :: forall ns . Dims ns -> Idxs ns -> Idxs ns
-        go U U = succError $ "Idxs " ++ show (listDims $ dims @_ @ds)
-        go (d :* ds) (Idx i :* is)
-          | i + 1 == dimVal d = Idx 0 :* go ds is
-          | otherwise         = Idx (i+1) :* is
-    {-# INLINE succ #-}
-
-    pred = go (dims @_ @ds)
-      where
-        go :: forall ns . Dims ns -> Idxs ns -> Idxs ns
-        go U U = predError $ "Idxs " ++ show (listDims $ dims @_ @ds)
-        go (d :* ds) (Idx i :* is)
-          | i == 0    = Idx (dimVal d - 1) :* go ds is
-          | otherwise = Idx (i-1) :* is
-    {-# INLINE pred #-}
-
-    toEnum i = go dds $ fromIntegral i
+    succ idx = case go dds idx of
+        (True , _ ) -> succError $ showIdxsType dds
+        (False, i') -> i'
       where
         dds = dims @_ @ds
-        go :: forall ns . Dims ns -> Word -> Idxs ns
-        go U 0 = U
-        go U _ = toEnumError ("Idxs " ++ show (listDims dds))
-                             i (0, totalDim dds - 1)
-        go (d :* ds) off = case divMod off (dimVal d) of
-          (off', j) -> Idx j :* go ds off'
+        go :: forall ns . Dims ns -> Idxs ns -> (Bool, Idxs ns)
+        go U U = (True, U)
+        go (d :* ds) (Idx i :* is) = case go ds is of
+          (True , is')
+            | i + 1 == dimVal d -> (True , Idx  0    :* is')
+            | otherwise         -> (False, Idx (i+1) :* is')
+          (False, is')          -> (False, Idx  i    :* is')
+    {-# INLINE succ #-}
+
+    pred idx = case go dds idx of
+        (True , _ ) -> predError $ showIdxsType dds
+        (False, i') -> i'
+      where
+        dds = dims @_ @ds
+        go :: forall ns . Dims ns -> Idxs ns -> (Bool, Idxs ns)
+        go U U = (True, U)
+        go (d :* ds) (Idx i :* is) = case go ds is of
+          (True , is')
+            | i == 0    -> (True , Idx (dimVal d - 1) :* is')
+            | otherwise -> (False, Idx (i-1)          :* is')
+          (False, is')  -> (False, Idx  i             :* is')
+    {-# INLINE pred #-}
+
+    toEnum off0 = case go dds of
+        (0, i) -> i
+        _      -> toEnumError (showIdxsType dds) off0 (0, totalDim dds - 1)
+      where
+        dds = dims @_ @ds
+        go :: forall ns . Dims ns -> (Word, Idxs ns)
+        go  U = (fromIntegral off0, U)
+        go (d :* ds)
+          | (off , is) <- go ds
+          , (off', i ) <- quotRem off (dimVal d)
+              = (off', Idx i :* is)
     {-# INLINE toEnum #-}
 
-    fromEnum = fromIntegral . go 0 (dims @_ @ds)
+    fromEnum = fromIntegral . snd
+             . foldr f (1, 0)
+             . zip (listDims $ dims @_ @ds) . listIdxs
       where
-        go :: forall ns . Word -> Dims ns -> Idxs ns -> Word
-        go _ U U                     = 0
-        go m (d :* ds) (Idx i :* is) = m * i + go (m * dimVal d) ds is
+        f :: (Word, Word) -> (Word, Word) -> (Word, Word)
+        f (d, i) (td, off) = (d * td, off + td * i)
     {-# INLINE fromEnum #-}
 
-    enumFrom x = take (diffIdx (dims @_ @ds) maxBound x + 1) $ iterate succ x
+    enumFrom = unsafeCoerce# go True (dims @_ @ds)
+      where
+        go :: Bool -> [Word] -> [Word] -> [[Word]]
+        go b (d:ds) (i:is) =
+          [ i' : is' | (b', i') <- zip (b : repeat False)
+                                     $ enumFromTo (if b then i else 0) (d - 1)
+                     , is' <- go b' ds is ]
+        go _ _ _  = [[]]
     {-# INLINE enumFrom #-}
 
-    enumFromTo x y | x >= y    = take (diffIdx ds x y + 1) $ iterate pred x
-                   | otherwise = take (diffIdx ds y x + 1) $ iterate succ x
+    enumFromTo = unsafeCoerce# go True True (dims @_ @ds)
       where
-        ds = dims @_ @ds
+        go :: Bool -> Bool -> [Word] -> [Word] -> [Word] -> [[Word]]
+        go bl bu (d:ds) (x:xs) (y:ys) =
+          [ i : is | (bl', bu', i) <- prepapp bl bu
+                                    $ enumFromTo (if bl then x else 0)
+                                                 (if bu then y else d - 1)
+                   , is <- go bl' bu' ds xs ys ]
+        go _ _ _ _ _ = [[]]
+        prepapp _  _  []     = []
+        prepapp bl bu [i]    = [(bl, bu, i)]
+        prepapp bl bu (i:is) = (bl, False, i :: Word) : app bu is
+        app _  []     = []
+        app bu [i]    = [(False, bu, i :: Word)]
+        app bu (i:is) = (False, False, i) : app bu is
     {-# INLINE enumFromTo #-}
 
-    enumFromThen x x' = take n $ iterate (stepIdx ds dn) x
-      where
-        ds = dims @_ @ds
-        dn = diffIdx ds x' x
-        n  = 1 + if dn == 0
-                 then 0
-                 else if dn > 0
-                      then diffIdx ds maxBound x `div` dn
-                      else diffIdx ds x minBound `div` negate dn
+    enumFromThen x0 x1 = case compare x1 x0 of
+      EQ -> repeat x0
+      GT -> enumFromThenTo x0 x1 maxBound
+      LT -> enumFromThenTo x0 x1 minBound
     {-# INLINE enumFromThen #-}
 
-    enumFromThenTo x x' y = take n $ iterate (stepIdx ds dn) x
+    enumFromThenTo x0 x1 y = case dir of
+        EQ -> if allYs >= allX0s then repeat x0 else []
+        GT -> let (_, allDXs) = idxMinus allDs allX0s allX1s
+                  repeatStep is
+                    = if is <= allYs
+                      then is : case idxPlus allDs is allDXs of
+                        (0, is') -> repeatStep is'
+                        _        -> []
+                      else []
+              in unsafeCoerce# (repeatStep allX0s)
+        LT -> let (_, allDXs) = idxMinus allDs allX1s allX0s
+                  repeatStep is
+                    = if is >= allYs
+                      then is : case idxMinus allDs allDXs is of
+                        (0, is') -> repeatStep is'
+                        _        -> []
+                      else []
+              in unsafeCoerce# (repeatStep allX0s)
       where
-        ds = dims @_ @ds
-        dn = diffIdx ds x' x
-        n  = 1 + if dn == 0 then 0
-                            else diffIdx ds y x `div` dn
+        allDs  = listDims $ dims @_ @ds
+        allX0s = listIdxs x0
+        allX1s = listIdxs x1
+        allYs  = listIdxs y
+        dir    = compare allX1s allX0s -- succ or pred?
+        -- second arg minus first arg
+        idxMinus :: [Word] -> [Word] -> [Word] -> (Word, [Word])
+        idxMinus (d:ds) (a:as) (b:bs)
+          = let (one , xs ) = idxMinus ds as bs
+                (one', x  ) = quotRem (d + b - a - one) d
+            in  (1 - one', x : xs)
+        idxMinus _ _ _ = (0, [])
+        idxPlus :: [Word] -> [Word] -> [Word] -> (Word, [Word])
+        idxPlus (d:ds) (a:as) (b:bs)
+          = let (one , xs ) = idxPlus ds as bs
+                (one', x  ) = quotRem (a + b + one) d
+            in  (one', x : xs)
+        idxPlus _ _ _ = (0, [])
     {-# INLINE enumFromThenTo #-}
 
 
 
---------------------------------------------------------------------------------
+-- | Show type of Idxs (for displaying nice errors).
+showIdxsType :: Dims ns -> String
+showIdxsType ds = "Idxs '" ++ show (listDims ds)
 
-
-
--- | Offset difference of two indices @idx1 - idx2@
-diffIdx :: Dims xs -> Idxs xs -> Idxs xs -> Int
-diffIdx U U U = 0
-diffIdx (d :* ds) (Idx i1 :* is1) (Idx i2 :* is2)
-  = fromIntegral i1 - fromIntegral i2
-  + fromIntegral (dimVal d) * diffIdx ds is1 is2
-{-# INLINE diffIdx #-}
-
--- | Step dimension index by an Int offset
-stepIdx :: Dims ds -> Int -> Idxs ds -> Idxs ds
-stepIdx U _ U = U
-stepIdx (d :* ds) di (Idx i :* is)
-      = case divMod (di + fromIntegral i) (fromIntegral (dimVal d)) of
-         (0  , i') -> Idx (fromIntegral i') :* is
-         (di', i') -> Idx (fromIntegral i') :* stepIdx ds di' is
-{-# INLINE stepIdx #-}
+-- | Show type of Idx (for displaying nice errors).
+showIdxType :: Dim n -> String
+showIdxType d = "Idx '" ++ show d

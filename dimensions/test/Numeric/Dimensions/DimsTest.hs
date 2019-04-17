@@ -18,7 +18,6 @@ module Numeric.Dimensions.DimsTest (runTests) where
 
 import           Test.QuickCheck         (quickCheckAll)
 
-import           Numeric.Dim
 import           Numeric.Dimensions.Dims
 import qualified Numeric.TypedList       as TL
 
