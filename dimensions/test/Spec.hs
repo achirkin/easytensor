@@ -4,6 +4,7 @@ import           Distribution.TestSuite
 import           System.Exit
 
 import qualified Numeric.Dimensions.DimsTest
+import qualified Numeric.Dimensions.IdxsTest
 import qualified Numeric.DimTest
 
 
@@ -12,6 +13,7 @@ tests :: IO [Test]
 tests = return
   [ test "Dim"    Numeric.DimTest.runTests
   , test "Dims"   Numeric.Dimensions.DimsTest.runTests
+  , test "Idxs"   Numeric.Dimensions.IdxsTest.runTests
   ]
 
 

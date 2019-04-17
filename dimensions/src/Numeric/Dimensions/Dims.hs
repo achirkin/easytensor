@@ -32,8 +32,9 @@
 --
 -- Provides a data type @Dims ds@ to keep dimension sizes
 -- for multiple-dimensional data.
--- Lower indices go first, i.e. assumed enumeration
---          is i = i1 + i2*n1 + i3*n1*n2 + ... + ik*n1*n2*...*n(k-1).
+-- Higher indices go first, i.e. assumed enumeration
+--          is i = i1*n1*n2*...*n(k-1) + ... + i(k-2)*n1*n2 + i(k-1)*n1 + ik
+-- This corresponds to row-first layout of matrices and multidimenional arrays.
 --
 -----------------------------------------------------------------------------
 
@@ -48,7 +49,7 @@ module Numeric.Dimensions.Dims
   , xDims, xDims'
     -- * Type-level programming
     --   Provide type families to work with lists of dimensions (`[Nat]` or `[XNat]`)
-  , AsXDims, AsDims, FixedDims, KnownXNatTypes, type (:<), type (>:)
+  , AsXDims, AsDims, FixedDims, KnownXNatTypes
     -- * Re-export type list
   , RepresentableList (..), TypeList, types
   , order, order'
@@ -241,25 +242,22 @@ sameDims' _ _ = sameDims (dims @Nat @as) (dims @Nat @bs)
 {-# INLINE sameDims' #-}
 
 -- | Compare dimensions by their size in lexicorgaphic order
---   from the last dimension to the first dimension
---   (the last dimension is the most significant one).
+--   from the first dimension to the last dimension
+--   (the first dimension is the most significant one).
 --
 --   Literally,
 --
---   > compareDims a b = compare (reverse $ listDims a) (reverse $ listDims b)
+--   > compareDims a b = compare (listDims a) (listDims b)
+--
 compareDims :: Dims as -> Dims bs -> Ordering
-compareDims a b = compare (reverse $ listDims a) (reverse $ listDims b)
+compareDims a b = compare (listDims a) (listDims b)
 {-# INLINE compareDims #-}
 
 -- | Compare dimensions by their size in lexicorgaphic order
---   from the last dimension to the first dimension
---   (the last dimension is the most significant one) @O(Length xs)@.
+--   from the first dimension to the last dimension
+--   (the first dimension is the most significant one).
 --
---   Literally,
---
---   > compareDims a b = compare (reverse $ listDims a) (reverse $ listDims b)
---
---   This is the same @compare@ rule, as for `Idxs`.
+--   This is the same @compare@ rule, as for `Idxs` and normal Haskell lists.
 compareDims' :: forall as bs p q
               . (Dimensions as, Dimensions bs)
              => p as -> q bs -> Ordering
@@ -345,28 +343,6 @@ type family FixedDims (xns::[XNat]) (ns :: [Nat]) :: Constraint where
 
 -- | Know the structure of each dimension
 type KnownXNatTypes xns = All KnownXNatType xns
-
-
--- | Synonym for (:+) that treats Nat values 0 and 1 in a special way:
---   it preserves the property that all dimensions are greater than 1.
-type family (n :: Nat) :< (ns :: [Nat]) :: [Nat] where
-    0 :< _  = '[]
-    1 :< ns = ns
-    n :< ns = n :+ ns
-infixr 6 :<
-
--- | Synonym for (+:) that treats Nat values 0 and 1 in a special way:
---   it preserves the property that all dimensions are greater than 1.
-type family (ns :: [Nat]) >: (n :: Nat) :: [Nat] where
-    _  >: 0 = '[]
-    ns >: 1 = ns
-    ns >: n = ns +: n
-infixl 6 >:
-
-
-
-
-
 
 --------------------------------------------------------------------------------
 
