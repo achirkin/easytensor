@@ -64,7 +64,7 @@ import           Numeric.TypedList
 newtype Id a = Id { runId :: a }
     deriving ( Bits, Bounded, Data, Enum, Eq, FiniteBits, Floating, Fractional
              , Generic, Generic1, Integral, IsString, Ix, Monoid, Num, Ord
-             , Real, RealFrac, RealFloat , Semigroup, Storable, Traversable)
+             , Real, RealFrac, RealFloat, Semigroup, Storable, Traversable)
 
 
 instance (Read a) => Read (Id a) where
