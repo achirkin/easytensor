@@ -19,31 +19,31 @@ type SSuff = '[3,7]
 
 prop_IndexDimMax :: DataFrame Int SPref -> DataFrame Int SSuff -> Bool
 prop_IndexDimMax x y =
-   ((maxBound `inSpaceOf` y) !. z) == x
+   ((maxBound `inSpaceOf` x) !. z) == y
   where
-    z = ewgen x :: DataFrame Int SFull
+    z = ewgen y :: DataFrame Int SFull
 
-prop_IndexCustom1 :: DataFrame Word SPref -> Bool
-prop_IndexCustom1 x = (1:*3 !. z) == x
+prop_IndexCustom1 :: DataFrame Word SSuff -> Bool
+prop_IndexCustom1 x = (1:*3:*2 !. z) == x
   where
     z = ewgen x :: DataFrame Word SFull
 
+-- TODO:!
+-- prop_IndexCustom2 :: DataFrame Double SSuff -> Bool
+-- prop_IndexCustom2 x = (2:*2:*1 !. z) %* eye == x
+--   where
+--     z = ewgen x :: DataFrame Double SFull
 
-prop_IndexCustom2 :: DataFrame Double SPref -> Bool
-prop_IndexCustom2 x = (2:*2 !. z) %* eye == x
-  where
-    z = ewgen x :: DataFrame Double SFull
-
-prop_Foldlr :: DataFrame Double SPref -> Bool
+prop_Foldlr :: DataFrame Double SSuff -> Bool
 prop_Foldlr x =
     abs (ewfoldl (+) 10 z - ewfoldr @_ @SPref (+) 0 z - 10)
       <= fromScalar (zmax * 0.0001)
   where
     z = ewgen x :: DataFrame Double SFull
-    zmax = ewfoldl @Double @'[] @SFull (max . abs) 0.001 z
+    zmax = ewfoldl @Double @SFull @'[] (max . abs) 0.001 z
 
 prop_Ewmap :: DataFrame Double SFull -> Bool
-prop_Ewmap x = x * 2 == ewmap @_ @'[Head SFull] (*2) x
+prop_Ewmap x = x * 2 == ewmap @_  @_ @'[Last SFull] (*2) x
 
 prop_ProdTranspose :: DataFrame Double '[2,6] -> DataFrame Double '[6,7] -> Bool
 prop_ProdTranspose x y = transpose (x %* y) == transpose y %* transpose x

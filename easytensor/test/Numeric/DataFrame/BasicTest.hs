@@ -33,8 +33,8 @@ import           Test.QuickCheck
 
 prop_Comparisons :: SomeDataFrame '[Float, Float] -> Bool
 prop_Comparisons (SomeDataFrame (x :*: y :*: Z))
-  | E <- inferOrd x
-  , E <- inferFractional x
+  | Dict <- inferOrd x
+  , Dict <- inferFractional x
   = and
     [ abs x >= abs x / 2
     , abs x <= abs x + abs y
@@ -56,8 +56,8 @@ prop_Comparisons (SomeDataFrame (x :*: y :*: Z))
 
 prop_Numeric :: SomeDataFrame '[Int, Int] -> Bool
 prop_Numeric (SomeDataFrame (x :*: y :*: Z))
-  | E <- inferOrd x
-  , E <- inferNum x
+  | Dict <- inferOrd x
+  , Dict <- inferNum x
   = and
     [ x + x == 2 * x
     , x + y == y + x
@@ -70,8 +70,8 @@ prop_Numeric (SomeDataFrame (x :*: y :*: Z))
 
 prop_Floating :: SomeDataFrame '[Double, Double] -> Bool
 prop_Floating (SomeDataFrame (x :*: y :*: Z))
-  | E <- inferOrd x
-  , E <- inferFloating x
+  | Dict <- inferOrd x
+  , Dict <- inferFloating x
   , lx <- log (0.01 + abs x)
   , ly <- log (0.01 + abs y)
   , eps <- 0.001
