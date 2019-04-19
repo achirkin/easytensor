@@ -17,6 +17,11 @@ import           CoAxiom    (CoAxBranch (..), CoAxiom (..), mapAccumBranches)
 import           Data.Maybe (fromMaybe)
 import           GhcPlugins
 
+-- NB: check out
+--  https://github.com/ghc/ghc/blob/bf73419518ca550e85188616f860961c7e2a336b/compiler/typecheck/TcTypeNats.hs
+--  for further ideas.
+--  Maybe, I can use BuiltInSynFamily to do a lot of super cool stuff!
+
 -- | A small core plugin to make GHC think that @Snoc@ is injective
 plugin :: Plugin
 plugin = defaultPlugin

@@ -5,6 +5,9 @@
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
+
+{-# LANGUAGE TypeInType             #-}
+{-# LANGUAGE UndecidableInstances   #-}
 --------------------------------------------------------------------------------
 -- |
 -- Module      :  Data.Type.List.Internal
@@ -20,5 +23,5 @@ module Data.Type.List.Internal ( Snoc ) where
 
 -- | Appending a list on the other side.
 type family Snoc (xs :: [k]) (x :: k) = (ys :: [k]) where
-    Snoc '[]       y = '[y]
     Snoc (x ': xs) y = x ': Snoc xs y
+    Snoc '[]       y = '[y]
