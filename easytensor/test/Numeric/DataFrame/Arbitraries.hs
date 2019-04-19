@@ -30,24 +30,24 @@ instance (Arbitrary t, PrimBytes t, Dimensions ds)
         | -- First, we need to find out exact array implementation to use
           -- inside this DataFrame.
           -- We need to do that whenever exact value of ds is not known
-          E <- inferASing' @t @ds
+          Dict <- inferASing' @t @ds
           -- Then, we need to get basic byte manipulation type classes, such as
           -- PrimBytes and PrimArray.
-        , E <- inferPrim' @t @ds
+        , Dict <- inferPrim' @t @ds
           -- After that, GHC can infer all necessary fancy things like SubSpace
           -- to do complex operations on sub-dimensions of a DataFrame.
           --
           -- Note, we could put SubSpace into constraints of this instance as well.
           -- That would render the above lines unnecessary, but would make
           -- inference more difficult later.
-        = arbitrary >>= elementWise @_ @_ @ds f . ewgen . scalar
+        = arbitrary >>= elementWise @_ @ds @'[] f . ewgen . scalar
       where
         f :: Arbitrary a => Scalar a -> Gen (Scalar a)
         f _ = scalar <$> arbitrary
     shrink
-        | E <- inferASing' @t @ds
-        , E <- inferPrim' @t @ds
-        = elementWise @_ @_ @ds f
+        | Dict <- inferASing' @t @ds
+        , Dict <- inferPrim' @t @ds
+        = elementWise @_ @ds @'[] f
       where
         -- Unfortunately, Scalar is not a proper second-rank data type
         -- (it is just type alias for DataFrame t []).
@@ -127,7 +127,7 @@ instance (Arbitrary t, PrimBytes t)
       -- We also need to figure out an array implementation...
       case inferASing' @t @ds of
         -- ... and generating a random DataFrame becomes a one-liner
-        E -> SomeDataFrame <$> arbitrary @(DataFrame t ds)
+        Dict -> SomeDataFrame <$> arbitrary @(DataFrame t ds)
     shrink _ = []
 
 -- All same as above, just change constraints a bit
@@ -136,7 +136,7 @@ instance (All Arbitrary ts, All PrimBytes ts, RepresentableList ts)
     arbitrary = do
       SomeDims (Dims :: Dims ds) <- arbitrary
       case inferASing' @ts @ds of
-        E -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
+        Dict -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
     shrink _ = []
 
 instance ( Arbitrary t, PrimBytes t
@@ -145,7 +145,7 @@ instance ( Arbitrary t, PrimBytes t
     arbitrary = do
       XDims (_ :: Dims ds) <- arbitrary @(Dims xs)
       case inferASing' @t @ds of
-        E -> XFrame <$> arbitrary @(DataFrame t ds)
+        Dict -> XFrame <$> arbitrary @(DataFrame t ds)
     shrink (XFrame df) = XFrame <$> shrink df
 
 instance ( All Arbitrary ts, All PrimBytes ts, RepresentableList ts
@@ -154,5 +154,5 @@ instance ( All Arbitrary ts, All PrimBytes ts, RepresentableList ts
     arbitrary = do
       XDims (_ :: Dims ds) <- arbitrary @(Dims xs)
       case inferASing' @ts @ds of
-        E -> XFrame <$> arbitrary @(DataFrame ts ds)
+        Dict -> XFrame <$> arbitrary @(DataFrame ts ds)
     shrink (XFrame df) = XFrame <$> shrink df

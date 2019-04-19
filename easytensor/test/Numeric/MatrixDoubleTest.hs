@@ -12,7 +12,7 @@ module Numeric.MatrixDoubleTest (runTests) where
 
 import           Data.Fixed
 import           Numeric.DataFrame
-import           Numeric.DataFrame.Arbitraries ()
+import           Numeric.DataFrame.Arbitraries          ()
 import           Numeric.DataFrame.Internal.Array.Class
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
@@ -21,7 +21,8 @@ import           Test.QuickCheck
 eps :: Scd
 eps = 0.0000001
 
-dropW :: (SubSpace t '[] '[3] '[3], SubSpace t '[] '[4] '[4]) => Vector t 4 -> Vector t 3
+dropW :: (SubSpace t '[3] '[] '[3], SubSpace t '[4] '[] '[4])
+      => Vector t 4 -> Vector t 3
 dropW v | (x,y,z,_) <- unpackV4 v = vec3 x y z
 
 approxEq ::
@@ -33,7 +34,7 @@ approxEq ::
     PrimArray Double (DataFrame Double ds)
   ) =>
   DataFrame Double ds -> DataFrame Double ds -> Bool
-approxEq a b = (eps >=) . ewfoldl @_ @'[] max 0 . abs $ a - b
+approxEq a b = (eps >=) . ewfoldl @_ @_ @'[] max 0 . abs $ a - b
 infix 4 `approxEq`
 
 prop_detTranspose :: Matrix '[Double, Double] (XN 2) (XN 2) -> Bool
@@ -50,8 +51,8 @@ prop_inverse (XFrame (x :*: y :*: Z))
   | -- infer KnownDim for both dimensions of matrix x (and y)
     (KnownDims :: Dims ns) <- dims `inSpaceOf` x
     -- cumbersose inverse instance requires PrimBytes (Vector t n)
-  , E <- inferASing' @Double @'[Head ns]
-  , E <- inferPrim' @Double @'[Head ns]
+  , Dict <- inferASing' @Double @'[Head ns]
+  , Dict <- inferPrim' @Double @'[Head ns]
   = let m = diag base + x %* transpose y
         mi = inverse m
         err a b = ewfoldl max 0 (abs (b - a)) / base
@@ -64,8 +65,8 @@ prop_LU (XFrame (x :*: y :*: Z))
   | -- infer KnownDim for both dimensions of matrix x (and y)
     (KnownDims :: Dims ns) <- dims `inSpaceOf` x
     -- cumbersose inverse instance requires PrimBytes (Vector t n)
-  , E <- inferASing' @Double @'[Head ns]
-  , E <- inferPrim' @Double @'[Head ns]
+  , Dict <- inferASing' @Double @'[Head ns]
+  , Dict <- inferPrim' @Double @'[Head ns]
   = let m = diag base + x %* transpose y
         f = lu m
         err a b = ewfoldl max 0 (abs (b - a)) / base
@@ -74,7 +75,7 @@ prop_LU (XFrame (x :*: y :*: Z))
 
 prop_translate3vs4 :: Vector Double 4 -> Bool
 prop_translate3vs4 v = translate4 v == translate3 (dropW v)
-  
+
 prop_translate4 :: Vector Double 4 -> Vector Double 3 -> Bool
 prop_translate4 a b = translate4 a %* toHomPoint b == toHomPoint (dropW a + b)
 
