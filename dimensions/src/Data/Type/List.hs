@@ -83,12 +83,8 @@ type family Drop (n :: Nat) (xs :: [k]) :: [k] where
 -- | Append two lists.
 type family Concat (as :: [k]) (bs :: [k]) :: [k] where
     Concat '[]        bs       = bs
+    Concat  as       '[]       = as
     Concat (a ': as)  bs       = a ': Concat as bs
-    -- Note:
-    --   I do not add more shortcut equations to make this type function
-    --   lazy in the second argument.
-    -- Concat  as       '[]       = as
-    -- Concat  as       (b ': bs) = Concat (Snoc as b) bs
 
 -- | Remove prefix @as@ from a list @asbs@ if @as@ is a prefix; fail otherwise.
 type family StripPrefix (as :: [k]) (asbs :: [k]) :: [k] where
