@@ -80,19 +80,40 @@ instance ( ConcatList as bs asbs
                 , PrimArray t (DataFrame t asbs)
                 )
              => DataFrame t (as +: m) -> DataFrame t (m :+ bs) -> DataFrame t asbs
-    contract x y
-        | I# m <- fromIntegral $ dimVal' @m
-        , I# n <- fromIntegral $ totalDim' @as
-        , I# k <- fromIntegral $ totalDim' @bs
-        , nk <- n *# k
-        = let loop i j l r | isTrue# (l ==# m) = r
+    contract x y = case (# uniqueOrCumulDims x, uniqueOrCumulDims y #) of
+      (# Left x0, Left y0 #) -> broadcast (x0 * y0)
+      (# ux, uy #)
+        | dm <- dim @_ @m
+        , (ixX, xs) <- getStepsAndIx (Snoc dims dm) x ux
+        , (ixY, ys) <- getStepsAndIx (Cons dm dims) y uy
+        , (# n, m, k, steps #) <- conSteps xs ys ->
+          let loop i j l r | isTrue# (l ==# m) = r
                            | otherwise = loop i j (l +# 1#)
-                              (r + ix# (i +# n *# l) x * ix# (l +# m *# j) y)
+                              (r + ixX (i +# n *# l) * ixY (l +# m *# j))
 
               loop2 (T# i j) | isTrue# (j ==# k) = (# T# i j, 0 #)
                              | isTrue# (i ==# n) = loop2 (T# 0# (j +# 1#))
                              | otherwise = (# T# (i +# 1#) j, loop i j 0# 0 #)
-          in case gen# nk loop2 (T# 0# 0#) of
+          in case gen# steps loop2 (T# 0# 0#) of
               (# _, r #) -> r
+      where
+        getStepsAndIx :: forall (ns :: [Nat])
+                       . PrimArray t (DataFrame t ns)
+                      => Dims ns
+                      -> DataFrame t ns
+                      -> Either t CumulDims
+                      -> (Int# -> t, CumulDims)
+        getStepsAndIx _  df (Right cds) = (\i -> ix# i df, cds)
+        getStepsAndIx ds _  (Left  e)   = (\_ -> e, cumulDims ds)
+        conSteps (CumulDims xs) (CumulDims ys) = case conSteps' xs ys of
+          (W# n, W# m, W# k, zs)
+            -> (# word2Int# n, word2Int# m, word2Int# k, CumulDims zs #)
+        conSteps' :: [Word] -> [Word] -> (Word, Word, Word, [Word])
+        conSteps' [m, _] (_:ys@(k:_)) = (m, m, k, ys)
+        conSteps' (nm:ns) cys
+          | (_, m, k, ys) <- conSteps' ns cys
+          , n <- nm `quot` m
+            = (n, m, k, n*k : ys )
+        conSteps' _ _ = error "Numeric.DataFrame.Contraction: impossible match"
 
 data T# = T# Int# Int#

@@ -22,7 +22,6 @@
 -- Copyright   :  (c) Artem Chirkin
 -- License     :  BSD3
 --
--- Maintainer  :  chirkin@arch.ethz.ch
 --
 --
 -----------------------------------------------------------------------------
@@ -48,7 +47,7 @@ module Numeric.Matrix
 
 
 import           Control.Monad                           (foldM)
-import           Data.Foldable                           (forM_, foldl')
+import           Data.Foldable                           (foldl', forM_)
 import           Data.List                               (delete)
 import           GHC.Base
 import           Numeric.DataFrame.Contraction           ((%*))
@@ -59,8 +58,8 @@ import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
 import           Numeric.Matrix.Class
-import           Numeric.Matrix.Mat44d ()
-import           Numeric.Matrix.Mat44f ()
+import           Numeric.Matrix.Mat44d                   ()
+import           Numeric.Matrix.Mat44f                   ()
 import           Numeric.PrimBytes
 import           Numeric.Scalar
 import           Numeric.Vector
@@ -77,36 +76,38 @@ mat22 :: ( PrimBytes (Vector (t :: Type) 2)
       => Vector t 2 -> Vector t 2 -> Matrix t 2 2
 mat22 = (<::>)
 
+-- | enforce type of indices for too-generic functions copyDataFrame
+zI :: Idxs '[1]
+zI = 0
+
 -- | Compose a 3x3D matrix
 mat33 :: ( PrimBytes (t :: Type)
          , PrimBytes (Vector t 3)
-         , PrimBytes (Matrix t 3 3)
          )
       => Vector t 3 -> Vector t 3 -> Vector t 3 -> Matrix t 3 3
 mat33 a b c = runST $ do
   mmat <- newDataFrame
-  copyDataFrame a (1:*1:*U) mmat
-  copyDataFrame b (1:*2:*U) mmat
-  copyDataFrame c (1:*3:*U) mmat
+  copyDataFrame (0:*zI) a mmat
+  copyDataFrame (1:*zI) b mmat
+  copyDataFrame (2:*zI) c mmat
   unsafeFreezeDataFrame mmat
 
 -- | Compose a 4x4D matrix
 mat44 :: forall (t :: Type)
        . ( PrimBytes t
-         , PrimBytes (Vector t (4 :: Nat))
-         , PrimBytes (Matrix t (4 :: Nat) (4 :: Nat))
+         , PrimBytes (Vector t 4)
          )
-      => Vector t (4 :: Nat)
-      -> Vector t (4 :: Nat)
-      -> Vector t (4 :: Nat)
-      -> Vector t (4 :: Nat)
-      -> Matrix t (4 :: Nat) (4 :: Nat)
+      => Vector t 4
+      -> Vector t 4
+      -> Vector t 4
+      -> Vector t 4
+      -> Matrix t 4 4
 mat44 a b c d = runST $ do
   mmat <- newDataFrame
-  copyDataFrame a (1:*1:*U) mmat
-  copyDataFrame b (1:*2:*U) mmat
-  copyDataFrame c (1:*3:*U) mmat
-  copyDataFrame d (1:*4:*U) mmat
+  copyDataFrame (0:*zI) a mmat
+  copyDataFrame (1:*zI) b mmat
+  copyDataFrame (2:*zI) c mmat
+  copyDataFrame (3:*zI) d mmat
   unsafeFreezeDataFrame mmat
 
 
@@ -115,39 +116,39 @@ instance ( KnownDim n, KnownDim m
          , PrimArray t (Matrix t n m)
          , PrimArray t (Matrix t m n)
          ) => MatrixTranspose t (n :: Nat) (m :: Nat) where
-    transpose df = case elemSize0 df of
-      0# -> broadcast (ix# 0# df)
-      nm | I# m <- fromIntegral $ dimVal' @m
-         , I# n <- fromIntegral $ dimVal' @n
-         -> let f ( I# j,  I# i )
-                  | isTrue# (j ==# m) = f ( 0 , I# (i +# 1#) )
-                  | otherwise         = (# ( I# (j +# 1#), I# i )
-                                         , ix# (j *# n +# i) df
+    transpose df = case uniqueOrCumulDims df of
+      Left a -> broadcast a
+      Right steps
+         | m <- case dimVal' @m of W# w -> word2Int# w
+         , n <- case dimVal' @n of W# w -> word2Int# w
+         -> let f ( I# i,  I# j )
+                  | isTrue# (i ==# n) = f ( 0 , I# (j +# 1#) )
+                  | otherwise         = (# ( I# (i +# 1#), I# i )
+                                         , ix# (i *# m +# j) df
                                          #)
-            in case gen# nm f (0,0) of
-              (# _, r #) -> r
+            in case gen# steps f (0,0) of (# _, r #) -> r
 
 instance MatrixTranspose (t :: Type) (xn :: XNat) (xm :: XNat) where
     transpose (XFrame (df :: DataFrame t ns))
       | ((D :: Dim n) :* (D :: Dim m) :* U) <- dims @Nat @ns
-      , E <- AFam.inferPrimElem @t @n @'[m]
+      , Dict <- AFam.inferPrimElem @t @n @'[m]
       = XFrame (transpose df :: Matrix t m n)
     transpose _ = error "MatrixTranspose/transpose: impossible argument"
 
 instance (KnownDim n, PrimArray t (Matrix t n n), Num t)
       => SquareMatrix t n where
     eye
-      | n@(I# n#) <- fromIntegral $ dimVal' @n
-      = let f 0 = (# n, 1 #)
+      | n <- dimVal' @n
+      = let f 0 = (# n    , 1 #)
             f k = (# k - 1, 0 #)
-        in case gen# (n# *# n#) f 0 of
+        in case gen# (CumulDims [n*n, n, 1]) f 0 of
             (# _, r #) -> r
     diag se
-      | n@(I# n#) <- fromIntegral $ dimVal' @n
+      | n <- dimVal' @n
       , e <- unScalar se
-      = let f 0 = (# n, e #)
+      = let f 0 = (# n    , e #)
             f k = (# k - 1, 0 #)
-        in case gen# (n# *# n#) f 0 of
+        in case gen# (CumulDims [n*n, n, 1]) f 0 of
             (# _, r #) -> r
     trace df
       | I# n <- fromIntegral $ dimVal' @n
@@ -187,15 +188,18 @@ instance ( KnownDim n, Ord t, Fractional t
          => MatrixLU t n where
     lu m' = case runRW# go of
         (# _, (# bu, bl #) #) -> LUFact
-            { luLower    = fromElems 0# nn bl
-            , luUpper    = fromElems 0# nn bu
+            { luLower    = fromElems steps 0# bl
+            , luUpper    = fromElems steps 0# bu
             , luPerm     = p
             , luPermSign = si
             }
       where
+        dn = dimVal' @n
+        dnn = dn * dn
+        steps = CumulDims [dnn, dn, 1]
         (m, p, si) = pivotMat m'
-        !(I# n) = fromIntegral $ dimVal' @n
-        nn = n *# n
+        n  = case dn of W# w -> word2Int# w
+        nn = case dnn of W# w -> word2Int# w
         tbs = byteSize @t undefined
         bsize = nn *# tbs
         ixm i j = ix# (i +# n *# j) m
@@ -253,8 +257,8 @@ instance ( KnownDim n, Ord t, Fractional t
 
 -- | Solve @Ax = b@ problem given LU decomposition of A.
 luSolve :: forall (t :: Type) (n :: Nat)
-         . ( KnownDim n, Ord t, Fractional t
-           , PrimBytes t, PrimArray t (Matrix t n n), PrimArray t (Vector t n))
+         . ( KnownDim n, Fractional t
+           , PrimArray t (Matrix t n n), PrimArray t (Vector t n))
         => LUFact t n -> Vector t n -> Vector t n
 luSolve LUFact {..} b = x
   where
@@ -302,28 +306,29 @@ pivotMat :: forall (t :: Type) (n :: k)
 pivotMat m
     = ( let f ( j, [] )   = f (j+1, rowOrder)
             f ( j, i:is ) = (# (j, is), ix i j #)
-        in case gen# nn f (0,rowOrder) of
+        in case gen# steps f (0,rowOrder) of
             (# _, r #) -> r
       , let f ( j, [] ) = f (j+1, rowOrder)
             f ( j, x:xs )
                | j == x    = (# ( j, xs), 1 #)
                | otherwise = (# ( j, xs), 0 #)
-        in case gen# nn f (0,rowOrder) of
+        in case gen# steps f (0,rowOrder) of
             (# _, r #) -> r
       , if countMisordered rowOrder `rem` 2 == 1
         then -1 else 1
       )
   where
+    dn = dimVal' @n
+    steps = CumulDims [dn * dn, dn, 1]
     -- permuted row ordering
     rowOrder = uncurry fillPass $ searchPass 0 [0..n-1]
     -- matrix size
-    !n@(I# n#) = fromIntegral $ dimVal' @n
+    !n@(I# n#) = fromIntegral dn
     -- sign of permutations
     countMisordered :: [Int] -> Int
     countMisordered [] = 0
     countMisordered (i:is) = foldl' (\c j -> if i > j then succ c else c) 0 is
                            + countMisordered is
-    nn = n# *# n#
     ix (I# i) (I# j) = ix# (i +# j *# n#) m
     findMax :: Int -> [Int] -> (t, Int)
     findMax j = foldl' (\(ox, oi) i -> let x = abs (ix i j)

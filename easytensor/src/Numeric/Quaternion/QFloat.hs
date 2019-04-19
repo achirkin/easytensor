@@ -23,8 +23,6 @@ import           Numeric.DataFrame.Internal.Array.Family.FloatX3
 import           Numeric.DataFrame.Internal.Array.Family.FloatX4
 import qualified Numeric.DataFrame.ST                            as ST
 import           Numeric.DataFrame.Type
-import           Numeric.Dimensions
-import qualified Numeric.Dimensions.Fold                         as ST
 import           Numeric.PrimBytes                               (PrimBytes)
 import           Numeric.Quaternion.Class
 import           Numeric.Scalar
@@ -160,7 +158,7 @@ instance Quaternion Float where
       = let x = F# (w *% w)
             f 0 = (# 3 :: Int , x #)
             f k = (# k-1, 0 #)
-        in case gen# 9# f 0 of
+        in case gen# (CumulDims [9,3,1]) f 0 of
             (# _, m #) -> m -- diag (scalar (F# (w *% w)))
     toMatrix33 (QFloat (FloatX4# x' y' z' w')) =
       let x = scalar (F# x')
@@ -187,7 +185,7 @@ instance Quaternion Float where
     {-# INLINE toMatrix44 #-}
     toMatrix44 (QFloat (FloatX4# 0.0# 0.0# 0.0# w)) = ST.runST $ do
       df <- ST.newDataFrame
-      ST.overDimOff_ (dims :: Dims '[4,4]) (\i -> ST.writeDataFrameOff df i 0) 0 1
+      mapM_ (flip (ST.writeDataFrameOff df) 0) [0..15]
       let w2 = scalar (F# (w *% w))
       ST.writeDataFrameOff df 0 w2
       ST.writeDataFrameOff df 5 w2

@@ -377,13 +377,13 @@ instance PrimArray Double DoubleX4 where
     upd# _ _ _ x                         = x
     {-# INLINE upd# #-}
 
-    elemOffset _ = 0#
-    {-# INLINE elemOffset #-}
+    offsetElems _ = 0#
+    {-# INLINE offsetElems #-}
 
-    elemSize0 _  = ELEM_N#
-    {-# INLINE elemSize0 #-}
+    uniqueOrCumulDims _ = Right (CumulDims [ELEM_N, 1])
+    {-# INLINE uniqueOrCumulDims #-}
 
-    fromElems off _ ba = DoubleX4#
+    fromElems _ off ba = DoubleX4#
       (indexDoubleArray# ba off)
       (indexDoubleArray# ba (off +# 1#))
       (indexDoubleArray# ba (off +# 2#))

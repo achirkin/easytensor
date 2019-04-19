@@ -40,11 +40,11 @@ instance PrimBytes t => PrimArray t (ScalarBase t) where
   upd# _ 0# = const . ScalarBase
   upd# _ _  = const id
   {-# INLINE upd# #-}
-  elemOffset _ = 0#
-  {-# INLINE elemOffset #-}
-  elemSize0 _ = 1#
-  {-# INLINE elemSize0 #-}
-  fromElems off _ ba = indexArray ba off
+  offsetElems _ = 0#
+  {-# INLINE offsetElems #-}
+  uniqueOrCumulDims = Left . _unScalarBase
+  {-# INLINE uniqueOrCumulDims #-}
+  fromElems _ off ba = indexArray ba off
   {-# INLINE fromElems #-}
 
 _suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)

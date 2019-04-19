@@ -24,6 +24,7 @@ module Numeric.PrimBytes
 #include "MachDeps.h"
 
 import           Data.Proxy              (Proxy (..))
+import qualified Data.Type.List          as L
 import           GHC.Exts
 import           GHC.Generics
 import           GHC.Int
@@ -31,7 +32,6 @@ import           GHC.Word
 import           Numeric.Dimensions.Idxs
 import qualified Numeric.Tuple.Lazy      as TL
 import qualified Numeric.Tuple.Strict    as TS
-import qualified Numeric.Type.List       as L
 
 -- | Facilities to convert to and from raw byte array.
 class PrimTagged a => PrimBytes a where
@@ -56,15 +56,24 @@ class PrimTagged a => PrimBytes a where
     -- | Write data to a specified address
     writeAddr :: a -> Addr# -> State# s -> State# s
     -- | Size of a data type in bytes
+    --
+    --   Implementation of this function must not inspect the argument value;
+    --   a caller may provide @undefined@ in place of the argument.
     byteSize :: a -> Int#
     -- | Alignment of a data type in bytes.
     --   @byteOffset@ should be multiple of this value.
+    --
+    --   Implementation of this function must not inspect the argument value;
+    --   a caller may provide @undefined@ in place of the argument.
     byteAlign :: a -> Int#
     -- | Offset of the data in a byte array used to store the data,
     --   measured in bytes.
     --   Should be used together with @getBytes@ function.
     --   Unless in case of special data types represented by ByteArrays,
     --   it is equal to zero.
+    --
+    --   Implementation of this function may inspect the argument value;
+    --   a caller must not provide @undefined@ in place of the argument.
     byteOffset :: a -> Int#
 
     -- | Index array given an element offset.
@@ -1158,14 +1167,14 @@ instance RepresentableList xs => PrimBytes (Idxs xs) where
     fromBytes off ba = unsafeCoerce#
         (go (uncheckedIShiftRL# off OFFSHIFT_W#) (unsafeCoerce# (tList @_ @xs)))
       where
-        go _ []           = []
-        go i (Proxy : ls) = W# (indexWordArray# ba i) : go (i +# 1#) ls
+        go _ []       = []
+        go i (_ : ls) = W# (indexWordArray# ba i) : go (i +# 1#) ls
     {-# INLINE fromBytes #-}
     readBytes mba off s = unsafeCoerce#
         (go (uncheckedIShiftRL# off OFFSHIFT_W#) (unsafeCoerce# (tList @_ @xs)) s)
       where
         go _ [] s0 = (# s0, [] #)
-        go i (Proxy : ls) s0 = case readWordArray# mba off s0 of
+        go i (_ : ls) s0 = case readWordArray# mba off s0 of
           (# s1, w #) -> case go (i +# 1#) ls s1 of
              (# s2, xs #) -> (# s2, W# w : xs #)
     {-# INLINE readBytes #-}
@@ -1178,14 +1187,16 @@ instance RepresentableList xs => PrimBytes (Idxs xs) where
     readAddr addr s = unsafeCoerce#
         (go addr (unsafeCoerce# (tList @_ @xs)) s)
       where
+        go :: forall s . Addr# -> [Any] -> State# s -> (# State# s, [Word] #)
         go _ [] s0 = (# s0, [] #)
-        go i (Proxy : ls) s0 = case readWordOffAddr# i 0# s0 of
+        go i (_ : ls) s0 = case readWordOffAddr# i 0# s0 of
           (# s1, w #) -> case go (plusAddr# i SIZEOF_HSWORD#) ls s1 of
              (# s2, xs #) -> (# s2, W# w : xs #)
     {-# INLINE readAddr #-}
     writeAddr is addr
         = go addr (listIdxs is)
       where
+        go :: forall s . Addr# -> [Word] -> State# s -> State# s
         go _ [] s         = s
         go i (W# x :xs) s = go (plusAddr# i SIZEOF_HSWORD#) xs
                                (writeWordOffAddr# i 0# x s)

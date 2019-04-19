@@ -35,7 +35,7 @@ scalar = unsafeCoerce#
 {-# INLINE scalar #-}
 
 -- | Broadcast scalar value onto a whole data frame
-fromScalar :: SubSpace t '[] ds ds
+fromScalar :: SubSpace t ds '[] ds
            => Scalar t -> DataFrame t ds
 fromScalar = ewgen
 {-# INLINE fromScalar #-}

@@ -79,28 +79,31 @@ newPinnedDataFrame = STDataFrame <$> ST (newPinnedDataFrame# @t @ns)
 
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
-copyDataFrame :: forall (t :: Type) (as :: [Nat]) (b' :: Nat) (b :: Nat)
-                                    (bs :: [Nat]) (asbs :: [Nat]) s
-               . ( PrimBytes t
-                 , PrimBytes (DataFrame t (as +: b'))
+copyDataFrame :: forall (t :: Type)
+                        (b :: Nat) (bi :: Nat) (bd :: Nat)
+                        (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+               . ( b ~ (bi + bd - 1)
+                 , PrimBytes t
+                 , PrimBytes (DataFrame t (bd :+ bs))
                  , ConcatList as (b :+ bs) asbs
-                 , Dimensions (b :+ bs)
                  )
-               => DataFrame t (as +: b') -> Idxs (b :+ bs) -> STDataFrame s t asbs -> ST s ()
-copyDataFrame df ei (STDataFrame mdf) = ST (copyDataFrame# df ei mdf)
+              => Idxs (as +: bi) -> DataFrame t (bd :+ bs)
+              -> STDataFrame s t asbs -> ST s ()
+copyDataFrame ei df (STDataFrame mdf) = ST (copyDataFrame# ei df mdf)
 {-# INLINE copyDataFrame #-}
 
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
-copyMutableDataFrame :: forall (t :: Type) (as :: [Nat]) (b' :: Nat) (b :: Nat)
-                               (bs :: [Nat]) (asbs :: [Nat]) s
-                      . ( PrimBytes t
+copyMutableDataFrame :: forall (t :: Type)
+                               (b :: Nat) (bi :: Nat) (bd :: Nat)
+                               (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+                      . ( b ~ (bi + bd - 1)
+                        , PrimBytes t
                         , ConcatList as (b :+ bs) asbs
-                        , Dimensions (b :+ bs)
                         )
-                     => STDataFrame s t (as +: b') -> Idxs (b :+ bs)
+                     => Idxs (as +: bi) -> STDataFrame s t (bd :+ bs)
                      -> STDataFrame s t asbs -> ST s ()
-copyMutableDataFrame (STDataFrame mdfA) ei (STDataFrame mdfB)
-    = ST (copyMDataFrame# mdfA ei mdfB)
+copyMutableDataFrame ei (STDataFrame mdfA) (STDataFrame mdfB)
+    = ST (copyMDataFrame# ei mdfA mdfB)
 {-# INLINE copyMutableDataFrame #-}
 
 
@@ -121,7 +124,7 @@ freezeDataFrame (STDataFrame mdf) = ST (freezeDataFrame# mdf)
 
 -- | Create a new mutable DataFrame and copy content of immutable one in there.
 thawDataFrame :: forall (t :: Type) (ns :: [Nat]) s
-               . (PrimBytes (DataFrame t ns), PrimBytes t)
+               . (Dimensions ns, PrimBytes (DataFrame t ns))
               => DataFrame t ns -> ST s (STDataFrame s t ns)
 thawDataFrame df = STDataFrame <$> ST (thawDataFrame# df)
 {-# INLINE thawDataFrame #-}
@@ -129,14 +132,15 @@ thawDataFrame df = STDataFrame <$> ST (thawDataFrame# df)
 -- | Create a new mutable DataFrame and copy content of immutable one in there.
 --   The result array is pinned and aligned.
 thawPinDataFrame :: forall (t :: Type) (ns :: [Nat]) s
-                  . (PrimBytes (DataFrame t ns), PrimBytes t)
+                  . (Dimensions ns, PrimBytes (DataFrame t ns))
                  => DataFrame t ns -> ST s (STDataFrame s t ns)
 thawPinDataFrame df = STDataFrame <$> ST (thawPinDataFrame# df)
 {-# INLINE thawPinDataFrame #-}
 
 -- | UnsafeCoerces an underlying byte array.
 unsafeThawDataFrame :: forall (t :: Type) (ns :: [Nat]) s
-                     . (PrimBytes (DataFrame t ns), PrimBytes t)
+                     . ( Dimensions ns
+                       , PrimBytes (DataFrame t ns), PrimBytes t)
                     => DataFrame t ns -> ST s (STDataFrame s t ns)
 unsafeThawDataFrame df = STDataFrame <$> ST (unsafeThawDataFrame# df)
 {-# INLINE unsafeThawDataFrame #-}
@@ -144,7 +148,7 @@ unsafeThawDataFrame df = STDataFrame <$> ST (unsafeThawDataFrame# df)
 
 -- | Write a single element at the specified index
 writeDataFrame :: forall t (ns :: [Nat]) s
-                . ( PrimBytes t, Dimensions ns )
+                . PrimBytes t
                => STDataFrame s t ns -> Idxs ns -> DataFrame t ('[] :: [Nat]) -> ST s ()
 writeDataFrame (STDataFrame mdf) ei = ST . writeDataFrame# mdf ei . unsafeCoerce#
 {-# INLINE writeDataFrame #-}
@@ -152,7 +156,7 @@ writeDataFrame (STDataFrame mdf) ei = ST . writeDataFrame# mdf ei . unsafeCoerce
 
 -- | Read a single element at the specified index
 readDataFrame :: forall (t :: Type) (ns :: [Nat]) s
-               . ( PrimBytes t, Dimensions ns )
+               . PrimBytes t
               => STDataFrame s t ns -> Idxs ns -> ST s (DataFrame t ('[] :: [Nat]))
 readDataFrame (STDataFrame mdf) = unsafeCoerce# . ST . readDataFrame# mdf
 {-# INLINE readDataFrame #-}

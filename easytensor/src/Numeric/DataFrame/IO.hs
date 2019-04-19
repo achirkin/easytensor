@@ -80,28 +80,31 @@ newPinnedDataFrame = IODataFrame <$> IO (newPinnedDataFrame# @t @ns)
 
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
-copyDataFrame :: forall (t :: Type) (as :: [Nat]) (b' :: Nat) (b :: Nat)
-                                    (bs :: [Nat]) (asbs :: [Nat])
-               . ( PrimBytes t
-                 , PrimBytes (DataFrame t (as +: b'))
+copyDataFrame :: forall (t :: Type)
+                        (b :: Nat) (bi :: Nat) (bd :: Nat)
+                        (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+               . ( b ~ (bi + bd - 1)
+                 , PrimBytes t
+                 , PrimBytes (DataFrame t (bd :+ bs))
                  , ConcatList as (b :+ bs) asbs
-                 , Dimensions (b :+ bs)
                  )
-               => DataFrame t (as +: b') -> Idxs (b :+ bs) -> IODataFrame t asbs -> IO ()
-copyDataFrame df ei (IODataFrame mdf) = IO (copyDataFrame# df ei mdf)
+              => Idxs (as +: bi) -> DataFrame t (bd :+ bs)
+              -> IODataFrame t asbs -> IO ()
+copyDataFrame ei df (IODataFrame mdf) = IO (copyDataFrame# ei df mdf)
 {-# INLINE copyDataFrame #-}
 
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
-copyMutableDataFrame :: forall (t :: Type) (as :: [Nat]) (b' :: Nat) (b :: Nat)
-                               (bs :: [Nat]) (asbs :: [Nat])
-                      . ( PrimBytes t
+copyMutableDataFrame :: forall (t :: Type)
+                               (b :: Nat) (bi :: Nat) (bd :: Nat)
+                               (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+                      . ( b ~ (bi + bd - 1)
+                        , PrimBytes t
                         , ConcatList as (b :+ bs) asbs
-                        , Dimensions (b :+ bs)
                         )
-                     => IODataFrame t (as +: b') -> Idxs (b :+ bs)
+                     => Idxs (as +: bi) -> IODataFrame t (bd :+ bs)
                      -> IODataFrame t asbs -> IO ()
-copyMutableDataFrame (IODataFrame mdfA) ei (IODataFrame mdfB)
-    = IO (copyMDataFrame# mdfA ei mdfB)
+copyMutableDataFrame ei (IODataFrame mdfA) (IODataFrame mdfB)
+    = IO (copyMDataFrame# ei mdfA mdfB)
 {-# INLINE copyMutableDataFrame #-}
 
 
@@ -122,7 +125,7 @@ freezeDataFrame (IODataFrame mdf) = IO (freezeDataFrame# mdf)
 
 -- | Create a new mutable DataFrame and copy content of immutable one in there.
 thawDataFrame :: forall (t :: Type) (ns :: [Nat])
-               . (PrimBytes (DataFrame t ns), PrimBytes t)
+               . (Dimensions ns, PrimBytes (DataFrame t ns))
               => DataFrame t ns -> IO (IODataFrame t ns)
 thawDataFrame df = IODataFrame <$> IO (thawDataFrame# df)
 {-# INLINE thawDataFrame #-}
@@ -130,14 +133,15 @@ thawDataFrame df = IODataFrame <$> IO (thawDataFrame# df)
 -- | Create a new mutable DataFrame and copy content of immutable one in there.
 --   The result array is pinned and aligned.
 thawPinDataFrame :: forall (t :: Type) (ns :: [Nat])
-                  . (PrimBytes (DataFrame t ns), PrimBytes t)
+                  . (Dimensions ns, PrimBytes (DataFrame t ns))
                  => DataFrame t ns -> IO (IODataFrame t ns)
 thawPinDataFrame df = IODataFrame <$> IO (thawPinDataFrame# df)
 {-# INLINE thawPinDataFrame #-}
 
 -- | UnsafeCoerces an underlying byte array.
 unsafeThawDataFrame :: forall (t :: Type) (ns :: [Nat])
-                     . (PrimBytes (DataFrame t ns), PrimBytes t)
+                     . ( Dimensions ns
+                       , PrimBytes (DataFrame t ns), PrimBytes t)
                     => DataFrame t ns -> IO (IODataFrame t ns)
 unsafeThawDataFrame df = IODataFrame <$> IO (unsafeThawDataFrame# df)
 {-# INLINE unsafeThawDataFrame #-}
@@ -145,7 +149,7 @@ unsafeThawDataFrame df = IODataFrame <$> IO (unsafeThawDataFrame# df)
 
 -- | Write a single element at the specified index
 writeDataFrame :: forall t (ns :: [Nat])
-                . ( PrimBytes t, Dimensions ns )
+                . PrimBytes t
                => IODataFrame t ns -> Idxs ns -> DataFrame t ('[] :: [Nat]) -> IO ()
 writeDataFrame (IODataFrame mdf) ei = IO . writeDataFrame# mdf ei . unsafeCoerce#
 {-# INLINE writeDataFrame #-}
@@ -153,7 +157,7 @@ writeDataFrame (IODataFrame mdf) ei = IO . writeDataFrame# mdf ei . unsafeCoerce
 
 -- | Read a single element at the specified index
 readDataFrame :: forall (t :: Type) (ns :: [Nat])
-               . ( PrimBytes t, Dimensions ns )
+               . PrimBytes t
               => IODataFrame t ns -> Idxs ns -> IO (DataFrame t ('[] :: [Nat]))
 readDataFrame (IODataFrame mdf) = unsafeCoerce# . IO . readDataFrame# mdf
 {-# INLINE readDataFrame #-}
@@ -177,6 +181,18 @@ readDataFrameOff (IODataFrame mdf) (I# i)
 {-# INLINE readDataFrameOff #-}
 
 
+-- | Check if the byte array wrapped by this DataFrame is pinned,
+--   which means cannot be relocated by GC.
+isDataFramePinned :: forall (t :: Type) (ns :: [k])
+                   . KnownDimKind k
+                  => IODataFrame t ns -> Bool
+isDataFramePinned df = case dimKind @k of
+    DimNat -> case df of
+      IODataFrame x -> isDataFramePinned# x
+    DimXNat -> case df of
+      XIOFrame (IODataFrame x) -> isDataFramePinned# x
+
+
 -- | Allow arbitrary IO operations on a pointer to the beginning of the data
 --   keeping the data from garbage collecting until the arg function returns.
 --
@@ -197,15 +213,3 @@ withDataFramePtr df k = case dimKind @k of
     DimXNat -> case df of
       XIOFrame (IODataFrame x)
         -> IO $ withDataFramePtr# x (\p -> case k (Ptr p) of IO f -> f)
-
-
--- | Check if the byte array wrapped by this DataFrame is pinned,
---   which means cannot be relocated by GC.
-isDataFramePinned :: forall (t :: Type) (ns :: [k])
-                   . KnownDimKind k
-                  => IODataFrame t ns -> Bool
-isDataFramePinned df = case dimKind @k of
-    DimNat -> case df of
-      IODataFrame x -> isDataFramePinned# x
-    DimXNat -> case df of
-      XIOFrame (IODataFrame x) -> isDataFramePinned# x
