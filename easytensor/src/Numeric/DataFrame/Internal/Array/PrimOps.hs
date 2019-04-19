@@ -66,29 +66,29 @@ loop1a# n f = loop0 0#
 {-# INLINE loop1a# #-}
 
 
--- | Same as overDim#, but with no return value
-overDim_# :: Dims (ds :: [k])
-          -> (Idxs ds -> Int# -> State# s -> State# s) -- ^ function to map over each dimension
-          -> Int# -- ^ Initial offset
-          -> Int# -- ^ offset step
-          -> State# s
-          -> State# s
-overDim_# ds f off0# step# s0 = case overDim_'# ds g off0# s0 of
-                              (# s1, _ #) -> s1
-  where
-    g i off# s = (# f i off# s, off# +# step# #)
-{-# INLINE overDim_# #-}
-
-
-overDim_'# :: Dims (ds :: [k])
-           -> (Idxs ds -> Int# -> State# s -> (# State# s, Int# #)) -- ^ function to map over each dimension
-           -> Int# -- ^ Initial offset
-           -> State# s
-           -> (# State# s, Int# #)
-overDim_'# U f = f U
-overDim_'# (d :* ds) f = overDim_'# ds (loop 1)
-  where
-    n = dimVal d
-    loop i js off# s | i > n = (# s , off#  #)
-                     | otherwise = case f (Idx i :* js) off# s of
-                         (# s', off1# #) -> loop (i+1) js off1# s'
+-- -- | Same as overDim#, but with no return value
+-- overDim_# :: Dims (ds :: [k])
+--           -> (Idxs ds -> Int# -> State# s -> State# s) -- ^ function to map over each dimension
+--           -> Int# -- ^ Initial offset
+--           -> Int# -- ^ offset step
+--           -> State# s
+--           -> State# s
+-- overDim_# ds f off0# step# s0 = case overDim_'# ds g off0# s0 of
+--                               (# s1, _ #) -> s1
+--   where
+--     g i off# s = (# f i off# s, off# +# step# #)
+-- {-# INLINE overDim_# #-}
+--
+--
+-- overDim_'# :: Dims (ds :: [k])
+--            -> (Idxs ds -> Int# -> State# s -> (# State# s, Int# #)) -- ^ function to map over each dimension
+--            -> Int# -- ^ Initial offset
+--            -> State# s
+--            -> (# State# s, Int# #)
+-- overDim_'# U f = f U
+-- overDim_'# (d :* ds) f = overDim_'# ds (loop 1)
+--   where
+--     n = dimVal d
+--     loop i js off# s | i > n = (# s , off#  #)
+--                      | otherwise = case f (Idx i :* js) off# s of
+--                          (# s', off1# #) -> loop (i+1) js off1# s'

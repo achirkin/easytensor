@@ -35,14 +35,23 @@ import           Numeric.PrimBytes
 --   However, byte offset in the @ByteArray#@ must be multiple of the element size.
 data ArrayBase (t :: Type) (ds :: [Nat])
   = ArrayBase
-    (# t
-       --  Same value for each element;
-       --  this is the cheapest way to initialize an array.
-       --  It is also used for Num instances to avoid dependency on Dimensions.
-     | (# Int#  -- Offset measured in elements.
-        , Int#  -- Number of elements.
-        , ByteArray# -- Content.
-        , Evidence (PrimBytes t)
+    (# t --  Same value for each element;
+         --  this is the cheapest way to initialize an array.
+         --  It is also used for Num instances to avoid dependency on Dimensions.
+     | (# Int#  -- Offset in Content array (measured in elements)
+        , ByteArray# -- Content;
+                     -- elements are stored row-by-row, plane-by-plane;
+                     -- (C-style, rather than Fortran-style);
+                     -- similar to C, OpenCV, etc.
+                     -- The data must be contiguous!
+                     -- (i.e. stride must be the same size as the element size).
+        , CumulDims  -- Steps array; [Word]
+                     -- similar to steps in OpenCV::Mat, but counted in elements
+                     --        rather than in bytes.
+                     -- e.g. 0th element is the size of the content in elements
+                     --      (data must be contiguous)
+                     --      1th element is the size of subspace data minus outer dim.
+        , Dict (PrimBytes t)
         #)
      #)
 
@@ -65,13 +74,14 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
         (# t | #)
           | W# nw <- totalDim' @ds
           , n <- word2Int# nw
-          , tbs <- byteSize t   -> go tbs (tbs *# n) t
-        (# | (# _, _, arr, _ #) #) ->
+          , tbs <- byteSize t -> go tbs (tbs *# n) t
+        (# | (# _, arr, _, _ #) #) ->
           -- very weird trick with touch# allows to workaround GHC bug
           --  "internal error: ARR_WORDS object entered!"
           -- TODO: report this
           case runRW# (\s -> (# touch# arr s, arr #)) of (# _, ba #) -> ba
       where
+        go :: Int# -> Int# -> t -> ByteArray#
         go tbs bsize t = case runRW#
          ( \s0 -> case newByteArray# bsize s0 of
              (# s1, mba #) -> unsafeFreezeByteArray# mba
@@ -81,15 +91,14 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
     {-# INLINE getBytes #-}
 
     fromBytes bOff ba
-      | W# nw <- totalDim' @ds
-      , n <- word2Int# nw
-      , tbs <- byteSize (undefined :: t)
+      | tbs <- byteSize (undefined :: t)
       , (# offN, offRem #) <- quotRemInt# bOff tbs
       = case offRem of
-          0# -> ArrayBase (# | (# offN, n , ba, E #) #)
-          _  -> go n (tbs *# n)
+          0# -> ArrayBase (# | (#  offN, ba, steps, Dict #) #)
+          _  -> case cdTotalDim# steps of n -> go (tbs *# n)
       where
-        go n bsize = case runRW#
+        steps = cumulDims $ dims @_ @ds
+        go bsize = case runRW#
          ( \s0 -> case ( if isTrue# (isByteArrayPinned# ba)
                          then newAlignedPinnedByteArray# bsize
                                 (byteAlign @t undefined)
@@ -98,46 +107,48 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
                   of
             (# s1, mba #) -> unsafeFreezeByteArray# mba
                               (copyByteArray# ba bOff mba 0# bsize s1)
-         ) of (# _, r #) -> ArrayBase (# | (# 0# , n , r, E #) #)
+         ) of (# _, r #) -> ArrayBase (# | (# 0#, r, steps, Dict #) #)
         {-# NOINLINE go #-}
     {-# INLINE fromBytes #-}
 
     readBytes mba bOff s0
-      | W# nw <- totalDim' @ds
-      , n <- word2Int# nw
+      | steps <- cumulDims $ dims @_ @ds
+      , n <- cdTotalDim# steps
       , tbs <- byteSize (undefined :: t)
       , bsize <- tbs *# n
       = case newByteArray# bsize s0 of
          (# s1, mba1 #) -> case unsafeFreezeByteArray# mba1
                                 (copyMutableByteArray# mba bOff mba1 0# bsize s1) of
-           (# s2, ba #) -> (# s2, ArrayBase (# | (# 0# , n , ba, E #) #) #)
+           (# s2, ba #) -> (# s2, ArrayBase (# | (# 0#, ba, steps, Dict #) #) #)
     {-# INLINE readBytes #-}
 
     writeBytes mba bOff (ArrayBase c)
       | tbs <- byteSize (undefined :: t) = case c of
         (# t | #) | W# n <- totalDim' @ds ->
           loop# bOff tbs (bOff +# word2Int# n *# tbs) (\i -> writeBytes mba i t)
-        (# | (# offN, n, arr, _ #) #) ->
-          copyByteArray# arr (offN *# tbs) mba bOff (n *# tbs)
+        (# | (# offContent, arrContent, steps, _ #) #)
+           | n <- cdTotalDim# steps->
+          copyByteArray# arrContent (offContent *# tbs) mba bOff (n *# tbs)
     {-# INLINE writeBytes #-}
 
     readAddr addr s0
-      | W# nw <- totalDim' @ds
-      , n <- word2Int# nw
+      | steps <- cumulDims $ dims @_ @ds
+      , n <- cdTotalDim# steps
       , tbs <- byteSize (undefined :: t)
       , bsize <- tbs *# n
       = case newByteArray# bsize s0 of
          (# s1, mba1 #) -> case unsafeFreezeByteArray# mba1
                                 (copyAddrToByteArray# addr mba1 0# bsize s1) of
-           (# s2, ba #) -> (# s2, ArrayBase (# | (# 0# , n , ba, E #) #) #)
+           (# s2, ba #) -> (# s2, ArrayBase (# | (# 0# , ba, steps, Dict #) #) #)
     {-# INLINE readAddr #-}
 
     writeAddr (ArrayBase c) addr
       | tbs <- byteSize (undefined :: t) = case c of
         (# t | #) | W# n <- totalDim' @ds ->
           loop# 0# tbs (word2Int# n *# tbs) (\i -> writeAddr t (plusAddr# addr i))
-        (# | (# offN, n, arr, _ #) #) ->
-          copyByteArrayToAddr# arr (offN *# tbs) addr (n *# tbs)
+        (# | (# offContent, arrContent, steps, _ #) #)
+           | n <- cdTotalDim# steps ->
+          copyByteArrayToAddr# arrContent (offContent *# tbs) addr (n *# tbs)
     {-# INLINE writeAddr #-}
 
 
@@ -154,9 +165,9 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
     {-# INLINE byteOffset #-}
 
     indexArray ba off
-      | W# nw <- totalDim' @ds
-      , n <- word2Int# nw
-      = ArrayBase (# | (# off *# n, n, ba, E #) #)
+      | steps <- cumulDims $ dims @_ @ds
+      , n <- cdTotalDim# steps
+      = ArrayBase (# | (# off *# n, ba, steps, Dict #) #)
     {-# INLINE indexArray #-}
 
 
@@ -174,34 +185,32 @@ accumV2Idempotent x f
   (ArrayBase (# b | #))
     = f a b x
 accumV2Idempotent x f
-  a@(ArrayBase (# | (# _, nA, _, E #) #))
-  b@(ArrayBase (# | (# _, nB, _, _ #) #))
-    = loop1a# (minInt# nA nB) (\i -> f (ix# i a) (ix# i b)) x
+  a@(ArrayBase (# | (# _, _, steps, Dict #) #))
+  b@(ArrayBase (# | _ #))
+    = loop1a# (cdTotalDim# steps) (\i -> f (ix# i a) (ix# i b)) x
 accumV2Idempotent x f
     (ArrayBase (# a | #))
-  b@(ArrayBase (# | (# _, n, _, E #) #))
-    = loop1a# n (\i -> f a (ix# i b)) x
+  b@(ArrayBase (# | (# _, _, steps, Dict #) #))
+    = loop1a# (cdTotalDim# steps) (\i -> f a (ix# i b)) x
 accumV2Idempotent x f
-  a@(ArrayBase (# | (# _, n, _, E #) #))
+  a@(ArrayBase (# | (# _, _, steps, Dict #) #))
     (ArrayBase (# b | #))
-    = loop1a# n (\i -> f (ix# i a) b) x
+    = loop1a# (cdTotalDim# steps) (\i -> f (ix# i a) b) x
 {-# INLINE accumV2Idempotent #-}
 
 mapV :: (t -> t) -> ArrayBase t ds -> ArrayBase t ds
 mapV f (ArrayBase (# t | #))
     = ArrayBase (# f t | #)
-mapV f x@(ArrayBase (# | (# offN, n, ba, E #) #))
+mapV f x@(ArrayBase (# | (# offN, ba, steps, Dict #) #))
     | tbs <- byteSize (undefEl x)
-    = go (tbs *# n)
-  where
-    go bsize = case runRW#
-     ( \s0 -> case newByteArray# bsize s0 of
+    , n <- cdTotalDim# steps
+    = case runRW#
+     ( \s0 -> case newByteArray# (tbs *# n) s0 of
          (# s1, mba #) -> unsafeFreezeByteArray# mba
            ( loop1# n
                (\i -> writeArray mba i (f (indexArray ba (offN +# i)))) s1
            )
-     ) of (# _, r #) -> ArrayBase (# | (# 0#, n, r, E #) #)
-    {-# NOINLINE go #-}
+     ) of (# _, r #) -> ArrayBase (# | (# 0#, r, steps, Dict #) #)
 {-# INLINE mapV #-}
 
 
@@ -209,13 +218,11 @@ zipV :: (t -> t -> t)
      -> ArrayBase t ds -> ArrayBase t ds -> ArrayBase t ds
 zipV f (ArrayBase (# x | #)) b = mapV (f x) b
 zipV f a (ArrayBase (# y | #)) = mapV (`f` y) a
-zipV f a@(ArrayBase (# | (# oa, na, ba, E #) #))
-         (ArrayBase (# | (# ob, nb, bb, _ #) #))
-    | n <- minInt# na nb
-    = go n (byteSize (undefEl a) *# n)
-  where
-    go n bsize = case runRW#
-     ( \s0 -> case newByteArray# bsize s0 of
+zipV f a@(ArrayBase (# | (# oa, ba, steps, Dict #) #))
+         (ArrayBase (# | (# ob, bb, _, _ #) #))
+    | n <- cdTotalDim# steps
+    = case runRW#
+     ( \s0 -> case newByteArray# (byteSize (undefEl a) *# n) s0 of
          (# s1, mba #) -> unsafeFreezeByteArray# mba
            ( loop1# n
                (\i -> writeArray mba i
@@ -224,8 +231,7 @@ zipV f a@(ArrayBase (# | (# oa, na, ba, E #) #))
                         )
                ) s1
            )
-     ) of (# _, r #) -> ArrayBase (# | (# 0#, n, r, E #) #)
-    {-# NOINLINE go #-}
+     ) of (# _, r #) -> ArrayBase (# | (# 0#, r, steps, Dict #) #)
 {-# INLINE zipV #-}
 
 
@@ -426,17 +432,19 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
 
     ix# i (ArrayBase a) = case a of
       (# t | #)                    -> t
-      (# | (# off, _, arr, _ #) #) -> indexArray arr (off +# i)
+      (# | (# off, arr, _, _ #) #) -> indexArray arr (off +# i)
     {-# INLINE ix# #-}
 
-    gen# n f z0 = go (byteSize @t undefined *# n)
+    gen# steps f z0 = go (byteSize @t undefined *# n)
       where
+        n = cdTotalDim# steps
         go bsize = case runRW#
          ( \s0 -> case newByteArray# bsize s0 of
              (# s1, mba #) -> case loop0 mba 0# z0 s1 of
                (# s2, z1 #) -> case unsafeFreezeByteArray# mba s2 of
                  (# s3, ba #) -> (# s3, (# z1, ba #) #)
-         ) of (# _, (# z1, ba #) #) -> (# z1, ArrayBase (# | (# 0# , n , ba, E #) #) #)
+         ) of (# _, (# z1, ba #) #)
+                   -> (# z1, ArrayBase (# | (# 0# , ba, steps, Dict #) #) #)
         {-# NOINLINE go #-}
         loop0 mba i z s
           | isTrue# (i ==# n) = (# s, z #)
@@ -444,39 +452,42 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
               (# z', x #) -> loop0 mba (i +# 1#) z' (writeArray mba i x s)
     {-# INLINE gen# #-}
 
-    upd# n i x (ArrayBase (# a | #)) = go (byteSize x)
+    upd# steps i x (ArrayBase (# a | #)) = go (byteSize x)
       where
+        n = cdTotalDim# steps
         go tbs = case runRW#
          ( \s0 -> case newByteArray# (tbs *# n) s0 of
              (# s1, mba #) -> unsafeFreezeByteArray# mba
                (writeArray mba i x
                  (loop1# n (\j -> writeArray mba j a) s1)
                )
-         ) of (# _, r #) -> ArrayBase (# | (# 0# , n , r, E #) #)
+         ) of (# _, r #) -> ArrayBase (# |  (# 0# , r, steps, Dict #) #)
         {-# NOINLINE go #-}
-    upd# _ i x (ArrayBase (# | (# offN , n , ba, E #) #)) = go (byteSize x)
+    upd# _ i x (ArrayBase (# | (# offN, ba, steps, Dict #) #))
+        = go (byteSize x)
       where
+        n = cdTotalDim# steps
         go tbs = case runRW#
          ( \s0 -> case newByteArray# (tbs *# n) s0 of
              (# s1, mba #) -> unsafeFreezeByteArray# mba
                (writeArray mba i x
                  (copyByteArray# ba (offN *# tbs) mba 0# (tbs *# n) s1)
                )
-         ) of (# _, r #) -> ArrayBase (# | (# 0# , n , r, E #) #)
+         ) of (# _, r #) -> ArrayBase (# | (# 0#, r, steps, Dict #) #)
         {-# NOINLINE go #-}
     {-# INLINE upd# #-}
 
-    elemOffset (ArrayBase a) = case a of
+    offsetElems (ArrayBase a) = case a of
       (# _ | #)                  -> 0#
       (# | (# off, _, _, _ #) #) -> off
-    {-# INLINE elemOffset #-}
+    {-# INLINE offsetElems #-}
 
-    elemSize0 (ArrayBase a) = case a of
-      (# _ | #)                -> 0#
-      (# | (# _, n, _, _ #) #) -> n
-    {-# INLINE elemSize0 #-}
+    uniqueOrCumulDims (ArrayBase a) = case a of
+      (# t | #)                    -> Left t
+      (# | (# _, _, steps, _ #) #) -> Right steps
+    {-# INLINE uniqueOrCumulDims #-}
 
-    fromElems off n ba = ArrayBase (# | (# off , n , ba, E #) #)
+    fromElems steps off ba = ArrayBase (# | (# off, ba, steps, Dict #) #)
     {-# INLINE fromElems #-}
 
 
@@ -486,13 +497,12 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
 --------------------------------------------------------------------------------
 
 
-ix :: Dimensions ds => Idxs ds -> ArrayBase t ds -> t
+ix :: Idxs ds -> ArrayBase t ds -> t
 ix i (ArrayBase a) = case a of
   (# t | #)  -> t
-  (# | (# off, _, arr, E #) #) -> case fromEnum i of
-    I# i# -> indexArray arr (off +# i#)
+  (# | (# oa, ba, steps, Dict #) #)
+     -> case cdIx steps i of I# off -> indexArray ba (oa +# off)
 {-# INLINE ix #-}
-
 
 undefEl :: ArrayBase t ds -> t
 undefEl = const undefined

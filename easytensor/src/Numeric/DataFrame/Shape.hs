@@ -13,14 +13,13 @@
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UnboxedTuples             #-}
 {-# LANGUAGE UndecidableInstances      #-}
-{-# OPTIONS_GHC -fno-warn-overlapping-patterns #-}
+-- {-# OPTIONS_GHC -fno-warn-overlapping-patterns #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Shape
 -- Copyright   :  (c) Artem Chirkin
 -- License     :  BSD3
 --
--- Maintainer  :  chirkin@arch.ethz.ch
 --
 -- Construct new DataFrames from pieces.
 --
@@ -51,16 +50,16 @@ import           Numeric.Vector
 -- | Append one DataFrame to another, sum up last dimension
 (<:>) :: forall (n :: Nat) (m :: Nat) (npm :: Nat) (ds :: [Nat])
                 (t :: Type)
-       . ( PrimBytes (DataFrame t (ds +: n))
-         , PrimBytes (DataFrame t (ds +: m))
-         , PrimBytes (DataFrame t (ds +: npm))
+       . ( PrimBytes (DataFrame t (n :+ ds))
+         , PrimBytes (DataFrame t (m :+ ds))
+         , PrimBytes (DataFrame t (npm :+ ds))
          , npm ~ (n + m)
          , n   ~ (npm - m)
          , m   ~ (npm - n)
          )
-        => DataFrame t (ds +: n)
-        -> DataFrame t (ds +: m)
-        -> DataFrame t (ds +: npm)
+        => DataFrame t (n :+ ds)
+        -> DataFrame t (m :+ ds)
+        -> DataFrame t (npm :+ ds)
 (<:>) = appendDF
 infixl 5 <:>
 {-# INLINE [1] (<:>) #-}
@@ -69,18 +68,17 @@ infixl 5 <:>
 --   add another @Dim = 2@ to their dimension list.
 (<::>) :: forall (ds :: [Nat]) (t :: Type)
        .  ( PrimBytes (DataFrame t ds)
-          , PrimBytes (DataFrame t ds)
-          , PrimBytes (DataFrame t (ds +: 2 :: [Nat]))
+          , PrimBytes (DataFrame t (2 :+ ds :: [Nat]))
           )
         => DataFrame t ds
         -> DataFrame t ds
-        -> DataFrame t (ds +: 2 :: [Nat])
+        -> DataFrame t (2 :+ ds :: [Nat])
 (<::>) = appendDF
 infixl 5 <::>
 {-# INLINE [1] (<::>) #-}
 
 
-vec2t :: forall t . SubSpace t '[] '[2] '[2] => Scalar t -> Scalar t -> Vector t 2
+vec2t :: forall t . SubSpace t '[2] '[] '[2] => Scalar t -> Scalar t -> Vector t 2
 vec2t = unsafeCoerce# (vec2 @t)
 {-# INLINE vec2t #-}
 
@@ -94,14 +92,14 @@ vec2t = unsafeCoerce# (vec2 @t)
 -- | Grow the first DataFrame by adding the second one to it
 --   incrementing the last Dim in the list.
 (<+:>) :: forall (ds :: [Nat]) (n :: Nat) (m :: Nat) (t :: Type)
-        . ( PrimBytes (DataFrame t (ds +: n))
+        . ( PrimBytes (DataFrame t (n :+ ds))
           , PrimBytes (DataFrame t ds)
-          , PrimBytes (DataFrame t (ds +: m))
+          , PrimBytes (DataFrame t (m :+ ds))
           , m ~ (n + 1)
           )
-        => DataFrame t (ds +: n)
+        => DataFrame t (n :+ ds)
         -> DataFrame t ds
-        -> DataFrame t (ds +: m)
+        -> DataFrame t (m :+ ds)
 (<+:>) = appendDF
 infixl 5 <+:>
 {-# INLINE [1] (<+:>) #-}
@@ -121,7 +119,7 @@ fromList :: forall m ns t
             -- ^ Minimum number of elements in a list
          -> [DataFrame t ns]
             -- ^ List of frames to concatenate
-         -> Maybe (DataFrame t (AsXDims ns +: XN m))
+         -> Maybe (DataFrame t (XN m :+ AsXDims ns))
 fromList d xs = fromListN d (length xs) xs
 
 
@@ -129,48 +127,37 @@ fromList d xs = fromListN d (length xs) xs
 -- | Implement function `toList`.
 --   We need to create a dedicated type class for this
 --   to make it polymorphic over kind k (Nat <-> XNat).
-class DataFrameToList (t :: Type) (ds :: [k]) (z :: k) where
+class DataFrameToList (t :: Type) (z :: k) (ds :: [k]) where
     -- | Unwrap the last dimension of a DataFrame into a list  of smaller frames
-    toList :: DataFrame t (ds +: z) -> [DataFrame t ds]
+    toList :: DataFrame t (z :+ ds) -> [DataFrame t ds]
 
 
 
-instance ( Dimensions (ns +: z)
+instance ( Dimensions (n :+ ns)
          , PrimBytes t
          )
-         => DataFrameToList t (ns :: [Nat]) (z :: Nat) where
+         => DataFrameToList t (n :: Nat) (ns :: [Nat]) where
     toList df
-      | Dims.Snoc (Dims :: Dims ns') dn <- dims @Nat @(ns +: z)
-          -- TODO: line below is a workaround and should be avoided.
-      , E <- unsafeCoerce# (E @(ns ~ ns)) :: Evidence (ns ~ ns')
-      , E <- inferASing @t @ns
-      , E <- inferASing @t @(ns +: z)
-      , E <- inferPrim @t @(ns +: z)
-      , E <- inferPrim @t @ns
+      | Dims.Cons dn (dns@Dims :: Dims ns) <- dims @Nat @(n :+ ns)
+      , steps <- cumulDims dns
+      , Dict <- inferASing @t @ns
+      , Dict <- inferASing @t @(n :+ ns)
+      , Dict <- inferPrim @t @(n :+ ns)
+      , Dict <- inferPrim @t @ns
       , n <- dimVal dn
-      , I# step <- fromIntegral $ totalDim' @ns
-      , off0 <- elemOffset df
+      , step <- cdTotalDim# steps
+      , off0 <- offsetElems df
       , ba <- getBytes df
       = let go 0 _   = []
-            go k off = fromElems off step ba : go (k-1) (off +# step)
+            go k off = fromElems steps off ba : go (k-1) (off +# step)
         in go n off0
       | otherwise = []
 
-instance DataFrameToList t (xns :: [XNat]) (xz :: XNat) where
-    toList (XFrame (df :: DataFrame t nsz))
-      | nsz <- dims @Nat @nsz
-      , xnsz <- xDims @(xns +: xz) nsz
-          -- TODO: line below is a workaround and should be avoided.
-      , E <- unsafeCoerce# (E @(xns ~ xns)) :: Evidence (xns ~ Init (xns +: xz))
-      , xns <- Dims.init xnsz
-      , TypeList <- types xnsz
-      , EvList <- Dims.init (EvList @_ @KnownXNatType @(xns +: xz))
-      , Dims.Snoc (ns@Dims :: Dims ns) _ <- nsz
-      , Dims.Cons (_ :: Dim k) (_ :: Dims ks) <- nsz
-      , E <- inferPrimElem @t @k @ks
-      , XDims ns' <- xns
-      , Just E <- sameDims ns ns'
-      , E <- inferASing @t @ns
+instance DataFrameToList t (xn :: XNat) (xns :: [XNat]) where
+    toList (XFrame (df :: DataFrame t nns))
+      | Dims.Cons (_ :: Dim n) (Dims :: Dims ns) <- dims @Nat @nns
+      , Dict <- inferPrimElem @t @n @ns
+      , Dict <- inferASing @t @ns
       = map XFrame (toList df)
     toList _ = []
 
@@ -188,24 +175,23 @@ fromListN :: forall (m :: Nat) (ns :: [Nat]) (t :: Type)
              --   Must be not smaller than @m@ and not greater than @length ns@.
           -> [DataFrame t ns]
              -- ^ List of frames to concatenate
-          -> Maybe (DataFrame t (AsXDims ns +: XN m))
-fromListN Dim n@(I# n#) xs'
+          -> Maybe (DataFrame t (XN m :+ AsXDims ns))
+fromListN Dim n xs'
   | n < 0 = Nothing
   | Just dxn@(Dx dn@(D :: Dim n)) <- constrain @m (someDimVal (fromIntegral n))
   , Just xs <- takeMaybe n xs'
-  , ns@(AsXDims xns) <- dims @Nat @ns
-  , nsn@Dims <- Dims.snoc ns dn
-  , xnsn <- Dims.snoc xns dxn
-  , EvList <- Dims.snoc (EvList @XNat @KnownXNatType @(AsXDims ns))
-                        (toEvidence' (E @(KnownXNatType (XN m))))
-  , XDims nsn' <- xnsn
-  , Just E <- sameDims nsn nsn'
-  , E <- inferASing @t @ns
-  , E <- inferASing @t @(ns +: n)
-  , E <- inferPrim @t @ns
-  , E <- inferPrim @t @(ns +: n)
-  , I# partElN <- fromIntegral $ totalDim' @ns
-  , totalElN <- partElN *# n#
+  , dns@(AsXDims dxns) <- dims @Nat @ns
+  , dnns@Dims <- dn  :* dns
+  , dxnns     <- dxn :* dxns
+  , XDims dnns' <- dxnns
+  , Just Dict <- sameDims dnns dnns'
+  , Dict <- inferASing @t @ns
+  , Dict <- inferASing @t @(n :+ ns)
+  , Dict <- inferPrim @t @ns
+  , Dict <- inferPrim @t @(n :+ ns)
+  , steps <- cumulDims dnns
+  , totalElN <- cdTotalDim# steps
+  , partElN  <- case head (tail (unCumulDims steps)) of W# w -> word2Int# w
   , elS <- byteSize @t undefined
   , partBS <- partElN *# elS
   = case runRW#
@@ -215,7 +201,7 @@ fromListN Dim n@(I# n#) xs'
               go off (p : ps) s = go (off +# partBS) ps (writeBytes mba off p s)
           in unsafeFreezeByteArray# mba (go 0# xs s1)
     ) of (# _, r #)
-            -> Just (XFrame (fromElems 0# totalElN r :: DataFrame t (ns +: n)))
+            -> Just (XFrame (fromElems steps 0# r :: DataFrame t (n :+ ns)))
 fromListN _ _ _ = Nothing
 
 takeMaybe :: Int -> [a] -> Maybe [a]

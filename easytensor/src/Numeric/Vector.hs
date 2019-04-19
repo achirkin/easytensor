@@ -46,7 +46,7 @@ type Vec4w = Vector Word 4
 --                     propagated into whole Vec
 (.*.) :: ( Num t
          , Num (Vector t n)
-         , SubSpace t '[] '[n] '[n]
+         , SubSpace t '[n] '[] '[n]
          )
       => Vector t n -> Vector t n -> Vector t n
 (.*.) a b = fromScalar . ewfoldl (+) 0 $ a * b
@@ -55,7 +55,7 @@ infixl 7 .*.
 -- | Scalar product -- sum of Vecs' components products -- a scalar
 dot :: ( Num t
        , Num (Vector t n)
-       , SubSpace t '[] '[n] '[n]
+       , SubSpace t '[n] '[] '[n]
        )
     => Vector t n -> Vector t n -> Scalar t
 dot a b = ewfoldl (+) 0 $ a * b
@@ -64,7 +64,7 @@ dot a b = ewfoldl (+) 0 $ a * b
 infixl 7 ·
 (·) :: ( Num t
        , Num (Vector t n)
-       , SubSpace t '[] '[n] '[n]
+       , SubSpace t '[n] '[] '[n]
        )
     => Vector t n -> Vector t n -> Scalar t
 (·) = dot
@@ -72,34 +72,34 @@ infixl 7 ·
 
 
 -- | Sum of absolute values
-normL1 :: ( Num t, SubSpace t '[] '[n] '[n] )
+normL1 :: ( Num t, SubSpace t '[n] '[] '[n] )
        => Vector t n -> Scalar t
 normL1 = ewfoldr (\a -> (abs a +)) 0
 
 -- | hypot function (square root of squares)
-normL2 :: ( Floating t , SubSpace t '[] '[n] '[n] )
+normL2 :: ( Floating t , SubSpace t '[n] '[] '[n] )
        => Vector t n -> Scalar t
 normL2 = sqrt . ewfoldr (\a -> (a*a +)) 0
 
 -- | Normalize vector w.r.t. Euclidean metric (L2).
-normalized :: ( Floating t , Fractional (Vector t n), SubSpace t '[] '[n] '[n] )
+normalized :: ( Floating t , Fractional (Vector t n), SubSpace t '[n] '[] '[n] )
            => Vector t n -> Vector t n
 normalized v = v / n
   where
     n = fromScalar . sqrt $ ewfoldr (\a -> (a*a +)) 0 v
 
 -- | Maximum of absolute values
-normLPInf :: ( Ord t, Num t , SubSpace t '[] '[n] '[n] )
+normLPInf :: ( Ord t, Num t , SubSpace t '[n] '[] '[n] )
           => Vector t n -> Scalar t
 normLPInf = ewfoldr (max . abs) 0
 
 -- | Minimum of absolute values
-normLNInf :: ( Ord t, Num t , SubSpace t '[] '[n] '[n] )
+normLNInf :: ( Ord t, Num t , SubSpace t '[n] '[] '[n] )
           => Vector t n -> Scalar t
-normLNInf x = ewfoldr (min . abs) (abs $ x ! Idx 1 :* U) x
+normLNInf x = ewfoldr (min . abs) (abs $ x ! Idx 0 :* U) x
 
 -- | Norm in Lp space
-normLP :: ( Floating t , SubSpace t '[] '[n] '[n] )
+normLP :: ( Floating t , SubSpace t '[n] '[] '[n] )
        => Int -> Vector t n -> Scalar t
 normLP i' = (**ri) . ewfoldr (\a -> (a**i +)) 0
   where
@@ -112,73 +112,73 @@ normLP i' = (**ri) . ewfoldr (\a -> (a**i +)) 0
   #-}
 
 -- | Compose a 2D vector
-vec2 :: SubSpace t '[] '[2] '[2] => t -> t -> Vector t 2
+vec2 :: SubSpace t '[2] '[] '[2] => t -> t -> Vector t 2
 vec2 a b = iwgen f
   where
-    f (1 :* U) = scalar a
+    f (0 :* U) = scalar a
     f _        = scalar b
 
 -- | Take a determinant of a matrix composed from two 2D vectors.
 --   Like a cross product in 2D.
-det2 :: ( Num t, SubSpace t '[] '[2] '[2] )
+det2 :: ( Num t, SubSpace t '[2] '[] '[2] )
      => Vector t 2 -> Vector t 2 -> Scalar t
-det2 a b = (a ! 1 :* U) * (b ! 2 :* U)
-         - (a ! 2 :* U) * (b ! 1 :* U)
+det2 a b = (a ! 0 :* U) * (b ! 1 :* U)
+         - (a ! 1 :* U) * (b ! 0 :* U)
 
 -- | Compose a 3D vector
-vec3 :: SubSpace t '[] '[3] '[3] => t -> t -> t -> Vector t 3
+vec3 :: SubSpace t '[3] '[] '[3] => t -> t -> t -> Vector t 3
 vec3 a b c = iwgen f
   where
-    f (1 :* U) = scalar a
-    f (2 :* U) = scalar b
+    f (0 :* U) = scalar a
+    f (1 :* U) = scalar b
     f _        = scalar c
 
 -- | Cross product
-cross :: ( Num t, SubSpace t '[] '[3] '[3] )
+cross :: ( Num t, SubSpace t '[3] '[] '[3] )
       => Vector t 3 -> Vector t 3 -> Vector t 3
 cross a b = vec3 ( unScalar
-                 $ (a ! 2 :* U) * (b ! 3 :* U)
-                 - (a ! 3 :* U) * (b ! 2 :* U) )
-                 ( unScalar
-                 $ (a ! 3 :* U) * (b ! 1 :* U)
-                 - (a ! 1 :* U) * (b ! 3 :* U) )
-                 ( unScalar
                  $ (a ! 1 :* U) * (b ! 2 :* U)
                  - (a ! 2 :* U) * (b ! 1 :* U) )
+                 ( unScalar
+                 $ (a ! 2 :* U) * (b ! 0 :* U)
+                 - (a ! 0 :* U) * (b ! 2 :* U) )
+                 ( unScalar
+                 $ (a ! 0 :* U) * (b ! 1 :* U)
+                 - (a ! 1 :* U) * (b ! 0 :* U) )
 
 
 -- | Cross product for two vectors in 3D
 infixl 7 ×
-(×) :: ( Num t, SubSpace t '[] '[3] '[3] )
+(×) :: ( Num t, SubSpace t '[3] '[] '[3] )
     => Vector t 3 -> Vector t 3 -> Vector t 3
 (×) = cross
 {-# INLINE (×) #-}
 
 
 -- | Compose a 4D vector
-vec4 :: SubSpace t '[] '[4] '[4]
+vec4 :: SubSpace t '[4] '[] '[4]
      => t -> t -> t -> t -> Vector t 4
 vec4 a b c d = iwgen f
   where
-    f (1 :* U) = scalar a
-    f (2 :* U) = scalar b
-    f (3 :* U) = scalar c
+    f (0 :* U) = scalar a
+    f (1 :* U) = scalar b
+    f (2 :* U) = scalar c
     f _        = scalar d
 
 
-unpackV2 :: SubSpace t '[] '[2] '[2]
+unpackV2 :: SubSpace t '[2] '[] '[2]
          => Vector t 2 -> (t, t)
-unpackV2 v = (unScalar $ v ! 1, unScalar $ v ! 2)
+unpackV2 v = (unScalar $ v ! 0, unScalar $ v ! 1)
 {-# INLINE unpackV2 #-}
 
 
-unpackV3 :: SubSpace t '[] '[3] '[3]
+unpackV3 :: SubSpace t '[3] '[] '[3]
          => Vector t 3 -> (t, t, t)
-unpackV3 v = (unScalar $ v ! 1, unScalar $ v ! 2, unScalar $ v ! 3)
+unpackV3 v = (unScalar $ v ! 0, unScalar $ v ! 1, unScalar $ v ! 2)
 {-# INLINE unpackV3 #-}
 
 
-unpackV4 :: SubSpace t '[] '[4] '[4]
+unpackV4 :: SubSpace t '[4] '[] '[4]
          => Vector t 4 -> (t, t, t, t)
-unpackV4 v = (unScalar $ v ! 1, unScalar $ v ! 2, unScalar $ v ! 3, unScalar $ v ! 4)
+unpackV4 v = (unScalar $ v ! 0, unScalar $ v ! 1, unScalar $ v ! 2, unScalar $ v ! 3)
 {-# INLINE unpackV4 #-}

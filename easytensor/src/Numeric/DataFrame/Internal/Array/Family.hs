@@ -109,26 +109,26 @@ newtype MagicArraySing t (ds :: [Nat]) r
 -- | Use `ArraySing` GADT to construct an `ArraySingleton` dictionary.
 --   In other words, bring an evidence of `ArraySingleton` instance into
 --   a scope at runtime.
-aSingEv :: ArraySing t ds -> Evidence (ArraySingleton t ds)
-aSingEv ds = reifyArraySing ds E
+aSingEv :: ArraySing t ds -> Dict (ArraySingleton t ds)
+aSingEv ds = reifyArraySing ds Dict
 {-# INLINE aSingEv #-}
 
 -- | Use `ArraySing` GADT to construct an `ArraySingleton` dictionary.
 --   The same as `aSingEv`, but relies on `PrimBytes` and `Dimensions`.
 inferASing :: forall t ds
             . (PrimBytes t, Dimensions ds)
-           => Evidence (ArraySingleton t ds)
+           => Dict (ArraySingleton t ds)
 inferASing = case (dims @_ @ds, primTag @t undefined) of
-  (U, _) -> E
+  (U, _) -> Dict
   (d :* U, PTagFloat)
-      | Just E <- sameDim (D @2) d -> E
-      | Just E <- sameDim (D @3) d -> E
-      | Just E <- sameDim (D @4) d -> E
+      | Just Dict <- sameDim (D @2) d -> Dict
+      | Just Dict <- sameDim (D @3) d -> Dict
+      | Just Dict <- sameDim (D @4) d -> Dict
   (d :* U, PTagDouble)
-      | Just E <- sameDim (D @2) d -> E
-      | Just E <- sameDim (D @3) d -> E
-      | Just E <- sameDim (D @4) d -> E
-  _ -> case (unsafeCoerce# (E @(ds ~ ds)) :: Evidence (ds ~ '[0])) of E -> E
+      | Just Dict <- sameDim (D @2) d -> Dict
+      | Just Dict <- sameDim (D @3) d -> Dict
+      | Just Dict <- sameDim (D @4) d -> Dict
+  _ -> case (unsafeCoerce# (Dict @(ds ~ ds)) :: Dict (ds ~ '[0])) of Dict -> Dict
 {-# INLINE inferASing #-}
 
 
@@ -155,62 +155,62 @@ instance {-# OVERLAPPING #-}  ArraySingleton Double '[4]   where
 --   That is why the dimension list in the argument is not empty.
 inferPrimElem :: forall t d ds
                . ArraySingleton t (d ': ds)
-              => Evidence (PrimBytes t)
+              => Dict (PrimBytes t)
 inferPrimElem = case (aSing :: ArraySing t (d ': ds)) of
-  AF2   -> E
-  AF3   -> E
-  AF4   -> E
-  AD2   -> E
-  AD3   -> E
-  AD4   -> E
-  ABase -> E
+  AF2   -> Dict
+  AF3   -> Dict
+  AF4   -> Dict
+  AD2   -> Dict
+  AD3   -> Dict
+  AD4   -> Dict
+  ABase -> Dict
 
 -- Rather verbose way to show that there is an instance of a required type class
 -- for every instance of the type family.
 #define WITNESS case (aSing :: ArraySing t ds) of {\
-  AScalar -> E;\
-  AF2     -> E;\
-  AF3     -> E;\
-  AF4     -> E;\
-  AD2     -> E;\
-  AD3     -> E;\
-  AD4     -> E;\
-  ABase   -> E}
+  AScalar -> Dict;\
+  AF2     -> Dict;\
+  AF3     -> Dict;\
+  AF4     -> Dict;\
+  AD2     -> Dict;\
+  AD3     -> Dict;\
+  AD4     -> Dict;\
+  ABase   -> Dict}
 
 inferPrim :: forall t ds
            . ( PrimBytes t
              , ArraySingleton t ds
              , Dimensions ds
              )
-          => Evidence (PrimBytes (Array t ds), PrimArray t (Array t ds))
+          => Dict (PrimBytes (Array t ds), PrimArray t (Array t ds))
 inferPrim = WITNESS
 
 inferEq :: forall t ds
          . (Eq t, ArraySingleton t ds)
-        => Evidence (Eq (Array t ds))
+        => Dict (Eq (Array t ds))
 inferEq = WITNESS
 
 inferOrd :: forall t ds
             . (Ord t, ArraySingleton t ds)
-           => Evidence (Ord (Array t ds))
+           => Dict (Ord (Array t ds))
 inferOrd = WITNESS
 
 inferNum :: forall t ds
           . (Num t, ArraySingleton t ds)
-         => Evidence (Num (Array t ds))
+         => Dict (Num (Array t ds))
 inferNum = WITNESS
 
 inferFractional :: forall t ds
                  . (Fractional t, ArraySingleton t ds)
-                => Evidence (Fractional (Array t ds))
+                => Dict (Fractional (Array t ds))
 inferFractional = WITNESS
 
 inferFloating :: forall t ds
                . (Floating t, ArraySingleton t ds)
-              => Evidence (Floating (Array t ds))
+              => Dict (Floating (Array t ds))
 inferFloating = WITNESS
 
 inferShow :: forall t ds
            . (Show t, Dimensions ds, ArraySingleton t ds)
-          => Evidence (Show (Array t ds))
+          => Dict (Show (Array t ds))
 inferShow = WITNESS

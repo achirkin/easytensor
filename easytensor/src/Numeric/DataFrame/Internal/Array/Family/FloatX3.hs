@@ -349,13 +349,13 @@ instance PrimArray Float FloatX3 where
     upd# _ _ _ x                      = x
     {-# INLINE upd# #-}
 
-    elemOffset _ = 0#
-    {-# INLINE elemOffset #-}
+    offsetElems _ = 0#
+    {-# INLINE offsetElems #-}
 
-    elemSize0 _  = ELEM_N#
-    {-# INLINE elemSize0 #-}
+    uniqueOrCumulDims _ = Right (CumulDims [ELEM_N, 1])
+    {-# INLINE uniqueOrCumulDims #-}
 
-    fromElems off _ ba = FloatX3#
+    fromElems _ off ba = FloatX3#
       (indexFloatArray# ba off)
       (indexFloatArray# ba (off +# 1#))
       (indexFloatArray# ba (off +# 2#))

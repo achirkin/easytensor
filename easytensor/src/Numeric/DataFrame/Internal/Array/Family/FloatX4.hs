@@ -381,13 +381,13 @@ instance PrimArray Float FloatX4 where
     upd# _ _ _ x                        = x
     {-# INLINE upd# #-}
 
-    elemOffset _ = 0#
-    {-# INLINE elemOffset #-}
+    offsetElems _ = 0#
+    {-# INLINE offsetElems #-}
 
-    elemSize0 _  = ELEM_N#
-    {-# INLINE elemSize0 #-}
+    uniqueOrCumulDims _ = Right (CumulDims [ELEM_N, 1])
+    {-# INLINE uniqueOrCumulDims #-}
 
-    fromElems off _ ba = FloatX4#
+    fromElems _ off ba = FloatX4#
       (indexFloatArray# ba off)
       (indexFloatArray# ba (off +# 1#))
       (indexFloatArray# ba (off +# 2#))
@@ -408,13 +408,13 @@ instance PrimArray Float FloatX4 where
 
 getIdxOffset :: Idxs '[4] -> Int#
 getIdxOffset is = case unsafeCoerce# is of
-  [W# i] -> word2Int# i -# 1#
+  [W# i] -> word2Int# i
   _      -> 0#
 {-# INLINE getIdxOffset #-}
 
 
 {-# RULES
-"index/FloatX4" forall i . (!.) @Float @'[] i
+"index/FloatX4" forall i . (!.) @Float @'[4] i
   = unsafeCoerce# (ix# @Float @FloatX4 (getIdxOffset i))
 
   #-}

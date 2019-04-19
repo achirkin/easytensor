@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE ExistentialQuantification  #-}
@@ -19,7 +20,6 @@
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE ViewPatterns               #-}
-{-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# OPTIONS_GHC -fno-warn-orphans       #-}
 
 module Numeric.DataFrame.Type
@@ -43,14 +43,15 @@ module Numeric.DataFrame.Type
   ) where
 
 
-import           Data.Proxy (Proxy)
+import           Data.Proxy                              (Proxy)
 import           Foreign.Storable                        (Storable (..))
 import           GHC.Base
-import           GHC.Ptr (Ptr (..))
+import           GHC.Ptr                                 (Ptr (..))
 
 import           Numeric.DataFrame.Family
 import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.Family (Array, ArraySingleton (..))
+import           Numeric.DataFrame.Internal.Array.Family (Array,
+                                                          ArraySingleton (..))
 import qualified Numeric.DataFrame.Internal.Array.Family as AFam
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
@@ -113,15 +114,15 @@ instance ImplAllows Eq ts ds => Eq (DataFrame (ts :: [Type]) ds) where
 instance (AllTypes Eq t, DataFrameInference t)
       => Eq (DataFrame (t :: l) (ds :: [XNat])) where
     (XFrame dfa) == (XFrame dfb)
-      | Just E <- sameDims' dfa dfb
-      , E <- inferEq dfa = dfa == dfb
+      | Just Dict <- sameDims' dfa dfb
+      , Dict <- inferEq dfa = dfa == dfb
     _ == _ = False
 
 instance (AllTypes Eq t, DataFrameInference t)
       => Eq (SomeDataFrame (t :: l)) where
     (SomeDataFrame dfa) == (SomeDataFrame dfb)
-      | Just E <- sameDims' dfa dfb
-      , E <- inferEq dfa = dfa == dfb
+      | Just Dict <- sameDims' dfa dfb
+      , Dict <- inferEq dfa = dfa == dfb
     _ == _ = False
 
 
@@ -155,12 +156,12 @@ instance ( Dimensions ds
 instance (AllTypes Show t, DataFrameInference t)
       => Show (DataFrame (t :: l) (xns :: [XNat])) where
   show (XFrame df)
-    | E <- inferShow df = 'X': show df
+    | Dict <- inferShow df = 'X': show df
 
 instance (AllTypes Show t, DataFrameInference t)
       => Show (SomeDataFrame (t :: l)) where
   show (SomeDataFrame df)
-    | E <- inferShow df = "Some" ++ show df
+    | Dict <- inferShow df = "Some" ++ show df
 
 --------------------------------------------------------------------------------
 
@@ -233,21 +234,21 @@ class DataFrameInference (t :: l) where
     --   such as `SubSpace`.
     inferASing
         :: (AllTypes PrimBytes t, Dimensions ds)
-        => DataFrame t ds -> Evidence (ArraySingletons t ds)
+        => DataFrame t ds -> Dict (ArraySingletons t ds)
     inferEq
         :: (AllTypes Eq t, ArraySingletons t ds)
-        => DataFrame t ds -> Evidence (Eq (DataFrame t ds))
+        => DataFrame t ds -> Dict (Eq (DataFrame t ds))
     inferShow
         :: (AllTypes Show t, ArraySingletons t ds, Dimensions ds)
-        => DataFrame t ds -> Evidence (Show (DataFrame t ds))
+        => DataFrame t ds -> Dict (Show (DataFrame t ds))
     inferPrim
         :: (AllTypes PrimBytes t, ArraySingletons t ds, Dimensions ds)
-        => DataFrame t ds -> Evidence (PrimFrames t ds)
+        => DataFrame t ds -> Dict (PrimFrames t ds)
     -- | This is a special function, because Scalar does not require PrimBytes.
     --   That is why the dimension list in the argument nust not be empty.
     inferPrimElem
         :: (ArraySingletons t ds, ds ~ (Head ds ': Tail ds))
-        => DataFrame t ds -> Evidence (AllTypes PrimBytes t)
+        => DataFrame t ds -> Dict (AllTypes PrimBytes t)
 
 
 
@@ -255,135 +256,135 @@ instance DataFrameInference (t :: Type) where
     inferASing    (_ :: DataFrame t ds)
       = AFam.inferASing @t @ds
     inferEq       (_ :: DataFrame t ds)
-      = case AFam.inferEq @t @ds of E -> E
+      = case AFam.inferEq @t @ds of Dict -> Dict
     inferShow     (_ :: DataFrame t ds)
-      = case AFam.inferShow @t @ds of E -> E
+      = case AFam.inferShow @t @ds of Dict -> Dict
     inferPrim     (_ :: DataFrame t ds)
-      = case AFam.inferPrim @t @ds of E -> E
+      = case AFam.inferPrim @t @ds of Dict -> Dict
     inferPrimElem (_ :: DataFrame t ds)
-      = case AFam.inferPrimElem @t @(Head ds) @(Tail ds) of E -> E
+      = case AFam.inferPrimElem @t @(Head ds) @(Tail ds) of Dict -> Dict
 
 inferOrd' :: forall t ds
            . (Ord t, ArraySingleton t ds)
-          => Evidence (Ord (DataFrame t ds))
-inferOrd' = case AFam.inferOrd @t @ds of E -> E
+          => Dict (Ord (DataFrame t ds))
+inferOrd' = case AFam.inferOrd @t @ds of Dict -> Dict
 
 inferNum' :: forall t ds
            . (Num t, ArraySingletons t ds)
-          => Evidence (Num (DataFrame t ds))
-inferNum' = case AFam.inferNum @t @ds of E -> E
+          => Dict (Num (DataFrame t ds))
+inferNum' = case AFam.inferNum @t @ds of Dict -> Dict
 
 inferFractional' :: forall t ds
                   . (Fractional t, ArraySingleton t ds)
-                 => Evidence (Fractional (DataFrame t ds))
-inferFractional' = case AFam.inferFractional @t @ds of E -> E
+                 => Dict (Fractional (DataFrame t ds))
+inferFractional' = case AFam.inferFractional @t @ds of Dict -> Dict
 
 inferFloating' :: forall t ds
                 . (Floating t, ArraySingleton t ds)
-               => Evidence (Floating (DataFrame t ds))
-inferFloating' = case AFam.inferFloating @t @ds of E -> E
+               => Dict (Floating (DataFrame t ds))
+inferFloating' = case AFam.inferFloating @t @ds of Dict -> Dict
 
 
 instance RepresentableList ts => DataFrameInference (ts :: [Type]) where
     inferASing    (_ :: DataFrame t ds)
       = inferASings @ts @ds (tList @_ @ts)
     inferEq       (_ :: DataFrame t ds)
-      = case inferEqs @ts @ds (tList @_ @ts) of E -> E
+      = case inferEqs @ts @ds (tList @_ @ts) of Dict -> Dict
     inferShow     (_ :: DataFrame t ds)
-      = case inferShows @ts @ds (tList @_ @ts) of E -> E
+      = case inferShows @ts @ds (tList @_ @ts) of Dict -> Dict
     inferPrim     (_ :: DataFrame t ds)
-      = case inferPrims @ts @ds (tList @_ @ts) of E -> E
+      = case inferPrims @ts @ds (tList @_ @ts) of Dict -> Dict
     inferPrimElem (_ :: DataFrame t ds)
-      = case inferPrimElems @ts @(Head ds) @(Tail ds) (tList @_ @ts) of E -> E
+      = case inferPrimElems @ts @(Head ds) @(Tail ds) (tList @_ @ts) of Dict -> Dict
 
 
 
 inferASings :: forall ts ds
              . (All PrimBytes ts, Dimensions ds)
-            => TypeList ts -> Evidence (ArraySingletons ts ds)
-inferASings U = E
+            => TypeList ts -> Dict (ArraySingletons ts ds)
+inferASings U = Dict
 inferASings ((_ :: Proxy t) :* ts)
-  = case (inferASing' @t @ds, inferASings @_ @ds ts) of (E, E) -> E
+  = case (inferASing' @t @ds, inferASings @_ @ds ts) of (Dict, Dict) -> Dict
 
 
 
 inferEqs :: forall ts ds
           . (All Eq ts, ArraySingletons ts ds)
-         => TypeList ts -> Evidence (ImplAllows Eq ts ds)
-inferEqs U = E
+         => TypeList ts -> Dict (ImplAllows Eq ts ds)
+inferEqs U = Dict
 inferEqs ((_ :: Proxy t) :* ts)
-  = case (AFam.inferEq @t @ds, inferEqs @_ @ds ts) of (E, E) -> E
+  = case (AFam.inferEq @t @ds, inferEqs @_ @ds ts) of (Dict, Dict) -> Dict
 
 inferShows :: forall ts ds
             . (All Show ts, ArraySingletons ts ds, Dimensions ds)
-           => TypeList ts -> Evidence (ImplAllows Show ts ds)
-inferShows U = E
+           => TypeList ts -> Dict (ImplAllows Show ts ds)
+inferShows U = Dict
 inferShows ((_ :: Proxy t) :* ts)
-  = case (AFam.inferShow @t @ds, inferShows @_ @ds ts) of (E, E) -> E
+  = case (AFam.inferShow @t @ds, inferShows @_ @ds ts) of (Dict, Dict) -> Dict
 
 inferPrims :: forall ts ds
             . (All PrimBytes ts, ArraySingletons ts ds, Dimensions ds)
-           => TypeList ts -> Evidence (PrimFrames ts ds)
-inferPrims U = E
+           => TypeList ts -> Dict (PrimFrames ts ds)
+inferPrims U = Dict
 inferPrims ((_ :: Proxy t) :* ts)
-  = case (AFam.inferPrim @t @ds, inferPrims @_ @ds ts) of (E, E) -> E
+  = case (AFam.inferPrim @t @ds, inferPrims @_ @ds ts) of (Dict, Dict) -> Dict
 
 inferPrimElems :: forall ts d ds
              . (ArraySingletons ts (d ': ds))
-            => TypeList ts -> Evidence (All PrimBytes ts)
-inferPrimElems U = E
+            => TypeList ts -> Dict (All PrimBytes ts)
+inferPrimElems U = Dict
 inferPrimElems ((_ :: Proxy t) :* ts)
-  = case (AFam.inferPrimElem @t @d @ds, inferPrimElems @_ @d @ds ts) of (E, E) -> E
+  = case (AFam.inferPrimElem @t @d @ds, inferPrimElems @_ @d @ds ts) of (Dict, Dict) -> Dict
 
 
 inferASing' :: forall t ds
             . (DataFrameInference t, AllTypes PrimBytes t, Dimensions ds)
-           => Evidence (ArraySingletons t ds)
+           => Dict (ArraySingletons t ds)
 inferASing' = inferASing (undefined :: DataFrame t ds)
 
 inferEq' :: forall t ds
          . (DataFrameInference t, AllTypes Eq t, ArraySingletons t ds)
-        => Evidence (Eq (DataFrame t ds))
+        => Dict (Eq (DataFrame t ds))
 inferEq' = inferEq (undefined :: DataFrame t ds)
 
 inferShow' :: forall t ds
            . ( DataFrameInference t, AllTypes Show t
              , ArraySingletons t ds, Dimensions ds)
-          => Evidence (Show (DataFrame t ds))
+          => Dict (Show (DataFrame t ds))
 inferShow' = inferShow (undefined :: DataFrame t ds)
 
 
 inferPrim' :: forall t ds
            . ( DataFrameInference t, AllTypes PrimBytes t
              , ArraySingletons t ds, Dimensions ds)
-          => Evidence (PrimFrames t ds)
+          => Dict (PrimFrames t ds)
 inferPrim' = inferPrim (undefined :: DataFrame t ds)
 
 
 inferPrimElem' :: forall t ds
                . ( DataFrameInference t, ArraySingletons t ds
                  , ds ~ (Head ds ': Tail ds))
-              => Evidence (AllTypes PrimBytes t)
+              => Dict (AllTypes PrimBytes t)
 inferPrimElem' = inferPrimElem (undefined :: DataFrame t ds)
 
 inferOrd :: forall t ds
           . (Ord t, ArraySingleton t ds)
-         => DataFrame t ds -> Evidence (Ord (DataFrame t ds))
+         => DataFrame t ds -> Dict (Ord (DataFrame t ds))
 inferOrd = const (inferOrd' @t @ds)
 
 inferNum :: forall t ds
           . (Num t, ArraySingletons t ds)
-         => DataFrame t ds -> Evidence (Num (DataFrame t ds))
+         => DataFrame t ds -> Dict (Num (DataFrame t ds))
 inferNum = const (inferNum' @t @ds)
 
 inferFractional :: forall t ds
                  . (Fractional t, ArraySingleton t ds)
-                => DataFrame t ds -> Evidence (Fractional (DataFrame t ds))
+                => DataFrame t ds -> Dict (Fractional (DataFrame t ds))
 inferFractional = const (inferFractional' @t @ds)
 
 inferFloating :: forall t ds
                . (Floating t, ArraySingleton t ds)
-              => DataFrame t ds -> Evidence (Floating (DataFrame t ds))
+              => DataFrame t ds -> Dict (Floating (DataFrame t ds))
 inferFloating = const (inferFloating' @t @ds)
 
 

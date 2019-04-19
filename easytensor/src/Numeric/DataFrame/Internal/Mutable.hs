@@ -45,7 +45,7 @@ import           Numeric.PrimBytes
 -- | Mutable DataFrame type.
 --   Keeps element offset, number of elements, and a mutable byte storage
 data MDataFrame s t (ns :: [Nat])
-  = MDataFrame# Int# Int# (MutableByteArray# s)
+  = MDataFrame# Int# CumulDims (MutableByteArray# s)
 
 
 -- | Create a new mutable DataFrame.
@@ -53,10 +53,10 @@ newDataFrame# :: forall t (ns :: [Nat]) s
                . ( PrimBytes t, Dimensions ns)
               => State# s -> (# State# s, MDataFrame s t ns #)
 newDataFrame# s0
-    | W# nw <- totalDim' @ns
-    , n <- word2Int# nw
+    | steps <- cumulDims $ dims @_ @ns
+    , n <- cdTotalDim# steps
     , (# s1, mba #) <- newByteArray# (n *# byteSize @t undefined) s0
-    = (# s1,  MDataFrame# 0# n mba #)
+    = (# s1,  MDataFrame# 0# steps mba #)
 {-# INLINE newDataFrame# #-}
 
 -- | Create a new mutable DataFrame.
@@ -64,41 +64,44 @@ newPinnedDataFrame# :: forall t (ns :: [Nat]) s
                      . ( PrimBytes t, Dimensions ns)
                     => State# s -> (# State# s, MDataFrame s t ns #)
 newPinnedDataFrame# s0
-    | W# nw <- totalDim' @ns
-    , n <- word2Int# nw
+    | steps <- cumulDims $ dims @_ @ns
+    , n <- cdTotalDim# steps
     , (# s1, mba #)  <- newAlignedPinnedByteArray#
         (n *# byteSize @t undefined)
         (byteAlign @t undefined) s0
-    = (# s1,  MDataFrame# 0# n mba #)
+    = (# s1,  MDataFrame# 0# steps mba #)
 {-# INLINE newPinnedDataFrame# #-}
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
-copyDataFrame# :: forall (t :: Type) (as :: [Nat]) (b' :: Nat) (b :: Nat)
-                         (bs :: [Nat]) (asbs :: [Nat]) s
-                . ( PrimBytes t
-                  , PrimBytes (DataFrame t (as +: b'))
+copyDataFrame# :: forall (t :: Type)
+                         (b :: Nat) (bi :: Nat) (bd :: Nat)
+                         (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+                . ( b ~ (bi + bd - 1)
+                  , PrimBytes t
+                  , PrimBytes (DataFrame t (bd :+ bs))
                   , ConcatList as (b :+ bs) asbs
-                  , Dimensions (b :+ bs)
                   )
-               => DataFrame t (as +: b') -> Idxs (b :+ bs) -> MDataFrame s t asbs
+               => Idxs (as +: bi) -> DataFrame t (bd :+ bs) -> MDataFrame s t asbs
                -> State# s -> (# State# s, () #)
-copyDataFrame# df ei (MDataFrame# off _ mba) s
-    | I# i <- fromEnum ei
+copyDataFrame# ei df (MDataFrame# off steps mba) s
+    | I# i <- cdIx steps ei
     = (# writeBytes mba ((off +# i) *# byteSize @t undefined) df s, () #)
 {-# INLINE copyDataFrame# #-}
 
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
-copyMDataFrame# :: forall (t :: Type) (as :: [Nat]) (b' :: Nat) (b :: Nat)
-                          (bs :: [Nat]) (asbs :: [Nat]) s
-                 . ( PrimBytes t
+copyMDataFrame# :: forall (t :: Type)
+                          (b :: Nat) (bi :: Nat) (bd :: Nat)
+                          (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+                 . ( b ~ (bi + bd - 1)
+                   , PrimBytes t
                    , ConcatList as (b :+ bs) asbs
-                   , Dimensions (b :+ bs)
                    )
-                => MDataFrame s t (as +: b') -> Idxs (b :+ bs) -> MDataFrame s t asbs
+                => Idxs (as +: bi) -> MDataFrame s t (bd :+ bs) -> MDataFrame s t asbs
                 -> State# s -> (# State# s, () #)
-copyMDataFrame# (MDataFrame# offA lenA arrA) ei (MDataFrame# offM _ arrM) s
+copyMDataFrame# ei (MDataFrame# offA stepsA arrA) (MDataFrame# offM stepsM arrM) s
     | elS <- byteSize @t undefined
-    , I# i <- fromEnum ei
+    , lenA <- cdTotalDim# stepsA
+    , I# i <- cdIx stepsM ei
     = (# copyMutableByteArray# arrA (offA *# elS)
                                arrM ((offM +# i) *# elS) (lenA *# elS) s
        , () #)
@@ -109,64 +112,68 @@ unsafeFreezeDataFrame# :: forall (t :: Type) (ns :: [Nat]) s
                         . PrimArray t (DataFrame t ns)
                        => MDataFrame s t ns
                        -> State# s -> (# State# s, DataFrame t ns #)
-unsafeFreezeDataFrame# (MDataFrame# offM lenM arrM) s1
+unsafeFreezeDataFrame# (MDataFrame# offM steps arrM) s1
     | (# s2, arrA #) <- unsafeFreezeByteArray# arrM s1
-    = (# s2, fromElems offM lenM arrA #)
+    = (# s2, fromElems steps offM arrA #)
 {-# INLINE unsafeFreezeDataFrame# #-}
 
 -- | Copy content of a mutable DataFrame into a new immutable DataFrame.
 freezeDataFrame# :: forall (t :: Type) (ns :: [Nat]) s
                   . PrimArray t (DataFrame t ns)
                  => MDataFrame s t ns -> State# s -> (# State# s, DataFrame t ns #)
-freezeDataFrame# (MDataFrame# offM n arrM) s0
+freezeDataFrame# (MDataFrame# offM steps arrM) s0
     | elS  <- byteSize @t undefined
+    , n <- cdTotalDim# steps
     , (# s1, mba #) <- newByteArray# (n *# elS) s0
     , s2 <- copyMutableByteArray# arrM (offM *# elS) mba 0# (n *# elS) s1
     , (# s3, arrA #) <- unsafeFreezeByteArray# mba s2
-    = (# s3, fromElems 0# n arrA #)
+    = (# s3, fromElems steps 0# arrA #)
 {-# INLINE freezeDataFrame# #-}
 
 -- | Create a new mutable DataFrame and copy content of immutable one in there.
 thawDataFrame# :: forall (t :: Type) (ns :: [Nat]) s
-                . (PrimBytes (DataFrame t ns), PrimBytes t)
+                . ( Dimensions ns
+                  , PrimBytes (DataFrame t ns))
                => DataFrame t ns -> State# s -> (# State# s, MDataFrame s t ns #)
 thawDataFrame# df s0
-    | elS  <- byteSize @t undefined
-    , arrA  <- getBytes df
-    , boff <- byteOffset df
+    | arrA  <- getBytes df
+    , boff  <- byteOffset df
     , bsize <- byteSize df
+    , steps <- cumulDims $ dims @_ @ns
     , (# s1, arrM #) <- newByteArray# bsize s0
     , s2 <- copyByteArray# arrA boff arrM 0# bsize s1
-    = (# s2, MDataFrame# 0# (quotInt# bsize elS) arrM #)
+    = (# s2, MDataFrame# 0# steps arrM #)
 {-# INLINE thawDataFrame# #-}
 
 -- | Create a new mutable DataFrame and copy content of immutable one in there.
 --   The result array is pinned and aligned.
 thawPinDataFrame# :: forall (t :: Type) (ns :: [Nat]) s
-                . (PrimBytes (DataFrame t ns), PrimBytes t)
+                . ( Dimensions ns
+                  , PrimBytes (DataFrame t ns))
                => DataFrame t ns -> State# s -> (# State# s, MDataFrame s t ns #)
 thawPinDataFrame# df s0
-    | elS  <- byteSize @t undefined
-    , arrA  <- getBytes df
-    , boff <- byteOffset df
+    | arrA  <- getBytes df
+    , boff  <- byteOffset df
     , bsize <- byteSize df
+    , steps <- cumulDims $ dims @_ @ns
     , (# s1, arrM #) <- newAlignedPinnedByteArray# bsize (byteAlign df) s0
     , s2 <- copyByteArray# arrA boff arrM 0# bsize s1
-    = (# s2, MDataFrame# 0# (quotInt# bsize elS) arrM #)
+    = (# s2, MDataFrame# 0# steps arrM #)
 {-# INLINE thawPinDataFrame# #-}
 
 -- | UnsafeCoerces an underlying byte array.
 unsafeThawDataFrame# :: forall (t :: Type) (ns :: [Nat]) s
-                      . (PrimBytes (DataFrame t ns), PrimBytes t)
+                      . ( Dimensions ns
+                        , PrimBytes (DataFrame t ns), PrimBytes t)
                      => DataFrame t ns
                      -> State# s -> (# State# s, MDataFrame s t ns #)
 unsafeThawDataFrame# df s0
     | elS  <- byteSize @t undefined
-    , arrA  <- getBytes df
+    , arrA <- getBytes df
     , boff <- byteOffset df
-    , bsize <- byteSize df
+    , steps <- cumulDims $ dims @_ @ns
     = (# s0
-       , MDataFrame# (quotInt# boff elS) (quotInt# bsize elS) (unsafeCoerce# arrA)
+       , MDataFrame# (quotInt# boff elS) steps (unsafeCoerce# arrA)
        #)
 {-# INLINE unsafeThawDataFrame# #-}
 
@@ -181,9 +188,10 @@ writeDataFrameOff# (MDataFrame# off _ mba) i x s
 
 -- | Write a single element at the specified index
 writeDataFrame# :: forall (t :: Type) (ns :: [Nat]) s
-                 . ( PrimBytes t, Dimensions ns )
+                 . PrimBytes t
                 => MDataFrame s t ns -> Idxs ns -> t -> State# s -> (# State# s, () #)
-writeDataFrame# mdf ei | I# i <- fromEnum ei = writeDataFrameOff# mdf i
+writeDataFrame# mdf@(MDataFrame# _ st _) ei
+  | I# i <- cdIx st ei = writeDataFrameOff# mdf i
 {-# INLINE writeDataFrame# #-}
 
 -- | Read a single element at the specified element offset
@@ -195,9 +203,10 @@ readDataFrameOff# (MDataFrame# off _ mba) i = readArray mba (off +# i)
 
 -- | Read a single element at the specified index
 readDataFrame# :: forall (t :: Type) (ns :: [Nat]) s
-                . ( PrimBytes t, Dimensions ns )
+                . PrimBytes t
                => MDataFrame s t ns -> Idxs ns -> State# s -> (# State# s, t #)
-readDataFrame# mdf ei | I# i <- fromEnum ei = readDataFrameOff# mdf i
+readDataFrame# mdf@(MDataFrame# _ st _) ei
+  | I# i <- cdIx st ei = readDataFrameOff# mdf i
 {-# INLINE readDataFrame# #-}
 
 -- | Allow arbitrary operations on a pointer to the beginning of the data.
