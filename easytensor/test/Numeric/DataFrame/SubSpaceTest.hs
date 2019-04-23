@@ -19,18 +19,18 @@ type SSuff = '[3,7]
 
 prop_IndexDimMax :: DataFrame Int SPref -> DataFrame Int SSuff -> Bool
 prop_IndexDimMax x y =
-   ((maxBound `inSpaceOf` x) !. z) == y
+   (z ! (maxBound `inSpaceOf` x)) == y
   where
     z = ewgen y :: DataFrame Int SFull
 
 prop_IndexCustom1 :: DataFrame Word SSuff -> Bool
-prop_IndexCustom1 x = (1:*3:*2 !. z) == x
+prop_IndexCustom1 x = (z ! 1:*3:*2) == x
   where
     z = ewgen x :: DataFrame Word SFull
 
 -- TODO:!
 -- prop_IndexCustom2 :: DataFrame Double SSuff -> Bool
--- prop_IndexCustom2 x = (2:*2:*1 !. z) %* eye == x
+-- prop_IndexCustom2 x = (z ! 2:*2:*1) %* eye == x
 --   where
 --     z = ewgen x :: DataFrame Double SFull
 

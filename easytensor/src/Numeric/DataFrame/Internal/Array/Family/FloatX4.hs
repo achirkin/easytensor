@@ -414,7 +414,7 @@ getIdxOffset is = case unsafeCoerce# is of
 
 
 {-# RULES
-"index/FloatX4" forall i . (!.) @Float @'[4] i
+"index/FloatX4" forall i . index @Float @'[4] i
   = unsafeCoerce# (ix# @Float @FloatX4 (getIdxOffset i))
 
   #-}
