@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE KindSignatures         #-}
@@ -8,9 +9,11 @@
 module Numeric.DataFrame.Internal.Array.Class
   ( PrimArray (..), CumulDims (..)
   , cumulDims, cdTotalDim, cdTotalDim#, cdIx
-  , ixOff, unsafeFromFlatList
+  , ixOff, unsafeFromFlatList, getSteps
   ) where
 
+import           Data.Monoid        as Mon (Monoid (..))
+import           Data.Semigroup     as Sem (Semigroup (..))
 import           GHC.Base           (ByteArray#, Int (..), Int#, Word (..),
                                      word2Int#)
 import           Numeric.Dimensions
@@ -21,6 +24,16 @@ import           Numeric.PrimBytes
 --   In particular, its first element is @totalDim ds@,
 --   its last element is always is always @1@.
 newtype CumulDims = CumulDims { unCumulDims :: [Word] }
+
+instance Sem.Semigroup CumulDims where
+    CumulDims as <> CumulDims bs = CumulDims $ map (head bs *) (init as) ++ bs
+
+instance Mon.Monoid CumulDims where
+    mempty = CumulDims [1]
+#if !(MIN_VERSION_base(4,11,0))
+    mappend = (<>)
+#endif
+
 
 -- | Calculate cumulative dims
 cumulDims :: Dims (ns :: [k]) -> CumulDims
@@ -41,6 +54,11 @@ cdTotalDim# ~(CumulDims ~(n:_)) = case n of W# w -> word2Int# w
 cdIx :: CumulDims -> Idxs ns -> Int
 cdIx ~(CumulDims ~(_:steps))
   = fromIntegral . sum . zipWith (*) steps . listIdxs
+
+getSteps :: PrimArray t a => Dims (ns :: [k]) -> a -> CumulDims
+getSteps dds df = case uniqueOrCumulDims df of
+   Left  _  -> cumulDims dds
+   Right ds -> ds
 
 class PrimBytes t => PrimArray t a | a -> t where
     -- | Broadcast element into array
