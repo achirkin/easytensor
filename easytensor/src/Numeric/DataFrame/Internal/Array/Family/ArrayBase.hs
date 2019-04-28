@@ -293,24 +293,47 @@ instance Ord t => Ord (ArrayBase t ds)  where
 
 instance (Dimensions ds, Show t)
       => Show (ArrayBase t ds) where
-  show x = case dims @_ @ds of
-    U -> "{ " ++ show (ix U x) ++ " }"
-    Dim :* U -> ('{' :) . drop 1 $
-                    foldr (\i s -> ", " ++ show (ix i x) ++ s) " }"
-                            [minBound .. maxBound]
-    (Dim :: Dim n) :* (Dim :: Dim m) :* (Dims :: Dims dss) ->
-      let loopInner :: Idxs dss -> Idxs '[n,m] -> String
-          loopInner ods (n:*m:*_) = ('{' :) . drop 2 $
-                          foldr (\i ss -> '\n':
-                                  foldr (\j s ->
-                                           ", " ++ show (ix (i :* j :* ods) x) ++ s
-                                        ) ss [1..m]
-                                ) " }" [1..n]
-          loopOuter ::  Idxs dss -> String -> String
-          loopOuter U s  = "\n" ++ loopInner U maxBound ++ s
-          loopOuter ds s = "\n(i j" ++ drop 4 (show ds) ++ "):\n"
-                                ++ loopInner ds maxBound ++ s
-      in drop 1 $ foldr loopOuter "" [minBound..maxBound]
+    showsPrec _ = pprDF id ds ds
+      where
+        ds = dims @_ @ds
+
+pprDF :: forall t (bs :: [Nat]) (asbs :: [Nat])
+       . Show t 
+      => (Idxs bs -> Idxs asbs) -> Dims bs -> Dims asbs -> ArrayBase t asbs -> ShowS
+pprDF u U _ x = showString "{ " . showsPrec 0 (ix (u U) x) . showString " }"
+pprDF u (Dim :* U) _ x
+  = showChar '{'
+  . drop 1
+  . foldr (\i s -> showString ", " . showsPrec 0 (ix (u i) x) . s)
+      (showString " }")
+      [minBound .. maxBound]
+pprDF u bs@((n@Dim :: Dim n) :* (m@Dim :: Dim m) :* U) asbs x
+  = maybeDimSize
+  . showChar '{'
+  . drop 2
+  . foldr (\i ss -> showChar '\n' .
+              foldr (\j s ->
+                       showString ", " . showsPrec 0 (ix (u $ Idx i :* Idx j :* U) x) . s
+                    ) ss [0..dimVal m - 1]
+          ) (showString " }") [0..dimVal n - 1]
+  where
+    dropE4 :: String -> String
+    dropE4 [] = []
+    dropE4 [_] = []
+    dropE4 [_,_] = []
+    dropE4 [_,_,_] = []
+    dropE4 [_,_,_,_] = []
+    dropE4 (c:cs) = c:dropE4 cs
+    maybeDimSize = case sameDims bs asbs of
+      Just Dict -> id
+      _ -> showChar '('
+         . showString (drop 6 . dropE4 . show . u $ 0 :* 0 :* U)
+         . showString "i,j):\n"
+pprDF u ((Dim :: Dim n) :* ns@(Dims :: Dims ns)) asbs x 
+  | Just Dims <- stripSuffixDims ns asbs
+  = drop 1
+  . foldr (\i s -> showChar '\n' . pprDF (u . (i :*)) ns asbs x . s) id [minBound..maxBound]
+pprDF _ _ _ _ = error "ArrayBase/pprDF: incorrect dimensions!"
 
 instance {-# OVERLAPPING #-} Bounded (ArrayBase Double ds) where
     maxBound = ArrayBase (# inftyD | #)
