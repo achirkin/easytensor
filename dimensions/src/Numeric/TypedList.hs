@@ -48,16 +48,21 @@ module Numeric.TypedList
     , Numeric.TypedList.last
     , Numeric.TypedList.init
     , Numeric.TypedList.splitAt
+    , Numeric.TypedList.stripPrefix
+    , Numeric.TypedList.stripSuffix
+    , Numeric.TypedList.sameList
     , Numeric.TypedList.concat
     , Numeric.TypedList.length
     , Numeric.TypedList.map
     , module Data.Type.List
     ) where
 
-import           Control.Arrow   (first)
-import           Data.Constraint
+import           Control.Arrow      (first)
+import           Data.Constraint    hiding ((***))
 import           Data.Proxy
-import           GHC.Base        (Type)
+import           Data.Type.Equality
+import           Data.Typeable
+import           GHC.Base           (Type)
 import           GHC.Exts
 
 import           Data.Type.List
@@ -207,6 +212,50 @@ concat :: TypedList f xs
 concat (TypedList xs) (TypedList ys) = unsafeCoerce# (xs ++ ys)
 {-# INLINE concat #-}
 
+stripPrefix :: forall xs ys f
+             . ( All Typeable xs, All Typeable ys, All Eq (Map f xs))
+            => TypedList f xs
+            -> TypedList f ys
+            -> Maybe (TypedList f (StripPrefix xs ys))
+stripPrefix U ys = Just ys
+stripPrefix _ U  = Nothing
+stripPrefix ((x :: f x) :* xs) ((y :: f y) :* ys)
+  | Just Refl <- eqT @x @y
+  , x == y       = unsafeCoerce# ((x :*) <$> stripPrefix xs ys)
+  | otherwise    = Nothing
+{-# INLINE stripPrefix #-}
+
+stripSuffix :: forall xs ys f
+             . ( All Typeable xs, All Typeable ys, All Eq (Map f xs))
+            => TypedList f xs
+            -> TypedList f ys
+            -> Maybe (TypedList f (StripSuffix xs ys))
+stripSuffix U ys = Just ys
+stripSuffix _ U  = Nothing
+stripSuffix xs ys
+  | Just n <- order ys `minusDimM` order xs
+  , (zs, xs') <- Numeric.TypedList.splitAt n ys
+  , EvList <- Numeric.TypedList.drop n $ _evList @_ @Typeable ys
+  , Just (Refl, True) <- sameList xs xs'
+                 = Just (unsafeCoerce# zs)
+  | otherwise    = Nothing
+{-# INLINE stripSuffix #-}
+
+-- | Returns two things at once:
+--   (Evidence that types of lists match, value-level equality).
+sameList :: ( All Typeable xs, All Typeable ys, All Eq (Map f xs))
+         => TypedList f xs
+         -> TypedList f ys
+         -> Maybe (xs :~: ys, Bool)
+sameList U U = Just (Refl, True)
+sameList ((x :: f x) :* xs) ((y :: f y) :* ys)
+  | Just Refl <- eqT @x @y
+  , Just (Refl, b) <- sameList xs ys
+    = Just (Refl, x == y && b)
+  | otherwise
+    = Nothing
+sameList _ _ = Nothing
+
 -- | Map a function over contents of a typed list
 map :: (forall a . f a -> g a)
     -> TypedList f xs
@@ -330,7 +379,7 @@ mkEVL U              = Dict
 mkEVL (Dict1 :* evs) = case mkEVL evs of Dict -> Dict
 
 
-_evList :: forall (k :: Type) (c :: k -> Constraint) (xs :: [k])
-        . All c xs => TypeList xs -> DictList c xs
+_evList :: forall (k :: Type) (c :: k -> Constraint) (xs :: [k]) (f :: (k -> Type))
+        . All c xs => TypedList f xs -> DictList c xs
 _evList U         = U
 _evList (_ :* xs) = case _evList xs of evs -> Dict1 :* evs
