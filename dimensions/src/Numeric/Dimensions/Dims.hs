@@ -47,6 +47,7 @@ module Numeric.Dimensions.Dims
   , compareDims, compareDims'
   , inSpaceOf, asSpaceOf
   , xDims, xDims'
+  , stripPrefixDims, stripSuffixDims
     -- * Type-level programming
     --   Provide type families to work with lists of dimensions (`[Nat]` or `[XNat]`)
   , AsXDims, AsDims, FixedDims, KnownXNatTypes
@@ -58,9 +59,9 @@ module Numeric.Dimensions.Dims
   ) where
 
 
-
 import           Data.Constraint
 import           GHC.Exts          (Constraint, unsafeCoerce#)
+import           Data.List         (stripPrefix)
 import qualified Text.Read         as Read
 
 import           Data.Type.List
@@ -218,6 +219,24 @@ xDims' :: forall xns ns . (FixedDims xns ns, Dimensions ns) => Dims xns
 xDims' = xDims @xns (dims @Nat @ns)
 {-# INLINE xDims' #-}
 
+-- | Drop the given prefix from a Dims list.
+--   It returns Nothing if the list did not start with the prefix given,
+--    or Just the Dims after the prefix, if it does.
+stripPrefixDims :: Dims (xs :: [Nat]) -> Dims (ys :: [Nat])
+                -> Maybe (Dims (StripPrefix xs ys))
+stripPrefixDims = unsafeCoerce# (stripPrefix :: [Word] -> [Word] -> Maybe [Word])
+{-# INLINE stripPrefixDims #-}
+
+-- | Drop the given suffix from a Dims list.
+--   It returns Nothing if the list did not end with the suffix given,
+--    or Just the Dims before the suffix, if it does.
+stripSuffixDims :: Dims (xs :: [Nat]) -> Dims (ys :: [Nat])
+                -> Maybe (Dims (StripSuffix xs ys))
+stripSuffixDims = unsafeCoerce#
+  ( (\as bs -> reverse <$> stripPrefix (reverse as)  (reverse bs))
+    :: [Word] -> [Word] -> Maybe [Word]
+  )
+{-# INLINE stripSuffixDims #-}
 
 -- | We either get evidence that this function was instantiated with the
 --   same type-level Dimensions, or 'Nothing' @O(Length xs)@.
@@ -350,7 +369,7 @@ type KnownXNatTypes xns = All KnownXNatType xns
 --   to create an instance of `Dimensions` typeclass at runtime.
 --   The trick is taken from Edward Kmett's reflection library explained
 --   in https://www.schoolofhaskell.com/user/thoughtpolice/using-reflection
-reifyDims :: forall r ds . Dims ds -> ( Dimensions ds => r) -> r
+reifyDims :: forall r ds . Dims ds -> (Dimensions ds => r) -> r
 reifyDims ds k = unsafeCoerce# (MagicDims k :: MagicDims ds r) ds
 {-# INLINE reifyDims #-}
 newtype MagicDims ds r = MagicDims (Dimensions ds => r)
