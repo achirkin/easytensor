@@ -23,7 +23,7 @@ module Numeric.Dimensions
   , module Data.Constraint
   ) where
 
-import           Data.Constraint         (Dict (..))
+import           Data.Constraint         (Dict (..), (:-)(..), (\\), mapDict)
 import           Data.Type.List
 import           Numeric.Dim
 import           Numeric.Dimensions.Dims
