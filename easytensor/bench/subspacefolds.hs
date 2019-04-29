@@ -12,7 +12,7 @@ import           Numeric.DataFrame
 import           Numeric.Dimensions
 
 
-type DList = [6,4,10,7,35,8,12] -- [6,26,8,10,35,8,12]
+type DList = [6,14,10,7,2,8,5]
 
 main :: IO ()
 main = do
