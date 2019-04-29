@@ -77,51 +77,51 @@ prop_translate3vs4 :: Vector Double 4 -> Bool
 prop_translate3vs4 v = translate4 v == translate3 (dropW v)
 
 prop_translate4 :: Vector Double 4 -> Vector Double 3 -> Bool
-prop_translate4 a b = translate4 a %* toHomPoint b == toHomPoint (dropW a + b)
+prop_translate4 a b = toHomPoint b %* translate4 a == toHomPoint (dropW a + b)
 
 prop_translate3 :: Vector Double 3 -> Vector Double 3 -> Bool
-prop_translate3 a b = translate3 a %* toHomPoint b == toHomPoint (a + b)
+prop_translate3 a b = toHomPoint b %* translate3 a == toHomPoint (a + b)
 
 prop_rotateX :: Vector Double 4 -> Bool
 prop_rotateX v | (x,y,z,w) <- unpackV4 v =
   and [
-    rotateX (-2 * pi)   %* v `approxEq` v,
-    rotateX (-1.5 * pi) %* v `approxEq` vec4 x (-z) y w,
-    rotateX (-pi)       %* v `approxEq` vec4 x (-y) (-z) w,
-    rotateX (-0.5 * pi) %* v `approxEq` vec4 x z (-y) w,
-    rotateX 0           %* v `approxEq` v,
-    rotateX (0.5 * pi)  %* v `approxEq` vec4 x (-z) y w,
-    rotateX pi          %* v `approxEq` vec4 x (-y) (-z) w,
-    rotateX (1.5 * pi)  %* v `approxEq` vec4 x z (-y) w,
-    rotateX (2 * pi)    %* v `approxEq` v
+    v %* rotateX (-2 * pi)   `approxEq` v,
+    v %* rotateX (-1.5 * pi) `approxEq` vec4 x (-z) y w,
+    v %* rotateX (-pi)       `approxEq` vec4 x (-y) (-z) w,
+    v %* rotateX (-0.5 * pi) `approxEq` vec4 x z (-y) w,
+    v %* rotateX 0           `approxEq` v,
+    v %* rotateX (0.5 * pi)  `approxEq` vec4 x (-z) y w,
+    v %* rotateX pi          `approxEq` vec4 x (-y) (-z) w,
+    v %* rotateX (1.5 * pi)  `approxEq` vec4 x z (-y) w,
+    v %* rotateX (2 * pi)    `approxEq` v
   ]
 
 prop_rotateY :: Vector Double 4 -> Bool
 prop_rotateY v | (x,y,z,w) <- unpackV4 v =
   and [
-    rotateY (-2 * pi)   %* v `approxEq` v,
-    rotateY (-1.5 * pi) %* v `approxEq` vec4 z y (-x) w,
-    rotateY (-pi)       %* v `approxEq` vec4 (-x) y (-z) w,
-    rotateY (-0.5 * pi) %* v `approxEq` vec4 (-z) y x w,
-    rotateY 0           %* v `approxEq` v,
-    rotateY (0.5 * pi)  %* v `approxEq` vec4 z y (-x) w,
-    rotateY pi          %* v `approxEq` vec4 (-x) y (-z) w,
-    rotateY (1.5 * pi)  %* v `approxEq` vec4 (-z) y x w,
-    rotateY (2 * pi)    %* v `approxEq` v
+    v %* rotateY (-2 * pi)   `approxEq` v,
+    v %* rotateY (-1.5 * pi) `approxEq` vec4 z y (-x) w,
+    v %* rotateY (-pi)       `approxEq` vec4 (-x) y (-z) w,
+    v %* rotateY (-0.5 * pi) `approxEq` vec4 (-z) y x w,
+    v %* rotateY 0           `approxEq` v,
+    v %* rotateY (0.5 * pi)  `approxEq` vec4 z y (-x) w,
+    v %* rotateY pi          `approxEq` vec4 (-x) y (-z) w,
+    v %* rotateY (1.5 * pi)  `approxEq` vec4 (-z) y x w,
+    v %* rotateY (2 * pi)    `approxEq` v
   ]
 
 prop_rotateZ :: Vector Double 4 -> Bool
 prop_rotateZ v | (x,y,z,w) <- unpackV4 v =
   and [
-    rotateZ (-2 * pi)   %* v `approxEq` v,
-    rotateZ (-1.5 * pi) %* v `approxEq` vec4 (-y) x z w,
-    rotateZ (-pi)       %* v `approxEq` vec4 (-x) (-y) z w,
-    rotateZ (-0.5 * pi) %* v `approxEq` vec4 y (-x) z w,
-    rotateZ 0           %* v `approxEq` v,
-    rotateZ (0.5 * pi)  %* v `approxEq` vec4 (-y) x z w,
-    rotateZ pi          %* v `approxEq` vec4 (-x) (-y) z w,
-    rotateZ (1.5 * pi)  %* v `approxEq` vec4 y (-x) z w,
-    rotateZ (2 * pi)    %* v `approxEq` v
+    v %* rotateZ (-2 * pi)   `approxEq` v,
+    v %* rotateZ (-1.5 * pi) `approxEq` vec4 (-y) x z w,
+    v %* rotateZ (-pi)       `approxEq` vec4 (-x) (-y) z w,
+    v %* rotateZ (-0.5 * pi) `approxEq` vec4 y (-x) z w,
+    v %* rotateZ 0           `approxEq` v,
+    v %* rotateZ (0.5 * pi)  `approxEq` vec4 (-y) x z w,
+    v %* rotateZ pi          `approxEq` vec4 (-x) (-y) z w,
+    v %* rotateZ (1.5 * pi)  `approxEq` vec4 y (-x) z w,
+    v %* rotateZ (2 * pi)    `approxEq` v
   ]
 
 prop_rotate :: Double -> Bool
@@ -133,16 +133,17 @@ prop_rotate a =
   ]
 
 prop_rotateEuler :: Double -> Double -> Double -> Bool
-prop_rotateEuler pitch yaw roll = rotateEuler pitch yaw roll `approxEq` rotateX pitch %* rotateY yaw %* rotateZ roll
+prop_rotateEuler pitch yaw roll =
+  rotateEuler pitch yaw roll `approxEq` rotateZ roll %* rotateY yaw %* rotateX pitch
 
 prop_lookAt :: Vector Double 3 -> Vector Double 3 -> Vector Double 3 -> Bool
 prop_lookAt up cam foc =
   and [
-    (normalized . fromHom $ m %* toHomPoint foc) `approxEq` vec3 0 0 (-1),
-    fromHom (m %* toHomPoint cam) `approxEq` 0,
-    fromHom (m %* toHomVector xb) `approxEq` vec3 1 0 0,
-    fromHom (m %* toHomVector yb) `approxEq` vec3 0 1 0,
-    fromHom (m %* toHomVector zb) `approxEq` vec3 0 0 1
+    (normalized . fromHom $ toHomPoint foc %* m) `approxEq` vec3 0 0 (-1),
+    fromHom (toHomPoint cam %* m) `approxEq` 0,
+    fromHom (toHomVector xb %* m) `approxEq` vec3 1 0 0,
+    fromHom (toHomVector yb %* m) `approxEq` vec3 0 1 0,
+    fromHom (toHomVector zb %* m) `approxEq` vec3 0 0 1
   ]
   where
     m = lookAt up cam foc
@@ -172,7 +173,7 @@ prop_perspective a b c d =
     hpd = tan (fovy * 0.5) -- height/distance
     wpd = aspect * hpd -- width/distance
     m = perspective n f fovy aspect
-    projectTo x' y' z = fromHom $ m %* vec4 (x' * wpd * z) (y' * hpd * z) (-z) 1
+    projectTo x' y' z = fromHom $ vec4 (x' * wpd * z) (y' * hpd * z) (-z) 1 %* m
 
 prop_orthogonal :: Double -> Double -> Double -> Double -> Bool
 prop_orthogonal a b c d =
@@ -194,7 +195,7 @@ prop_orthogonal a b c d =
     w = 1.0 + mod' c 9999.0 -- Width in range [1, 10000)
     h = 1.0 + mod' d 9999.0 -- Height in range [1, 10000)
     m = orthogonal n f w h
-    projectTo x' y' z = fromHom $ m %* vec4 (x' * w * 0.5) (y' * h * 0.5) (-z) 1
+    projectTo x' y' z = fromHom $ vec4 (x' * w * 0.5) (y' * h * 0.5) (-z) 1 %* m
 
 prop_toHomPoint :: Vector Double 3 -> Bool
 prop_toHomPoint v | (x,y,z) <- unpackV3 v = toHomPoint v == vec4 x y z 1
