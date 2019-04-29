@@ -168,7 +168,22 @@ instance ( KnownDim n, Ord t, Fractional t
          , PrimBytes (Matrix t n n)
          )
          => MatrixInverse t n where
-  inverse m = ewmap (luSolve (lu m)) eye
+  inverse m = runST $ do
+      m' <- newDataFrame
+      indexWise_ @t @'[n] @'[n] @'[n, n] @_ @()
+        (\is ->
+          indexWise_ @t @'[n] @'[] @'[n] @_ @()
+            (\(j:*U) -> writeDataFrame m' (j:*is)) . luSolve luM
+        ) eye
+      unsafeFreezeDataFrame m'
+    where
+      luM = lu m
+
+    -- much nicer, but probably slower version:
+    --   (it is not particularly fast to do an extra transpose
+    --       before calculating the inverse)
+    -- ewmap (luSolve . lu $ transpose m) eye
+
 
 
 instance ( KnownDim n, Ord t, Fractional t
@@ -204,7 +219,7 @@ instance ( KnownDim n, Ord t, Fractional t
         nn = case dnn of W# w -> word2Int# w
         tbs = byteSize @t undefined
         bsize = nn *# tbs
-        ixm i j = ix# (i +# n *# j) m
+        ixm i j = ix# (i *# n +# j) m
         loop :: (Int# -> a -> State# s -> (# State# s, a #))
              -> Int# -> Int# -> a -> State# s -> (# State# s, a #)
         loop f i k x s
@@ -216,10 +231,10 @@ instance ( KnownDim n, Ord t, Fractional t
           , (# s2, mbu #) <- newByteArray# bsize s1
           , s3 <- setByteArray# mbl 0# bsize 0# s2
           , s4 <- setByteArray# mbu 0# bsize 0# s3
-          , readL <- \i j -> readArray @t mbl (i +# n *# j)
-          , readU <- \i j -> readArray @t mbu (i +# n *# j)
-          , writeL <- \i j -> writeArray @t mbl (i +# n *# j)
-          , writeU <- \i j -> writeArray @t mbu (i +# n *# j)
+          , readL <- \i j -> readArray @t mbl (i *# n +# j)
+          , readU <- \i j -> readArray @t mbu (i *# n +# j)
+          , writeL <- \i j -> writeArray @t mbl (i *# n +# j)
+          , writeU <- \i j -> writeArray @t mbu (i *# n +# j)
           , computeU <- \i j ->
               let f k x s
                     | (# s' , ukj #) <- readU k j s
@@ -271,7 +286,7 @@ luSolve LUFact {..} b = x
     y :: Vector t n
     y = runST $ do
       my <- newDataFrame
-      let ixA (I# i) (I# j) = scalar $ ix# (i +# n# *# j) luLower
+      let ixA (I# i) (I# j) = scalar $ ix# (i *# n# +# j) luLower
           ixB (I# i) = scalar $ ix# i pb
       forM_ [0..n-1] $ \i -> do
         v <- foldM ( \v j -> do
@@ -283,7 +298,7 @@ luSolve LUFact {..} b = x
     -- Ux = y
     x = runST $ do
       mx <- newDataFrame
-      let ixA (I# i) (I# j) = scalar $ ix# (i +# n# *# j) luUpper
+      let ixA (I# i) (I# j) = scalar $ ix# (i *# n# +# j) luUpper
           ixB (I# i) = scalar $ ix# i y
       forM_ [n-1, n-2 .. 0] $ \i -> do
         v <- foldM ( \v j -> do
@@ -305,15 +320,17 @@ pivotMat :: forall (t :: Type) (n :: k)
                             , Matrix t n n -- permutation matrix
                             , Scalar t -- sign of permutation matrix
                             )
-pivotMat m
-    = ( let f ( j, [] )   = f (j+1, rowOrder)
-            f ( j, i:is ) = (# (j, is), ix i j #)
+pivotMat mat
+    = ( let f ( _, [] )   = undefined
+            f ( j, i:is )
+              | j == n    = f (0, is)
+              | otherwise = (# (j+1, i:is), ix i j #)
         in case gen# steps f (0,rowOrder) of
             (# _, r #) -> r
-      , let f ( j, [] ) = f (j+1, rowOrder)
+      , let f ( _, [] ) = undefined
             f ( j, x:xs )
-               | j == x    = (# ( j, xs), 1 #)
-               | otherwise = (# ( j, xs), 0 #)
+               | j == n    = f (0, xs)
+               | otherwise = (# ( j + 1, x:xs), if j == x then 1 else 0 #)
         in case gen# steps f (0,rowOrder) of
             (# _, r #) -> r
       , if countMisordered rowOrder `rem` 2 == 1
@@ -331,7 +348,7 @@ pivotMat m
     countMisordered [] = 0
     countMisordered (i:is) = foldl' (\c j -> if i > j then succ c else c) 0 is
                            + countMisordered is
-    ix (I# i) (I# j) = ix# (i +# j *# n#) m
+    ix (I# i) (I# j) = ix# (i *# n# +# j) mat
     findMax :: Int -> [Int] -> (t, Int)
     findMax j = foldl' (\(ox, oi) i -> let x = abs (ix i j)
                                        in if x > ox then (x, i)
