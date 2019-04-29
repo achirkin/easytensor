@@ -50,7 +50,7 @@ module Numeric.Dimensions.Dims
   , stripPrefixDims, stripSuffixDims
     -- * Type-level programming
     --   Provide type families to work with lists of dimensions (`[Nat]` or `[XNat]`)
-  , AsXDims, AsDims, FixedDims, KnownXNatTypes
+  , AsXDims, AsDims, FixedDims, KnownXNatTypes, CmpNats
     -- * Re-export type list
   , RepresentableList (..), TypeList, types
   , order, order'
@@ -247,7 +247,6 @@ stripSuffix suf whole = go pref whole
     go  _      []    = Nothing
 {-# INLINE stripSuffix #-}
 
-
 -- | We either get evidence that this function was instantiated with the
 --   same type-level Dimensions, or 'Nothing' @O(Length xs)@.
 --
@@ -261,7 +260,6 @@ sameDims as bs
   | otherwise = Nothing
 {-# INLINE sameDims #-}
 
-
 -- | We either get evidence that this function was instantiated with the
 --   same type-level Dimensions, or 'Nothing' @O(Length xs)@.
 sameDims' :: forall (as :: [Nat]) (bs :: [Nat]) p q
@@ -274,12 +272,16 @@ sameDims' _ _ = sameDims (dims @Nat @as) (dims @Nat @bs)
 --   from the first dimension to the last dimension
 --   (the first dimension is the most significant one).
 --
---   Literally,
+--   This is the same @compare@ rule, as for `Idxs` and normal Haskell lists.
 --
---   > compareDims a b = compare (listDims a) (listDims b)
---
-compareDims :: Dims as -> Dims bs -> Ordering
-compareDims a b = compare (listDims a) (listDims b)
+--   Note: `CmpNats` forces type parameters to kind `Nat`;
+--         if you want to compare unknown `XNat`s, use `Ord` instance of `Dims`.
+compareDims :: Dims as -> Dims bs -> SOrdering (CmpNats as bs)
+compareDims a b
+  = case unsafeCoerce# (compare :: [Word] -> [Word] -> Ordering) a b of
+    LT -> unsafeCoerce# SLT
+    EQ -> unsafeCoerce# SEQ
+    GT -> unsafeCoerce# SGT
 {-# INLINE compareDims #-}
 
 -- | Compare dimensions by their size in lexicorgaphic order
@@ -289,10 +291,9 @@ compareDims a b = compare (listDims a) (listDims b)
 --   This is the same @compare@ rule, as for `Idxs` and normal Haskell lists.
 compareDims' :: forall as bs p q
               . (Dimensions as, Dimensions bs)
-             => p as -> q bs -> Ordering
+             => p as -> q bs -> SOrdering (CmpNats as bs)
 compareDims' _ _ = compareDims (dims @_ @as) (dims @_ @bs)
 {-# INLINE compareDims' #-}
-
 
 -- | Similar to `const` or `asProxyTypeOf`;
 --   to be used on such implicit functions as `dim`, `dimMax`, etc.
@@ -320,10 +321,10 @@ instance Ord (Dims (ds :: [Nat])) where
     compare _ _ = EQ
 
 instance Ord (Dims (ds :: [XNat])) where
-    compare = compareDims
+    compare = unsafeCoerce# (compare :: [Word] -> [Word] -> Ordering)
 
 instance Ord SomeDims where
-    compare (SomeDims as) (SomeDims bs) = compareDims as bs
+    compare = unsafeCoerce# (compare :: [Word] -> [Word] -> Ordering)
 
 instance Show (Dims xs) where
     show ds = "Dims " ++ show (listDims ds)
@@ -369,6 +370,13 @@ type family FixedDims (xns::[XNat]) (ns :: [Nat]) :: Constraint where
       = ( ns ~ (Head ns ': Tail ns)
         , FixedDim xn (Head ns)
         , FixedDims xns (Tail ns))
+
+type family CmpNats (xs :: [Nat]) (ys :: [Nat]) :: Ordering where
+    CmpNats '[] '[] = 'EQ
+    CmpNats '[]  _  = 'LT
+    CmpNats  _  '[] = 'GT
+    CmpNats (x:xs) (y:ys) = Compared
+      (CmpNat x y) 'LT (CmpNats xs ys) 'GT
 
 -- | Know the structure of each dimension
 type KnownXNatTypes xns = All KnownXNatType xns
