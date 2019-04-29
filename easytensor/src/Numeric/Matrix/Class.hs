@@ -76,23 +76,44 @@ class MatrixLU t (n :: Nat) where
 
 -- | Operations on 4x4 transformation matrices and vectors in homogeneous coordinates.
 --   All angles are specified in radians.
+--
+--   Note: since version 2 of @easytensor@, DataFrames and matrices are row-major.
+--         A good SIMD implementation may drastically improve performance
+--         of 4D vector-matrix products of the form @v %* m@, but not so much
+--         for products of the form @m %* v@ (due to memory layout).
+--         Thus, all operations here assume the former form to benefit more from
+--         SIMD in future.
 class HomTransform4 t where
     -- | Create a translation matrix from a vector.  The 4th coordinate is ignored.
+    --
+    --   If @p ! 3 == 1@ and @v ! 3 == 0@, then
+    --
+    --   > p %* translate4 v == p + v
+    --
     translate4  :: Vector t 4 -> Matrix t 4 4
     -- | Create a translation matrix from a vector.
+    --
+    --   If @p ! 3 == 1@, then
+    --
+    --   > p %* translate3 v == p + toHomVector v
+    --
     translate3  :: Vector t 3 -> Matrix t 4 4
     -- | Rotation matrix for a rotation around the X axis, angle is given in radians.
+    --   e.g. @p %* rotateX (pi/2)@ rotates point @p@ around @Ox@ by 90 degrees.
     rotateX     :: t -> Matrix t 4 4
     -- | Rotation matrix for a rotation around the Y axis, angle is given in radians.
+    --   e.g. @p %* rotateY (pi/2)@ rotates point @p@ around @Oy@ by 90 degrees.
     rotateY     :: t -> Matrix t 4 4
     -- | Rotation matrix for a rotation around the Z axis, angle is given in radians.
+    --   e.g. @p %* rotateZ (pi/2)@ rotates point @p@ around @Oz@ by 90 degrees.
     rotateZ     :: t -> Matrix t 4 4
     -- | Rotation matrix for a rotation around an arbitrary normalized vector
+    --   e.g. @p %* rotate (pi/2) v@ rotates point @p@ around @v@ by 90 degrees.
     rotate      :: Vector t 3 -> t -> Matrix t 4 4
     -- | Rotation matrix from the Euler angles roll (axis @Z@), yaw (axis @Y'@), and pitch (axis @X''@).
     --   This order is known as Tait-Bryan angles (@Z-Y'-X''@ intrinsic rotations), or nautical angles, or Cardan angles.
     --
-    --   > rotateEuler pitch yaw roll == rotateX pitch %* rotateY yaw %* rotateZ roll
+    --   > rotateEuler pitch yaw roll == rotateZ roll %* rotateY yaw %* rotateX pitch
     --
     --   https://en.wikipedia.org/wiki/Euler_angles#Conventions_2
     rotateEuler :: t -- ^ pitch (axis @X''@)
