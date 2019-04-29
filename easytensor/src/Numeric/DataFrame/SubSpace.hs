@@ -122,15 +122,15 @@ class ( ConcatList as bs asbs
            => (DataFrame s bs' -> DataFrame t bs)
            -> DataFrame s asbs' -> DataFrame t asbs
     ewmap f df
-      | elS       <- byteSize @t undefined
+      | bsizeT    <- byteSize @t undefined
       , stepsAS   <- cumulDims $ dims @_ @as
       , stepsBS   <- cumulDims $ dims @_ @bs
       , stepsBS'  <- cumulDims $ dims @_ @bs'
-      , stepsASBS <- stepsAS <> stepsBS'
+      , stepsASBS <- stepsAS <> stepsBS
       , lenAS     <- cdTotalDim# stepsAS
       , lenBS     <- cdTotalDim# stepsBS
       , lenBS'    <- cdTotalDim# stepsBS'
-      , lenBSB    <- lenBS *# elS
+      , lenBSB    <- lenBS *# bsizeT
       , lenASBSB  <- lenAS *# lenBSB
       = let go mba sourceOffE destOffB s
               | isTrue# (destOffB >=# lenASBSB)
@@ -150,15 +150,15 @@ class ( ConcatList as bs asbs
            => (Idxs as -> DataFrame s bs' -> DataFrame t bs)
            -> DataFrame s asbs' -> DataFrame t asbs
     iwmap f df
-      | elS       <- byteSize @t undefined
+      | bsizeT    <- byteSize @t undefined
       , stepsAS   <- cumulDims $ dims @_ @as
       , stepsBS   <- cumulDims $ dims @_ @bs
       , stepsBS'  <- cumulDims $ dims @_ @bs'
-      , stepsASBS <- stepsAS <> stepsBS'
+      , stepsASBS <- stepsAS <> stepsBS
       , lenAS     <- cdTotalDim# stepsAS
       , lenBS     <- cdTotalDim# stepsBS
       , lenBS'    <- cdTotalDim# stepsBS'
-      , lenBSB    <- lenBS *# elS
+      , lenBSB    <- lenBS *# bsizeT
       , lenASBSB  <- lenAS *# lenBSB
       = let go _ [] _ _ s = s
             go mba (i:is) sourceOffE destOffB s

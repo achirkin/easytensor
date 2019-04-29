@@ -83,14 +83,14 @@ main = do
     print rVec
 
     -- Updating existing frames
-    print $ update (0:*U) (scalar 777) rVec
-    print $ update (1:*0:*U) (vec2 999 555) x
+    print $ update (2:*U) (scalar 777) rVec
+    print $ update (1:*3:*U) (vec2 999 555) x
 
-    let matX = iwgen (scalar . fromEnum) :: DataFrame Int '[2,5,4]
+    let matX = iwgen (scalar . fromEnum) :: DataFrame Int '[2,6,4]
         matY = iwgen (scalar . fromEnum) :: DataFrame Int '[5,4]
     putStrLn "Check carefully that this returns no garbage"
     print matX
-    print (ewmap @_ @'[2,5] (<+:> scalar 111) matX :: DataFrame Int '[2,5,5])
+    print (ewmap @_ @'[2,6] (<+:> scalar 111) matX :: DataFrame Int '[2,6,5])
     print matY
     print (ewmap fromScalar matY :: DataFrame Int '[5,4,3])
 
