@@ -50,6 +50,26 @@ Behind the scenes all data types are implemented as primitive values or primitiv
 Tricky layers of newtypes and closed type families (*which are not exposed to a user*) allow some kind of ad-hoc polymorphism:
 for example, `Vector t n` implemented as `ByteArray#` is overloaded by a specialized `FloatX2 Float# Float#` in case of `Vector Float 2`.
 
+### v2 pre-release TODO
+
+Version 2 of easytensor is a total overhaul of the original easytensor library.
+I changed memory layout and indexing style for arrays and much more.
+The primary goal of all these changes to align the library API to fit better
+the expectations of developers from a conventional Haskell library.
+
+Following is the list of what I want to do before v2 becomes the master branch:
+
+  - [ ] Normalise `Ord` instance for dataframes.
+  - [ ] Introduce a DataFrame `Backend` class and depend less on `PrimBytes`.
+  - [ ] Add optional field offset functions for `PrimBytes` derivable via Generic.
+  - [ ] Use `DeriveAll` for better inference of common type classes.
+  - [ ] Maybe split README for easytensor and dimensions (but anyway write a better README).
+  - [ ] Better test coverage.
+  - [ ] A more conventional Show and Read instance for DataFrame.
+  - [ ] Move current show instances into `easytensor-pretty` and improve them.
+  - [ ] Try `Typeable`, `Data`, `Generic` for data frames.
+  - [ ] Refactor module dependency tree (try not to depend on implementation anywhere).
+  - [ ] Polymorphic vector constructors.
 
 ### Feature TODO
 
@@ -65,8 +85,7 @@ There is a bunch of things I have implemented earlier but have not re-implemente
     - [ ] SVD decomposition
     - [ ] Homogenous coordinate operations
       - [x] Class [`HomTransform`](https://github.com/achirkin/easytensor/blob/master/easytensor/src/Numeric/Matrix/Class.hs#L80) (borrowed from the previous version of the lib)
-      - [ ] Implementation of the class
-      - [ ] Change interface if needed
+      - [x] Implementation of the class
   - [x] Lens-like interfaces - `Numeric.DataFrame.SubSpace`
   - [ ] `Tensor t [Nat] [Nat]` rank (n,m) flexible tensor wrapper
   - [ ] Smart MATLAB- or R-like indexing of rows and columns: investigate options.
