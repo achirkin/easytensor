@@ -60,8 +60,8 @@ module Numeric.Dimensions.Dims
 
 
 import           Data.Constraint
-import           GHC.Exts          (Constraint, unsafeCoerce#)
 import           Data.List         (stripPrefix)
+import           GHC.Exts          (Constraint, unsafeCoerce#)
 import qualified Text.Read         as Read
 
 import           Data.Type.List
@@ -232,11 +232,21 @@ stripPrefixDims = unsafeCoerce# (stripPrefix :: [Word] -> [Word] -> Maybe [Word]
 --    or Just the Dims before the suffix, if it does.
 stripSuffixDims :: Dims (xs :: [Nat]) -> Dims (ys :: [Nat])
                 -> Maybe (Dims (StripSuffix xs ys))
-stripSuffixDims = unsafeCoerce#
-  ( (\as bs -> reverse <$> stripPrefix (reverse as)  (reverse bs))
-    :: [Word] -> [Word] -> Maybe [Word]
-  )
+stripSuffixDims = unsafeCoerce# (stripSuffix :: [Word] -> [Word] -> Maybe [Word])
 {-# INLINE stripSuffixDims #-}
+
+stripSuffix :: [Word] -> [Word] -> Maybe [Word]
+stripSuffix suf whole = go pref whole
+  where
+    pref = getPref suf whole
+    getPref (_:as) (_:bs) = getPref as bs
+    getPref [] bs         = zipWith const whole bs
+    getPref _  []         = []
+    go (_:as) (_:bs) = go as bs
+    go  []     bs    = if suf == bs then Just pref else Nothing
+    go  _      []    = Nothing
+{-# INLINE stripSuffix #-}
+
 
 -- | We either get evidence that this function was instantiated with the
 --   same type-level Dimensions, or 'Nothing' @O(Length xs)@.
