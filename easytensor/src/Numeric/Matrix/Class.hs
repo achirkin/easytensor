@@ -33,7 +33,6 @@ type Matrix (t :: l) (n :: k) (m :: k) = DataFrame t '[n,m]
 class MatrixTranspose t (n :: k) (m :: k) where
     -- | Transpose Mat
     transpose :: Matrix t n m -> Matrix t m n
-  -- (MatrixTranspose t m n, PrimBytes (Matrix t m n)) =>
 
 class SquareMatrix t (n :: Nat) where
     -- | Mat with 1 on diagonal and 0 elsewhere
@@ -92,7 +91,7 @@ class HomTransform4 t where
     rotate      :: Vector t 3 -> t -> Matrix t 4 4
     -- | Rotation matrix from the Euler angles roll (axis @Z@), yaw (axis @Y'@), and pitch (axis @X''@).
     --   This order is known as Tait-Bryan angles (@Z-Y'-X''@ intrinsic rotations), or nautical angles, or Cardan angles.
-    --  
+    --
     --   > rotateEuler pitch yaw roll == rotateX pitch %* rotateY yaw %* rotateZ roll
     --
     --   https://en.wikipedia.org/wiki/Euler_angles#Conventions_2

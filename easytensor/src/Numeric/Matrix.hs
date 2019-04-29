@@ -118,15 +118,17 @@ instance ( KnownDim n, KnownDim m
          ) => MatrixTranspose t (n :: Nat) (m :: Nat) where
     transpose df = case uniqueOrCumulDims df of
       Left a -> broadcast a
-      Right steps
-         | m <- case dimVal' @m of W# w -> word2Int# w
-         , n <- case dimVal' @n of W# w -> word2Int# w
+      Right _
+         | wm <- dimVal' @m
+         , wn <- dimVal' @n
+         , m <- case wm of W# w -> word2Int# w
+         , n <- case wn of W# w -> word2Int# w
          -> let f ( I# i,  I# j )
-                  | isTrue# (i ==# n) = f ( 0 , I# (j +# 1#) )
-                  | otherwise         = (# ( I# (i +# 1#), I# i )
+                  | isTrue# (i ==# n) = f ( 0, I# (j +# 1#) )
+                  | otherwise         = (# ( I# (i +# 1#), I# j )
                                          , ix# (i *# m +# j) df
                                          #)
-            in case gen# steps f (0,0) of (# _, r #) -> r
+            in case gen# (CumulDims [wm*wn, wn, 1]) f (0,0) of (# _, r #) -> r
 
 instance MatrixTranspose (t :: Type) (xn :: XNat) (xm :: XNat) where
     transpose (XFrame (df :: DataFrame t ns))
