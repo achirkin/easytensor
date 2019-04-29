@@ -298,13 +298,13 @@ instance (Dimensions ds, Show t)
         ds = dims @_ @ds
 
 pprDF :: forall t (bs :: [Nat]) (asbs :: [Nat])
-       . Show t 
+       . Show t
       => (Idxs bs -> Idxs asbs) -> Dims bs -> Dims asbs -> ArrayBase t asbs -> ShowS
-pprDF u U _ x = showString "{ " . showsPrec 0 (ix (u U) x) . showString " }"
+pprDF u U _ x = showString "{ " . shows (ix (u U) x) . showString " }"
 pprDF u (Dim :* U) _ x
   = showChar '{'
   . drop 1
-  . foldr (\i s -> showString ", " . showsPrec 0 (ix (u i) x) . s)
+  . foldr (\i s -> showString ", " . shows (ix (u i) x) . s)
       (showString " }")
       [minBound .. maxBound]
 pprDF u bs@((n@Dim :: Dim n) :* (m@Dim :: Dim m) :* U) asbs x
@@ -313,23 +313,23 @@ pprDF u bs@((n@Dim :: Dim n) :* (m@Dim :: Dim m) :* U) asbs x
   . drop 2
   . foldr (\i ss -> showChar '\n' .
               foldr (\j s ->
-                       showString ", " . showsPrec 0 (ix (u $ Idx i :* Idx j :* U) x) . s
+                       showString ", " . shows (ix (u $ Idx i :* Idx j :* U) x) . s
                     ) ss [0..dimVal m - 1]
           ) (showString " }") [0..dimVal n - 1]
   where
     dropE4 :: String -> String
-    dropE4 [] = []
-    dropE4 [_] = []
-    dropE4 [_,_] = []
-    dropE4 [_,_,_] = []
+    dropE4 []        = []
+    dropE4 [_]       = []
+    dropE4 [_,_]     = []
+    dropE4 [_,_,_]   = []
     dropE4 [_,_,_,_] = []
-    dropE4 (c:cs) = c:dropE4 cs
+    dropE4 (c:cs)    = c:dropE4 cs
     maybeDimSize = case sameDims bs asbs of
       Just Dict -> id
       _ -> showChar '('
          . showString (drop 6 . dropE4 . show . u $ 0 :* 0 :* U)
          . showString "i,j):\n"
-pprDF u ((Dim :: Dim n) :* ns@(Dims :: Dims ns)) asbs x 
+pprDF u ((Dim :: Dim n) :* ns@(Dims :: Dims ns)) asbs x
   | Just Dims <- stripSuffixDims ns asbs
   = drop 1
   . foldr (\i s -> showChar '\n' . pprDF (u . (i :*)) ns asbs x . s) id [minBound..maxBound]
