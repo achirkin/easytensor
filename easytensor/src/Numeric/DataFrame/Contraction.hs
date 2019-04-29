@@ -89,11 +89,11 @@ instance ( ConcatList as bs asbs
         , (# n, m, k, steps #) <- conSteps xs ys ->
           let loop i j l r | isTrue# (l ==# m) = r
                            | otherwise = loop i j (l +# 1#)
-                              (r + ixX (i +# n *# l) * ixY (l +# m *# j))
+                              (r + ixX (i *# m +# l) * ixY (l *# k +# j))
 
-              loop2 (T# i j) | isTrue# (j ==# k) = (# T# i j, 0 #)
-                             | isTrue# (i ==# n) = loop2 (T# 0# (j +# 1#))
-                             | otherwise = (# T# (i +# 1#) j, loop i j 0# 0 #)
+              loop2 (T# i j) | isTrue# (i ==# n) = (# T# i j, 0 #)
+                             | isTrue# (j ==# k) = loop2 (T# (i +# 1#) 0#)
+                             | otherwise = (# T# i (j +# 1#), loop i j 0# 0 #)
           in case gen# steps loop2 (T# 0# 0#) of
               (# _, r #) -> r
       where
@@ -109,7 +109,7 @@ instance ( ConcatList as bs asbs
           (W# n, W# m, W# k, zs)
             -> (# word2Int# n, word2Int# m, word2Int# k, CumulDims zs #)
         conSteps' :: [Word] -> [Word] -> (Word, Word, Word, [Word])
-        conSteps' [m, _] (_:ys@(k:_)) = (m, m, k, ys)
+        conSteps' [m, _] (_:ys@(k:_)) = (1, m, k, ys)
         conSteps' (nm:ns) cys
           | (_, m, k, ys) <- conSteps' ns cys
           , n <- nm `quot` m
