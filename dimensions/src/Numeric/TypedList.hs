@@ -221,7 +221,7 @@ stripPrefix U ys = Just ys
 stripPrefix _ U  = Nothing
 stripPrefix ((x :: f x) :* xs) ((y :: f y) :* ys)
   | Just Refl <- eqT @x @y
-  , x == y       = unsafeCoerce# ((x :*) <$> stripPrefix xs ys)
+  , x == y       = unsafeCoerce# (stripPrefix xs ys)
   | otherwise    = Nothing
 {-# INLINE stripPrefix #-}
 

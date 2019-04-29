@@ -67,6 +67,7 @@ module Numeric.Dim
   ) where
 
 
+import           Numeric.Natural (Natural)
 import           GHC.Base        (Type)
 import           GHC.Exts        (Constraint, Proxy#, proxy#, unsafeCoerce#)
 import           GHC.TypeLits    (ErrorMessage (..), TypeError)
@@ -278,6 +279,9 @@ instance {-# OVERLAPPING #-} KnownDim 19 where
 instance {-# OVERLAPPING #-} KnownDim 20 where
   { {-# INLINE dim #-}; dim = DimSing 20 }
 
+instance Class (KnownNat n) (KnownDim n) where
+    cls = Sub $ reifyNat @_ @n (fromIntegral $ dimVal' @n) Dict
+
 instance KnownDim n => KnownDim ('N n) where
     {-# INLINE dim #-}
     dim = unsafeCoerce# (dim @Nat @n)
@@ -435,6 +439,11 @@ reifyDim :: forall r d . Dim d -> (KnownDim d => r) -> r
 reifyDim d k = unsafeCoerce# (MagicDim k :: MagicDim d r) d
 {-# INLINE reifyDim #-}
 newtype MagicDim d r = MagicDim (KnownDim d => r)
+
+reifyNat :: forall r d . Natural -> (KnownNat d => r) -> r
+reifyNat d k = unsafeCoerce# (MagicNat k :: MagicNat d r) d
+{-# INLINE reifyNat #-}
+newtype MagicNat d r = MagicNat (KnownNat d => r)
 
 dimEv :: Dim d -> Dict (KnownDim d)
 dimEv d = reifyDim d Dict
