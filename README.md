@@ -60,16 +60,16 @@ the expectations of developers from a conventional Haskell library.
 Following is the list of what I want to do before v2 becomes the master branch:
 
   - [ ] Normalise `Ord` instance for dataframes.
-  - [ ] Introduce a DataFrame `Backend` class and depend less on `PrimBytes`.
+  - [x] Introduce a DataFrame `Backend` class and depend less on `PrimBytes`.
   - [ ] Add optional field offset functions for `PrimBytes` derivable via Generic.
-  - [ ] Use `DeriveAll` for better inference of common type classes.
+  - [x] Use `DeriveAll` for better inference of common type classes.
   - [ ] Maybe split README for easytensor and dimensions (but anyway write a better README).
   - [ ] Better test coverage.
   - [ ] A more conventional Show and Read instance for DataFrame.
   - [ ] Move current show instances into `easytensor-pretty` and improve them.
   - [ ] Try `Typeable`, `Data`, `Generic` for data frames.
-  - [ ] Refactor module dependency tree (try not to depend on implementation anywhere).
-  - [ ] Polymorphic vector constructors.
+  - [?] Refactor module dependency tree (try not to depend on implementation anywhere).
+  - [x] Polymorphic vector constructors.
 
 ### Feature TODO
 
