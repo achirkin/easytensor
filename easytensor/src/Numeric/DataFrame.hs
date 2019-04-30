@@ -12,7 +12,8 @@ module Numeric.DataFrame
   , module Numeric.DataFrame.Shape
   ) where
 
-import           Numeric.DataFrame.Internal.Array ()
+-- Do I need this?..
+import           Numeric.DataFrame.Internal.Backend ()
 
 import           Numeric.DataFrame.Contraction
 import           Numeric.DataFrame.Shape

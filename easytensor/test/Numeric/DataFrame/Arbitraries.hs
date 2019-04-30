@@ -22,7 +22,6 @@ import           Test.QuickCheck
 
 import           Numeric.DataFrame
 import           Numeric.Dimensions
-import           Numeric.PrimBytes
 
 instance (Arbitrary t, PrimBytes t, Dimensions ds)
       => Arbitrary (DataFrame t (ds :: [Nat])) where
@@ -30,10 +29,7 @@ instance (Arbitrary t, PrimBytes t, Dimensions ds)
         | -- First, we need to find out exact array implementation to use
           -- inside this DataFrame.
           -- We need to do that whenever exact value of ds is not known
-          Dict <- inferASing' @t @ds
-          -- Then, we need to get basic byte manipulation type classes, such as
-          -- PrimBytes and PrimArray.
-        , Dict <- inferPrim' @t @ds
+          Dict <- inferKnownBackend @t @ds
           -- After that, GHC can infer all necessary fancy things like SubSpace
           -- to do complex operations on sub-dimensions of a DataFrame.
           --
@@ -45,8 +41,7 @@ instance (Arbitrary t, PrimBytes t, Dimensions ds)
         f :: Arbitrary a => Scalar a -> Gen (Scalar a)
         f _ = scalar <$> arbitrary
     shrink
-        | Dict <- inferASing' @t @ds
-        , Dict <- inferPrim' @t @ds
+        | Dict <- inferKnownBackend @t @ds
         = elementWise @_ @ds @'[] f
       where
         -- Unfortunately, Scalar is not a proper second-rank data type
@@ -125,7 +120,7 @@ instance (Arbitrary t, PrimBytes t)
       --  This gives Dimensions ds evidence immediately.
       SomeDims (Dims :: Dims ds) <- arbitrary
       -- We also need to figure out an array implementation...
-      case inferASing' @t @ds of
+      case inferKnownBackend @t @ds of
         -- ... and generating a random DataFrame becomes a one-liner
         Dict -> SomeDataFrame <$> arbitrary @(DataFrame t ds)
     shrink _ = []
@@ -135,7 +130,7 @@ instance (All Arbitrary ts, All PrimBytes ts, RepresentableList ts)
       => Arbitrary (SomeDataFrame ts) where
     arbitrary = do
       SomeDims (Dims :: Dims ds) <- arbitrary
-      case inferASing' @ts @ds of
+      case inferKnownBackend @ts @ds of
         Dict -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
     shrink _ = []
 
@@ -144,7 +139,7 @@ instance ( Arbitrary t, PrimBytes t
       => Arbitrary (DataFrame t (xs :: [XNat])) where
     arbitrary = do
       XDims (_ :: Dims ds) <- arbitrary @(Dims xs)
-      case inferASing' @t @ds of
+      case inferKnownBackend @t @ds of
         Dict -> XFrame <$> arbitrary @(DataFrame t ds)
     shrink (XFrame df) = XFrame <$> shrink df
 
@@ -153,6 +148,6 @@ instance ( All Arbitrary ts, All PrimBytes ts, RepresentableList ts
       => Arbitrary (DataFrame ts (xs :: [XNat])) where
     arbitrary = do
       XDims (_ :: Dims ds) <- arbitrary @(Dims xs)
-      case inferASing' @ts @ds of
+      case inferKnownBackend @ts @ds of
         Dict -> XFrame <$> arbitrary @(DataFrame ts ds)
     shrink (XFrame df) = XFrame <$> shrink df

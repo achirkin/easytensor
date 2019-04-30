@@ -1,11 +1,22 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeFamilies #-}
-module Numeric.Quaternion.Class
-    ( Quaternion (..)
+{-# LANGUAGE DataKinds       #-}
+{-# LANGUAGE MagicHash       #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TypeFamilies    #-}
+{-# LANGUAGE UnboxedTuples   #-}
+{-# LANGUAGE ViewPatterns    #-}
+module Numeric.Quaternion.Internal
+    ( Quaternion (..), Quater(Quater)
     ) where
 
-import Numeric.Matrix (Matrix)
-import Numeric.Vector (Vector)
+import           Numeric.Matrix (Matrix)
+import           Numeric.Vector (Vector)
+
+
+pattern Quater :: Quaternion t => t -> t -> t -> t -> Quater t
+pattern Quater a b c d <- (unpackQ# -> (# a, b, c, d #))
+  where
+    Quater = packQ
+{-# COMPLETE Quater #-}
 
 -- | Quaternion operations
 class Quaternion t where
@@ -15,7 +26,7 @@ class Quaternion t where
     -- | Set the quaternion in format (x,y,z,w)
     packQ :: t -> t -> t -> t -> Quater t
     -- | Get the values of the quaternion in format (x,y,z,w)
-    unpackQ :: Quater t -> (t,t,t,t)
+    unpackQ# :: Quater t -> (# t, t, t, t #)
     -- | Set the quaternion from 3D axis vector and argument
     fromVecNum :: Vector t 3 -> t -> Quater t
     -- | Set the quaternion from 4D vector in format (x,y,z,w)
@@ -24,7 +35,7 @@ class Quaternion t where
     toVec4 :: Quater t -> Vector t 4
     -- | Get scalar square of the quaternion.
     --
-    --   >> realToFrac (square q) == q * conjugate q
+    --   >>> realToFrac (square q) == q * conjugate q
     square :: Quater t -> t
     -- | Imagine part of quaternion (orientation vector)
     im :: Quater t -> Quater t

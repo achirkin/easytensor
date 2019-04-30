@@ -33,18 +33,32 @@ ghc-options:
   - -Widentities
   - -Wredundant-constraints
 
+
 dependencies:
   - base >= 4.10 && < 5
   - dimensions >= 2 && < 3
+  - constraints-deriving >= 1 && < 2
 
 library:
   source-dirs: src
   other-modules:
-  - Numeric.Matrix.Mat44d
-  - Numeric.Matrix.Mat44f
-  - Numeric.Quaternion.Class
-  - Numeric.Quaternion.QDouble
-  - Numeric.Quaternion.QFloat
+  - Numeric.Matrix.Internal
+  - Numeric.Matrix.Internal.Mat44d
+  - Numeric.Matrix.Internal.Mat44f
+  - Numeric.Vector.Internal
+  - Numeric.Quaternion.Internal
+  - Numeric.Quaternion.Internal.QDouble
+  - Numeric.Quaternion.Internal.QFloat
+  - Numeric.DataFrame.Internal.Backend.Family
+  - Numeric.DataFrame.Internal.Backend.Family.ArrayBase
+  - Numeric.DataFrame.Internal.Backend.Family.DoubleX2
+  - Numeric.DataFrame.Internal.Backend.Family.DoubleX3
+  - Numeric.DataFrame.Internal.Backend.Family.DoubleX4
+  - Numeric.DataFrame.Internal.Backend.Family.FloatX2
+  - Numeric.DataFrame.Internal.Backend.Family.FloatX3
+  - Numeric.DataFrame.Internal.Backend.Family.FloatX4
+  - Numeric.DataFrame.Internal.Backend.Family.ScalarBase
+  - Numeric.DataFrame.Internal.Backend.Family.PrimOps
   when:
   - condition: flag(unsafeindices)
     cpp-options: -DUNSAFE_INDICES

@@ -46,20 +46,19 @@ module Numeric.Matrix
   ) where
 
 
-import           Control.Monad                           (foldM)
-import           Data.Foldable                           (foldl', forM_)
-import           Data.List                               (delete)
+import           Control.Monad                        (foldM)
+import           Data.Foldable                        (foldl', forM_)
+import           Data.List                            (delete)
 import           GHC.Base
-import           Numeric.DataFrame.Contraction           ((%*))
-import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.Family as AFam
+import           Numeric.DataFrame.Contraction        ((%*))
+import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.DataFrame.Shape
 import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
-import           Numeric.Matrix.Class
-import           Numeric.Matrix.Mat44d                   ()
-import           Numeric.Matrix.Mat44f                   ()
+import           Numeric.Matrix.Internal
+import           Numeric.Matrix.Internal.Mat44d       ()
+import           Numeric.Matrix.Internal.Mat44f       ()
 import           Numeric.PrimBytes
 import           Numeric.Scalar
 import           Numeric.Vector
@@ -133,7 +132,7 @@ instance ( KnownDim n, KnownDim m
 instance MatrixTranspose (t :: Type) (xn :: XNat) (xm :: XNat) where
     transpose (XFrame (df :: DataFrame t ns))
       | ((D :: Dim n) :* (D :: Dim m) :* U) <- dims @Nat @ns
-      , Dict <- AFam.inferPrimElem @t @n @'[m]
+      , Just Dict <- inferPrimElem @t @'[n,m]
       = XFrame (transpose df :: Matrix t m n)
     transpose _ = error "MatrixTranspose/transpose: impossible argument"
 

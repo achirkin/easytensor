@@ -34,16 +34,14 @@ module Numeric.DataFrame.Shape
 
 import           GHC.Base
 
-import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.Family (inferASing, inferPrim,
-                                                          inferPrimElem)
+import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.DataFrame.SubSpace
-import           Numeric.DataFrame.Type                  (DataFrame (..))
+import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
-import           Numeric.Scalar                          as Scalar
-import           Numeric.TypedList                       (TypedList (..))
-import qualified Numeric.TypedList                       as Dims
+import           Numeric.Scalar                       as Scalar
+import           Numeric.TypedList                    (TypedList (..))
+import qualified Numeric.TypedList                    as Dims
 import           Numeric.Vector
 
 
@@ -140,10 +138,8 @@ instance ( Dimensions (n :+ ns)
     toList df
       | Dims.Cons dn (dns@Dims :: Dims ns) <- dims @Nat @(n :+ ns)
       , steps <- cumulDims dns
-      , Dict <- inferASing @t @ns
-      , Dict <- inferASing @t @(n :+ ns)
-      , Dict <- inferPrim @t @(n :+ ns)
-      , Dict <- inferPrim @t @ns
+      , Dict <- inferKnownBackend @t @ns
+      , Dict <- inferKnownBackend @t @(n :+ ns)
       , n <- dimVal dn
       , step <- cdTotalDim# steps
       , off0 <- offsetElems df
@@ -156,8 +152,8 @@ instance ( Dimensions (n :+ ns)
 instance DataFrameToList t (xn :: XNat) (xns :: [XNat]) where
     toList (XFrame (df :: DataFrame t nns))
       | Dims.Cons (_ :: Dim n) (Dims :: Dims ns) <- dims @Nat @nns
-      , Dict <- inferPrimElem @t @n @ns
-      , Dict <- inferASing @t @ns
+      , Just Dict <- inferPrimElem @t @nns
+      , Dict <- inferKnownBackend @t @ns
       = map XFrame (toList df)
     toList _ = []
 
@@ -185,10 +181,8 @@ fromListN Dim n xs'
   , dxnns     <- dxn :* dxns
   , XDims dnns' <- dxnns
   , Just Dict <- sameDims dnns dnns'
-  , Dict <- inferASing @t @ns
-  , Dict <- inferASing @t @(n :+ ns)
-  , Dict <- inferPrim @t @ns
-  , Dict <- inferPrim @t @(n :+ ns)
+  , Dict <- inferKnownBackend @t @ns
+  , Dict <- inferKnownBackend @t @(n :+ ns)
   , steps <- cumulDims dnns
   , totalElN <- cdTotalDim# steps
   , partElN  <- case head (tail (unCumulDims steps)) of W# w -> word2Int# w

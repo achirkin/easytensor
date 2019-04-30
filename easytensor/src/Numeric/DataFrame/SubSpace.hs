@@ -33,7 +33,7 @@ module Numeric.DataFrame.SubSpace
 import           GHC.Base
 
 import           Numeric.DataFrame.Family
-import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
 

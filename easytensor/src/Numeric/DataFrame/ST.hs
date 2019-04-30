@@ -36,11 +36,11 @@ module Numeric.DataFrame.ST
 
 
 import           GHC.Base
-import           GHC.ST                                 (ST (..))
+import           GHC.ST                               (ST (..))
 
 import           Numeric.DataFrame.Family
-import           Numeric.DataFrame.Internal.Array.Class
 import           Numeric.DataFrame.Internal.Mutable
+import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
 

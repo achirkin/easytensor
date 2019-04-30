@@ -5,12 +5,12 @@
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE UnboxedTuples              #-}
-module Numeric.DataFrame.Internal.Array.Family.ScalarBase (ScalarBase (..)) where
+module Numeric.DataFrame.Internal.Backend.Family.ScalarBase (ScalarBase (..)) where
 
 
 import           GHC.Base
-import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.PrimOps
+import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
+import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.PrimBytes
 
 -- | Specialize ScalarBase type without any arrays
@@ -22,7 +22,7 @@ newtype ScalarBase t = ScalarBase { _unScalarBase :: t }
 instance Show t => Show (ScalarBase t) where
   show (ScalarBase t) = "{ " ++ show t ++ " }"
 
-deriving instance {-# OVERLAPPABLE #-} Bounded t => Bounded (ScalarBase t)
+deriving instance {-# INCOHERENT #-} Bounded t => Bounded (ScalarBase t)
 instance {-# OVERLAPPING #-} Bounded (ScalarBase Double) where
   maxBound = ScalarBase inftyD
   minBound = ScalarBase $ negate inftyD

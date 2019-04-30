@@ -36,7 +36,7 @@ module Numeric.DataFrame.Internal.Mutable
 
 
 import           GHC.Base
-import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
