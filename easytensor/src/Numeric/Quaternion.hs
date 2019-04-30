@@ -27,9 +27,10 @@
 -----------------------------------------------------------------------------
 module Numeric.Quaternion
     ( Quaternion (..)
+    , Quater(Quater)
     , QDouble, QFloat
     ) where
 
-import Numeric.Quaternion.Class
-import Numeric.Quaternion.QFloat
-import Numeric.Quaternion.QDouble
+import           Numeric.Quaternion.Internal
+import           Numeric.Quaternion.Internal.QDouble
+import           Numeric.Quaternion.Internal.QFloat

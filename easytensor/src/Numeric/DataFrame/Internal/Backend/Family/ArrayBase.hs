@@ -17,15 +17,16 @@
 {-# LANGUAGE UnboxedSums               #-}
 {-# LANGUAGE UnboxedTuples             #-}
 
-module Numeric.DataFrame.Internal.Array.Family.ArrayBase
+module Numeric.DataFrame.Internal.Backend.Family.ArrayBase
   ( ArrayBase (..)
   ) where
 
 import           Data.Int
 import           Data.Word
-import           GHC.Base                                 hiding (foldr)
-import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.PrimOps
+import           GHC.Base                                          hiding
+                                                                    (foldr)
+import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
+import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
 
@@ -343,7 +344,7 @@ instance {-# OVERLAPPING #-} Bounded (ArrayBase Float ds) where
     maxBound = ArrayBase (# inftyF | #)
     minBound = ArrayBase (# negate inftyF | #)
 
-instance {-# OVERLAPPABLE #-} Bounded t => Bounded (ArrayBase t ds) where
+instance {-# INCOHERENT #-} Bounded t => Bounded (ArrayBase t ds) where
     {-# SPECIALIZE instance Bounded (ArrayBase Int ds)    #-}
     {-# SPECIALIZE instance Bounded (ArrayBase Word ds)   #-}
     {-# SPECIALIZE instance Bounded (ArrayBase Int8 ds)   #-}

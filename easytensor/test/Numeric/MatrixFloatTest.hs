@@ -12,10 +12,8 @@ module Numeric.MatrixFloatTest (runTests) where
 
 import           Data.Fixed
 import           Numeric.DataFrame
-import           Numeric.DataFrame.Arbitraries          ()
-import           Numeric.DataFrame.Internal.Array.Class
+import           Numeric.DataFrame.Arbitraries ()
 import           Numeric.Dimensions
-import           Numeric.PrimBytes
 import           Test.QuickCheck
 
 eps :: Scf
@@ -23,7 +21,7 @@ eps = 0.01
 
 dropW :: (SubSpace t '[3] '[] '[3], SubSpace t '[4] '[] '[4])
       => Vector t 4 -> Vector t 3
-dropW v | (x,y,z,_) <- unpackV4 v = vec3 x y z
+dropW (Vec4 x y z _) = Vec3 x y z
 
 approxEq ::
   forall (ds :: [Nat]).
@@ -51,8 +49,7 @@ prop_inverse (XFrame (x :*: y :*: Z))
   | -- infer KnownDim for both dimensions of matrix x (and y)
     (KnownDims :: Dims ns) <- dims `inSpaceOf` x
     -- cumbersose inverse instance requires PrimBytes (Vector t n)
-  , Dict <- inferASing' @Float @'[Head ns]
-  , Dict <- inferPrim' @Float @'[Head ns]
+  , Dict <- inferKnownBackend @Float @'[Head ns]
   = let m = diag base + x %* transpose y
         mi = inverse m
         err a b = ewfoldl max 0 (abs (b - a)) / base
@@ -65,8 +62,7 @@ prop_LU (XFrame (x :*: y :*: Z))
   | -- infer KnownDim for both dimensions of matrix x (and y)
     (KnownDims :: Dims ns) <- dims `inSpaceOf` x
     -- cumbersose inverse instance requires PrimBytes (Vector t n)
-  , Dict <- inferASing' @Float @'[Head ns]
-  , Dict <- inferPrim' @Float @'[Head ns]
+  , Dict <- inferKnownBackend @Float @'[Head ns]
   = let m = diag base + x %* transpose y
         f = lu m
         err a b = ewfoldl max 0 (abs (b - a)) / base
@@ -83,7 +79,7 @@ prop_translate3 :: Vector Float 3 -> Vector Float 3 -> Bool
 prop_translate3 a b = toHomPoint b %* translate3 a == toHomPoint (a + b)
 
 prop_rotateX :: Vector Float 4 -> Bool
-prop_rotateX v | (x,y,z,w) <- unpackV4 v =
+prop_rotateX v@(Vec4 x y z w) =
   and [
     v %* rotateX (-2 * pi)   `approxEq` v,
     v %* rotateX (-1.5 * pi) `approxEq` vec4 x (-z) y w,
@@ -97,7 +93,7 @@ prop_rotateX v | (x,y,z,w) <- unpackV4 v =
   ]
 
 prop_rotateY :: Vector Float 4 -> Bool
-prop_rotateY v | (x,y,z,w) <- unpackV4 v =
+prop_rotateY v@(Vec4 x y z w) =
   and [
     v %* rotateY (-2 * pi)   `approxEq` v,
     v %* rotateY (-1.5 * pi) `approxEq` vec4 z y (-x) w,
@@ -111,7 +107,7 @@ prop_rotateY v | (x,y,z,w) <- unpackV4 v =
   ]
 
 prop_rotateZ :: Vector Float 4 -> Bool
-prop_rotateZ v | (x,y,z,w) <- unpackV4 v =
+prop_rotateZ v@(Vec4 x y z w) =
   and [
     v %* rotateZ (-2 * pi)   `approxEq` v,
     v %* rotateZ (-1.5 * pi) `approxEq` vec4 (-y) x z w,
@@ -198,13 +194,13 @@ prop_orthogonal a b c d =
     projectTo x' y' z = fromHom $ vec4 (x' * w * 0.5) (y' * h * 0.5) (-z) 1 %* m
 
 prop_toHomPoint :: Vector Float 3 -> Bool
-prop_toHomPoint v | (x,y,z) <- unpackV3 v = toHomPoint v == vec4 x y z 1
+prop_toHomPoint v@(Vec3 x y z) = toHomPoint v == vec4 x y z 1
 
 prop_toHomVector :: Vector Float 3 -> Bool
-prop_toHomVector v | (x,y,z) <- unpackV3 v = toHomVector v == vec4 x y z 0
+prop_toHomVector v@(Vec3 x y z) = toHomVector v == vec4 x y z 0
 
 prop_fromHom :: Vector Float 4 -> Bool
-prop_fromHom v | (x,y,z,w) <- unpackV4 v =
+prop_fromHom v@(Vec4 x y z w) =
   case w of
     0 -> fromHom v == vec3 x y z
     _ -> fromHom v `approxEq` vec3 (x/w) (y/w) (z/w)

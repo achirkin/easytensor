@@ -3,16 +3,11 @@
 {-# LANGUAGE ViewPatterns  #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Numeric.Matrix.Mat44f () where
+module Numeric.Matrix.Internal.Mat44f () where
 
-import qualified Control.Monad.ST                                as ST
-import           GHC.Exts
-import           Numeric.DataFrame.Internal.Array.Family.FloatX3
-import           Numeric.DataFrame.Internal.Array.Family.FloatX4
-import qualified Numeric.DataFrame.ST                            as ST
-import           Numeric.DataFrame.SubSpace
-import           Numeric.DataFrame.Type
-import           Numeric.Matrix.Class
+import qualified Control.Monad.ST        as ST
+import qualified Numeric.DataFrame.ST    as ST
+import           Numeric.Matrix.Internal
 import           Numeric.Scalar
 import           Numeric.Vector
 
@@ -48,22 +43,16 @@ mkMat
     ST.writeDataFrameOff df 15 $ scalar _44
     ST.unsafeFreezeDataFrame df
 
-patV4 :: Vec4f -> (# Float, Float, Float, Float #)
-patV4 (SingleFrame (FloatX4# x y z w)) = (# F# x, F# y, F# z, F# w #)
-
-patV3 :: Vec3f -> (# Float, Float, Float #)
-patV3 (SingleFrame (FloatX3# x y z)) = (# F# x, F# y, F# z #)
-
 instance HomTransform4 Float where
   {-# INLINE translate4 #-}
-  translate4 (patV4 -> (# x, y, z, _ #)) = mkMat
+  translate4 (unpackV4# -> (# x, y, z, _ #)) = mkMat
     1 0 0 0
     0 1 0 0
     0 0 1 0
     x y z 1
 
   {-# INLINE translate3 #-}
-  translate3 (patV3 -> (# x, y, z #)) = mkMat
+  translate3 (unpackV3# -> (# x, y, z #)) = mkMat
     1 0 0 0
     0 1 0 0
     0 0 1 0
@@ -103,7 +92,7 @@ instance HomTransform4 Float where
       n = -s
 
   {-# INLINE rotate #-}
-  rotate (patV3 -> (# x, y, z #)) a = mkMat
+  rotate (unpackV3# -> (# x, y, z #)) a = mkMat
     (c+xxv)  (yxv+zs) (zxv-ys) 0
     (xyv-zs) (c+yyv)  (zyv+xs) 0
     (xzv+ys) (yzv-xs) (c+zzv)  0
@@ -146,9 +135,9 @@ instance HomTransform4 Float where
     xb3 yb3 zb3 0
     tx  ty  tz  1
     where
-      (# xb1, xb2, xb3 #) = patV3 xb
-      (# yb1, yb2, yb3 #) = patV3 yb
-      (# zb1, zb2, zb3 #) = patV3 zb
+      (# xb1, xb2, xb3 #) = unpackV3# xb
+      (# yb1, yb2, yb3 #) = unpackV3# yb
+      (# zb1, zb2, zb3 #) = unpackV3# zb
       zb = normalized $ cam - foc -- Basis vector for "backward", since +Z is behind the camera
       xb = normalized $ up `cross` zb -- Basis vector for "right"
       yb = zb `cross` xb -- Basis vector for "up"
@@ -186,15 +175,12 @@ instance HomTransform4 Float where
       b = (n + f) / nmf
 
   {-# INLINE toHomPoint #-}
-  toHomPoint (SingleFrame (FloatX3# x y z))
-    = SingleFrame (FloatX4# x y z 1.0#)
+  toHomPoint (unpackV3# -> (# x, y, z #)) = vec4 x y z 1
 
   {-# INLINE toHomVector #-}
-  toHomVector (SingleFrame (FloatX3# x y z))
-    = SingleFrame (FloatX4# x y z 0.0#)
+  toHomVector (unpackV3# -> (# x, y, z #)) = vec4 x y z 0
 
   {-# INLINE fromHom #-}
-  fromHom (SingleFrame (FloatX4# x y z 0.0#))
-    = SingleFrame (FloatX3# x y z)
-  fromHom (SingleFrame (FloatX4# x y z w))
-    = SingleFrame (FloatX3# (x `divideFloat#` w) (y `divideFloat#` w) (z `divideFloat#` w))
+  fromHom (unpackV4# -> (# x, y, z, w #))
+    | w == 0    = vec3 x y z
+    | otherwise = vec3 (x/w) (y/w) (z/w)

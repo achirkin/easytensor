@@ -5,12 +5,12 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE UnboxedTuples         #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
-module Numeric.DataFrame.Internal.Array.Family.FloatX4 (FloatX4 (..)) where
+module Numeric.DataFrame.Internal.Backend.Family.FloatX4 (FloatX4 (..)) where
 
 
 import           GHC.Base
-import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.PrimOps
+import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
+import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.DataFrame.SubSpace
 import           Numeric.Dimensions
 import           Numeric.PrimBytes

@@ -15,7 +15,8 @@
 {-# LANGUAGE UndecidableInstances  #-}
 
 module Numeric.PrimBytes
-  ( PrimBytes
+  ( bSizeOf, bAlignOf
+  , PrimBytes
     ( getBytes, fromBytes, readBytes, writeBytes, byteSize, byteAlign, byteOffset
     , indexArray, readArray, writeArray, readAddr, writeAddr)
   , PrimTag (..), primTag
@@ -32,6 +33,14 @@ import           GHC.Word
 import           Numeric.Dimensions.Idxs
 import qualified Numeric.Tuple.Lazy      as TL
 import qualified Numeric.Tuple.Strict    as TS
+
+-- | A wrapper on `byteSize`
+bSizeOf :: PrimBytes a => a -> Int
+bSizeOf a = I# (byteSize a)
+
+-- | A wrapper on `byteAlign`
+bAlignOf :: PrimBytes a => a -> Int
+bAlignOf a = I# (byteAlign a)
 
 -- | Facilities to convert to and from raw byte array.
 class PrimTagged a => PrimBytes a where

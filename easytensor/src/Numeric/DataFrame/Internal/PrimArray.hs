@@ -6,7 +6,7 @@
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE UnboxedTuples          #-}
-module Numeric.DataFrame.Internal.Array.Class
+module Numeric.DataFrame.Internal.PrimArray
   ( PrimArray (..), CumulDims (..)
   , cumulDims, cdTotalDim, cdTotalDim#, cdIx
   , ixOff, unsafeFromFlatList, getSteps

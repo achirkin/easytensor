@@ -3,12 +3,12 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE UnboxedTuples         #-}
-module Numeric.DataFrame.Internal.Array.Family.FloatX2 (FloatX2 (..)) where
+module Numeric.DataFrame.Internal.Backend.Family.FloatX2 (FloatX2 (..)) where
 
 
 import           GHC.Base
-import           Numeric.DataFrame.Internal.Array.Class
-import           Numeric.DataFrame.Internal.Array.PrimOps
+import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
+import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.PrimBytes
 
 

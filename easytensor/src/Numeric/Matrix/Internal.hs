@@ -6,7 +6,7 @@
 {-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE UndecidableInstances  #-}
-module Numeric.Matrix.Class
+module Numeric.Matrix.Internal
   ( MatrixTranspose (..)
   , SquareMatrix (..)
   , MatrixDeterminant (..)

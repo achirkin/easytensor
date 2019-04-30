@@ -1,25 +1,25 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 module Numeric.QuaternionTest (runTests) where
 
-import Test.QuickCheck
-import Numeric.Quaternion
-import Numeric.Vector
+import           Numeric.Quaternion
+import           Numeric.Vector
+import           Test.QuickCheck
 
 
 instance (Quaternion t, Arbitrary t) => Arbitrary (Quater t) where
-  arbitrary = packQ <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
-  shrink q | (x,y,z,t) <- unpackQ q = packQ <$> shrink x <*> shrink y  <*> shrink z <*> shrink t
+  arbitrary = Quater <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+  shrink (Quater x y z t) = Quater <$> shrink x <*> shrink y  <*> shrink z <*> shrink t
 
 instance Arbitrary Vec3d where
-  arbitrary = vec3 <$> arbitrary <*> arbitrary <*> arbitrary
-  shrink v | (x,y,z) <- unpackV3 v = vec3 <$> shrink x <*> shrink y  <*> shrink z
+  arbitrary = Vec3 <$> arbitrary <*> arbitrary <*> arbitrary
+  shrink (Vec3 x y z) = Vec3 <$> shrink x <*> shrink y  <*> shrink z
 
 
-(=~=) :: (Quaternion a, Num a, Ord a, Num (Quater a), Fractional a) => Quater a -> Quater a -> Bool
+(=~=) :: (Quaternion a, Ord a, Num (Quater a), Fractional a) => Quater a -> Quater a -> Bool
 (=~=) a b = taker (abs (a - b)) <= eps
     where
       s = max 1e-6 $ max (taker (abs a)) (taker (abs b))
@@ -29,10 +29,10 @@ infix 4 =~=
 
 prop_Eq :: QDouble -> Bool
 prop_Eq q = and
-    [ (\(x,y,z,t) -> packQ x y z t) (unpackQ q)     == q
-    , packQ (takei q) (takej q) (takek q) (taker q) == q
-    , fromVecNum (imVec q) (taker q)                == q
-    , im q + re q                                   == q
+    [ q == q
+    , Quater (takei q) (takej q) (takek q) (taker q) == q
+    , fromVecNum (imVec q) (taker q)                 == q
+    , im q + re q                                    == q
     ]
 
 

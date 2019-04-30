@@ -36,12 +36,12 @@ module Numeric.DataFrame.IO
 
 
 import           GHC.Base
-import           GHC.IO                                 (IO (..))
-import           GHC.Ptr                                (Ptr (..))
+import           GHC.IO                               (IO (..))
+import           GHC.Ptr                              (Ptr (..))
 
 import           Numeric.DataFrame.Family
-import           Numeric.DataFrame.Internal.Array.Class
 import           Numeric.DataFrame.Internal.Mutable
+import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
 
