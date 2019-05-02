@@ -3,9 +3,16 @@ language: haskell
 ghc:
   - "8.2"
   - "8.4"
+  - "8.6"
+
+before_install:
+  - cabal update
+  - cabal new-build hpack
+  - cabal new-exec hpack dimensions/package.yaml
+  - cabal new-exec hpack easytensor/package.yaml
+  - echo -e "packages: */*.cabal" > cabal.project
 
 install:
-  - cabal update
   - cabal new-build all --ghc-options="-O0" --enable-tests --dependencies-only
 
 script:
