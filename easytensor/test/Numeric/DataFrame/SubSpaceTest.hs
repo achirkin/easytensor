@@ -8,10 +8,10 @@
 
 module Numeric.DataFrame.SubSpaceTest (runTests) where
 
-import           Numeric.DataFrame
-import           Numeric.DataFrame.Arbitraries ()
-import           Numeric.Dimensions
-import           Test.QuickCheck
+import Numeric.DataFrame
+import Numeric.DataFrame.Arbitraries ()
+import Numeric.Dimensions
+import Test.QuickCheck
 
 type SFull = '[2,5,4,3,7]
 type SPref = '[2,5,4]
@@ -52,5 +52,6 @@ prop_Eye :: DataFrame Double SFull -> Bool
 prop_Eye x = eye %* x == x && x %* eye == x
 
 return []
-runTests :: IO Bool
-runTests = $quickCheckAll
+runTests :: Int -> IO Bool
+runTests n = $forAllProperties
+  $ quickCheckWithResult stdArgs { maxSuccess = n }

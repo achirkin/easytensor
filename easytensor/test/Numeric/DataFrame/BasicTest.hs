@@ -25,31 +25,43 @@
 
 module Numeric.DataFrame.BasicTest (runTests) where
 
-import           Numeric.DataFrame
-import           Numeric.DataFrame.Arbitraries ()
-import           Test.QuickCheck
+import Numeric.DataFrame
+import Numeric.DataFrame.Arbitraries ()
+import Test.QuickCheck
 
 
-prop_Comparisons :: SomeDataFrame '[Float, Float] -> Bool
+prop_Comparisons :: SomeDataFrame '[Float, Float] -> Property
 prop_Comparisons (SomeDataFrame (x :*: y :*: Z))
-  = and
-    [ abs x >= abs x / 2
-    , abs x <= abs x + abs y
-    , x <= x, x <= x
-    , x >= x, y >= y
-    , x == x, y == y
-    , x < x + 1, x > x - 1
-    , abs x >= x, abs (-x) >= (-x)
-    , x > y            ===> x >= y
-    , x < y            ===> x <= y
-    , not (x >= y)     ===> not (x > y)
-    , not (x <= y)     ===> not (x < y)
-    , x == y           ===> and [ not (x > y), not (y < x), x >= y, y <= x ]
-    , x >= y && x <= y ===> x == y
+  = conjoin
+    [ counterexample "abs x >= abs x / 2" $ abs x >= abs x / 2
+    , counterexample "abs x <= abs x + abs y" $ abs x <= abs x + abs y
+    , counterexample "x <= x" $ x <= x
+    , counterexample "y <= y" $ y <= y
+    , counterexample "x >= x" $ x >= x
+    , counterexample "y >= y" $ y >= y
+    , counterexample "x == x" $ x == x
+    , counterexample "y == y" $ y == y
+    , counterexample "x < x + 1" $ abs x < 1e7 ===> x < x + 1
+    , counterexample "x > x - 1" $ abs x < 1e7 ===> x > x - 1
+    , counterexample "abs x >= x" $ abs x >= x
+    , counterexample "abs (-x) >= (-x)" $ abs (-x) >= (-x)
+    , counterexample "x > y ==> x >= y"
+      $ x > y            ===> x >= y
+    , counterexample "x < y ==> x <= y"
+      $ x < y            ===> x <= y
+    , counterexample "not (x >= y) ==> not (x > y)"
+      $ not (x >= y)     ===> not (x > y)
+    , counterexample "not (x <= y) ==> not (x < y)"
+      $ not (x <= y)     ===> not (x < y)
+    , counterexample "x == y ==> not GT or LT, but GE and LE"
+      $ x == y           ===> and [ not (x > y), not (y < x), x >= y, y <= x ]
+    , counterexample "x >= y && x <= y ==> x == y"
+      $ x >= y && x <= y ===> x == y
     ]
   where
     a ===> b = not a || b
     infix 2 ===>
+
 
 prop_Numeric :: SomeDataFrame '[Int, Int] -> Bool
 prop_Numeric (SomeDataFrame (x :*: y :*: Z))
@@ -78,5 +90,6 @@ prop_Floating (SomeDataFrame (x :*: y :*: Z))
 
 
 return []
-runTests :: IO Bool
-runTests = $quickCheckAll
+runTests :: Int -> IO Bool
+runTests n = $forAllProperties
+  $ quickCheckWithResult stdArgs { maxSuccess = n }
