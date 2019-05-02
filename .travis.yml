@@ -10,7 +10,8 @@ before_install:
   - cabal new-build hpack
   - cabal new-exec hpack dimensions/package.yaml
   - cabal new-exec hpack easytensor/package.yaml
-  - echo -e "packages: */*.cabal" > cabal.project
+  - export STAR='*'
+  - echo -e "packages: $STAR/$STAR.cabal" > cabal.project
 
 install:
   - cabal new-build all --ghc-options="-O0" --enable-tests --dependencies-only
