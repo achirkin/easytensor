@@ -10,75 +10,106 @@
 module Numeric.MatrixFloatTest (runTests) where
 
 
-import           Data.Fixed
-import           Numeric.DataFrame
-import           Numeric.DataFrame.Arbitraries ()
-import           Numeric.Dimensions
-import           Test.QuickCheck
+import Data.Fixed
+import Numeric.DataFrame
+import Numeric.DataFrame.Arbitraries ()
+import Numeric.Dimensions
+import Numeric.Semigroup
+import Test.QuickCheck
 
-eps :: Scf
-eps = 0.01
+type TestElem = Float
+type TestDF = DataFrame TestElem
+
+eps :: Scalar TestElem
+eps = 0.00001
 
 dropW :: (SubSpace t '[3] '[] '[3], SubSpace t '[4] '[] '[4])
       => Vector t 4 -> Vector t 3
 dropW (Vec4 x y z _) = Vec3 x y z
 
+-- | Most of the time, the error is proportional to the maginutude of the biggest element
+maxElem :: (SubSpace TestElem ds '[] ds)
+        => TestDF (ds :: [Nat]) -> Scalar TestElem
+maxElem = ewfoldl (\a -> max a . abs) 0
+
+-- | For operations like @det@, the error is proportional to maximum possible product
+--   over rows or columns
+maxRows :: forall ds
+         . (SubSpace TestElem '[Head ds] (Tail ds) ds)
+        => TestDF (ds :: [Nat]) -> Scalar TestElem
+maxRows = getProduct . ewfoldMap @_ @'[Head ds] @(Tail ds) @ds (Product . maxElem)
+
 approxEq ::
-  forall (ds :: [Nat]).
+  forall (ds :: [Nat]) .
   (
     Dimensions ds,
-    Num (DataFrame Float ds),
-    PrimBytes (DataFrame Float ds),
-    PrimArray Float (DataFrame Float ds)
+    Num (TestDF ds),
+    PrimBytes (TestDF ds),
+    PrimArray TestElem (TestDF ds)
   ) =>
-  DataFrame Float ds -> DataFrame Float ds -> Bool
-approxEq a b = (eps >=) . ewfoldl @_ @_ @'[] max 0 . abs $ a - b
+  TestDF ds -> TestDF ds -> Bool
+approxEq a b = maxElem (a - b) <= eps * m
+  where
+    m = maxElem a `max` maxElem b
 infix 4 `approxEq`
 
-prop_detTranspose :: Matrix '[Float, Float] (XN 2) (XN 2) -> Bool
+prop_detTranspose :: Matrix '[TestElem, TestElem] (XN 2) (XN 2) -> Property
 prop_detTranspose (XFrame (x :*: y :*: Z))
   | -- infer KnownDim for both dimensions of matrix x (and y)
-    KnownDims <- dims `inSpaceOf` x
-  = let m = diag (ewfoldl max 0 $ abs x) + x %* transpose y
+    (ds@KnownDims :: Dims ns) <- dims `inSpaceOf` x
+  , dn :* _ <- ds
+    -- maxRows requires KnownBackend of Vector t n
+  , Dict <- inferKnownBackend @TestElem @'[Head ns]
+  = let m = x %* transpose y -- make it a square matrix
         a = det m
         b = det $ transpose m
-    in abs (a - b) / (abs a + abs b + 1) <= eps
+        mag = eps * maxRows m * fromIntegral (product [1..dimVal dn])
+    in  counterexample
+          (unlines
+            [ "failed det/transpose:"
+            , "m:  " ++ show m
+            , "mT: " ++ show (transpose m)
+            , show a ++ " /= " ++ show b
+              ++ " (tolerance: " ++ show mag ++ ")."
+            ]
+          ) $ abs (a - b) <= mag
 
-prop_inverse :: Matrix '[Float, Float] (XN 2) (XN 2) -> Bool
+prop_inverse :: Matrix '[TestElem, TestElem] (XN 2) (XN 2) -> Property
 prop_inverse (XFrame (x :*: y :*: Z))
   | -- infer KnownDim for both dimensions of matrix x (and y)
     (KnownDims :: Dims ns) <- dims `inSpaceOf` x
     -- cumbersose inverse instance requires PrimBytes (Vector t n)
-  , Dict <- inferKnownBackend @Float @'[Head ns]
-  = let m = diag base + x %* transpose y
+  , Dict <- inferKnownBackend @TestElem @'[Head ns]
+  = let base = max 1 $ maxElem x + maxElem y
+        m = diag base + x %* transpose y  -- make it invertable
         mi = inverse m
-        err a b = ewfoldl max 0 (abs (b - a)) / base
-        base = ewfoldl max 0.5 (abs x) + ewfoldl max 0.5 (abs y)
-    in   err eye (m %* mi) <= eps
-      && err eye (mi %* m) <= eps
+        aeq a b = maxElem (b - a) <= eps * maxRows m
+    in  counterexample ("failed inverse:" ++
+                            show (base, m, mi, m %* mi, mi %* m)) $
+         aeq eye (m %* mi) && aeq eye (mi %* m)
 
-prop_LU :: Matrix '[Float, Float] (XN 2) (XN 2) -> Bool
+prop_LU :: Matrix '[TestElem, TestElem] (XN 2) (XN 2) -> Bool
 prop_LU (XFrame (x :*: y :*: Z))
   | -- infer KnownDim for both dimensions of matrix x (and y)
     (KnownDims :: Dims ns) <- dims `inSpaceOf` x
     -- cumbersose inverse instance requires PrimBytes (Vector t n)
-  , Dict <- inferKnownBackend @Float @'[Head ns]
-  = let m = diag base + x %* transpose y
+  , Dict <- inferKnownBackend @TestElem @'[Head ns]
+  = let base = max 1 $ maxElem x + maxElem y
+        m = diag base + x %* transpose y
         f = lu m
-        err a b = ewfoldl max 0 (abs (b - a)) / base
-        base = ewfoldl max 0.5 (abs x) + ewfoldl max 0.5 (abs y)
-    in err (luPerm f %* m) (luLower f %* luUpper f) <= eps
+        aeq a b = maxElem (b - a) <= eps * maxRows m
+    in aeq (luPerm f %* m) (luLower f %* luUpper f)
 
-prop_translate3vs4 :: Vector Float 4 -> Bool
+prop_translate3vs4 :: Vector TestElem 4 -> Bool
 prop_translate3vs4 v = translate4 v == translate3 (dropW v)
 
-prop_translate4 :: Vector Float 4 -> Vector Float 3 -> Bool
+prop_translate4 :: Vector TestElem 4 -> Vector TestElem 3 -> Bool
 prop_translate4 a b = toHomPoint b %* translate4 a == toHomPoint (dropW a + b)
 
-prop_translate3 :: Vector Float 3 -> Vector Float 3 -> Bool
+prop_translate3 :: Vector TestElem 3 -> Vector TestElem 3 -> Bool
 prop_translate3 a b = toHomPoint b %* translate3 a == toHomPoint (a + b)
 
-prop_rotateX :: Vector Float 4 -> Bool
+prop_rotateX :: Vector TestElem 4 -> Bool
 prop_rotateX v@(Vec4 x y z w) =
   and [
     v %* rotateX (-2 * pi)   `approxEq` v,
@@ -92,7 +123,7 @@ prop_rotateX v@(Vec4 x y z w) =
     v %* rotateX (2 * pi)    `approxEq` v
   ]
 
-prop_rotateY :: Vector Float 4 -> Bool
+prop_rotateY :: Vector TestElem 4 -> Bool
 prop_rotateY v@(Vec4 x y z w) =
   and [
     v %* rotateY (-2 * pi)   `approxEq` v,
@@ -106,7 +137,7 @@ prop_rotateY v@(Vec4 x y z w) =
     v %* rotateY (2 * pi)    `approxEq` v
   ]
 
-prop_rotateZ :: Vector Float 4 -> Bool
+prop_rotateZ :: Vector TestElem 4 -> Bool
 prop_rotateZ v@(Vec4 x y z w) =
   and [
     v %* rotateZ (-2 * pi)   `approxEq` v,
@@ -120,7 +151,7 @@ prop_rotateZ v@(Vec4 x y z w) =
     v %* rotateZ (2 * pi)    `approxEq` v
   ]
 
-prop_rotate :: Float -> Bool
+prop_rotate :: TestElem -> Bool
 prop_rotate a =
   and [
     rotate (vec3 1 0 0) a `approxEq` rotateX a,
@@ -128,11 +159,11 @@ prop_rotate a =
     rotate (vec3 0 0 1) a `approxEq` rotateZ a
   ]
 
-prop_rotateEuler :: Float -> Float -> Float -> Bool
+prop_rotateEuler :: TestElem -> TestElem -> TestElem -> Bool
 prop_rotateEuler pitch yaw roll =
   rotateEuler pitch yaw roll `approxEq` rotateZ roll %* rotateY yaw %* rotateX pitch
 
-prop_lookAt :: Vector Float 3 -> Vector Float 3 -> Vector Float 3 -> Bool
+prop_lookAt :: Vector TestElem 3 -> Vector TestElem 3 -> Vector TestElem 3 -> Bool
 prop_lookAt up cam foc =
   and [
     (normalized . fromHom $ toHomPoint foc %* m) `approxEq` vec3 0 0 (-1),
@@ -147,7 +178,7 @@ prop_lookAt up cam foc =
     xb = normalized $ up `cross` zb
     yb = zb `cross` xb
 
-prop_perspective :: Float -> Float -> Float -> Float -> Bool
+prop_perspective :: TestElem -> TestElem -> TestElem -> TestElem -> Bool
 prop_perspective a b c d =
   and [
     projectTo 0 0 n       `approxEq` vec3 0 0 (-1),
@@ -171,7 +202,7 @@ prop_perspective a b c d =
     m = perspective n f fovy aspect
     projectTo x' y' z = fromHom $ vec4 (x' * wpd * z) (y' * hpd * z) (-z) 1 %* m
 
-prop_orthogonal :: Float -> Float -> Float -> Float -> Bool
+prop_orthogonal :: TestElem -> TestElem -> TestElem -> TestElem -> Bool
 prop_orthogonal a b c d =
   and [
     projectTo 0 0 n       `approxEq` vec3 0 0 (-1),
@@ -193,18 +224,19 @@ prop_orthogonal a b c d =
     m = orthogonal n f w h
     projectTo x' y' z = fromHom $ vec4 (x' * w * 0.5) (y' * h * 0.5) (-z) 1 %* m
 
-prop_toHomPoint :: Vector Float 3 -> Bool
+prop_toHomPoint :: Vector TestElem 3 -> Bool
 prop_toHomPoint v@(Vec3 x y z) = toHomPoint v == vec4 x y z 1
 
-prop_toHomVector :: Vector Float 3 -> Bool
+prop_toHomVector :: Vector TestElem 3 -> Bool
 prop_toHomVector v@(Vec3 x y z) = toHomVector v == vec4 x y z 0
 
-prop_fromHom :: Vector Float 4 -> Bool
+prop_fromHom :: Vector TestElem 4 -> Bool
 prop_fromHom v@(Vec4 x y z w) =
   case w of
     0 -> fromHom v == vec3 x y z
     _ -> fromHom v `approxEq` vec3 (x/w) (y/w) (z/w)
 
 return []
-runTests :: IO Bool
-runTests = $quickCheckAll
+runTests :: Int -> IO Bool
+runTests n = $forAllProperties
+  $ quickCheckWithResult stdArgs { maxSuccess = n }

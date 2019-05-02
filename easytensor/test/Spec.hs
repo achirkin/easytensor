@@ -1,7 +1,7 @@
 module Main (tests, main) where
 
-import           Distribution.TestSuite
-import           System.Exit
+import Distribution.TestSuite
+import System.Exit
 
 import qualified Numeric.DataFrame.BasicTest
 import qualified Numeric.DataFrame.SubSpaceTest
@@ -13,12 +13,14 @@ import qualified Numeric.QuaternionTest
 -- | Collection of tests in detailed-0.9 format
 tests :: IO [Test]
 tests = return
-  [ test "DataFrame.Basic"    Numeric.DataFrame.BasicTest.runTests
-  , test "DataFrame.SubSpace" Numeric.DataFrame.SubSpaceTest.runTests
-  , test "MatrixDouble"       Numeric.MatrixDoubleTest.runTests
-  , test "MatrixFloat"        Numeric.MatrixFloatTest.runTests
-  , test "Quaternion"         Numeric.QuaternionTest.runTests
+  [ test "DataFrame.Basic"    $ Numeric.DataFrame.BasicTest.runTests n
+  , test "DataFrame.SubSpace" $ Numeric.DataFrame.SubSpaceTest.runTests n
+  , test "MatrixDouble"       $ Numeric.MatrixDoubleTest.runTests n
+  , test "MatrixFloat"        $ Numeric.MatrixFloatTest.runTests n
+  , test "Quaternion"         $ Numeric.QuaternionTest.runTests n
   ]
+  where
+    n = 100 :: Int
 
 
 

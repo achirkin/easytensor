@@ -18,12 +18,20 @@
 --   traversals with monadic actions.
 module Numeric.DataFrame.Arbitraries where
 
-import           Test.QuickCheck
+import Test.QuickCheck
 
-import           Numeric.DataFrame
-import           Numeric.Dimensions
+import Numeric.DataFrame
+import Numeric.Dimensions
+import Numeric.Quaternion
+import Numeric.Semigroup  hiding (All)
 
-instance (Arbitrary t, PrimBytes t, Dimensions ds)
+
+instance (Quaternion t, Arbitrary t) => Arbitrary (Quater t) where
+  arbitrary = Quater <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+  shrink (Quater x y z t) = Quater <$> shrink x <*> shrink y  <*> shrink z <*> shrink t
+
+
+instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
       => Arbitrary (DataFrame t (ds :: [Nat])) where
     arbitrary
         | -- First, we need to find out exact array implementation to use
@@ -40,17 +48,25 @@ instance (Arbitrary t, PrimBytes t, Dimensions ds)
       where
         f :: Arbitrary a => Scalar a -> Gen (Scalar a)
         f _ = scalar <$> arbitrary
-    shrink
+    shrink df
         | Dict <- inferKnownBackend @t @ds
-        = elementWise @_ @ds @'[] f
-      where
-        -- Unfortunately, Scalar is not a proper second-rank data type
-        -- (it is just type alias for DataFrame t []).
-        -- So it cannot be functor or traversable.
-        f :: Arbitrary a => Scalar a -> [Scalar a]
-        f = fmap scalar . shrink . unScalar
+        , mma <- ewfoldMap @t @ds @'[] @ds
+            ((\x -> if x == 0 then Nothing else Just (minMax x)) . abs) df
+        = case mma of
+            Nothing
+              -> [] -- all-zero is the most primitive DF possible
+            Just (MinMax mi ma)
+             -> [ ewmap (scalar . withAbs . unScalar) df
+                , ewmap (\x -> if abs x == mi then 0 else x) df
+                , ewmap (\x -> if abs x == ma then 0 else x) df
+                ]
+            where
+              withAbs 0 = 0
+              withAbs x = signum x * closest2 (abs x) 1
+              closest2 x b = if x < b * 2 then b else closest2 x (b*2)
 
-instance (All Arbitrary ts, All PrimBytes ts, RepresentableList ts, Dimensions ds)
+instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
+         , RepresentableList ts, Dimensions ds)
       => Arbitrary (DataFrame ts (ds :: [Nat])) where
     -- We create arbitrary MultiFrame by combining several SingleFrames.
     -- SingleFrames are "variables" or "columns" of a MultiFrame that are
@@ -112,7 +128,7 @@ instance (KnownDim m, Arbitrary (Dims xs)) => Arbitrary (Dims (XN m ': xs)) wher
     arbitrary = (:*) <$> arbitrary <*> arbitrary
     shrink _ = []
 
-instance (Arbitrary t, PrimBytes t)
+instance (Arbitrary t, PrimBytes t, Num t, Ord t)
       => Arbitrary (SomeDataFrame t) where
     arbitrary = do
       -- Generate random dimension list
@@ -126,7 +142,8 @@ instance (Arbitrary t, PrimBytes t)
     shrink _ = []
 
 -- All same as above, just change constraints a bit
-instance (All Arbitrary ts, All PrimBytes ts, RepresentableList ts)
+instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
+         , RepresentableList ts)
       => Arbitrary (SomeDataFrame ts) where
     arbitrary = do
       SomeDims (Dims :: Dims ds) <- arbitrary
@@ -134,7 +151,7 @@ instance (All Arbitrary ts, All PrimBytes ts, RepresentableList ts)
         Dict -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
     shrink _ = []
 
-instance ( Arbitrary t, PrimBytes t
+instance ( Arbitrary t, PrimBytes t, Num t, Ord t
          , Arbitrary (Dims xs), All KnownXNatType xs)
       => Arbitrary (DataFrame t (xs :: [XNat])) where
     arbitrary = do
@@ -143,7 +160,8 @@ instance ( Arbitrary t, PrimBytes t
         Dict -> XFrame <$> arbitrary @(DataFrame t ds)
     shrink (XFrame df) = XFrame <$> shrink df
 
-instance ( All Arbitrary ts, All PrimBytes ts, RepresentableList ts
+instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
+         , RepresentableList ts
          , Arbitrary (Dims xs), All KnownXNatType xs)
       => Arbitrary (DataFrame ts (xs :: [XNat])) where
     arbitrary = do

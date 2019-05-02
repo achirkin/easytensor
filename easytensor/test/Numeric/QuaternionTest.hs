@@ -5,19 +5,10 @@
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 module Numeric.QuaternionTest (runTests) where
 
-import           Numeric.Quaternion
-import           Numeric.Vector
-import           Test.QuickCheck
-
-
-instance (Quaternion t, Arbitrary t) => Arbitrary (Quater t) where
-  arbitrary = Quater <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
-  shrink (Quater x y z t) = Quater <$> shrink x <*> shrink y  <*> shrink z <*> shrink t
-
-instance Arbitrary Vec3d where
-  arbitrary = Vec3 <$> arbitrary <*> arbitrary <*> arbitrary
-  shrink (Vec3 x y z) = Vec3 <$> shrink x <*> shrink y  <*> shrink z
-
+import Numeric.DataFrame.Arbitraries ()
+import Numeric.Quaternion
+import Numeric.Vector
+import Test.QuickCheck
 
 (=~=) :: (Quaternion a, Ord a, Num (Quater a), Fractional a) => Quater a -> Quater a -> Bool
 (=~=) a b = taker (abs (a - b)) <= eps
@@ -120,5 +111,6 @@ prop_SinhCosh q = cosh q' * cosh q' - sinh q' * sinh q' =~= 1
       q' = signum q
 
 return []
-runTests :: IO Bool
-runTests = $quickCheckAll
+runTests :: Int -> IO Bool
+runTests n = $forAllProperties
+  $ quickCheckWithResult stdArgs { maxSuccess = n }
