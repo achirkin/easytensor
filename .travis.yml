@@ -6,12 +6,12 @@ ghc:
   - "8.6"
 
 before_install:
+  - printf "packages\u3A \u2A/\u2A.cabal\n" > cabal.project
   - cabal update
-  - cabal new-build hpack
-  - cabal new-exec hpack dimensions/package.yaml
-  - cabal new-exec hpack easytensor/package.yaml
-  - export STAR='*'
-  - echo -e "packages: $STAR/$STAR.cabal" > cabal.project
+  - cabal install hpack
+  - cabal exec hpack dimensions/package.yaml
+  - cabal exec hpack easytensor/package.yaml
+
 
 install:
   - cabal new-build all --ghc-options="-O0" --enable-tests --dependencies-only
