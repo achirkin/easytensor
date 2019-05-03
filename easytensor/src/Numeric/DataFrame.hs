@@ -1,5 +1,3 @@
-{-# LANGUAGE PatternSynonyms #-}
-
 module Numeric.DataFrame
   ( module Numeric.DataFrame.Type
     -- * Simplified type aliases
@@ -12,14 +10,13 @@ module Numeric.DataFrame
   , module Numeric.DataFrame.Shape
   ) where
 
--- Do I need this?..
-import           Numeric.DataFrame.Internal.Backend ()
+import Numeric.DataFrame.Internal.Backend ()
 
-import           Numeric.DataFrame.Contraction
-import           Numeric.DataFrame.Shape
-import           Numeric.DataFrame.SubSpace
-import           Numeric.DataFrame.Type
+import Numeric.DataFrame.Contraction
+import Numeric.DataFrame.Shape
+import Numeric.DataFrame.SubSpace
+import Numeric.DataFrame.Type
 
-import           Numeric.Matrix
-import           Numeric.Scalar
-import           Numeric.Vector
+import Numeric.Matrix
+import Numeric.Scalar
+import Numeric.Vector

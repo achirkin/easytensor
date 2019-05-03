@@ -35,15 +35,14 @@ module Numeric.DataFrame.IO
     ) where
 
 
-import           GHC.Base
-import           GHC.IO                               (IO (..))
-import           GHC.Ptr                              (Ptr (..))
+import GHC.Base
+import GHC.IO   (IO (..))
+import GHC.Ptr  (Ptr (..))
 
-import           Numeric.DataFrame.Family
-import           Numeric.DataFrame.Internal.Mutable
-import           Numeric.DataFrame.Internal.PrimArray
-import           Numeric.Dimensions
-import           Numeric.PrimBytes
+import Numeric.DataFrame.Internal.Mutable
+import Numeric.DataFrame.Internal.PrimArray
+import Numeric.DataFrame.Type
+import Numeric.Dimensions
 
 
 -- | Mutable DataFrame that lives in IO.

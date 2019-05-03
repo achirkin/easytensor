@@ -8,8 +8,8 @@ module Numeric.Matrix.Internal.Mat44d () where
 import qualified Control.Monad.ST        as ST
 import qualified Numeric.DataFrame.ST    as ST
 import           Numeric.Matrix.Internal
-import           Numeric.Scalar
-import           Numeric.Vector
+import           Numeric.Scalar.Internal
+import           Numeric.Vector.Internal
 
 {-# INLINE mkMat #-}
 mkMat ::

@@ -8,8 +8,8 @@ module Numeric.Quaternion.Internal
     ( Quaternion (..), Quater(Quater)
     ) where
 
-import           Numeric.Matrix (Matrix)
-import           Numeric.Vector (Vector)
+import Numeric.Matrix.Internal (Matrix)
+import Numeric.Vector.Internal (Vector)
 
 
 pattern Quater :: Quaternion t => t -> t -> t -> t -> Quater t

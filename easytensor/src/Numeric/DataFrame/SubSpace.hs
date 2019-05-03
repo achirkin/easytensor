@@ -30,13 +30,15 @@ module Numeric.DataFrame.SubSpace
   , indexWise_, elementWise_
   ) where
 
-import           GHC.Base
+import Numeric.Semigroup (Semigroup (..))
 
-import           Numeric.DataFrame.Family
-import           Numeric.DataFrame.Internal.PrimArray
-import           Numeric.Dimensions
-import           Numeric.PrimBytes
+import Data.Kind
+import GHC.Exts
 
+import Numeric.DataFrame.Internal.PrimArray
+import Numeric.DataFrame.Type
+import Numeric.Dimensions
+import Numeric.PrimBytes
 
 
 -- | Operations on DataFrames

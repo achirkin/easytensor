@@ -30,11 +30,11 @@ module Numeric.DataFrame.Contraction
   ( Contraction (..), (%*)
   ) where
 
-import           GHC.Base
+import GHC.Base
 
-import           Numeric.DataFrame.Family
-import           Numeric.DataFrame.Internal.PrimArray
-import           Numeric.Dimensions
+import Numeric.DataFrame.Internal.PrimArray
+import Numeric.DataFrame.Type
+import Numeric.Dimensions
 
 
 
@@ -55,13 +55,12 @@ class ConcatList as bs asbs
 --     1. matrix-matrix product
 --     2. matrix-vector or vector-matrix product
 --     3. dot product of two vectors.
-(%*) :: ( ConcatList as bs (as ++ bs)
-        , Contraction t as bs asbs
+(%*) :: ( Contraction t as bs asbs
         , KnownDim m
         , PrimArray t (DataFrame t (as +: m))
         , PrimArray t (DataFrame t (m :+ bs))
-        , PrimArray t (DataFrame t (as ++ bs))
-        )  => DataFrame t (as +: m) -> DataFrame t (m :+ bs) -> DataFrame t (as ++ bs)
+        , PrimArray t (DataFrame t asbs)
+        )  => DataFrame t (as +: m) -> DataFrame t (m :+ bs) -> DataFrame t asbs
 (%*) = contract
 {-# INLINE (%*) #-}
 infixl 7 %*

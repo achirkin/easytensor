@@ -1,10 +1,5 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Numeric.Quaternion
--- Copyright   :  (c) Artem Chirkin
--- License     :  BSD3
---
--- Maintainer  :  chirkin@arch.ethz.ch
 --
 -- Quaternion operations implemented for Floats and Doubles.
 --
@@ -31,6 +26,7 @@ module Numeric.Quaternion
     , QDouble, QFloat
     ) where
 
-import           Numeric.Quaternion.Internal
-import           Numeric.Quaternion.Internal.QDouble
-import           Numeric.Quaternion.Internal.QFloat
+import Numeric.DataFrame.Internal.Backend  ()
+import Numeric.Quaternion.Internal
+import Numeric.Quaternion.Internal.QDouble
+import Numeric.Quaternion.Internal.QFloat

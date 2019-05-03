@@ -15,18 +15,17 @@ module Numeric.Quaternion.Internal.QDouble
     ( QDouble, Quater (..)
     ) where
 
+import qualified Control.Monad.ST                     as ST
 import           Data.Coerce                          (coerce)
 import           GHC.Exts
-import           Text.Read
-
-import qualified Control.Monad.ST                     as ST
 import           Numeric.DataFrame.Internal.PrimArray
 import qualified Numeric.DataFrame.ST                 as ST
 import           Numeric.DataFrame.Type
 import           Numeric.PrimBytes                    (PrimBytes)
 import           Numeric.Quaternion.Internal
-import           Numeric.Scalar
-import           Numeric.Vector
+import           Numeric.Scalar.Internal
+import           Numeric.Vector.Internal
+import           Text.Read
 
 type QDouble = Quater Double
 

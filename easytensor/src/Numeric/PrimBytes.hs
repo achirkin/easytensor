@@ -3,11 +3,12 @@
 {-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
--- {-# LANGUAGE IncoherentInstances   #-}
 {-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
@@ -1141,29 +1142,53 @@ instance PrimBytes Word64 where
     {-# INLINE writeArray #-}
 
 instance PrimBytes (Idx x) where
-    getBytes = unsafeCoerce# (getBytes @Word)
+    getBytes :: Idx x -> ByteArray#
+    getBytes = unsafeCoerce#
+      (getBytes :: Word -> ByteArray#)
     {-# INLINE getBytes #-}
-    fromBytes  = unsafeCoerce# (fromBytes @Word)
+    fromBytes :: Int# -> ByteArray# -> Idx x
+    fromBytes  = unsafeCoerce#
+      (fromBytes :: Int# -> ByteArray# -> Word)
     {-# INLINE fromBytes #-}
-    readBytes = unsafeCoerce# (readBytes @Word)
+    readBytes :: forall s . MutableByteArray# s -> Int# -> State# s -> (# State# s, Idx x #)
+    readBytes = unsafeCoerce#
+      (readBytes :: MutableByteArray# s -> Int# -> State# s -> (# State# s, Word #))
     {-# INLINE readBytes #-}
-    writeBytes = unsafeCoerce# (writeBytes @Word)
+    writeBytes :: forall s . MutableByteArray# s -> Int# -> Idx x -> State# s -> State# s
+    writeBytes = unsafeCoerce#
+      (writeBytes :: MutableByteArray# s -> Int# -> Word -> State# s -> State# s)
     {-# INLINE writeBytes #-}
-    readAddr = unsafeCoerce# (readAddr @Word)
+    readAddr :: forall s . Addr# -> State# s -> (# State# s, Idx x #)
+    readAddr = unsafeCoerce#
+      (readAddr :: Addr# -> State# s -> (# State# s, Word #))
     {-# INLINE readAddr #-}
-    writeAddr = unsafeCoerce# (readAddr @Word)
+    writeAddr :: forall s . Idx x -> Addr# -> State# s -> State# s
+    writeAddr = unsafeCoerce#
+      (writeAddr :: Word -> Addr# -> State# s -> State# s)
     {-# INLINE writeAddr #-}
-    byteSize = unsafeCoerce# (byteSize @Word)
+    byteSize :: Idx x -> Int#
+    byteSize = unsafeCoerce#
+      (byteSize :: Word -> Int#)
     {-# INLINE byteSize #-}
-    byteAlign = unsafeCoerce# (byteAlign @Word)
+    byteAlign :: Idx x -> Int#
+    byteAlign = unsafeCoerce#
+      (byteAlign :: Word -> Int#)
     {-# INLINE byteAlign #-}
-    byteOffset = unsafeCoerce# (byteOffset @Word)
+    byteOffset :: Idx x -> Int#
+    byteOffset = unsafeCoerce#
+      (byteOffset :: Word -> Int#)
     {-# INLINE byteOffset #-}
-    indexArray = unsafeCoerce# (indexArray @Word)
+    indexArray :: ByteArray# -> Int# -> Idx x
+    indexArray = unsafeCoerce#
+      (indexArray :: ByteArray# -> Int# -> Word)
     {-# INLINE indexArray #-}
-    readArray = unsafeCoerce# (readArray @Word)
+    readArray :: forall s . MutableByteArray# s -> Int# -> State# s -> (# State# s, Idx x #)
+    readArray = unsafeCoerce#
+      (readArray :: MutableByteArray# s -> Int# -> State# s -> (# State# s, Word #))
     {-# INLINE readArray #-}
-    writeArray = unsafeCoerce# (writeArray @Word)
+    writeArray :: forall s . MutableByteArray# s -> Int# -> Idx x -> State# s -> State# s
+    writeArray = unsafeCoerce#
+      (writeArray :: MutableByteArray# s -> Int# -> Word -> State# s -> State# s)
     {-# INLINE writeArray #-}
 
 instance RepresentableList xs => PrimBytes (Idxs xs) where
@@ -1362,7 +1387,7 @@ undefP = const undefined
 
 instance PrimBytes a => PrimBytes (Maybe a)
 instance (PrimBytes a, PrimBytes b) => PrimBytes (Either a b)
-instance PrimBytes a => PrimBytes [a] -- ??? likely to give inf byteSize
+-- instance PrimBytes a => PrimBytes [a] -- ??? likely to give inf byteSize
 
 
 data PrimTag a where
@@ -1380,6 +1405,8 @@ data PrimTag a where
     PTagWord64 :: PrimTag Word64
     PTagPtr    :: PrimTag (Ptr a)
     PTagOther  :: PrimTag a
+
+deriving instance Show (PrimTag a)
 
 class PrimTagged a where
     primTag' :: a -> PrimTag a

@@ -13,6 +13,7 @@
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UnboxedTuples             #-}
 {-# LANGUAGE UndecidableInstances      #-}
+{-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 -- {-# OPTIONS_GHC -fno-warn-overlapping-patterns #-}
 -----------------------------------------------------------------------------
 -- |
@@ -32,17 +33,15 @@ module Numeric.DataFrame.Shape
     , fromListN, fromList
     ) where
 
-import           GHC.Base
+import GHC.Base
 
 import           Numeric.DataFrame.Internal.PrimArray
-import           Numeric.DataFrame.SubSpace
 import           Numeric.DataFrame.Type
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
-import           Numeric.Scalar                       as Scalar
+import           Numeric.Scalar.Internal              as Scalar
 import           Numeric.TypedList                    (TypedList (..))
 import qualified Numeric.TypedList                    as Dims
-import           Numeric.Vector
 
 
 -- | Append one DataFrame to another, sum up last dimension
@@ -75,17 +74,6 @@ infixl 5 <:>
 infixl 5 <::>
 {-# INLINE [1] (<::>) #-}
 
-
-vec2t :: forall t . SubSpace t '[2] '[] '[2] => Scalar t -> Scalar t -> Vector t 2
-vec2t = unsafeCoerce# (vec2 @t)
-{-# INLINE vec2t #-}
-
-{-# RULES
-"<::>/vec2-Float"  (<::>) = vec2t @Float
-"<::>/vec2-Double" (<::>) = vec2t @Double
-"<::>/vec2-Int"    (<::>) = vec2t @Int
-"<::>/vec2-Word"   (<::>) = vec2t @Word
-  #-}
 
 -- | Grow the first DataFrame by adding the second one to it
 --   incrementing the last Dim in the list.

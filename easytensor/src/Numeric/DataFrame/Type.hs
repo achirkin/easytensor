@@ -20,7 +20,6 @@
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE ViewPatterns               #-}
-{-# OPTIONS_GHC -fno-warn-orphans       #-}
 
 module Numeric.DataFrame.Type
   ( -- * Data types
@@ -37,17 +36,22 @@ module Numeric.DataFrame.Type
   ) where
 
 
-import           Data.Proxy                           (Proxy)
-import           Foreign.Storable                     (Storable (..))
-import           GHC.Base
-import           GHC.Ptr                              (Ptr (..))
+import Data.Proxy       (Proxy)
+import Foreign.Storable (Storable (..))
+import GHC.Base
+import GHC.Ptr          (Ptr (..))
 
-import           Numeric.DataFrame.Family
-import           Numeric.DataFrame.Internal.Backend   (DFBackend, KnownBackend)
-import qualified Numeric.DataFrame.Internal.Backend   as Backend
-import           Numeric.DataFrame.Internal.PrimArray
-import           Numeric.Dimensions
-import           Numeric.PrimBytes
+import Numeric.DataFrame.Internal.PrimArray
+import Numeric.Dimensions
+import Numeric.PrimBytes
+
+import {-# SOURCE #-} Numeric.DataFrame.Internal.Backend (DFBackend,
+                                                          KnownBackend)
+import {-# SOURCE #-} qualified Numeric.DataFrame.Internal.Backend as Backend
+
+-- | Keep data in a primitive data frame
+--    and maintain information about Dimensions in the type system
+data family DataFrame (t :: l) (xs :: [k])
 
 -- | Single frame
 newtype instance DataFrame (t :: Type) (ns :: [Nat])
