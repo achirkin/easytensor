@@ -8,12 +8,12 @@
 module Numeric.DataFrame.Internal.Backend.Family.FloatX4 (FloatX4 (..)) where
 
 
-import           GHC.Base
-import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
-import           Numeric.DataFrame.Internal.PrimArray
-import           Numeric.DataFrame.SubSpace
-import           Numeric.Dimensions
-import           Numeric.PrimBytes
+import GHC.Base
+import Numeric.DataFrame.Internal.Backend.Family.PrimOps
+import Numeric.DataFrame.Internal.PrimArray
+import Numeric.DataFrame.SubSpace
+import Numeric.Dimensions
+import Numeric.PrimBytes
 
 
 data FloatX4 = FloatX4# Float# Float# Float# Float#

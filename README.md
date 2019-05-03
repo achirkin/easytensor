@@ -68,7 +68,7 @@ Following is the list of what I want to do before v2 becomes the master branch:
   - [ ] A more conventional Show and Read instance for DataFrame.
   - [ ] Move current show instances into `easytensor-pretty` and improve them.
   - [ ] Try `Typeable`, `Data`, `Generic` for data frames.
-  - [?] Refactor module dependency tree (try not to depend on implementation anywhere).
+  - [x] Refactor module dependency tree (try not to depend on implementation anywhere).
   - [x] Polymorphic vector constructors.
 
 ### Feature TODO

@@ -8,10 +8,10 @@
 module Numeric.DataFrame.Internal.Backend.Family.ScalarBase (ScalarBase (..)) where
 
 
-import           GHC.Base
-import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
-import           Numeric.DataFrame.Internal.PrimArray
-import           Numeric.PrimBytes
+import GHC.Base
+import Numeric.DataFrame.Internal.Backend.Family.PrimOps
+import Numeric.DataFrame.Internal.PrimArray
+import Numeric.PrimBytes
 
 -- | Specialize ScalarBase type without any arrays
 newtype ScalarBase t = ScalarBase { _unScalarBase :: t }
@@ -22,13 +22,13 @@ newtype ScalarBase t = ScalarBase { _unScalarBase :: t }
 instance Show t => Show (ScalarBase t) where
   show (ScalarBase t) = "{ " ++ show t ++ " }"
 
-deriving instance {-# INCOHERENT #-} Bounded t => Bounded (ScalarBase t)
 instance {-# OVERLAPPING #-} Bounded (ScalarBase Double) where
   maxBound = ScalarBase inftyD
   minBound = ScalarBase $ negate inftyD
 instance {-# OVERLAPPING #-} Bounded (ScalarBase Float) where
   maxBound = ScalarBase inftyF
   minBound = ScalarBase $ negate inftyF
+deriving instance {-# INCOHERENT #-} Bounded t => Bounded (ScalarBase t)
 
 instance PrimBytes t => PrimArray t (ScalarBase t) where
   broadcast = unsafeCoerce#

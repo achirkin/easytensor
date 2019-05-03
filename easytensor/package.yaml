@@ -37,14 +37,17 @@ ghc-options:
 dependencies:
   - base >= 4.10 && < 5
   - dimensions >= 2 && < 3
-  - constraints-deriving >= 1 && < 2
+  - constraints-deriving >= 1.0.2.0 && < 2
 
 library:
-  source-dirs: src
+  source-dirs:
+  - src
+  - src-base
   other-modules:
   - Numeric.Matrix.Internal
   - Numeric.Matrix.Internal.Mat44d
   - Numeric.Matrix.Internal.Mat44f
+  - Numeric.Scalar.Internal
   - Numeric.Vector.Internal
   - Numeric.Quaternion.Internal
   - Numeric.Quaternion.Internal.QDouble

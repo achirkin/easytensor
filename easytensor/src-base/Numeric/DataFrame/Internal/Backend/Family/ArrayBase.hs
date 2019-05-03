@@ -21,14 +21,13 @@ module Numeric.DataFrame.Internal.Backend.Family.ArrayBase
   ( ArrayBase (..)
   ) where
 
-import           Data.Int
-import           Data.Word
-import           GHC.Base                                          hiding
-                                                                    (foldr)
-import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
-import           Numeric.DataFrame.Internal.PrimArray
-import           Numeric.Dimensions
-import           Numeric.PrimBytes
+import Data.Int
+import Data.Word
+import GHC.Base                                          hiding (foldr)
+import Numeric.DataFrame.Internal.Backend.Family.PrimOps
+import Numeric.DataFrame.Internal.PrimArray
+import Numeric.Dimensions
+import Numeric.PrimBytes
 
 -- | Generic Array implementation.
 --   This array can reside in plain `ByteArray#` and can share the @ByteArray#@
@@ -292,7 +291,7 @@ instance Ord t => Ord (ArrayBase t ds)  where
     max = zipV max
     {-# INLINE max #-}
 
-instance (Dimensions ds, Show t)
+instance (Show t, Dimensions ds)
       => Show (ArrayBase t ds) where
     showsPrec _ = pprDF id ds ds
       where

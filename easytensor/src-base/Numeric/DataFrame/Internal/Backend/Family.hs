@@ -25,25 +25,25 @@ Various implementations would be picked by activating corresponding cabal flags.
 The following export list must be the same for every implementation
  -}
 module Numeric.DataFrame.Internal.Backend.Family
-  ( BackendFamily, KnownBackend (), BackendSing ()
+  ( BackendFamily, KnownBackend ()
   , inferKnownBackend, inferPrimElem, inferPrimArray, inferBackendInstance
   ) where
 
 
-import           Data.Constraint
-import           GHC.Base
+import Data.Constraint
+import GHC.Base
 
-import           Numeric.DataFrame.Internal.Backend.Family.ArrayBase
-import           Numeric.DataFrame.Internal.Backend.Family.DoubleX2
-import           Numeric.DataFrame.Internal.Backend.Family.DoubleX3
-import           Numeric.DataFrame.Internal.Backend.Family.DoubleX4
-import           Numeric.DataFrame.Internal.Backend.Family.FloatX2
-import           Numeric.DataFrame.Internal.Backend.Family.FloatX3
-import           Numeric.DataFrame.Internal.Backend.Family.FloatX4
-import           Numeric.DataFrame.Internal.Backend.Family.ScalarBase
-import           Numeric.DataFrame.Internal.PrimArray
-import           Numeric.Dimensions
-import           Numeric.PrimBytes
+import Numeric.DataFrame.Internal.Backend.Family.ArrayBase
+import Numeric.DataFrame.Internal.Backend.Family.DoubleX2
+import Numeric.DataFrame.Internal.Backend.Family.DoubleX3
+import Numeric.DataFrame.Internal.Backend.Family.DoubleX4
+import Numeric.DataFrame.Internal.Backend.Family.FloatX2
+import Numeric.DataFrame.Internal.Backend.Family.FloatX3
+import Numeric.DataFrame.Internal.Backend.Family.FloatX4
+import Numeric.DataFrame.Internal.Backend.Family.ScalarBase
+import Numeric.DataFrame.Internal.PrimArray
+import Numeric.Dimensions
+import Numeric.PrimBytes
 
 
 -- | This type family aggregates all types used for arrays with different
@@ -65,7 +65,7 @@ type family BackendFamily (t :: Type) (ds :: [Nat]) = (v :: Type) | v -> t ds wh
     BackendFamily Double '[4]   = DoubleX4
     BackendFamily t       ds    = ArrayBase t ds
 
-data BackendSing t (ds :: [Nat]) where
+data BackendSing (t :: Type) (ds :: [Nat]) where
     BSC :: ( BackendFamily t ds ~ ScalarBase t   ) => BackendSing t      '[]
     BF2 :: ( BackendFamily t ds ~ FloatX2        ) => BackendSing Float  '[2]
     BF3 :: ( BackendFamily t ds ~ FloatX3        ) => BackendSing Float  '[3]
@@ -91,9 +91,7 @@ instance {-# OVERLAPPING #-}  KnownBackend Double '[4]   where bSing = BD4
 instance {-# OVERLAPPABLE #-} (BackendFamily t ds ~ ArrayBase t ds, PrimBytes t)
                            => KnownBackend t ds          where bSing = BPB
 
-
--- | Use `BackendSing` GADT to construct an `KnownBackend` dictionary.
---   The same as `aSingEv`, but relies on `PrimBytes` and `Dimensions`.
+-- | Find an instance of `KnownBackend` class using `PrimBytes` and `Dimensions`.
 inferKnownBackend :: forall t ds
                   . (PrimBytes t, Dimensions ds) => Dict (KnownBackend t ds)
 inferKnownBackend = case (dims @_ @ds, primTag @t undefined) of
@@ -106,7 +104,8 @@ inferKnownBackend = case (dims @_ @ds, primTag @t undefined) of
       | Just Dict <- sameDim (D @2) d -> Dict
       | Just Dict <- sameDim (D @3) d -> Dict
       | Just Dict <- sameDim (D @4) d -> Dict
-  _ -> case (unsafeCoerce# (Dict @(ds ~ ds)) :: Dict (ds ~ '[0])) of Dict -> Dict
+  _ -> case (unsafeCoerce# (Dict @(ds ~ ds)) :: Dict (ds ~ '[0])) of
+        Dict -> Dict
 {-# INLINE inferKnownBackend #-}
 
 
@@ -148,7 +147,7 @@ inferPrimElem = case (bSing :: BackendSing t ds) of
 -- Need a separate function for this one due to a functional dependency
 inferPrimArray
   :: forall (t :: Type) (ds :: [Nat])
-   . ( KnownBackend t ds, PrimBytes t )
+   . (PrimBytes t, KnownBackend t ds)
   => Dict (PrimArray t (BackendFamily t ds))
 inferPrimArray = case (bSing :: BackendSing t ds) of
     BSC -> Dict

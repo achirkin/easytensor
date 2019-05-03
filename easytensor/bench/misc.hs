@@ -5,12 +5,11 @@
 
 module Main (main) where
 
-import           Numeric.DataFrame
-import           Numeric.Dimensions
+import Numeric.DataFrame
+import Numeric.Dimensions
 
 import qualified Control.Monad.ST     as ST
 import qualified Numeric.DataFrame.ST as ST
--- import qualified Numeric.Dimensions.Traverse.ST as ST
 
 
 

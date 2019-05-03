@@ -35,14 +35,13 @@ module Numeric.DataFrame.ST
     ) where
 
 
-import           GHC.Base
-import           GHC.ST                               (ST (..))
+import GHC.Base
+import GHC.ST   (ST (..))
 
-import           Numeric.DataFrame.Family
-import           Numeric.DataFrame.Internal.Mutable
-import           Numeric.DataFrame.Internal.PrimArray
-import           Numeric.Dimensions
-import           Numeric.PrimBytes
+import Numeric.DataFrame.Internal.Mutable
+import Numeric.DataFrame.Internal.PrimArray
+import Numeric.DataFrame.Type
+import Numeric.Dimensions
 
 
 -- | Mutable DataFrame that lives in ST.

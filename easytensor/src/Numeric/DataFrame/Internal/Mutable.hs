@@ -11,6 +11,7 @@
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UnboxedTuples             #-}
+{-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.Internal.Mutable
@@ -35,11 +36,11 @@ module Numeric.DataFrame.Internal.Mutable
     ) where
 
 
-import           GHC.Base
-import           Numeric.DataFrame.Internal.PrimArray
-import           Numeric.DataFrame.Type
-import           Numeric.Dimensions
-import           Numeric.PrimBytes
+import GHC.Base
+import Numeric.DataFrame.Internal.PrimArray
+import Numeric.DataFrame.Type
+import Numeric.Dimensions
+import Numeric.PrimBytes
 
 
 -- | Mutable DataFrame type.

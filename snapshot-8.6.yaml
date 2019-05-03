@@ -3,6 +3,6 @@ name: snapshot-8.6
 resolver: lts-13.14
 
 packages:
-  - constraints-deriving-1.0.1.1
+  - constraints-deriving-1.0.2.0
   - opencv-0.0.2.1
   - vulkan-api-1.1.4.0
