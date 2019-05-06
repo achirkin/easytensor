@@ -17,8 +17,6 @@
 -- Copyright   :  (c) Artem Chirkin
 -- License     :  BSD3
 --
--- Maintainer  :  chirkin@arch.ethz.ch
---
 -- Mutable DataFrames living in IO.
 --
 -----------------------------------------------------------------------------
@@ -27,6 +25,7 @@ module Numeric.DataFrame.IO
     ( IODataFrame (XIOFrame), SomeIODataFrame (..)
     , newDataFrame, newPinnedDataFrame
     , copyDataFrame, copyMutableDataFrame
+    , copyDataFrame', copyMutableDataFrame'
     , freezeDataFrame, unsafeFreezeDataFrame
     , thawDataFrame, thawPinDataFrame, unsafeThawDataFrame
     , writeDataFrame, writeDataFrameOff
@@ -79,6 +78,10 @@ newPinnedDataFrame = IODataFrame <$> IO (newPinnedDataFrame# @t @ns)
 
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
+--
+--   In contrast to @copyMDataFrame'@, this function allows to copy over a range of contiguous
+--   indices over a single dimension.
+--   For example, you can write a 3x4 matrix into a 7x4 matrix, starting at indices 0..3.
 copyDataFrame :: forall (t :: Type)
                         (b :: Nat) (bi :: Nat) (bd :: Nat)
                         (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
@@ -93,6 +96,10 @@ copyDataFrame ei df (IODataFrame mdf) = IO (copyDataFrame# ei df mdf)
 {-# INLINE copyDataFrame #-}
 
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
+--
+--   In contrast to @copyMDataFrame'@, this function allows to copy over a range of contiguous
+--   indices over a single dimension.
+--   For example, you can write a 3x4 matrix into a 7x4 matrix, starting at indices 0..3.
 copyMutableDataFrame :: forall (t :: Type)
                                (b :: Nat) (bi :: Nat) (bd :: Nat)
                                (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
@@ -106,6 +113,33 @@ copyMutableDataFrame ei (IODataFrame mdfA) (IODataFrame mdfB)
     = IO (copyMDataFrame# ei mdfA mdfB)
 {-# INLINE copyMutableDataFrame #-}
 
+-- | Copy one DataFrame into another mutable DataFrame at specified position.
+--
+--   This is a simpler version of @copyDataFrame@ that allows to copy over one index at a time.
+copyDataFrame' :: forall (t :: Type)
+                         (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+                . ( PrimBytes t
+                  , PrimBytes (DataFrame t bs)
+                  , ConcatList as bs asbs
+                 )
+               => Idxs as -> DataFrame t bs
+               -> IODataFrame t asbs -> IO ()
+copyDataFrame' ei df (IODataFrame mdf) = IO (copyDataFrame'# ei df mdf)
+{-# INLINE copyDataFrame' #-}
+
+-- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
+--
+--   This is a simpler version of @copyDataFrame@ that allows to copy over one index at a time.
+copyMutableDataFrame' :: forall (t :: Type)
+                                (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+                       . ( PrimBytes t
+                         , ConcatList as bs asbs
+                         )
+                      => Idxs as -> IODataFrame t bs
+                      -> IODataFrame t asbs -> IO ()
+copyMutableDataFrame' ei (IODataFrame mdfA) (IODataFrame mdfB)
+  = IO (copyMDataFrame'# ei mdfA mdfB)
+{-# INLINE copyMutableDataFrame' #-}
 
 -- | Make a mutable DataFrame immutable, without copying.
 unsafeFreezeDataFrame :: forall (t :: Type) (ns :: [Nat])
@@ -182,7 +216,7 @@ readDataFrameOff (IODataFrame mdf) (I# i)
 
 -- | Check if the byte array wrapped by this DataFrame is pinned,
 --   which means cannot be relocated by GC.
-isDataFramePinned :: forall (t :: Type) (ns :: [k])
+isDataFramePinned :: forall (k :: Type) (t :: Type) (ns :: [k])
                    . KnownDimKind k
                   => IODataFrame t ns -> Bool
 isDataFramePinned df = case dimKind @k of
@@ -200,7 +234,7 @@ isDataFramePinned df = case dimKind @k of
 --
 --   Warning: use this function on a pinned DataFrame only;
 --            otherwise, the data may be relocated before the arg fun finishes.
-withDataFramePtr :: forall (t :: Type) (ns :: [k]) (r :: Type)
+withDataFramePtr :: forall (k :: Type) (t :: Type) (ns :: [k]) (r :: Type)
                   . (PrimBytes t, KnownDimKind k)
                  => IODataFrame t ns
                  -> ( Ptr t -> IO r )

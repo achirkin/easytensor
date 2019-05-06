@@ -17,8 +17,6 @@
 -- Copyright   :  (c) Artem Chirkin
 -- License     :  BSD3
 --
--- Maintainer  :  chirkin@arch.ethz.ch
---
 -- Mutable DataFrames living in ST.
 --
 -----------------------------------------------------------------------------
@@ -27,6 +25,7 @@ module Numeric.DataFrame.ST
     ( STDataFrame (XSTFrame), SomeSTDataFrame (..)
     , newDataFrame, newPinnedDataFrame
     , copyDataFrame, copyMutableDataFrame
+    , copyDataFrame', copyMutableDataFrame'
     , freezeDataFrame, unsafeFreezeDataFrame
     , thawDataFrame, thawPinDataFrame, unsafeThawDataFrame
     , writeDataFrame, writeDataFrameOff
@@ -78,6 +77,10 @@ newPinnedDataFrame = STDataFrame <$> ST (newPinnedDataFrame# @t @ns)
 
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
+--
+--   In contrast to @copyMDataFrame'@, this function allows to copy over a range of contiguous
+--   indices over a single dimension.
+--   For example, you can write a 3x4 matrix into a 7x4 matrix, starting at indices 0..3.
 copyDataFrame :: forall (t :: Type)
                         (b :: Nat) (bi :: Nat) (bd :: Nat)
                         (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
@@ -92,6 +95,10 @@ copyDataFrame ei df (STDataFrame mdf) = ST (copyDataFrame# ei df mdf)
 {-# INLINE copyDataFrame #-}
 
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
+--
+--   In contrast to @copyMDataFrame'@, this function allows to copy over a range of contiguous
+--   indices over a single dimension.
+--   For example, you can write a 3x4 matrix into a 7x4 matrix, starting at indices 0..3.
 copyMutableDataFrame :: forall (t :: Type)
                                (b :: Nat) (bi :: Nat) (bd :: Nat)
                                (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
@@ -105,6 +112,33 @@ copyMutableDataFrame ei (STDataFrame mdfA) (STDataFrame mdfB)
     = ST (copyMDataFrame# ei mdfA mdfB)
 {-# INLINE copyMutableDataFrame #-}
 
+-- | Copy one DataFrame into another mutable DataFrame at specified position.
+--
+--   This is a simpler version of @copyDataFrame@ that allows to copy over one index at a time.
+copyDataFrame' :: forall (t :: Type)
+                         (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+                . ( PrimBytes t
+                  , PrimBytes (DataFrame t bs)
+                  , ConcatList as bs asbs
+                 )
+               => Idxs as -> DataFrame t bs
+               -> STDataFrame s t asbs -> ST s ()
+copyDataFrame' ei df (STDataFrame mdf) = ST (copyDataFrame'# ei df mdf)
+{-# INLINE copyDataFrame' #-}
+
+-- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
+--
+--   This is a simpler version of @copyDataFrame@ that allows to copy over one index at a time.
+copyMutableDataFrame' :: forall (t :: Type)
+                                (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+                       . ( PrimBytes t
+                         , ConcatList as bs asbs
+                         )
+                      => Idxs as -> STDataFrame s t bs
+                      -> STDataFrame s t asbs -> ST s ()
+copyMutableDataFrame' ei (STDataFrame mdfA) (STDataFrame mdfB)
+  = ST (copyMDataFrame'# ei mdfA mdfB)
+{-# INLINE copyMutableDataFrame' #-}
 
 -- | Make a mutable DataFrame immutable, without copying.
 unsafeFreezeDataFrame :: forall (t :: Type) (ns :: [Nat]) s
@@ -181,7 +215,7 @@ readDataFrameOff (STDataFrame mdf) (I# i)
 
 -- | Check if the byte array wrapped by this DataFrame is pinned,
 --   which means cannot be relocated by GC.
-isDataFramePinned :: forall (t :: Type) (ns :: [k]) s
+isDataFramePinned :: forall (k :: Type) (t :: Type) (ns :: [k]) s
                    . KnownDimKind k
                   => STDataFrame s t ns -> Bool
 isDataFramePinned df = case dimKind @k of
