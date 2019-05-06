@@ -28,6 +28,7 @@ module Numeric.DataFrame.Internal.Mutable
     ( MDataFrame ()
     , newDataFrame#, newPinnedDataFrame#
     , copyDataFrame#, copyMDataFrame#
+    , copyDataFrame'#, copyMDataFrame'#
     , freezeDataFrame#, unsafeFreezeDataFrame#
     , thawDataFrame#, thawPinDataFrame#, unsafeThawDataFrame#
     , writeDataFrame#, writeDataFrameOff#
@@ -74,6 +75,10 @@ newPinnedDataFrame# s0
 {-# INLINE newPinnedDataFrame# #-}
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
+--
+--   In contrast to @copyDataFrame'@, this function allows to copy over a range of contiguous
+--   indices over a single dimension.
+--   For example, you can write a 3x4 matrix into a 7x4 matrix, starting at indices 0..3.
 copyDataFrame# :: forall (t :: Type)
                          (b :: Nat) (bi :: Nat) (bd :: Nat)
                          (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
@@ -90,6 +95,10 @@ copyDataFrame# ei df (MDataFrame# off steps mba) s
 {-# INLINE copyDataFrame# #-}
 
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
+--
+--   In contrast to @copyMDataFrame'@, this function allows to copy over a range of contiguous
+--   indices over a single dimension.
+--   For example, you can write a 3x4 matrix into a 7x4 matrix, starting at indices 0..3.
 copyMDataFrame# :: forall (t :: Type)
                           (b :: Nat) (bi :: Nat) (bd :: Nat)
                           (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
@@ -99,14 +108,49 @@ copyMDataFrame# :: forall (t :: Type)
                    )
                 => Idxs (as +: bi) -> MDataFrame s t (bd :+ bs) -> MDataFrame s t asbs
                 -> State# s -> (# State# s, () #)
-copyMDataFrame# ei (MDataFrame# offA stepsA arrA) (MDataFrame# offM stepsM arrM) s
+                     -- all information for copying in this case is taken from the inside
+                     -- of the data types at the term level;
+                     -- steps zips with indices just fine independently of their types
+                     -- and length.
+                     -- Thus, it's fine here to just unsafeCoerce# an index.
+copyMDataFrame# ei df =
+  copyMDataFrame'#
+     (unsafeCoerce# ei :: Idxs as)
+     (unsafeCoerce# df :: MDataFrame s t (b :+ bs))
+{-# INLINE copyMDataFrame# #-}
+
+-- | Copy one DataFrame into another mutable DataFrame at specified position.
+--
+--   This is a simpler version of @copyDataFrame@ that allows to copy over one index at a time.
+copyDataFrame'# :: forall (t :: Type) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+                . ( PrimBytes t
+                  , PrimBytes (DataFrame t bs)
+                  , ConcatList as bs asbs
+                  )
+               => Idxs as -> DataFrame t bs -> MDataFrame s t asbs
+               -> State# s -> (# State# s, () #)
+copyDataFrame'# ei df (MDataFrame# off steps mba) s
+    | I# i <- cdIx steps ei
+    = (# writeBytes mba ((off +# i) *# byteSize @t undefined) df s, () #)
+{-# INLINE copyDataFrame'# #-}
+
+-- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
+--
+--   This is a simpler version of @copyMDataFrame@ that allows to copy over one index at a time.
+copyMDataFrame'# :: forall (t :: Type) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+                 . ( PrimBytes t
+                   , ConcatList as bs asbs
+                   )
+                => Idxs as -> MDataFrame s t bs -> MDataFrame s t asbs
+                -> State# s -> (# State# s, () #)
+copyMDataFrame'# ei (MDataFrame# offA stepsA arrA) (MDataFrame# offM stepsM arrM) s
     | elS <- byteSize @t undefined
     , lenA <- cdTotalDim# stepsA
     , I# i <- cdIx stepsM ei
     = (# copyMutableByteArray# arrA (offA *# elS)
                                arrM ((offM +# i) *# elS) (lenA *# elS) s
        , () #)
-{-# INLINE copyMDataFrame# #-}
+{-# INLINE copyMDataFrame'# #-}
 
 -- | Make a mutable DataFrame immutable, without copying.
 unsafeFreezeDataFrame# :: forall (t :: Type) (ns :: [Nat]) s
