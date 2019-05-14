@@ -59,6 +59,7 @@ the expectations of developers from a conventional Haskell library.
 
 Following is the list of what I want to do before v2 becomes the master branch:
 
+  - [ ] Fix incoherent ArrayBase instance popping up! (`bench\misc`)
   - [ ] Normalise `Ord` instance for dataframes.
   - [ ] Subspace: strict and lazy versions of folds (and add tests), maybe add cumuldims
   - [ ] Readable errors via overlappable class instances.
