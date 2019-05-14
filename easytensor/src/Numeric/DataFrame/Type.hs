@@ -28,7 +28,7 @@ module Numeric.DataFrame.Type
   , pattern (:*:), pattern Z
     -- * Infer type class instances
   , KnownBackend (), DFBackend, KnownBackends
-  , InferKnownBackend (..), Backend.inferPrimElem
+  , InferKnownBackend (..), inferPrimElem
     -- * Re-exports
   , Dim (..), Idx (..), XNat (..), N, XN, Dims, Idxs, TypedList (..)
   , PrimBytes (), bSizeOf, bAlignOf
@@ -234,3 +234,10 @@ instance All Show ts => Show (SomeDataFrame (ts :: [Type])) where
 
 deriving instance Read (DFBackend t ds)
                => Read (DataFrame t ds)
+
+
+inferPrimElem
+  :: forall (t :: Type) (ds :: [Nat])
+   . KnownBackend t ds
+  => DataFrame t ds -> Maybe (Dict (PrimBytes t))
+inferPrimElem = Backend.inferPrimElem . _getDF
