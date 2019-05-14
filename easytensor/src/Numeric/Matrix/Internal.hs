@@ -257,7 +257,7 @@ instance ( KnownDim n, KnownDim m
 instance MatrixTranspose (t :: Type) (xn :: XNat) (xm :: XNat) where
     transpose (XFrame (df :: DataFrame t ns))
       | ((D :: Dim n) :* (D :: Dim m) :* U) <- dims @Nat @ns
-      , Just Dict <- inferPrimElem @t @'[n,m]
+      , Just Dict <- inferPrimElem df
       = XFrame (transpose df :: Matrix t m n)
     transpose _ = error "MatrixTranspose/transpose: impossible argument"
 
@@ -439,7 +439,7 @@ luSolve LUFact {..} b = x
 --   Invariants of result matrix:
 --     * forall j >= i: |M[i,i]| >= M[j,i]
 --     * if M[i,i] == 0 then forall j >= i: |M[i+1,i+1]| >= M[j,i+1]
-pivotMat :: forall (t :: Type) (n :: k)
+pivotMat :: forall k (t :: Type) (n :: k)
           . (KnownDim n, PrimArray t (Matrix t n n), Ord t, Num t)
          => Matrix t n n -> ( Matrix t n n -- permutated matrix
                             , Matrix t n n -- permutation matrix
