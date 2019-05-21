@@ -20,10 +20,13 @@ import Numeric.Dimensions                   (Dict, Dimensions, Nat)
 import Numeric.PrimBytes                    (PrimBytes)
 
 
-import {-# SOURCE #-} Numeric.DataFrame.Internal.Backend.Family (BackendFamily, KnownBackend)
+import {-# SOURCE #-} Numeric.DataFrame.Internal.Backend.Family (BackendFamily)
+import {-# SOURCE #-} qualified Numeric.DataFrame.Internal.Backend.Family as Impl (KnownBackend)
 
 -- | Implementation behind the DataFrame
 type DFBackend (t :: Type) (ds :: [Nat]) = Backend t ds (BackendFamily t ds)
+type KnownBackend (t :: Type) (ds :: [Nat]) = Impl.KnownBackend t ds (BackendFamily t ds)
+
 -- | A newtype wrapper for all DataFrame implementations.
 --   I need two layers of wrappers to provide default overlappable instances to
 --   all type classes using KnownBackend mechanics.
@@ -46,53 +49,53 @@ inferPrimElem
 
 instance {-# INCOHERENT #-}
     forall t ds b
-  . (Eq t, KnownBackend t ds)
+  . (Eq t, Impl.KnownBackend t ds b)
   => Eq (Backend t ds b) where
 
 
 instance {-# INCOHERENT #-}
     forall t ds b
-  . (Ord t, KnownBackend t ds)
+  . (Ord t, Impl.KnownBackend t ds b)
   => Ord (Backend t ds b) where
 
 instance {-# INCOHERENT #-}
     forall t ds b
-  . (Bounded t, KnownBackend t ds)
+  . (Bounded t, Impl.KnownBackend t ds b)
   => Bounded (Backend t ds b) where
 
 
 instance {-# INCOHERENT #-}
     forall t ds b
-  . (Num t, KnownBackend t ds)
+  . (Num t, Impl.KnownBackend t ds b)
   => Num (Backend t ds b) where
 
 instance {-# INCOHERENT #-}
     forall t ds b
-  . (Fractional t, KnownBackend t ds)
+  . (Fractional t, Impl.KnownBackend t ds b)
   => Fractional (Backend t ds b) where
 
 instance {-# INCOHERENT #-}
     forall t ds b
-  . (Floating t, KnownBackend t ds)
+  . (Floating t, Impl.KnownBackend t ds b)
   => Floating (Backend t ds b) where
 
 
 instance {-# INCOHERENT #-}
     forall t ds b
-  . (Show t, Dimensions ds, KnownBackend t ds)
+  . (Show t, Dimensions ds, Impl.KnownBackend t ds b)
   => Show (Backend t ds b) where
 
 instance {-# INCOHERENT #-}
     forall t ds b
   . ( PrimBytes t
     , Dimensions ds
-    , KnownBackend t ds
+    , Impl.KnownBackend t ds b
     )
   => PrimBytes (Backend t ds b) where
 
 instance {-# INCOHERENT #-}
     forall t ds b
   . ( PrimBytes t
-    , KnownBackend t ds
+    , Impl.KnownBackend t ds b
     )
   => PrimArray t (Backend t ds b) where

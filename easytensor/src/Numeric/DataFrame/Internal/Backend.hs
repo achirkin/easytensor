@@ -39,14 +39,16 @@ import Numeric.Dimensions
 import Numeric.PrimBytes
 
 
-import           Numeric.DataFrame.Internal.Backend.Family (BackendFamily, KnownBackend)
-import qualified Numeric.DataFrame.Internal.Backend.Family as Impl (inferBackendInstance,
+import           Numeric.DataFrame.Internal.Backend.Family (BackendFamily)
+import qualified Numeric.DataFrame.Internal.Backend.Family as Impl (KnownBackend,
+                                                                    inferBackendInstance,
                                                                     inferKnownBackend,
                                                                     inferPrimArray,
                                                                     inferPrimElem)
 
 -- | Implementation behind the DataFrame
 type DFBackend (t :: Type) (ds :: [Nat]) = Backend t ds (BackendFamily t ds)
+type KnownBackend (t :: Type) (ds :: [Nat]) = Impl.KnownBackend t ds (BackendFamily t ds)
 
 -- | A newtype wrapper for all DataFrame implementations.
 --   I need two layers of wrappers to provide default overlappable instances to
@@ -57,7 +59,12 @@ newtype Backend (t :: Type) (ds :: [Nat]) (backend :: Type)
     = Backend { _getBackend :: backend }
 type role Backend phantom phantom representational
 type instance DeriveContext (Backend t ds b) = b ~ BackendFamily t ds
-{-# ANN type Backend (DeriveAllBut ["KnownBackend"]) #-}
+-- When typechecker knows what the third parameter @b@ is, no instances overlap,
+-- because @b@ is always always a concrete type.
+-- The "dynamic instances" derived via ToInstance have to be incoherent,
+-- because @BackendFamily t ds@ as a type family (before resolving it)
+--  is no more conrete than just @b@.
+{-# ANN type Backend (DeriveAll' NoOverlap ["KnownBackend"]) #-}
 
 
 
@@ -66,7 +73,7 @@ inferKnownBackend
    . (PrimBytes t, Dimensions ds)
   => Dict (KnownBackend t ds)
 inferKnownBackend
-  = Impl.inferKnownBackend @t @ds
+  = Impl.inferKnownBackend @t @ds @(BackendFamily t ds)
 
 inferPrimElem
   :: forall (t :: Type) (ds :: [Nat])
@@ -78,7 +85,7 @@ inferPrimElem = Impl.inferPrimElem @t @ds . _getBackend
 
 {-# ANN inferEq (ToInstance Incoherent) #-}
 inferEq :: forall t ds b
-         . (Eq t, KnownBackend t ds)
+         . (Eq t, Impl.KnownBackend t ds b)
         => Dict (Eq (Backend t ds b))
 inferEq
     = mapDict toBackend
@@ -87,7 +94,7 @@ inferEq
 
 {-# ANN inferOrd (ToInstance Incoherent) #-}
 inferOrd :: forall t ds b
-            . (Ord t, KnownBackend t ds)
+            . (Ord t, Impl.KnownBackend t ds b)
            => Dict (Ord (Backend t ds b))
 inferOrd
     = mapDict toBackend
@@ -96,7 +103,7 @@ inferOrd
 
 {-# ANN inferBounded (ToInstance Incoherent) #-}
 inferBounded :: forall t ds b
-              . (Bounded t, KnownBackend t ds)
+              . (Bounded t, Impl.KnownBackend t ds b)
              => Dict (Bounded (Backend t ds b))
 inferBounded
     = mapDict toBackend
@@ -105,7 +112,7 @@ inferBounded
 
 {-# ANN inferNum (ToInstance Incoherent) #-}
 inferNum :: forall t ds b
-          . (Num t, KnownBackend t ds)
+          . (Num t, Impl.KnownBackend t ds b)
          => Dict (Num (Backend t ds b))
 inferNum
     = mapDict toBackend
@@ -114,7 +121,7 @@ inferNum
 
 {-# ANN inferFractional (ToInstance Incoherent) #-}
 inferFractional :: forall t ds b
-                 . (Fractional t, KnownBackend t ds)
+                 . (Fractional t, Impl.KnownBackend t ds b)
                 => Dict (Fractional (Backend t ds b))
 inferFractional
     = mapDict toBackend
@@ -123,7 +130,7 @@ inferFractional
 
 {-# ANN inferFloating (ToInstance Incoherent) #-}
 inferFloating :: forall t ds b
-               . (Floating t, KnownBackend t ds)
+               . (Floating t, Impl.KnownBackend t ds b)
               => Dict (Floating (Backend t ds b))
 inferFloating
     = mapDict toBackend
@@ -132,7 +139,7 @@ inferFloating
 
 {-# ANN inferShow (ToInstance Incoherent) #-}
 inferShow :: forall t ds b
-           . (Show t, Dimensions ds, KnownBackend t ds)
+           . (Show t, Dimensions ds, Impl.KnownBackend t ds b)
           => Dict (Show (Backend t ds b))
 inferShow
     = mapDict toBackend
@@ -143,7 +150,7 @@ inferShow
 inferPrimBytes :: forall t ds b
                 . ( PrimBytes t
                   , Dimensions ds
-                  , KnownBackend t ds
+                  , Impl.KnownBackend t ds b
                   )
                => Dict ( PrimBytes (Backend t ds b))
 inferPrimBytes
@@ -154,7 +161,7 @@ inferPrimBytes
 {-# ANN inferPrimArray (ToInstance Incoherent) #-}
 inferPrimArray :: forall t ds b
                 . ( PrimBytes t
-                  , KnownBackend t ds
+                  , Impl.KnownBackend t ds b
                   )
                => Dict ( PrimArray t (Backend t ds b))
 inferPrimArray
@@ -181,20 +188,20 @@ toBackend = unsafeDerive Backend
 
 instance {-# INCOHERENT #-}
                 forall t ds b
-         . (Eq t, KnownBackend t ds)
+         . (Eq t, Impl.KnownBackend t ds b)
         => Eq (Backend t ds b) where
   (==) = error "Eq (Backend t ds i b){==}: instance not found."
   (/=) = error "Eq (Backend t ds i b){/=}: instance not found."
 
 instance {-# INCOHERENT #-}
                 forall t ds b
-            . (Ord t, KnownBackend t ds)
+            . (Ord t, Impl.KnownBackend t ds b)
            => Ord (Backend t ds b) where
    compare = undefined
 
 instance {-# INCOHERENT #-}
                 forall t ds b
-              . (Bounded t, KnownBackend t ds)
+              . (Bounded t, Impl.KnownBackend t ds b)
              => Bounded (Backend t ds b) where
    maxBound = undefined
    minBound = undefined
@@ -202,7 +209,7 @@ instance {-# INCOHERENT #-}
 
 instance {-# INCOHERENT #-}
                 forall t ds b
-          . (Num t, KnownBackend t ds)
+          . (Num t, Impl.KnownBackend t ds b)
          => Num (Backend t ds b) where
    (+) = error "Num (Backend t ds i b){+}: instance not found."
    (-) = error "Num (Backend t ds i b){-}: instance not found."
@@ -214,14 +221,14 @@ instance {-# INCOHERENT #-}
 
 instance {-# INCOHERENT #-}
                 forall t ds b
-                 . (Fractional t, KnownBackend t ds)
+                 . (Fractional t, Impl.KnownBackend t ds b)
                 => Fractional (Backend t ds b) where
    fromRational = undefined
    recip = undefined
 
 instance {-# INCOHERENT #-}
                 forall t ds b
-               . (Floating t, KnownBackend t ds)
+               . (Floating t, Impl.KnownBackend t ds b)
               => Floating (Backend t ds b) where
     pi = undefined
     exp = undefined
@@ -244,7 +251,7 @@ instance {-# INCOHERENT #-}
 
 instance {-# INCOHERENT #-}
                 forall t ds b
-           . (Show t, Dimensions ds, KnownBackend t ds)
+           . (Show t, Dimensions ds, Impl.KnownBackend t ds b)
           => Show (Backend t ds b) where
     show = undefined
 
@@ -252,7 +259,7 @@ instance {-# INCOHERENT #-}
                 forall t ds b
                 . ( PrimBytes t
                   , Dimensions ds
-                  , KnownBackend t ds
+                  , Impl.KnownBackend t ds b
                   )
                => PrimBytes (Backend t ds b) where
     getBytes   = undefined
@@ -271,7 +278,7 @@ instance {-# INCOHERENT #-}
 instance {-# INCOHERENT #-}
                 forall t ds b
                 . ( PrimBytes t
-                  , KnownBackend t ds
+                  , Impl.KnownBackend t ds b
                   )
                => PrimArray t (Backend t ds b) where
     broadcast = undefined
