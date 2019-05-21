@@ -37,7 +37,7 @@ ghc-options:
 dependencies:
   - base >= 4.10 && < 5
   - dimensions >= 2 && < 3
-  - constraints-deriving >= 1.0.2.0 && < 2
+  - constraints-deriving >= 1.0.3.0 && < 2
 
 library:
   source-dirs:
