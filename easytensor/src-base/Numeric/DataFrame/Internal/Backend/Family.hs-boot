@@ -11,4 +11,4 @@ import GHC.TypeLits (Nat)
 
 
 type family BackendFamily (t :: Type) (ds :: [Nat]) = (v :: Type) | v -> t ds where ..
-class KnownBackend (t :: Type) (ds :: [Nat])
+class KnownBackend (t :: Type) (ds :: [Nat]) (backend :: Type)
