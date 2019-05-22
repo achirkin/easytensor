@@ -19,20 +19,10 @@ The project consists of two parts:
 
 This library aims at providing fast, simple, and useful geometry types for use in computer graphics and low-dimensional physics modelling.
 
-All geometry types implement standard `Prelude` numerical classes, such as `Num`, `Fractional`, `Floating`,
+All geometry types implement standard `Prelude` numerical classes, such as `Num`, `Fractional`, `Floating`, lexicographical `Ord`
 favouring element-wise operations:
 functions like `+`, `*`, `/` are all element-wise.
 Common matrix and vector operations are provided separately.
-
-A special care should be taken when using `Ord` controversial instances (never use a DataFrame as a polymorphic `Ord a`!):
-
- * `<`, `>`, `<=`, `>=` provide Pareto dominance inequalities (partial ordering);
- * `compare` provides  lexicographical ordering;
- * `min`, `max` give element-wise minimum and maximum respectively.
-
-
-This library is a rewrite of [fastvec](https://github.com/achirkin/fastvec).
-The idea is to use the most of GHC 8.2+ type level features to typecheck dimensionality and ranks of tensors.
 
 Data type `DataFrame` is presented in two versions:
 
@@ -59,7 +49,7 @@ the expectations of developers from a conventional Haskell library.
 
 Following is the list of what I want to do before v2 becomes the master branch:
 
-  - [ ] Normalise `Ord` instance for dataframes.
+  - [x] Normalise `Ord` instance for dataframes.
   - [ ] Subspace: strict and lazy versions of folds (and add tests), maybe add cumuldims
   - [ ] Readable errors via overlappable class instances (Failed).
   - [x] Introduce a DataFrame `Backend` class and depend less on `PrimBytes`.
@@ -72,6 +62,7 @@ Following is the list of what I want to do before v2 becomes the master branch:
   - [ ] Try `Typeable`, `Data`, `Generic` for data frames.
   - [x] Refactor module dependency tree (try not to depend on implementation anywhere).
   - [x] Polymorphic vector constructors.
+  - [ ] MinMax is too unconventional for haskellers to be accepted.
 
 ### Feature TODO
 

@@ -8,10 +8,13 @@
 module Numeric.DataFrame.Internal.Backend.Family.ScalarBase (ScalarBase (..)) where
 
 
-import GHC.Base
-import Numeric.DataFrame.Internal.Backend.Family.PrimOps
-import Numeric.DataFrame.Internal.PrimArray
-import Numeric.PrimBytes
+import           GHC.Base
+import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
+import           Numeric.DataFrame.Internal.PrimArray
+import           Numeric.PrimBytes
+import           Numeric.ProductOrd
+import qualified Numeric.ProductOrd.NonTransitive                  as NonTransitive
+import qualified Numeric.ProductOrd.Partial                        as Partial
 
 -- | Specialize ScalarBase type without any arrays
 newtype ScalarBase t = ScalarBase { _unScalarBase :: t }
@@ -19,8 +22,14 @@ newtype ScalarBase t = ScalarBase { _unScalarBase :: t }
            , Num, Fractional, Floating, Ord, Read, Real, RealFrac, RealFloat
            , PrimBytes)
 
+instance Ord t => ProductOrder (ScalarBase t) where
+  cmp a b = fromOrdering (compare (_unScalarBase a) (_unScalarBase b))
+deriving instance Ord t => Ord (NonTransitive.ProductOrd (ScalarBase t))
+deriving instance Ord t => Ord (Partial.ProductOrd (ScalarBase t))
+
 instance Show t => Show (ScalarBase t) where
   show (ScalarBase t) = "{ " ++ show t ++ " }"
+
 
 instance {-# OVERLAPPING #-} Bounded (ScalarBase Double) where
   maxBound = ScalarBase inftyD

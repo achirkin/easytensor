@@ -18,10 +18,13 @@ module Numeric.DataFrame.Internal.Backend
   , inferKnownBackend, inferPrimElem
   ) where
 
-import Data.Kind                            (Type)
-import Numeric.DataFrame.Internal.PrimArray (PrimArray)
-import Numeric.Dimensions                   (Dict, Dimensions, Nat)
-import Numeric.PrimBytes                    (PrimBytes)
+import           Data.Kind                            (Type)
+import           Numeric.DataFrame.Internal.PrimArray (PrimArray)
+import           Numeric.Dimensions                   (Dict, Dimensions, Nat)
+import           Numeric.PrimBytes                    (PrimBytes)
+import           Numeric.ProductOrd                   (ProductOrder)
+import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
+import qualified Numeric.ProductOrd.Partial           as Partial
 
 
 import {-# SOURCE #-} Numeric.DataFrame.Internal.Backend.Family (BackendFamily)
@@ -64,6 +67,21 @@ instance {-# INCOHERENT #-}
     forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . (Ord t, Impl.KnownBackend t ds b)
   => Ord (Backend t ds b)
+
+instance {-# INCOHERENT #-}
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . (Ord t, Impl.KnownBackend t ds b)
+  => ProductOrder (Backend t ds b)
+
+instance {-# INCOHERENT #-}
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . (Ord t, Impl.KnownBackend t ds b)
+  => Ord (NonTransitive.ProductOrd (Backend t ds b))
+
+instance {-# INCOHERENT #-}
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . (Ord t, Impl.KnownBackend t ds b)
+  => Ord (Partial.ProductOrd (Backend t ds b))
 
 instance {-# INCOHERENT #-}
     forall (t :: Type) (ds :: [Nat]) (b :: Type)

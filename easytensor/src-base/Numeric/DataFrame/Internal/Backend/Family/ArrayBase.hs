@@ -21,13 +21,18 @@ module Numeric.DataFrame.Internal.Backend.Family.ArrayBase
   ( ArrayBase (..)
   ) where
 
-import Data.Int
-import Data.Word
-import GHC.Base                                          hiding (foldr)
-import Numeric.DataFrame.Internal.Backend.Family.PrimOps
-import Numeric.DataFrame.Internal.PrimArray
-import Numeric.Dimensions
-import Numeric.PrimBytes
+import           Data.Coerce
+import           Data.Int
+import           Data.Word
+import           GHC.Base                                          hiding
+                                                                    (foldr)
+import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
+import           Numeric.DataFrame.Internal.PrimArray
+import           Numeric.Dimensions
+import           Numeric.PrimBytes
+import           Numeric.ProductOrd
+import qualified Numeric.ProductOrd.NonTransitive                  as NonTransitive
+import qualified Numeric.ProductOrd.Partial                        as Partial
 
 -- | Generic Array implementation.
 --   This array can reside in plain `ByteArray#` and can share the @ByteArray#@
@@ -176,27 +181,35 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
 --   Being applied to FromScalars, executes only once!
 --   Here, idempotance means: assuming @f a b = g x@, @g (g x) = g x@
 --
---   Also, I assume the sizes of arrays are the same
+--   Also, I assume the sizes of arrays are the same.
+--
+--   Inside, this function uses foldr; thus, if the combining function is
+--   lazy in the second argument, it may avoid some unnecessary work.
 accumV2Idempotent :: a
-                  -> (t -> t -> a -> a)
+                  -> (t -> t -> a)
+                  -> (a -> a -> a)
                   -> ArrayBase t ds -> ArrayBase t ds -> a
-accumV2Idempotent x f
+accumV2Idempotent x f comb
   (ArrayBase (# a | #))
   (ArrayBase (# b | #))
-    = f a b x
-accumV2Idempotent x f
+    = comb x (f a b)
+accumV2Idempotent x f comb
   a@(ArrayBase (# | (# _, _, steps, Dict #) #))
   b@(ArrayBase (# | _ #))
-    = loop1a# (cdTotalDim# steps) (\i -> f (ix# i a) (ix# i b)) x
-accumV2Idempotent x f
+    = foldr comb x $ map (\i -> f (ixOff i a) (ixOff i b))
+                          [0 .. fromIntegral (cdTotalDim steps) - 1]
+accumV2Idempotent x f comb
     (ArrayBase (# a | #))
   b@(ArrayBase (# | (# _, _, steps, Dict #) #))
-    = loop1a# (cdTotalDim# steps) (\i -> f a (ix# i b)) x
-accumV2Idempotent x f
+    = foldr comb x $ map (\i -> f a (ixOff i b))
+                          [0 .. fromIntegral (cdTotalDim steps) - 1]
+accumV2Idempotent x f comb
   a@(ArrayBase (# | (# _, _, steps, Dict #) #))
     (ArrayBase (# b | #))
-    = loop1a# (cdTotalDim# steps) (\i -> f (ix# i a) b) x
+    = foldr comb x $ map (\i -> f (ixOff i a) b)
+                          [0 .. fromIntegral (cdTotalDim steps) - 1]
 {-# INLINE accumV2Idempotent #-}
+
 
 mapV :: (t -> t) -> ArrayBase t ds -> ArrayBase t ds
 mapV f (ArrayBase (# t | #))
@@ -251,12 +264,85 @@ instance Eq t => Eq (ArrayBase t ds) where
     {-# SPECIALIZE instance Eq (ArrayBase Word16 ds) #-}
     {-# SPECIALIZE instance Eq (ArrayBase Word32 ds) #-}
     {-# SPECIALIZE instance Eq (ArrayBase Word64 ds) #-}
-    (==) = accumV2Idempotent True  (\x y r -> r && x == y)
-    (/=) = accumV2Idempotent False (\x y r -> r || x /= y)
+    (==) = accumV2Idempotent True (==) (&&)
+    (/=) = accumV2Idempotent True (/=) (||)
 
--- | Implement partial ordering for `>`, `<`, `>=`, `<=`
---     and lexicographical ordering for `compare`
-instance Ord t => Ord (ArrayBase t ds)  where
+instance Ord t => ProductOrder (ArrayBase t ds) where
+    {-# SPECIALIZE instance ProductOrder (ArrayBase Float ds)  #-}
+    {-# SPECIALIZE instance ProductOrder (ArrayBase Double ds) #-}
+    {-# SPECIALIZE instance ProductOrder (ArrayBase Int ds)    #-}
+    {-# SPECIALIZE instance ProductOrder (ArrayBase Word ds)   #-}
+    {-# SPECIALIZE instance ProductOrder (ArrayBase Int8 ds)   #-}
+    {-# SPECIALIZE instance ProductOrder (ArrayBase Int16 ds)  #-}
+    {-# SPECIALIZE instance ProductOrder (ArrayBase Int32 ds)  #-}
+    {-# SPECIALIZE instance ProductOrder (ArrayBase Int64 ds)  #-}
+    {-# SPECIALIZE instance ProductOrder (ArrayBase Word8 ds)  #-}
+    {-# SPECIALIZE instance ProductOrder (ArrayBase Word16 ds) #-}
+    {-# SPECIALIZE instance ProductOrder (ArrayBase Word32 ds) #-}
+    {-# SPECIALIZE instance ProductOrder (ArrayBase Word64 ds) #-}
+    cmp = accumV2Idempotent PEQ (\x y -> fromOrdering (compare x y)) (<>)
+    {-# INLINE cmp #-}
+
+instance Ord t => Ord (NonTransitive.ProductOrd (ArrayBase t ds)) where
+    {-# SPECIALIZE instance Ord (NonTransitive.ProductOrd (ArrayBase Float ds))  #-}
+    {-# SPECIALIZE instance Ord (NonTransitive.ProductOrd (ArrayBase Double ds)) #-}
+    {-# SPECIALIZE instance Ord (NonTransitive.ProductOrd (ArrayBase Int ds))    #-}
+    {-# SPECIALIZE instance Ord (NonTransitive.ProductOrd (ArrayBase Word ds))   #-}
+    {-# SPECIALIZE instance Ord (NonTransitive.ProductOrd (ArrayBase Int8 ds))   #-}
+    {-# SPECIALIZE instance Ord (NonTransitive.ProductOrd (ArrayBase Int16 ds))  #-}
+    {-# SPECIALIZE instance Ord (NonTransitive.ProductOrd (ArrayBase Int32 ds))  #-}
+    {-# SPECIALIZE instance Ord (NonTransitive.ProductOrd (ArrayBase Int64 ds))  #-}
+    {-# SPECIALIZE instance Ord (NonTransitive.ProductOrd (ArrayBase Word8 ds))  #-}
+    {-# SPECIALIZE instance Ord (NonTransitive.ProductOrd (ArrayBase Word16 ds)) #-}
+    {-# SPECIALIZE instance Ord (NonTransitive.ProductOrd (ArrayBase Word32 ds)) #-}
+    {-# SPECIALIZE instance Ord (NonTransitive.ProductOrd (ArrayBase Word64 ds)) #-}
+    NonTransitive.ProductOrd x > NonTransitive.ProductOrd y = cmp x y == PGT
+    {-# INLINE (>) #-}
+    NonTransitive.ProductOrd x < NonTransitive.ProductOrd y = cmp x y == PLT
+    {-# INLINE (<) #-}
+    (>=) = coerce (accumV2Idempotent True (>=) (&&))
+    {-# INLINE (>=) #-}
+    (<=) = coerce (accumV2Idempotent True (<=) (&&))
+    {-# INLINE (<=) #-}
+    compare (NonTransitive.ProductOrd a) (NonTransitive.ProductOrd b)
+      = NonTransitive.toOrdering $ cmp a b
+    {-# INLINE compare #-}
+    min = coerce (zipV min)
+    {-# INLINE min #-}
+    max = coerce (zipV max)
+    {-# INLINE max #-}
+
+instance Ord t => Ord (Partial.ProductOrd (ArrayBase t ds)) where
+    {-# SPECIALIZE instance Ord (Partial.ProductOrd (ArrayBase Float ds))  #-}
+    {-# SPECIALIZE instance Ord (Partial.ProductOrd (ArrayBase Double ds)) #-}
+    {-# SPECIALIZE instance Ord (Partial.ProductOrd (ArrayBase Int ds))    #-}
+    {-# SPECIALIZE instance Ord (Partial.ProductOrd (ArrayBase Word ds))   #-}
+    {-# SPECIALIZE instance Ord (Partial.ProductOrd (ArrayBase Int8 ds))   #-}
+    {-# SPECIALIZE instance Ord (Partial.ProductOrd (ArrayBase Int16 ds))  #-}
+    {-# SPECIALIZE instance Ord (Partial.ProductOrd (ArrayBase Int32 ds))  #-}
+    {-# SPECIALIZE instance Ord (Partial.ProductOrd (ArrayBase Int64 ds))  #-}
+    {-# SPECIALIZE instance Ord (Partial.ProductOrd (ArrayBase Word8 ds))  #-}
+    {-# SPECIALIZE instance Ord (Partial.ProductOrd (ArrayBase Word16 ds)) #-}
+    {-# SPECIALIZE instance Ord (Partial.ProductOrd (ArrayBase Word32 ds)) #-}
+    {-# SPECIALIZE instance Ord (Partial.ProductOrd (ArrayBase Word64 ds)) #-}
+    Partial.ProductOrd x > Partial.ProductOrd y = cmp x y == PGT
+    {-# INLINE (>) #-}
+    Partial.ProductOrd x < Partial.ProductOrd y = cmp x y == PLT
+    {-# INLINE (<) #-}
+    (>=) = coerce (accumV2Idempotent True (>=) (&&))
+    {-# INLINE (>=) #-}
+    (<=) = coerce (accumV2Idempotent True (<=) (&&))
+    {-# INLINE (<=) #-}
+    compare (Partial.ProductOrd a) (Partial.ProductOrd b)
+      = Partial.toOrdering $ cmp a b
+    {-# INLINE compare #-}
+    min = coerce (zipV min)
+    {-# INLINE min #-}
+    max = coerce (zipV max)
+    {-# INLINE max #-}
+
+-- | Lexicographical ordering
+instance Ord t => Ord (ArrayBase t ds) where
     {-# SPECIALIZE instance Ord (ArrayBase Float ds)  #-}
     {-# SPECIALIZE instance Ord (ArrayBase Double ds) #-}
     {-# SPECIALIZE instance Ord (ArrayBase Int ds)    #-}
@@ -269,27 +355,9 @@ instance Ord t => Ord (ArrayBase t ds)  where
     {-# SPECIALIZE instance Ord (ArrayBase Word16 ds) #-}
     {-# SPECIALIZE instance Ord (ArrayBase Word32 ds) #-}
     {-# SPECIALIZE instance Ord (ArrayBase Word64 ds) #-}
-    -- | Partiall ordering: all elements GT
-    (>)  = accumV2Idempotent True (\x y r -> r && x > y)
-    {-# INLINE (>) #-}
-    -- | Partiall ordering: all elements LT
-    (<)  = accumV2Idempotent True (\x y r -> r && x < y)
-    {-# INLINE (<) #-}
-    -- | Partiall ordering: all elements GE
-    (>=) = accumV2Idempotent True (\x y r -> r && x >= y)
-    {-# INLINE (>=) #-}
-    -- | Partiall ordering: all elements LE
-    (<=) = accumV2Idempotent True (\x y r -> r && x <= y)
-    {-# INLINE (<=) #-}
-    -- | Compare lexicographically
-    compare = accumV2Idempotent EQ (\x y  -> flip mappend (compare x y))
+    compare = accumV2Idempotent EQ compare (<>)
     {-# INLINE compare #-}
-    -- | Element-wise minimum
-    min = zipV min
-    {-# INLINE min #-}
-    -- | Element-wise maximum
-    max = zipV max
-    {-# INLINE max #-}
+
 
 instance (Show t, Dimensions ds)
       => Show (ArrayBase t ds) where
