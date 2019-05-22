@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
@@ -14,17 +15,23 @@
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 {-# OPTIONS_GHC -fplugin Data.Constraint.Deriving #-}
--- {-# OPTIONS_GHC -fplugin-opt Data.Constraint.Deriving:dump-instances #-}
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
+#if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
+{-# OPTIONS_GHC -fno-warn-simplifiable-class-constraints #-}
+{-# OPTIONS_GHC -fno-warn-unused-binds #-}
+{-# OPTIONS_GHC -fno-warn-unused-imports #-}
+#endif
 
 module Numeric.DataFrame.Internal.Backend
   ( DFBackend, Backend (..), BackendFamily, KnownBackend ()
   , inferKnownBackend, inferPrimElem
     -- auto-derived (will be removed by the plugin):
+#if !(defined(__HADDOCK__) || defined(__HADDOCK_VERSION__))
   , inferEq, inferOrd, inferBounded, inferNum
   , inferFractional, inferFloating
   , inferPrimBytes, inferPrimArray
   , inferShow
+#endif
   ) where
 
 
@@ -48,6 +55,10 @@ import qualified Numeric.DataFrame.Internal.Backend.Family as Impl (KnownBackend
 
 -- | Implementation behind the DataFrame
 type DFBackend (t :: Type) (ds :: [Nat]) = Backend t ds (BackendFamily t ds)
+
+-- | Backend resolver:
+--   Use this constraint to find any class instances defined for all DataFrame implementations,
+--   e.g. @Num@, @PrimBytes@, etc.
 type KnownBackend (t :: Type) (ds :: [Nat]) = Impl.KnownBackend t ds (BackendFamily t ds)
 
 -- | A newtype wrapper for all DataFrame implementations.
@@ -84,7 +95,7 @@ inferPrimElem = Impl.inferPrimElem @t @ds . _getBackend
 
 
 {-# ANN inferEq (ToInstance Incoherent) #-}
-inferEq :: forall t ds b
+inferEq :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
          . (Eq t, Impl.KnownBackend t ds b)
         => Dict (Eq (Backend t ds b))
 inferEq
@@ -93,7 +104,7 @@ inferEq
     $ inferDeriveContext @t @ds @b undefined
 
 {-# ANN inferOrd (ToInstance Incoherent) #-}
-inferOrd :: forall t ds b
+inferOrd :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
             . (Ord t, Impl.KnownBackend t ds b)
            => Dict (Ord (Backend t ds b))
 inferOrd
@@ -102,7 +113,7 @@ inferOrd
     $ inferDeriveContext @t @ds @b undefined
 
 {-# ANN inferBounded (ToInstance Incoherent) #-}
-inferBounded :: forall t ds b
+inferBounded :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
               . (Bounded t, Impl.KnownBackend t ds b)
              => Dict (Bounded (Backend t ds b))
 inferBounded
@@ -111,7 +122,7 @@ inferBounded
     $ inferDeriveContext @t @ds @b undefined
 
 {-# ANN inferNum (ToInstance Incoherent) #-}
-inferNum :: forall t ds b
+inferNum :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
           . (Num t, Impl.KnownBackend t ds b)
          => Dict (Num (Backend t ds b))
 inferNum
@@ -120,7 +131,7 @@ inferNum
     $ inferDeriveContext @t @ds @b undefined
 
 {-# ANN inferFractional (ToInstance Incoherent) #-}
-inferFractional :: forall t ds b
+inferFractional :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
                  . (Fractional t, Impl.KnownBackend t ds b)
                 => Dict (Fractional (Backend t ds b))
 inferFractional
@@ -129,7 +140,7 @@ inferFractional
     $ inferDeriveContext @t @ds @b undefined
 
 {-# ANN inferFloating (ToInstance Incoherent) #-}
-inferFloating :: forall t ds b
+inferFloating :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
                . (Floating t, Impl.KnownBackend t ds b)
               => Dict (Floating (Backend t ds b))
 inferFloating
@@ -138,7 +149,7 @@ inferFloating
     $ inferDeriveContext @t @ds @b undefined
 
 {-# ANN inferShow (ToInstance Incoherent) #-}
-inferShow :: forall t ds b
+inferShow :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
            . (Show t, Dimensions ds, Impl.KnownBackend t ds b)
           => Dict (Show (Backend t ds b))
 inferShow
@@ -147,7 +158,7 @@ inferShow
     $ inferDeriveContext @t @ds @b undefined
 
 {-# ANN inferPrimBytes (ToInstance Incoherent) #-}
-inferPrimBytes :: forall t ds b
+inferPrimBytes :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
                 . ( PrimBytes t
                   , Dimensions ds
                   , Impl.KnownBackend t ds b
@@ -159,7 +170,7 @@ inferPrimBytes
     $ inferDeriveContext @t @ds @b undefined
 
 {-# ANN inferPrimArray (ToInstance Incoherent) #-}
-inferPrimArray :: forall t ds b
+inferPrimArray :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
                 . ( PrimBytes t
                   , Impl.KnownBackend t ds b
                   )
@@ -172,7 +183,7 @@ inferPrimArray
 
 -- This is the rule that cannot be encoded in the type system, but enforced
 -- as an invariant: Backend t ds b implies DeriveContext t ds b
-inferDeriveContext :: forall t ds b
+inferDeriveContext :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
                     . Backend t ds b
                    -> Dict (DeriveContext (Backend t ds b))
 inferDeriveContext _ = unsafeCoerce (Dict :: Dict (b ~ b))
@@ -185,51 +196,64 @@ toBackend = unsafeDerive Backend
 {-# INLINE toBackend #-}
 
 
+{-
+  The instances below are bumb stubs.
+  I need them to make GHC happy in the presence of my ToInstance plugin and
+  recursive modules, because I cannot use the plugin in Backend.hs-boot.
+  Without this, instances of these classes would not be available in modules,
+  which import Backend.hs as SOURCE.
+ -}
 
 instance {-# INCOHERENT #-}
-                forall t ds b
-         . (Eq t, Impl.KnownBackend t ds b)
-        => Eq (Backend t ds b) where
-  (==) = error "Eq (Backend t ds i b){==}: instance not found."
-  (/=) = error "Eq (Backend t ds i b){/=}: instance not found."
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . (Eq t, Impl.KnownBackend t ds b)
+  => Eq (Backend t ds b) where
+  (==) = undefined
+  (/=) = undefined
 
 instance {-# INCOHERENT #-}
-                forall t ds b
-            . (Ord t, Impl.KnownBackend t ds b)
-           => Ord (Backend t ds b) where
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . (Ord t, Impl.KnownBackend t ds b)
+  => Ord (Backend t ds b) where
    compare = undefined
+   (<) = undefined
+   (<=) = undefined
+   (>) = undefined
+   (>=) = undefined
+   max = undefined
+   min = undefined
 
 instance {-# INCOHERENT #-}
-                forall t ds b
-              . (Bounded t, Impl.KnownBackend t ds b)
-             => Bounded (Backend t ds b) where
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . (Bounded t, Impl.KnownBackend t ds b)
+  => Bounded (Backend t ds b) where
    maxBound = undefined
    minBound = undefined
 
 
 instance {-# INCOHERENT #-}
-                forall t ds b
-          . (Num t, Impl.KnownBackend t ds b)
-         => Num (Backend t ds b) where
-   (+) = error "Num (Backend t ds i b){+}: instance not found."
-   (-) = error "Num (Backend t ds i b){-}: instance not found."
-   (*) = error "Num (Backend t ds i b){*}: instance not found."
-   negate = error "Num (Backend t ds i b){negate}: instance not found."
-   abs = error "Num (Backend t ds i b){abs}: instance not found."
-   signum = error "Num (Backend t ds i b){signum}: instance not found."
-   fromInteger = error "Num (Backend t ds i b){fromInteger}: instance not found."
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . (Num t, Impl.KnownBackend t ds b)
+  => Num (Backend t ds b) where
+   (+) = undefined
+   (-) = undefined
+   (*) = undefined
+   negate = undefined
+   abs = undefined
+   signum = undefined
+   fromInteger = undefined
 
 instance {-# INCOHERENT #-}
-                forall t ds b
-                 . (Fractional t, Impl.KnownBackend t ds b)
-                => Fractional (Backend t ds b) where
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . (Fractional t, Impl.KnownBackend t ds b)
+  => Fractional (Backend t ds b) where
    fromRational = undefined
    recip = undefined
 
 instance {-# INCOHERENT #-}
-                forall t ds b
-               . (Floating t, Impl.KnownBackend t ds b)
-              => Floating (Backend t ds b) where
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . (Floating t, Impl.KnownBackend t ds b)
+  => Floating (Backend t ds b) where
     pi = undefined
     exp = undefined
     log = undefined
@@ -250,18 +274,20 @@ instance {-# INCOHERENT #-}
     atanh = undefined
 
 instance {-# INCOHERENT #-}
-                forall t ds b
-           . (Show t, Dimensions ds, Impl.KnownBackend t ds b)
-          => Show (Backend t ds b) where
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . (Show t, Dimensions ds, Impl.KnownBackend t ds b)
+  => Show (Backend t ds b) where
     show = undefined
+    showsPrec = undefined
+    showList = undefined
 
 instance {-# INCOHERENT #-}
-                forall t ds b
-                . ( PrimBytes t
-                  , Dimensions ds
-                  , Impl.KnownBackend t ds b
-                  )
-               => PrimBytes (Backend t ds b) where
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . ( PrimBytes t
+    , Dimensions ds
+    , Impl.KnownBackend t ds b
+    )
+  => PrimBytes (Backend t ds b) where
     getBytes   = undefined
     fromBytes  = undefined
     readBytes  = undefined
@@ -276,11 +302,11 @@ instance {-# INCOHERENT #-}
     writeArray = undefined
 
 instance {-# INCOHERENT #-}
-                forall t ds b
-                . ( PrimBytes t
-                  , Impl.KnownBackend t ds b
-                  )
-               => PrimArray t (Backend t ds b) where
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . ( PrimBytes t
+    , Impl.KnownBackend t ds b
+    )
+  => PrimArray t (Backend t ds b) where
     broadcast = undefined
     ix# = undefined
     gen# = undefined
