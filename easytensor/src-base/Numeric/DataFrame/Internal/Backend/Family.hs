@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                    #-}
 {-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE FlexibleContexts       #-}
@@ -88,7 +89,17 @@ class KnownBackend (t :: Type) (ds :: [Nat]) (backend :: Type) where
     -- | Get DataFrame backend type family instance
     bSing :: BackendSing t ds backend
 
-
+-- When compiled for haddock, some of the modules complain about missing KnownBackend
+-- instance. To workaround this, I add an instance stub.
+--
+-- Also note, these may be related issues:
+--
+-- https://github.com/haskell/haddock/issues/680
+-- https://github.com/haskell/cabal/issues/4513
+--
+#if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
+instance KnownBackend t ds b where bSing = undefined
+#else
 instance KnownBackend t      '[]  (ScalarBase t)   where bSing = BSC
 instance KnownBackend Float  '[2]  FloatX2         where bSing = BF2
 instance KnownBackend Float  '[3]  FloatX3         where bSing = BF3
@@ -99,6 +110,7 @@ instance KnownBackend Double '[4]  DoubleX4        where bSing = BD4
 instance PrimBytes t
       => KnownBackend t       ds  (ArrayBase t ds) where
     bSing = case unsafeDefault @t @ds of Dict -> BPB
+#endif
 
 -- | Find an instance of `KnownBackend` class using `PrimBytes` and `Dimensions`.
 inferKnownBackend :: forall t ds b

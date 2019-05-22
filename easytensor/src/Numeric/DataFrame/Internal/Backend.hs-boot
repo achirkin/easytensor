@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE ExplicitForAll        #-}
@@ -8,9 +9,12 @@
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE RoleAnnotations       #-}
 {-# LANGUAGE TypeOperators         #-}
+#if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
+{-# OPTIONS_GHC -fno-warn-simplifiable-class-constraints #-}
+#endif
 
 module Numeric.DataFrame.Internal.Backend
-  ( DFBackend, Backend (..), BackendFamily, KnownBackend
+  ( DFBackend, Backend (..), BackendFamily, KnownBackend ()
   , inferKnownBackend, inferPrimElem
   ) where
 
@@ -21,10 +25,15 @@ import Numeric.PrimBytes                    (PrimBytes)
 
 
 import {-# SOURCE #-} Numeric.DataFrame.Internal.Backend.Family (BackendFamily)
-import {-# SOURCE #-} qualified Numeric.DataFrame.Internal.Backend.Family as Impl (KnownBackend)
+import {-# SOURCE #-} qualified Numeric.DataFrame.Internal.Backend.Family as Impl
+                                                                                   (KnownBackend)
 
 -- | Implementation behind the DataFrame
 type DFBackend (t :: Type) (ds :: [Nat]) = Backend t ds (BackendFamily t ds)
+
+-- | Backend resolver:
+--   Use this constraint to find any class instances defined for all DataFrame implementations,
+--   e.g. @Num@, @PrimBytes@, etc.
 type KnownBackend (t :: Type) (ds :: [Nat]) = Impl.KnownBackend t ds (BackendFamily t ds)
 
 -- | A newtype wrapper for all DataFrame implementations.
@@ -46,56 +55,52 @@ inferPrimElem
    . KnownBackend t ds
   => DFBackend t ds -> Maybe (Dict (PrimBytes t))
 
-
 instance {-# INCOHERENT #-}
-    forall t ds b
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . (Eq t, Impl.KnownBackend t ds b)
-  => Eq (Backend t ds b) where
-
+  => Eq (Backend t ds b)
 
 instance {-# INCOHERENT #-}
-    forall t ds b
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . (Ord t, Impl.KnownBackend t ds b)
-  => Ord (Backend t ds b) where
+  => Ord (Backend t ds b)
 
 instance {-# INCOHERENT #-}
-    forall t ds b
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . (Bounded t, Impl.KnownBackend t ds b)
-  => Bounded (Backend t ds b) where
-
+  => Bounded (Backend t ds b)
 
 instance {-# INCOHERENT #-}
-    forall t ds b
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . (Num t, Impl.KnownBackend t ds b)
-  => Num (Backend t ds b) where
+  => Num (Backend t ds b)
 
 instance {-# INCOHERENT #-}
-    forall t ds b
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . (Fractional t, Impl.KnownBackend t ds b)
-  => Fractional (Backend t ds b) where
+  => Fractional (Backend t ds b)
 
 instance {-# INCOHERENT #-}
-    forall t ds b
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . (Floating t, Impl.KnownBackend t ds b)
-  => Floating (Backend t ds b) where
-
+  => Floating (Backend t ds b)
 
 instance {-# INCOHERENT #-}
-    forall t ds b
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . (Show t, Dimensions ds, Impl.KnownBackend t ds b)
-  => Show (Backend t ds b) where
+  => Show (Backend t ds b)
 
 instance {-# INCOHERENT #-}
-    forall t ds b
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . ( PrimBytes t
     , Dimensions ds
     , Impl.KnownBackend t ds b
     )
-  => PrimBytes (Backend t ds b) where
+  => PrimBytes (Backend t ds b)
 
 instance {-# INCOHERENT #-}
-    forall t ds b
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . ( PrimBytes t
     , Impl.KnownBackend t ds b
     )
-  => PrimArray t (Backend t ds b) where
+  => PrimArray t (Backend t ds b)
