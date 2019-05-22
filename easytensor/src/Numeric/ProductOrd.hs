@@ -27,8 +27,8 @@ import GHC.Generics
 
 import Numeric.TypedList
 
--- | Partial order for comparing comparing product types
---     ([product order](https://en.wikipedia.org/wiki/Product_order)).
+-- | Partial order for comparing product types --
+--     [product order](https://en.wikipedia.org/wiki/Product_order).
 class ProductOrder a where
     -- | Same as `compare`, but may return @Incomparable@.
     cmp :: a -> a -> PartialOrdering
