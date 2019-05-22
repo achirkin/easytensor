@@ -56,8 +56,8 @@ import           GHC.Generics      (Generic, Generic1)
 import qualified GHC.Read          as Read
 import qualified Text.Read         as Read
 
-import           Data.Type.List
-import           Numeric.TypedList
+import Data.Type.List
+import Numeric.TypedList
 
 -- | This is an almost complete copy of `Data.Functor.Identity`
 --   by (c) Andy Gill 2001.
@@ -75,19 +75,19 @@ instance (Show a) => Show (Id a) where
 
 instance Foldable Id where
     foldMap          = coerce
-    elem             = (. runId) #. (==)
+    elem             = coerce . (==)
     foldl            = coerce
     foldl'           = coerce
-    foldl1 _         = runId
+    foldl1 _         = coerce
     foldr f z (Id x) = f x z
     foldr'           = foldr
-    foldr1 _         = runId
+    foldr1 _         = coerce
     length _         = 1
-    maximum          = runId
-    minimum          = runId
+    maximum          = coerce
+    minimum          = coerce
     null _           = False
-    product          = runId
-    sum              = runId
+    product          = coerce
+    sum              = coerce
     toList (Id x)    = [x]
 
 instance Functor Id where
@@ -241,13 +241,6 @@ instance (RepresentableList xs, All Read xs) => Read (Tuple xs) where
 --------------------------------------------------------------------------------
 -- internal
 --------------------------------------------------------------------------------
-
-
--- | Internal (non-exported) 'Coercible' helper for 'elem'
---
--- See Note [Function coercion] in "Data.Foldable" for more details.
-(#.) :: Coercible b c => (b -> c) -> (a -> b) -> a -> c
-(#.) _f = coerce
 
 forceCons :: Tuple xs -> Tuple xs
 forceCons U            = U
