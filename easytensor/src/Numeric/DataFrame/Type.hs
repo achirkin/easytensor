@@ -41,9 +41,12 @@ import Foreign.Storable (Storable (..))
 import GHC.Base
 import GHC.Ptr          (Ptr (..))
 
-import Numeric.DataFrame.Internal.PrimArray
-import Numeric.Dimensions
-import Numeric.PrimBytes
+import           Numeric.DataFrame.Internal.PrimArray
+import           Numeric.Dimensions
+import           Numeric.PrimBytes
+import           Numeric.ProductOrd
+import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
+import qualified Numeric.ProductOrd.Partial           as Partial
 
 import {-# SOURCE #-} Numeric.DataFrame.Internal.Backend (DFBackend,
                                                           KnownBackend)
@@ -130,6 +133,8 @@ deriving instance Eq (DFBackend t ds)
                => Eq (DataFrame t ds)
 deriving instance Ord (DFBackend t ds)
                => Ord (DataFrame t ds)
+deriving instance ProductOrder (DFBackend t ds)
+               => ProductOrder (DataFrame t ds)
 deriving instance Bounded (DFBackend t ds)
                => Bounded (DataFrame t ds)
 deriving instance Enum (DFBackend t ds)
@@ -152,6 +157,26 @@ deriving instance PrimBytes (DFBackend t ds)
                => PrimBytes (DataFrame t ds)
 deriving instance (PrimArray t (DFBackend t ds), PrimBytes t)
                => PrimArray t (DataFrame t ds)
+
+instance Ord (NonTransitive.ProductOrd (DFBackend t ds))
+      => Ord (NonTransitive.ProductOrd (DataFrame t ds)) where
+    (>) = coerce ((>) @(NonTransitive.ProductOrd (DFBackend t ds)))
+    (<) = coerce ((<) @(NonTransitive.ProductOrd (DFBackend t ds)))
+    (>=) = coerce ((>=) @(NonTransitive.ProductOrd (DFBackend t ds)))
+    (<=) = coerce ((<=) @(NonTransitive.ProductOrd (DFBackend t ds)))
+    compare = coerce (compare @(NonTransitive.ProductOrd (DFBackend t ds)))
+    min = coerce (min @(NonTransitive.ProductOrd (DFBackend t ds)))
+    max = coerce (max @(NonTransitive.ProductOrd (DFBackend t ds)))
+
+instance (Ord (Partial.ProductOrd (DFBackend t ds)), Eq (DFBackend t ds))
+      => Ord (Partial.ProductOrd (DataFrame t ds)) where
+    (>) = coerce ((>) @(Partial.ProductOrd (DFBackend t ds)))
+    (<) = coerce ((<) @(Partial.ProductOrd (DFBackend t ds)))
+    (>=) = coerce ((>=) @(Partial.ProductOrd (DFBackend t ds)))
+    (<=) = coerce ((<=) @(Partial.ProductOrd (DFBackend t ds)))
+    compare = coerce (compare @(Partial.ProductOrd (DFBackend t ds)))
+    min = coerce (min @(Partial.ProductOrd (DFBackend t ds)))
+    max = coerce (max @(Partial.ProductOrd (DFBackend t ds)))
 
 
 

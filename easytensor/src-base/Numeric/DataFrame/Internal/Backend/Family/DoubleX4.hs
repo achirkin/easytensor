@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP                   #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -10,6 +11,9 @@ import           GHC.Base
 import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
 import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.PrimBytes
+import           Numeric.ProductOrd
+import qualified Numeric.ProductOrd.NonTransitive                  as NonTransitive
+import qualified Numeric.ProductOrd.Partial                        as Partial
 
 
 data DoubleX4 = DoubleX4# Double# Double# Double# Double#
@@ -50,48 +54,136 @@ instance Eq DoubleX4 where
       )
     {-# INLINE (/=) #-}
 
+cmp' :: Double# -> Double# -> PartialOrdering
+cmp' a b
+  | isTrue# (a >## b) = PGT
+  | isTrue# (a <## b) = PLT
+  | otherwise  = PEQ
 
+instance ProductOrder DoubleX4 where
+    cmp (DoubleX4# a1 a2 a3 a4) (DoubleX4# b1 b2 b3 b4)
+      = cmp' a1 b1 <> cmp' a2 b2 <> cmp' a3 b3 <> cmp' a4 b4
+    {-# INLINE cmp #-}
 
--- | Implement partial ordering for `>`, `<`, `>=`, `<=`
---           and lexicographical ordering for `compare`
+instance Ord (NonTransitive.ProductOrd DoubleX4) where
+    NonTransitive.ProductOrd x > NonTransitive.ProductOrd y = cmp x y == PGT
+    {-# INLINE (>) #-}
+    NonTransitive.ProductOrd x < NonTransitive.ProductOrd y = cmp x y == PLT
+    {-# INLINE (<) #-}
+    (>=) (NonTransitive.ProductOrd (DoubleX4# a1 a2 a3 a4))
+         (NonTransitive.ProductOrd (DoubleX4# b1 b2 b3 b4)) = isTrue#
+      ((a1 >=## b1) `andI#` (a2 >=## b2) `andI#` (a3 >=## b3) `andI#` (a4 >=## b4))
+    {-# INLINE (>=) #-}
+    (<=) (NonTransitive.ProductOrd (DoubleX4# a1 a2 a3 a4))
+         (NonTransitive.ProductOrd (DoubleX4# b1 b2 b3 b4)) = isTrue#
+      ((a1 <=## b1) `andI#` (a2 <=## b2) `andI#` (a3 <=## b3) `andI#` (a4 <=## b4))
+    {-# INLINE (<=) #-}
+    compare (NonTransitive.ProductOrd a) (NonTransitive.ProductOrd b)
+      = NonTransitive.toOrdering $ cmp a b
+    {-# INLINE compare #-}
+    min (NonTransitive.ProductOrd (DoubleX4# a1 a2 a3 a4))
+        (NonTransitive.ProductOrd (DoubleX4# b1 b2 b3 b4))
+      = NonTransitive.ProductOrd
+        ( DoubleX4#
+          (if isTrue# (a1 >## b1) then b1 else a1)
+          (if isTrue# (a2 >## b2) then b2 else a2)
+          (if isTrue# (a3 >## b3) then b3 else a3)
+          (if isTrue# (a4 >## b4) then b4 else a4)
+        )
+    {-# INLINE min #-}
+    max (NonTransitive.ProductOrd (DoubleX4# a1 a2 a3 a4))
+        (NonTransitive.ProductOrd (DoubleX4# b1 b2 b3 b4))
+      = NonTransitive.ProductOrd
+        ( DoubleX4#
+          (if isTrue# (a1 <## b1) then b1 else a1)
+          (if isTrue# (a2 <## b2) then b2 else a2)
+          (if isTrue# (a3 <## b3) then b3 else a3)
+          (if isTrue# (a4 <## b4) then b4 else a4)
+        )
+    {-# INLINE max #-}
+
+instance Ord (Partial.ProductOrd DoubleX4) where
+    Partial.ProductOrd x > Partial.ProductOrd y = cmp x y == PGT
+    {-# INLINE (>) #-}
+    Partial.ProductOrd x < Partial.ProductOrd y = cmp x y == PLT
+    {-# INLINE (<) #-}
+    (>=) (Partial.ProductOrd (DoubleX4# a1 a2 a3 a4))
+         (Partial.ProductOrd (DoubleX4# b1 b2 b3 b4)) = isTrue#
+      ((a1 >=## b1) `andI#` (a2 >=## b2) `andI#` (a3 >=## b3) `andI#` (a4 >=## b4))
+    {-# INLINE (>=) #-}
+    (<=) (Partial.ProductOrd (DoubleX4# a1 a2 a3 a4))
+         (Partial.ProductOrd (DoubleX4# b1 b2 b3 b4)) = isTrue#
+      ((a1 <=## b1) `andI#` (a2 <=## b2) `andI#` (a3 <=## b3) `andI#` (a4 <=## b4))
+    {-# INLINE (<=) #-}
+    compare (Partial.ProductOrd a) (Partial.ProductOrd b)
+      = Partial.toOrdering $ cmp a b
+    {-# INLINE compare #-}
+    min (Partial.ProductOrd (DoubleX4# a1 a2 a3 a4))
+        (Partial.ProductOrd (DoubleX4# b1 b2 b3 b4))
+      = Partial.ProductOrd
+        ( DoubleX4#
+          (if isTrue# (a1 >## b1) then b1 else a1)
+          (if isTrue# (a2 >## b2) then b2 else a2)
+          (if isTrue# (a3 >## b3) then b3 else a3)
+          (if isTrue# (a4 >## b4) then b4 else a4)
+        )
+    {-# INLINE min #-}
+    max (Partial.ProductOrd (DoubleX4# a1 a2 a3 a4))
+        (Partial.ProductOrd (DoubleX4# b1 b2 b3 b4))
+      = Partial.ProductOrd
+        ( DoubleX4#
+          (if isTrue# (a1 <## b1) then b1 else a1)
+          (if isTrue# (a2 <## b2) then b2 else a2)
+          (if isTrue# (a3 <## b3) then b3 else a3)
+          (if isTrue# (a4 <## b4) then b4 else a4)
+        )
+    {-# INLINE max #-}
+
 instance Ord DoubleX4 where
-    DoubleX4# a1 a2 a3 a4 > DoubleX4# b1 b2 b3 b4 =
-      isTrue#
-      (       (a1 >## b1)
-      `andI#` (a2 >## b2)
-      `andI#` (a3 >## b3)
-      `andI#` (a4 >## b4)
-      )
+    DoubleX4# a1 a2 a3 a4 > DoubleX4# b1 b2 b3 b4
+      | isTrue# (a1 >## b1) = True
+      | isTrue# (a1 <## b1) = False
+      | isTrue# (a2 >## b2) = True
+      | isTrue# (a2 <## b2) = False
+      | isTrue# (a3 >## b3) = True
+      | isTrue# (a3 <## b3) = False
+      | isTrue# (a4 >## b4) = True
+      | otherwise           = False
     {-# INLINE (>) #-}
 
-    DoubleX4# a1 a2 a3 a4 < DoubleX4# b1 b2 b3 b4 =
-      isTrue#
-      (       (a1 <## b1)
-      `andI#` (a2 <## b2)
-      `andI#` (a3 <## b3)
-      `andI#` (a4 <## b4)
-      )
+    DoubleX4# a1 a2 a3 a4 < DoubleX4# b1 b2 b3 b4
+      | isTrue# (a1 <## b1) = True
+      | isTrue# (a1 >## b1) = False
+      | isTrue# (a2 <## b2) = True
+      | isTrue# (a2 >## b2) = False
+      | isTrue# (a3 <## b3) = True
+      | isTrue# (a3 >## b3) = False
+      | isTrue# (a4 <## b4) = True
+      | otherwise           = False
     {-# INLINE (<) #-}
 
-    DoubleX4# a1 a2 a3 a4 >= DoubleX4# b1 b2 b3 b4 =
-      isTrue#
-      (       (a1 >=## b1)
-      `andI#` (a2 >=## b2)
-      `andI#` (a3 >=## b3)
-      `andI#` (a4 >=## b4)
-      )
+    DoubleX4# a1 a2 a3 a4 >= DoubleX4# b1 b2 b3 b4
+      | isTrue# (a1 <## b1) = False
+      | isTrue# (a1 >## b1) = True
+      | isTrue# (a2 <## b2) = False
+      | isTrue# (a2 >## b2) = True
+      | isTrue# (a3 <## b3) = False
+      | isTrue# (a3 >## b3) = True
+      | isTrue# (a4 <## b4) = False
+      | otherwise           = True
     {-# INLINE (>=) #-}
 
-    DoubleX4# a1 a2 a3 a4 <= DoubleX4# b1 b2 b3 b4 =
-      isTrue#
-      (       (a1 <=## b1)
-      `andI#` (a2 <=## b2)
-      `andI#` (a3 <=## b3)
-      `andI#` (a4 <=## b4)
-      )
+    DoubleX4# a1 a2 a3 a4 <= DoubleX4# b1 b2 b3 b4
+      | isTrue# (a1 >## b1) = False
+      | isTrue# (a1 <## b1) = True
+      | isTrue# (a2 >## b2) = False
+      | isTrue# (a2 <## b2) = True
+      | isTrue# (a3 >## b3) = False
+      | isTrue# (a3 <## b3) = True
+      | isTrue# (a4 >## b4) = False
+      | otherwise           = True
     {-# INLINE (<=) #-}
 
-    -- | Compare lexicographically
     compare (DoubleX4# a1 a2 a3 a4) (DoubleX4# b1 b2 b3 b4)
       | isTrue# (a1 >## b1) = GT
       | isTrue# (a1 <## b1) = LT
@@ -101,24 +193,8 @@ instance Ord DoubleX4 where
       | isTrue# (a3 <## b3) = LT
       | isTrue# (a4 >## b4) = GT
       | isTrue# (a4 <## b4) = LT
-      | otherwise = EQ
+      | otherwise           = EQ
     {-# INLINE compare #-}
-
-    -- | Element-wise minimum
-    min (DoubleX4# a1 a2 a3 a4) (DoubleX4# b1 b2 b3 b4) = DoubleX4#
-      (if isTrue# (a1 >## b1) then b1 else a1)
-      (if isTrue# (a2 >## b2) then b2 else a2)
-      (if isTrue# (a3 >## b3) then b3 else a3)
-      (if isTrue# (a4 >## b4) then b4 else a4)
-    {-# INLINE min #-}
-
-    -- | Element-wise maximum
-    max (DoubleX4# a1 a2 a3 a4) (DoubleX4# b1 b2 b3 b4) = DoubleX4#
-      (if isTrue# (a1 >## b1) then a1 else b1)
-      (if isTrue# (a2 >## b2) then a2 else b2)
-      (if isTrue# (a3 >## b3) then a3 else b3)
-      (if isTrue# (a4 >## b4) then a4 else b4)
-    {-# INLINE max #-}
 
 
 

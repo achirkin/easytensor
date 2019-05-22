@@ -1,14 +1,12 @@
+{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Semigroup
 -- Copyright   :  (c) Artem Chirkin
 -- License     :  BSD3
---
--- Maintainer  :  chirkin@arch.ethz.ch
 --
 -- Re-export most of "Data.Semigroup" with a few changes
 --  and new definitions.
@@ -54,11 +52,11 @@ module Numeric.Semigroup
     , minMax, mmDiff, mmAvg
     ) where
 
-import Data.Semigroup hiding (Option (..), option)
-import Data.Foldable (foldl')
-import Data.Data
 import Control.Applicative
 import Control.Monad.Fix
+import Data.Data
+import Data.Foldable       (foldl')
+import Data.Semigroup      hiding (Option (..), option)
 import GHC.Generics
 
 -- | 'Option' is effectively 'Maybe' with a better instance of
@@ -94,8 +92,8 @@ instance Foldable Option where
   foldMap f (Option (Just !a)) = f a
 
 instance Traversable Option where
-  traverse _ (Option Nothing)    = pure (Option Nothing)
-  traverse f (Option (Just !a))  = (\ !b -> Option (Just b)) <$> f a
+  traverse _ (Option Nothing)   = pure (Option Nothing)
+  traverse f (Option (Just !a)) = (\ !b -> Option (Just b)) <$> f a
 
 instance Semigroup a => Semigroup (Option a) where
   Option Nothing   <> Option Nothing   = Option Nothing

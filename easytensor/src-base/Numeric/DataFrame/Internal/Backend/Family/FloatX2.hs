@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP                   #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -10,6 +11,9 @@ import           GHC.Base
 import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
 import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.PrimBytes
+import           Numeric.ProductOrd
+import qualified Numeric.ProductOrd.NonTransitive                  as NonTransitive
+import qualified Numeric.ProductOrd.Partial                        as Partial
 
 
 data FloatX2 = FloatX2# Float# Float#
@@ -46,57 +50,119 @@ instance Eq FloatX2 where
 
 
 
--- | Implement partial ordering for `>`, `<`, `>=`, `<=`
---           and lexicographical ordering for `compare`
+cmp' :: Float# -> Float# -> PartialOrdering
+cmp' a b
+  | isTrue# (a `gtFloat#` b) = PGT
+  | isTrue# (a `ltFloat#` b) = PLT
+  | otherwise  = PEQ
+
+instance ProductOrder FloatX2 where
+    cmp (FloatX2# a1 a2) (FloatX2# b1 b2)
+      = cmp' a1 b1 <> cmp' a2 b2
+    {-# INLINE cmp #-}
+
+instance Ord (NonTransitive.ProductOrd FloatX2) where
+    NonTransitive.ProductOrd x > NonTransitive.ProductOrd y = cmp x y == PGT
+    {-# INLINE (>) #-}
+    NonTransitive.ProductOrd x < NonTransitive.ProductOrd y = cmp x y == PLT
+    {-# INLINE (<) #-}
+    (>=) (NonTransitive.ProductOrd (FloatX2# a1 a2))
+         (NonTransitive.ProductOrd (FloatX2# b1 b2)) = isTrue#
+      ((a1 `geFloat#` b1) `andI#` (a2 `geFloat#` b2))
+    {-# INLINE (>=) #-}
+    (<=) (NonTransitive.ProductOrd (FloatX2# a1 a2))
+         (NonTransitive.ProductOrd (FloatX2# b1 b2)) = isTrue#
+      ((a1 `leFloat#` b1) `andI#` (a2 `leFloat#` b2))
+    {-# INLINE (<=) #-}
+    compare (NonTransitive.ProductOrd a) (NonTransitive.ProductOrd b)
+      = NonTransitive.toOrdering $ cmp a b
+    {-# INLINE compare #-}
+    min (NonTransitive.ProductOrd (FloatX2# a1 a2))
+        (NonTransitive.ProductOrd (FloatX2# b1 b2))
+      = NonTransitive.ProductOrd
+        ( FloatX2#
+          (if isTrue# (a1 `gtFloat#` b1) then b1 else a1)
+          (if isTrue# (a2 `gtFloat#` b2) then b2 else a2)
+        )
+    {-# INLINE min #-}
+    max (NonTransitive.ProductOrd (FloatX2# a1 a2))
+        (NonTransitive.ProductOrd (FloatX2# b1 b2))
+      = NonTransitive.ProductOrd
+        ( FloatX2#
+          (if isTrue# (a1 `ltFloat#` b1) then b1 else a1)
+          (if isTrue# (a2 `ltFloat#` b2) then b2 else a2)
+        )
+    {-# INLINE max #-}
+
+instance Ord (Partial.ProductOrd FloatX2) where
+    Partial.ProductOrd x > Partial.ProductOrd y = cmp x y == PGT
+    {-# INLINE (>) #-}
+    Partial.ProductOrd x < Partial.ProductOrd y = cmp x y == PLT
+    {-# INLINE (<) #-}
+    (>=) (Partial.ProductOrd (FloatX2# a1 a2))
+         (Partial.ProductOrd (FloatX2# b1 b2)) = isTrue#
+      ((a1 `geFloat#` b1) `andI#` (a2 `geFloat#` b2))
+    {-# INLINE (>=) #-}
+    (<=) (Partial.ProductOrd (FloatX2# a1 a2))
+         (Partial.ProductOrd (FloatX2# b1 b2)) = isTrue#
+      ((a1 `leFloat#` b1) `andI#` (a2 `leFloat#` b2))
+    {-# INLINE (<=) #-}
+    compare (Partial.ProductOrd a) (Partial.ProductOrd b)
+      = Partial.toOrdering $ cmp a b
+    {-# INLINE compare #-}
+    min (Partial.ProductOrd (FloatX2# a1 a2))
+        (Partial.ProductOrd (FloatX2# b1 b2))
+      = Partial.ProductOrd
+        ( FloatX2#
+          (if isTrue# (a1 `gtFloat#` b1) then b1 else a1)
+          (if isTrue# (a2 `gtFloat#` b2) then b2 else a2)
+        )
+    {-# INLINE min #-}
+    max (Partial.ProductOrd (FloatX2# a1 a2))
+        (Partial.ProductOrd (FloatX2# b1 b2))
+      = Partial.ProductOrd
+        ( FloatX2#
+          (if isTrue# (a1 `ltFloat#` b1) then b1 else a1)
+          (if isTrue# (a2 `ltFloat#` b2) then b2 else a2)
+        )
+    {-# INLINE max #-}
+
 instance Ord FloatX2 where
-    FloatX2# a1 a2 > FloatX2# b1 b2 =
-      isTrue#
-      (       (a1 `gtFloat#` b1)
-      `andI#` (a2 `gtFloat#` b2)
-      )
+    FloatX2# a1 a2 > FloatX2# b1 b2
+      | isTrue# (a1 `gtFloat#` b1) = True
+      | isTrue# (a1 `ltFloat#` b1) = False
+      | isTrue# (a2 `gtFloat#` b2) = True
+      | otherwise           = False
     {-# INLINE (>) #-}
 
-    FloatX2# a1 a2 < FloatX2# b1 b2 =
-      isTrue#
-      (       (a1 `ltFloat#` b1)
-      `andI#` (a2 `ltFloat#` b2)
-      )
+    FloatX2# a1 a2 < FloatX2# b1 b2
+      | isTrue# (a1 `ltFloat#` b1) = True
+      | isTrue# (a1 `gtFloat#` b1) = False
+      | isTrue# (a2 `ltFloat#` b2) = True
+      | otherwise           = False
     {-# INLINE (<) #-}
 
-    FloatX2# a1 a2 >= FloatX2# b1 b2 =
-      isTrue#
-      (       (a1 `geFloat#` b1)
-      `andI#` (a2 `geFloat#` b2)
-      )
+    FloatX2# a1 a2 >= FloatX2# b1 b2
+      | isTrue# (a1 `ltFloat#` b1) = False
+      | isTrue# (a1 `gtFloat#` b1) = True
+      | isTrue# (a2 `ltFloat#` b2) = False
+      | otherwise           = True
     {-# INLINE (>=) #-}
 
-    FloatX2# a1 a2 <= FloatX2# b1 b2 =
-      isTrue#
-      (       (a1 `leFloat#` b1)
-      `andI#` (a2 `leFloat#` b2)
-      )
+    FloatX2# a1 a2 <= FloatX2# b1 b2
+      | isTrue# (a1 `gtFloat#` b1) = False
+      | isTrue# (a1 `ltFloat#` b1) = True
+      | isTrue# (a2 `gtFloat#` b2) = False
+      | otherwise           = True
     {-# INLINE (<=) #-}
 
-    -- | Compare lexicographically
     compare (FloatX2# a1 a2) (FloatX2# b1 b2)
       | isTrue# (a1 `gtFloat#` b1) = GT
       | isTrue# (a1 `ltFloat#` b1) = LT
       | isTrue# (a2 `gtFloat#` b2) = GT
       | isTrue# (a2 `ltFloat#` b2) = LT
-      | otherwise = EQ
+      | otherwise           = EQ
     {-# INLINE compare #-}
-
-    -- | Element-wise minimum
-    min (FloatX2# a1 a2) (FloatX2# b1 b2) = FloatX2#
-      (if isTrue# (a1 `gtFloat#` b1) then b1 else a1)
-      (if isTrue# (a2 `gtFloat#` b2) then b2 else a2)
-    {-# INLINE min #-}
-
-    -- | Element-wise maximum
-    max (FloatX2# a1 a2) (FloatX2# b1 b2) = FloatX2#
-      (if isTrue# (a1 `gtFloat#` b1) then a1 else b1)
-      (if isTrue# (a2 `gtFloat#` b2) then a2 else b2)
-    {-# INLINE max #-}
 
 
 

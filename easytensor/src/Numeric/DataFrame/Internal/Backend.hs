@@ -27,7 +27,9 @@ module Numeric.DataFrame.Internal.Backend
   , inferKnownBackend, inferPrimElem
     -- auto-derived (will be removed by the plugin):
 #if !(defined(__HADDOCK__) || defined(__HADDOCK_VERSION__))
-  , inferEq, inferOrd, inferBounded, inferNum
+  , inferEq, inferOrd
+  , inferProductOrder, inferPONonTransitive, inferPOPartial
+  , inferBounded, inferNum
   , inferFractional, inferFloating
   , inferPrimBytes, inferPrimArray
   , inferShow
@@ -41,10 +43,12 @@ import Data.Constraint.Unsafe
 import Data.Kind                (Type)
 import Unsafe.Coerce            (unsafeCoerce)
 
-import Numeric.DataFrame.Internal.PrimArray
-import Numeric.Dimensions
-import Numeric.PrimBytes
-
+import           Numeric.DataFrame.Internal.PrimArray
+import           Numeric.Dimensions
+import           Numeric.PrimBytes
+import           Numeric.ProductOrd
+import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
+import qualified Numeric.ProductOrd.Partial           as Partial
 
 import           Numeric.DataFrame.Internal.Backend.Family (BackendFamily)
 import qualified Numeric.DataFrame.Internal.Backend.Family as Impl (KnownBackend,
@@ -109,6 +113,38 @@ inferOrd :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
            => Dict (Ord (Backend t ds b))
 inferOrd
     = mapDict toBackend
+    . mapDict (Sub (Impl.inferBackendInstance @t @ds))
+    $ inferDeriveContext @t @ds @b undefined
+
+{-# ANN inferProductOrder (ToInstance Incoherent) #-}
+inferProductOrder
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+   . (Ord t, Impl.KnownBackend t ds b)
+  => Dict (ProductOrder (Backend t ds b))
+inferProductOrder
+    = mapDict toBackend
+    . mapDict (Sub (Impl.inferBackendInstance @t @ds))
+    $ inferDeriveContext @t @ds @b undefined
+
+{-# ANN inferPONonTransitive (ToInstance Incoherent) #-}
+inferPONonTransitive
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+   . (Ord t, Impl.KnownBackend t ds b)
+  => Dict (Ord (NonTransitive.ProductOrd (Backend t ds b)))
+inferPONonTransitive
+    = mapDict (unsafeDerive NonTransitive.ProductOrd)
+    . mapDict toBackend
+    . mapDict (Sub (Impl.inferBackendInstance @t @ds))
+    $ inferDeriveContext @t @ds @b undefined
+
+{-# ANN inferPOPartial (ToInstance Incoherent) #-}
+inferPOPartial
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+   . (Ord t, Impl.KnownBackend t ds b)
+  => Dict (Ord (Partial.ProductOrd (Backend t ds b)))
+inferPOPartial
+    = mapDict (unsafeDerive Partial.ProductOrd)
+    . mapDict toBackend
     . mapDict (Sub (Impl.inferBackendInstance @t @ds))
     $ inferDeriveContext @t @ds @b undefined
 
@@ -208,47 +244,76 @@ instance {-# INCOHERENT #-}
     forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . (Eq t, Impl.KnownBackend t ds b)
   => Eq (Backend t ds b) where
-  (==) = undefined
-  (/=) = undefined
+    (==) = undefined
+    (/=) = undefined
 
 instance {-# INCOHERENT #-}
     forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . (Ord t, Impl.KnownBackend t ds b)
   => Ord (Backend t ds b) where
-   compare = undefined
-   (<) = undefined
-   (<=) = undefined
-   (>) = undefined
-   (>=) = undefined
-   max = undefined
-   min = undefined
+    compare = undefined
+    (<) = undefined
+    (<=) = undefined
+    (>) = undefined
+    (>=) = undefined
+    max = undefined
+    min = undefined
+
+instance {-# INCOHERENT #-}
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . (Ord t, Impl.KnownBackend t ds b)
+  => ProductOrder (Backend t ds b) where
+    cmp = undefined
+
+instance {-# INCOHERENT #-}
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . (Ord t, Impl.KnownBackend t ds b)
+  => Ord (NonTransitive.ProductOrd (Backend t ds b)) where
+    compare = undefined
+    (<) = undefined
+    (<=) = undefined
+    (>) = undefined
+    (>=) = undefined
+    max = undefined
+    min = undefined
+
+instance {-# INCOHERENT #-}
+    forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  . (Ord t, Impl.KnownBackend t ds b)
+  => Ord (Partial.ProductOrd (Backend t ds b)) where
+    compare = undefined
+    (<) = undefined
+    (<=) = undefined
+    (>) = undefined
+    (>=) = undefined
+    max = undefined
+    min = undefined
 
 instance {-# INCOHERENT #-}
     forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . (Bounded t, Impl.KnownBackend t ds b)
   => Bounded (Backend t ds b) where
-   maxBound = undefined
-   minBound = undefined
-
+    maxBound = undefined
+    minBound = undefined
 
 instance {-# INCOHERENT #-}
     forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . (Num t, Impl.KnownBackend t ds b)
   => Num (Backend t ds b) where
-   (+) = undefined
-   (-) = undefined
-   (*) = undefined
-   negate = undefined
-   abs = undefined
-   signum = undefined
-   fromInteger = undefined
+    (+) = undefined
+    (-) = undefined
+    (*) = undefined
+    negate = undefined
+    abs = undefined
+    signum = undefined
+    fromInteger = undefined
 
 instance {-# INCOHERENT #-}
     forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . (Fractional t, Impl.KnownBackend t ds b)
   => Fractional (Backend t ds b) where
-   fromRational = undefined
-   recip = undefined
+    fromRational = undefined
+    recip = undefined
 
 instance {-# INCOHERENT #-}
     forall (t :: Type) (ds :: [Nat]) (b :: Type)

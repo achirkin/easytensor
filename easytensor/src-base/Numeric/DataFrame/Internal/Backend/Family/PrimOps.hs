@@ -4,7 +4,7 @@
 -- | Internal primitive functions shared across modules
 module Numeric.DataFrame.Internal.Backend.Family.PrimOps where
 
-import           GHC.Base
+import GHC.Base
 
 inftyD :: Double
 inftyD = read "Infinity"
