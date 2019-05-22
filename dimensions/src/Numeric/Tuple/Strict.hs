@@ -75,7 +75,10 @@ instance (Show a) => Show (Id a) where
 
 instance Foldable Id where
     foldMap          = coerce
-    elem             = (. runId) #. (==)
+    elem             = k (==)
+      where
+        k :: (a -> a -> Bool) -> a -> Id a -> Bool
+        k = coerce
     foldl            = coerce
     foldl'           = coerce
     foldl1 _         = coerce
@@ -241,12 +244,6 @@ instance (RepresentableList xs, All Read xs) => Read (Tuple xs) where
 --------------------------------------------------------------------------------
 -- internal
 --------------------------------------------------------------------------------
-
--- | Internal (non-exported) 'Coercible' helper for 'elem'
---
--- See Note [Function coercion] in "Data.Functor.Utils" for more details.
-(#.) :: Coercible b c => (b -> c) -> (a -> b) -> a -> c
-(#.) _f = coerce
 
 forceCons :: Tuple xs -> Tuple xs
 forceCons U            = U
