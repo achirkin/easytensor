@@ -196,17 +196,17 @@ accumV2Idempotent x f comb
 accumV2Idempotent x f comb
   a@(ArrayBase (# | (# _, _, steps, Dict #) #))
   b@(ArrayBase (# | _ #))
-    = foldr comb x $ map (\i -> f (ixOff i a) (ixOff i b))
+    = foldr (comb . (\i -> f (ixOff i a) (ixOff i b))) x
                           [0 .. fromIntegral (cdTotalDim steps) - 1]
 accumV2Idempotent x f comb
     (ArrayBase (# a | #))
   b@(ArrayBase (# | (# _, _, steps, Dict #) #))
-    = foldr comb x $ map (\i -> f a (ixOff i b))
+    = foldr (comb . (\i -> f a (ixOff i b))) x
                           [0 .. fromIntegral (cdTotalDim steps) - 1]
 accumV2Idempotent x f comb
   a@(ArrayBase (# | (# _, _, steps, Dict #) #))
     (ArrayBase (# b | #))
-    = foldr comb x $ map (\i -> f (ixOff i a) b)
+    = foldr (comb . (\i -> f (ixOff i a) b)) x
                           [0 .. fromIntegral (cdTotalDim steps) - 1]
 {-# INLINE accumV2Idempotent #-}
 
@@ -265,7 +265,7 @@ instance Eq t => Eq (ArrayBase t ds) where
     {-# SPECIALIZE instance Eq (ArrayBase Word32 ds) #-}
     {-# SPECIALIZE instance Eq (ArrayBase Word64 ds) #-}
     (==) = accumV2Idempotent True (==) (&&)
-    (/=) = accumV2Idempotent True (/=) (||)
+    (/=) = accumV2Idempotent False (/=) (||)
 
 instance Ord t => ProductOrder (ArrayBase t ds) where
     {-# SPECIALIZE instance ProductOrder (ArrayBase Float ds)  #-}
