@@ -25,24 +25,56 @@
 
 module Numeric.DataFrame.BasicTest (runTests) where
 
-import Numeric.DataFrame
-import Numeric.DataFrame.Arbitraries ()
-import Test.QuickCheck
+import           Numeric.DataFrame
+import           Numeric.DataFrame.Arbitraries    ()
+import qualified Numeric.ProductOrd.NonTransitive as NonTransitive
+import qualified Numeric.ProductOrd.Partial       as Partial
+import           Test.QuickCheck
 
+(===>) :: Bool -> Bool -> Bool
+a ===> b = not a || b
+infix 2 ===>
 
-prop_Comparisons :: SomeDataFrame '[Float, Float] -> Property
-prop_Comparisons (SomeDataFrame (x :*: y :*: Z))
+prop_vanillaOrdTransitivity :: SomeDataFrame '[Double, Double, Double] -> Property
+prop_vanillaOrdTransitivity (SomeDataFrame (x :*: y :*: z :*: Z))
+  = (x <= y) && (y <= z) ==> x <= z
+
+vanillaOrdComparisons :: Ord t => t -> t -> Property
+vanillaOrdComparisons x y
   = conjoin
-    [ counterexample "abs x >= abs x / 2" $ abs x >= abs x / 2
-    , counterexample "abs x <= abs x + abs y" $ abs x <= abs x + abs y
+    [ counterexample "(x < y) == (compare x y == LT)"
+          $ (x < y) == (compare x y == LT)
+    , counterexample "(x > y) == (compare x y == GT)"
+          $ (x > y) == (compare x y == GT)
+    , counterexample "(x == y) == (compare x y == EQ)"
+          $ (x == y) == (compare x y == EQ)
+    , counterexample "min x y == if x <= y then x else y"
+          $ min x y == if x <= y then x else y
+    , counterexample "max x y == if x >= y then x else y"
+          $ max x y == if x >= y then x else y
+    ]
+
+
+comparisons :: (Ord t, Num t) => t -> t -> Property
+comparisons x y
+  = conjoin
+    [ counterexample "abs x <= abs x + abs y" $ abs x <= abs x + abs y
     , counterexample "x <= x" $ x <= x
     , counterexample "y <= y" $ y <= y
     , counterexample "x >= x" $ x >= x
     , counterexample "y >= y" $ y >= y
     , counterexample "x == x" $ x == x
     , counterexample "y == y" $ y == y
-    , counterexample "x < x + 1" $ abs x < 1e7 ===> x < x + 1
-    , counterexample "x > x - 1" $ abs x < 1e7 ===> x > x - 1
+    , counterexample "(x > y) == (y < x)"
+                              $ (x > y) == (y < x)
+    , counterexample "(x >= y) == (y <= x)"
+                              $ (x >= y) == (y <= x)
+    , counterexample "(x < y) == (x <= y && x /= y)"
+                              $ (x < y) == (x <= y && x /= y)
+    , counterexample "(x > y) == (x >= y && x /= y)"
+                              $ (x > y) == (x >= y && x /= y)
+    , counterexample "x < x + 1" $ abs x < 10000000 ===> x < x + 1
+    , counterexample "x > x - 1" $ abs x < 10000000 ===> x > x - 1
     , counterexample "abs x >= x" $ abs x >= x
     , counterexample "abs (-x) >= (-x)" $ abs (-x) >= (-x)
     , counterexample "x > y ==> x >= y"
@@ -58,9 +90,38 @@ prop_Comparisons (SomeDataFrame (x :*: y :*: Z))
     , counterexample "x >= y && x <= y ==> x == y"
       $ x >= y && x <= y ===> x == y
     ]
-  where
-    a ===> b = not a || b
-    infix 2 ===>
+
+prop_comparisonsVanillaOrdFloat :: SomeDataFrame '[Float, Float] -> Property
+prop_comparisonsVanillaOrdFloat (SomeDataFrame (x :*: y :*: Z)) =
+  comparisons x y .&&. vanillaOrdComparisons x y
+prop_comparisonsVanillaOrdDouble :: SomeDataFrame '[Double, Double] -> Property
+prop_comparisonsVanillaOrdDouble (SomeDataFrame (x :*: y :*: Z)) =
+  comparisons x y .&&. vanillaOrdComparisons x y
+prop_comparisonsVanillaOrdInt :: SomeDataFrame '[Int, Int] -> Property
+prop_comparisonsVanillaOrdInt (SomeDataFrame (x :*: y :*: Z)) =
+  comparisons x y .&&. vanillaOrdComparisons x y
+
+
+prop_comparisonsPPOrdFloat :: SomeDataFrame '[Float, Float] -> Property
+prop_comparisonsPPOrdFloat (SomeDataFrame (x :*: y :*: Z))
+  = comparisons (Partial.ProductOrd x) (Partial.ProductOrd y)
+prop_comparisonsPPOrdDouble :: SomeDataFrame '[Double, Double] -> Property
+prop_comparisonsPPOrdDouble (SomeDataFrame (x :*: y :*: Z))
+  = comparisons (Partial.ProductOrd x) (Partial.ProductOrd y)
+prop_comparisonsPPOrdInt :: SomeDataFrame '[Int, Int] -> Property
+prop_comparisonsPPOrdInt (SomeDataFrame (x :*: y :*: Z))
+  = comparisons (Partial.ProductOrd x) (Partial.ProductOrd y)
+
+
+prop_comparisonsNTPOrdFloat :: SomeDataFrame '[Float, Float] -> Property
+prop_comparisonsNTPOrdFloat (SomeDataFrame (x :*: y :*: Z))
+  = comparisons (NonTransitive.ProductOrd x) (NonTransitive.ProductOrd y)
+prop_comparisonsNTPOrdDouble :: SomeDataFrame '[Double, Double] -> Property
+prop_comparisonsNTPOrdDouble (SomeDataFrame (x :*: y :*: Z))
+  = comparisons (NonTransitive.ProductOrd x) (NonTransitive.ProductOrd y)
+prop_comparisonsNTPOrdInt :: SomeDataFrame '[Int, Int] -> Property
+prop_comparisonsNTPOrdInt (SomeDataFrame (x :*: y :*: Z))
+  = comparisons (NonTransitive.ProductOrd x) (NonTransitive.ProductOrd y)
 
 
 prop_Numeric :: SomeDataFrame '[Int, Int] -> Bool

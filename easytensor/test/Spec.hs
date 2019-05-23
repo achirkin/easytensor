@@ -28,8 +28,9 @@ tests = return
 -- | Run tests as exitcode-stdio-1.0
 main :: IO ()
 main = do
+    putStrLn ""
     ts <- tests
-    trs <- mapM (\(Test ti) ->(,) (name ti) <$> run ti) ts
+    trs <- mapM (\(Test ti) -> (,) (name ti) <$> run ti) ts
     case filter (not . isGood . snd) trs of
        [] -> exitSuccess
        xs -> do
