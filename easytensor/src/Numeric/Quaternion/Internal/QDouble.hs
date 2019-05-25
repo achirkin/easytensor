@@ -17,7 +17,6 @@ module Numeric.Quaternion.Internal.QDouble
 
 import qualified Control.Monad.ST                     as ST
 import           Data.Coerce                          (coerce)
-import           GHC.Exts
 import           Numeric.DataFrame.Internal.PrimArray
 import qualified Numeric.DataFrame.ST                 as ST
 import           Numeric.DataFrame.Type
@@ -25,7 +24,6 @@ import           Numeric.PrimBytes                    (PrimBytes)
 import           Numeric.Quaternion.Internal
 import           Numeric.Scalar.Internal
 import           Numeric.Vector.Internal
-import           Text.Read
 
 type QDouble = Quater Double
 
@@ -81,17 +79,27 @@ instance Quaternion Double where
             mb = sqrt (b1*b1 + b2*b2 + b3*b3)
             d  = a1*b1 + a2*b2 + a3*b3
             c  = sqrt (ma*mb + d)
-            ma2 = ma * sqrt 2.0
-            r  = 1.0 / (ma2 * c)
+            ma2 = ma * 1.4142135623730951 -- sqrt 2.0
+            r  = recip (ma2 * c)
+            c' = sqrt (mb / ma) -- ratio of a and b for corner cases
+            r' = recip (sqrt ( negate (a1*b1 + a2*b2) ))
         in case unpackV3# (cross a b) of
           (# 0, 0, 0 #)
-            | d > 0        -> packQ 0.0 0.0 0.0 (sqrt (mb / ma))
-                              -- Shall we move result from k to i component?
-            | otherwise    -> packQ 0.0 0.0 (sqrt (mb / ma)) 0.0
+              -- if a and b face the same direction, q is fully real
+            | d >= 0       -> packQ 0 0 0 c'
+              -- if a and b face opposite directions, find an orthogonal vector
+              -- prerequisites: w == 0  and  a·(x,y,z) == 0
+              -- corner cases: only one vector component is non-zero
+            | b1 == 0      -> packQ c' 0 0 0
+              -- otherwise set the last component to zero,
+              -- and get an orthogonal vector in 2D.
+            | otherwise    -> packQ (-b2*r') (b1*r') 0 0
+              -- NB: here we have some precision troubles
+              --     when a and b are close to parallel and opposite.
           (# t1, t2, t3 #) -> packQ (t1 * r) (t2 * r) (t3 * r) (c / ma2)
     {-# INLINE axisRotation #-}
     axisRotation v a = case unpackV3# v of
-      (# 0, 0, 0 #) -> packQ 0.0 0.0 0.0 1.0
+      (# 0, 0, 0 #) -> packQ 0.0 0.0 0.0 (if abs a < pi then 1 else -1)
       (# x, y, z #) ->
         let c = cos (a * 0.5)
             s = sin (a * 0.5)
@@ -100,29 +108,16 @@ instance Quaternion Double where
     {-# INLINE qArg #-}
     qArg (unpackQ# -> (# x, y, z, w #)) = 2 * atan2 (sqrt (x*x + y*y + z*z)) w
     {-# INLINE fromMatrix33 #-}
-    fromMatrix33 m
-      = let d = ( ix 0# m * ( ix 4# m * ix 8# m - ix 5# m * ix 7# m )
-                - ix 1# m * ( ix 3# m * ix 8# m - ix 5# m * ix 6# m )
-                + ix 2# m * ( ix 3# m * ix 7# m - ix 4# m * ix 6# m )
-                ) ** 0.33333333333333333333333333333333
-        in packQ
-            (sqrt (max 0.0 (d + ix 0# m - ix 4# m - ix 8# m )) * signum (ix 5# m - ix 7# m) * 0.5)
-            (sqrt (max 0.0 (d - ix 0# m + ix 4# m - ix 8# m )) * signum (ix 6# m - ix 2# m) * 0.5)
-            (sqrt (max 0.0 (d - ix 0# m - ix 4# m + ix 8# m )) * signum (ix 1# m - ix 3# m) * 0.5)
-            (sqrt (max 0.0 (d + ix 0# m + ix 4# m + ix 8# m )) * 0.5)
+    fromMatrix33 m = fromM 1
+      (ix# 0# m) (ix# 1# m) (ix# 2# m)
+      (ix# 3# m) (ix# 4# m) (ix# 5# m)
+      (ix# 6# m) (ix# 7# m) (ix# 8# m)
 
     {-# INLINE fromMatrix44 #-}
-    fromMatrix44 m
-      = let d = ( ix 0# m * ( ix 5# m * ix 10# m - ix 6# m * ix 9# m )
-                - ix 1# m * ( ix 4# m * ix 10# m - ix 6# m * ix 8# m )
-                + ix 2# m * ( ix 4# m * ix  9# m - ix 5# m * ix 8# m )
-                ) ** 0.33333333333333333333333333333333
-            c = 0.5 / ix 15# m
-        in packQ
-            (sqrt (max 0.0 (d + ix 0# m - ix 5# m - ix 10# m )) * signum (ix 6# m - ix 9# m) * c)
-            (sqrt (max 0.0 (d - ix 0# m + ix 5# m - ix 10# m )) * signum (ix 8# m - ix 2# m) * c)
-            (sqrt (max 0.0 (d - ix 0# m - ix 5# m + ix 10# m )) * signum (ix 1# m - ix 4# m) * c)
-            (sqrt (max 0.0 (d + ix 0# m + ix 5# m + ix 10# m )) * c)
+    fromMatrix44 m = fromM (ix# 15# m)
+      (ix# 0# m) (ix# 1# m) (ix# 2# m)
+      (ix# 4# m) (ix# 5# m) (ix# 6# m)
+      (ix# 8# m) (ix# 9# m) (ix# 10# m)
 
     {-# INLINE toMatrix33 #-}
     toMatrix33 (unpackQ# -> (# 0.0, 0.0, 0.0, w #))
@@ -190,13 +185,72 @@ instance Quaternion Double where
         ST.writeDataFrameOff df 12 0
         ST.writeDataFrameOff df 13 0
         ST.writeDataFrameOff df 14 0
-        ST.writeDataFrameOff df 15 0
+        ST.writeDataFrameOff df 15 1
         ST.unsafeFreezeDataFrame df
 
 
-ix :: PrimArray Double a => Int# -> a -> Double
-ix = ix#
-{-# INLINE ix #-}
+{- Calculate quaternion from a 3x3 matrix.
+
+   First argument is a constant; it is either 1 for a 3x3 matrix,
+   or m44 for a 4x4 matrix. I just need to multiply all components by
+   this number.
+
+   Further NB for the formulae:
+
+   d == square q == det m ** (1/3)
+   t == trace m  == 4 w w - d
+   m01 - m10 == 4 z w
+   m20 - m02 == 4 y w
+   m12 - m21 == 4 x w
+   m01 + m10 == 4 x y
+   m20 + m02 == 4 x z
+   m12 + m21 == 4 y z
+   m00 == + x x - y y - z z + w w
+   m11 == - x x + y y - z z + w w
+   m22 == - x x - y y + z z + w w
+   4 x x == d + m00 - m11 - m22
+   4 y y == d - m00 + m11 - m22
+   4 z z == d - m00 - m11 + m22
+   4 w w == d + m00 + m11 + m22
+ -}
+fromM :: Double
+      -> Double -> Double -> Double
+      -> Double -> Double -> Double
+      -> Double -> Double -> Double
+      -> QDouble
+fromM c'
+  m00 m01 m02
+  m10 m11 m12
+  m20 m21 m22
+    | t > 0
+      = let dd = sqrt ( d + t )
+            is = c / dd
+        in packQ ((m12 - m21)*is) ((m20 - m02)*is) ((m01 - m10)*is) (c*dd)
+    | m00 > m11 && m00 > m22
+      = let dd = sqrt ( d + m00 - m11 - m22 )
+            is = c / dd
+        in packQ (c*dd) ((m01 + m10)*is) ((m02 + m20)*is) ((m12 - m21)*is)
+    | m11 > m22
+      = let dd = sqrt ( d - m00 + m11 - m22 )
+            is = c / dd
+        in packQ ((m01 + m10)*is) (c*dd) ((m12 + m21)*is) ((m20 - m02)*is)
+    | otherwise
+      = let dd = sqrt ( d - m00 - m11 + m22 )
+            is = c / dd
+        in packQ ((m02 + m20)*is) ((m12 + m21)*is) (c*dd) ((m01 - m10)*is)
+
+  where
+    -- normalizing constant
+    c = recip $ 2 * sqrt c'
+    -- trace
+    t = m00 + m11 + m22
+    -- cubic root of determinant
+    d = ( m00 * ( m11 * m22 - m12 * m21 )
+        - m01 * ( m10 * m22 - m12 * m20 )
+        + m02 * ( m10 * m21 - m11 * m20 )
+        ) ** 0.33333333333333333333333333333333
+
+
 
 
 instance Num QDouble where
@@ -253,7 +307,7 @@ instance Fractional QDouble where
     fromRational = packQ 0.0 0.0 0.0 . fromRational
 
 
-instance  Floating QDouble where
+instance Floating QDouble where
     {-# INLINE pi #-}
     pi = packQ 0.0 0.0 0.0 3.141592653589793
     {-# INLINE exp #-}
@@ -268,24 +322,9 @@ instance  Floating QDouble where
           mv -> case et * sin mv / mv of
             l -> packQ (x * l) (y * l) (z * l) (et * cos mv)
     {-# INLINE log #-}
-    log (unpackQ# -> (# x, y, z, w #))
-      = case (x * x) + (y * y) + (z * z) of
-        0.0 | w >= 0    -> packQ 0.0 0.0 0.0 (log w)
-            | otherwise -> packQ 3.141592653589793 0.0 0.0 (log (negate w))
-        mv2 -> case (# sqrt (mv2 + (w * w)), sqrt mv2 #) of
-          (# mq, mv #) -> case atan2 mv w / mv of
-            l -> packQ (x * l) (y * l) (z * l) (log mq)
+    log = log' (Vec3 1 0 0)
     {-# INLINE sqrt #-}
-    sqrt (unpackQ# -> (# x, y, z, w #))
-      = case (x * x) + (y * y) + (z * z) of
-        0.0 | w >= 0    -> packQ 0.0 0.0 0.0 (sqrt w)
-            | otherwise -> packQ (sqrt (negate w)) 0.0 0.0 0.0
-        mv2 ->
-          let mq = sqrt (mv2 + w * w)
-              l2 = sqrt mq
-              tq = w / (mq * 2.0)
-              sina = sqrt (0.5 - tq) * l2 / sqrt mv2
-          in packQ (x * sina) (y * sina) (z * sina) (sqrt (0.5 + tq) * l2)
+    sqrt = sqrt' (Vec3 1 0 0)
     {-# INLINE sin #-}
     sin (unpackQ# -> (# x, y, z, w #))
       = case (x * x) + (y * y) + (z * z) of
@@ -341,89 +380,99 @@ instance  Floating QDouble where
               l = cv * sv * cq / mv
           in packQ (x * l) (y * l) (z * l) (cht * sht * cq)
     {-# INLINE asin #-}
-    asin q = -i * log (i*q + sqrt (1 - q*q))
+    asin q = -i * log' axis (i*q + sqrt' axis (1 - q*q))
         where
-          i = case signum . im $ q of
-                0  -> packQ 1.0 0.0 0.0 0.0
-                i' -> i'
+          axis = sigVec q
+          i = fromVecNum axis 0
     {-# INLINE acos #-}
     acos q = pi/2 - asin q
     {-# INLINE atan #-}
-    atan q@(unpackQ# -> (# _, _, _, w #))
-      = if square imq == 0
-        then packQ 0.0 0.0 0.0 (atan w)
-        else i / 2 * log ( (i + q) / (i - q) )
-      where
-        i = signum imq
-        imq = im q
+    -- atan q = i / 2 * log ( (i + q) / (i - q) )
+    atan (unpackQ# -> (# x, y, z, w #))
+      = case (x * x) + (y * y) + (z * z) of
+        0 -> packQ 0 0 0 (atan w)
+        v2 ->
+          let v = sqrt v2
+              w2 = w*w
+              vw2 = w2 + v2
+              t  = 1 + vw2
+              c  = 0.25 * log ((t + 2*v) / (t - 2*v)) / v
+          in packQ (c*x) (c*y) (c*z) $ 0.5 * atan2 (2*w) (1 - vw2)
     {-# INLINE asinh #-}
-    asinh q = log (q + sqrt (q*q + 1))
+    -- The original formula:
+    -- asinh q = log (q + sqrt (q*q + 1))
+    -- below is a more numerically stable version.
+    asinh (unpackQ# -> (# x, y, z, w #))
+      | v2 == 0
+        = packQ 0 0 0 (asinh w)
+      | w == 0
+        = if v2 <= 1
+          then let c = asin v / v
+               in  packQ (c*x) (c*y) (c*z) 0
+          else let c  = 0.5 * pi / v
+                   w' = 0.5 * log (2*v2 - 1 + 2 * v * sqrt ( v2 - 1 ))
+               in  packQ (c*x) (c*y) (c*z) w'
+      | otherwise
+        = let c = atan2 v t / v
+              w' = 0.5 * log ( t2  + v2) - log t
+                     + if w >= 0
+                       then log ( t + w )
+                       else log 2 + log w2 - log ( t - w ) - log ( r + w2 + v2 - 1 )
+          in packQ (c*x) (c*y) (c*z) w'
+      where
+        v2 = (x * x) + (y * y) + (z * z)
+        v  = sqrt v2
+        w2 = w*w
+        wvp1 = w2 - v2 + 1
+        r = sqrt $ wvp1*wvp1 + 4*w2*v2
+        t = sqrt $ ( r + wvp1 ) * 0.5
+        t2 = t*t
     {-# INLINE acosh #-}
-    acosh q = log (q + sqrt (q*q - 1))
+    -- note, log (q + sqrt (q*q - 1)) would not work, because that would not
+    -- be the principal value.
+    acosh q = log' axis (q + sqrt' axis (q + 1) * sqrt' axis (q - 1))
+      where
+        axis = sigVec q
     {-# INLINE atanh #-}
-    atanh q = 0.5 * log ((1+q)/(1-q))
+    atanh q = 0.5 * log' (sigVec q) ((1+q)/(1-q))
 
+-- If q is negative real, provide a fallback axis to align log.
+log' :: Vec3d -> QDouble -> QDouble
+log' r (unpackQ# -> (# x, y, z, w #))
+  = case (x * x) + (y * y) + (z * z) of
+    0.0 | w >= 0
+           -> packQ 0.0 0.0 0.0 (log w)
+        | Vec3 rx ry rz <- r
+           ->  packQ (pi*rx) (pi*ry) (pi*rz) (log (negate w))
+    mv2 -> case (# sqrt (mv2 + (w * w)), sqrt mv2 #) of
+      (# mq, mv #) -> case atan2 mv w / mv of
+        l -> packQ (x * l) (y * l) (z * l) (log mq)
+
+
+-- If q is negative real, provide a fallback axis to align sqrt.
+sqrt' :: Vec3d -> QDouble -> QDouble
+sqrt' r (unpackQ# -> (# x, y, z, w #))
+  = case (x * x) + (y * y) + (z * z) of
+    0.0 | w >= 0
+          -> packQ 0.0 0.0 0.0 (sqrt w)
+        | Vec3 rx ry rz <- r
+        , sw <- sqrt (negate w)
+          -> packQ (sw*rx) (sw*ry) (sw*rz) 0
+    mv2 ->
+      let mq = sqrt (mv2 + w * w)
+          l2 = sqrt mq
+          tq = w / (mq * 2.0)
+          sina = sqrt (0.5 - tq) * l2 / sqrt mv2
+      in packQ (x * sina) (y * sina) (z * sina) (sqrt (0.5 + tq) * l2)
+
+sigVec :: QDouble -> Vec3d
+sigVec (unpackQ# -> (# x, y, z, _ #))
+  = case sqrt ((x * x) + (y * y) + (z * z)) of
+      0 -> vec3 1 0 0
+      l -> vec3 (x/l) (y/l) (z/l)
 
 instance Eq QDouble where
     {-# INLINE (==) #-}
     QDouble a == QDouble b = a == b
     {-# INLINE (/=) #-}
     QDouble a /= QDouble b = a /= b
-
-
-instance Show QDouble where
-    showsPrec p (unpackQ# -> (# x, y, z, w #))
-        = case finS of
-            SEmpty -> showChar '0'
-            Simple -> finF
-            SParen -> showParen (p > 6) finF
-      where
-        (finS, finF) = go SEmpty
-          [(w, Nothing), (x, Just 'i'), (y, Just 'j'), (z, Just 'k')]
-        go :: ShowState -> [(Double, Maybe Char)] -> (ShowState, ShowS)
-        go s ((v,l):xs)
-          | (s0, f0) <- showComponent s v l
-          , (s', f') <- go s0 xs
-            = (s', f0 . f')
-        go s [] = (s, id)
-        showLabel Nothing  = id
-        showLabel (Just c) = showChar c
-        showComponent :: ShowState -> Double -> Maybe Char -> (ShowState, ShowS)
-        showComponent sState val mLabel = case (sState, compare val 0) of
-          (_     , EQ) -> ( sState, id )
-          (SEmpty, GT) -> ( Simple, shows val . showLabel mLabel )
-          (SEmpty, LT) -> ( SParen, shows val . showLabel mLabel )
-          (_     , GT) -> ( SParen
-                          , showString " + " . shows val . showLabel mLabel )
-          (_     , LT) -> ( SParen
-                          , showString " - " . shows (negate val) . showLabel mLabel )
-
-data ShowState = SEmpty | Simple | SParen
-    deriving Eq
-
-instance Read QDouble where
-    readPrec     = parens $ readPrec >>= go id 0 0 0 0
-      where
-        go :: (Double -> Double)
-           -> Double -> Double -> Double -> Double
-           -> Double -> ReadPrec QDouble
-        go f x y z w new =
-          let def = pure (packQ x y z (f new))
-              withLabel EOF         = def
-              withLabel (Ident "i")
-                = (lexP >>= proceed (f new) y z w) <++ pure (packQ (f new) y z w)
-              withLabel (Ident "j")
-                = (lexP >>= proceed x (f new) z w) <++ pure (packQ x (f new) z w)
-              withLabel (Ident "k")
-                = (lexP >>= proceed x y (f new) w) <++ pure (packQ x y (f new) w)
-              withLabel l           = proceed x y z (f new) l
-          in (lexP >>= withLabel) <++ def
-        proceed :: Double -> Double -> Double -> Double
-                -> Lexeme -> ReadPrec QDouble
-        proceed x y z w (Symbol "+") = readPrec >>= go id x y z w
-        proceed x y z w (Symbol "-") = readPrec >>= go negate x y z w
-        proceed x y z w EOF          = pure (packQ x y z w)
-        proceed _ _ _ _ _            = pfail
-
-    readListPrec = readListPrecDefault
-    readList     = readListDefault

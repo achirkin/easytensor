@@ -64,6 +64,16 @@ Following is the list of what I want to do before v2 becomes the master branch:
   - [x] Polymorphic vector constructors.
   - [ ] MinMax is too unconventional for haskellers to be accepted.
 
+### Supported GHC versions
+
+The packages are tested on GHC 8.4+.
+`dimensions` may work on GHC 8.2, but the corresponding tests were dropped.
+Support of `easytensor` on GHC 8.2 was dropped due to:
+
+  - https://gitlab.haskell.org/ghc/ghc/issues/14058
+  - https://gitlab.haskell.org/ghc/ghc/issues/13188
+  - Annoying `Semigroup`-`Monoid` story
+
 ### Feature TODO
 
 There is a bunch of things I have implemented earlier but have not re-implemented in the new easytensor version or planned to implement for the use-cases I already have.
