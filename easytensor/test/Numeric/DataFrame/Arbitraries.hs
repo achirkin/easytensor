@@ -26,9 +26,42 @@ import Numeric.Quaternion
 import Numeric.Semigroup  hiding (All)
 
 
-instance (Quaternion t, Arbitrary t) => Arbitrary (Quater t) where
-  arbitrary = Quater <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
-  shrink (Quater x y z t) = Quater <$> shrink x <*> shrink y  <*> shrink z <*> shrink t
+maxDims :: Word
+maxDims = 5
+
+maxDimSize :: Word
+maxDimSize = 7
+
+fromScalarChanceFactor :: Int
+fromScalarChanceFactor = 5
+
+
+instance (Quaternion t, Arbitrary t, Num t) => Arbitrary (Quater t) where
+  arbitrary = sequence
+    [ Quater <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+    , Quater <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+    , Quater <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+    , Quater <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+    , Quater <$> arbitrary <*> pure 0 <*> pure 0 <*> pure 0
+    , Quater <$> pure 0 <*> arbitrary <*> pure 0 <*> pure 0
+    , Quater <$> pure 0 <*> pure 0 <*> arbitrary <*> pure 0
+    , Quater <$> pure 0 <*> pure 0 <*> pure 0 <*> arbitrary
+    , Quater <$> arbitrary <*> arbitrary <*> pure 0 <*> pure 0
+    , Quater <$> arbitrary <*> pure 0 <*> arbitrary <*> pure 0
+    , Quater <$> arbitrary <*> pure 0 <*> pure 0 <*> arbitrary
+    , Quater <$> pure 0 <*> arbitrary <*> arbitrary <*> pure 0
+    , Quater <$> pure 0 <*> arbitrary <*> pure 0 <*> arbitrary
+    , Quater <$> pure 0 <*> pure 0 <*> arbitrary <*> arbitrary
+    , Quater <$> arbitrary <*> arbitrary <*> arbitrary <*> pure 0
+    , Quater <$> arbitrary <*> arbitrary <*> pure 0 <*> arbitrary
+    , Quater <$> arbitrary <*> pure 0 <*> arbitrary <*> arbitrary
+    , Quater <$> pure 0 <*> arbitrary <*> arbitrary <*> arbitrary
+    ] >>= elements
+
+  shrink (Quater x y z t)
+      -- shrink either real or the whole imaginary part
+    = ($) <$> zipWith3 Quater (shrink x) (shrink y) (shrink z) <*> shrink t
+
 
 
 instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
@@ -44,7 +77,11 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
           -- Note, we could put SubSpace into constraints of this instance as well.
           -- That would render the above lines unnecessary, but would make
           -- inference more difficult later.
-        = arbitrary >>= elementWise @_ @ds @'[] f . ewgen . scalar
+        = do
+        full <- (1 < ) <$> choose (1, fromScalarChanceFactor)
+        if full -- I want to check fromScalar code path sometimes
+        then arbitrary >>= elementWise @_ @ds @'[] f . ewgen . scalar
+        else fromScalar . scalar <$> arbitrary
       where
         f :: Arbitrary a => Scalar a -> Gen (Scalar a)
         f _ = scalar <$> arbitrary
@@ -56,14 +93,15 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
             Nothing
               -> [] -- all-zero is the most primitive DF possible
             Just (MinMax mi ma)
-             -> [ ewmap (scalar . withAbs . unScalar) df
-                , ewmap (\x -> if abs x == mi then 0 else x) df
-                , ewmap (\x -> if abs x == ma then 0 else x) df
+             -> [ ewmap (\x -> if abs x == ma then 0 else x) df | mi /= ma ]
+             <> [ ewmap (\x -> if abs x == mi then 0 else x) df
+                , ewmap (scalar . withAbs . unScalar) df
                 ]
             where
-              withAbs 0 = 0
-              withAbs x = signum x * closest2 (abs x) 1
-              closest2 x b = if x < b * 2 then b else closest2 x (b*2)
+              withAbs x
+                | abs x <= 1 = 0
+                | otherwise  = signum x * closest2 (abs x) 1
+              closest2 x b = if x <= b * 2 then b else closest2 x (b*2)
 
 instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
          , RepresentableList ts, Dimensions ds)
@@ -89,12 +127,6 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
       | TypeList <- types ats'
       = (:*:) <$> shrink at <*> shrink ats
 
-
-maxDims :: Word
-maxDims = 5
-
-maxDimSize :: Word
-maxDimSize = 7
 
 instance KnownDim a => Arbitrary (Dim (N a)) where
     arbitrary = return $ Dn (dim @_ @a)

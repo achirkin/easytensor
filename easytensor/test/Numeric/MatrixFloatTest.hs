@@ -80,8 +80,9 @@ prop_inverse (XFrame (x :*: y :*: Z))
     (KnownDims :: Dims ns) <- dims `inSpaceOf` x
     -- cumbersose inverse instance requires PrimBytes (Vector t n)
   , Dict <- inferKnownBackend @TestElem @'[Head ns]
-  = let base = max 1 $ maxElem x + maxElem y
-        m = diag base + x %* transpose y  -- make it invertable
+  = let base = 3 * max 1 (maxElem m')
+        m = diag base + m'
+        m' = x %* transpose y  -- make it invertable
         mi = inverse m
         aeq a b = maxElem (b - a) <= eps * maxRows m
     in  counterexample ("failed inverse:" ++
@@ -94,8 +95,9 @@ prop_LU (XFrame (x :*: y :*: Z))
     (KnownDims :: Dims ns) <- dims `inSpaceOf` x
     -- cumbersose inverse instance requires PrimBytes (Vector t n)
   , Dict <- inferKnownBackend @TestElem @'[Head ns]
-  = let base = max 1 $ maxElem x + maxElem y
-        m = diag base + x %* transpose y
+  = let base = 3 * max 1 (maxElem m')
+        m = diag base + m'
+        m' = x %* transpose y  -- make it invertable
         f = lu m
         aeq a b = maxElem (b - a) <= eps * maxRows m
     in aeq (luPerm f %* m) (luLower f %* luUpper f)

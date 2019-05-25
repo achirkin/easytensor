@@ -7,7 +7,8 @@ import qualified Numeric.DataFrame.BasicTest
 import qualified Numeric.DataFrame.SubSpaceTest
 import qualified Numeric.MatrixDoubleTest
 import qualified Numeric.MatrixFloatTest
-import qualified Numeric.QuaternionTest
+import qualified Numeric.QuaterDoubleTest
+import qualified Numeric.QuaterFloatTest
 
 
 -- | Collection of tests in detailed-0.9 format
@@ -17,10 +18,11 @@ tests = return
   , test "DataFrame.SubSpace" $ Numeric.DataFrame.SubSpaceTest.runTests n
   , test "MatrixDouble"       $ Numeric.MatrixDoubleTest.runTests n
   , test "MatrixFloat"        $ Numeric.MatrixFloatTest.runTests n
-  , test "Quaternion"         $ Numeric.QuaternionTest.runTests n
+  , test "QuaterDouble"       $ Numeric.QuaterDoubleTest.runTests n
+  , test "QuaterFloat"        $ Numeric.QuaterFloatTest.runTests n
   ]
   where
-    n = 100 :: Int
+    n = 1000 :: Int
 
 
 
