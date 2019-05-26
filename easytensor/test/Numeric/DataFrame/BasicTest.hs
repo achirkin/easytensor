@@ -37,7 +37,7 @@ infix 2 ===>
 
 prop_vanillaOrdTransitivity :: SomeDataFrame '[Double, Double, Double] -> Property
 prop_vanillaOrdTransitivity (SomeDataFrame (x :*: y :*: z :*: Z))
-  = (x <= y) && (y <= z) ==> x <= z
+  = property $ (x <= y) && (y <= z) ===> x <= z
 
 vanillaOrdComparisons :: Ord t => t -> t -> Property
 vanillaOrdComparisons x y
