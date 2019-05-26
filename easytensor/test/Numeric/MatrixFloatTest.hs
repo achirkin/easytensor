@@ -12,7 +12,7 @@ module Numeric.MatrixFloatTest (runTests) where
 
 import Data.Fixed
 import Numeric.DataFrame
-import Numeric.DataFrame.Arbitraries ()
+import Numeric.DataFrame.Arbitraries
 import Numeric.Dimensions
 import Numeric.Semigroup
 import Test.QuickCheck
@@ -53,17 +53,12 @@ approxEq a b = maxElem (a - b) <= eps * m
     m = maxElem a `max` maxElem b
 infix 4 `approxEq`
 
-prop_detTranspose :: Matrix '[TestElem, TestElem] (XN 2) (XN 2) -> Property
-prop_detTranspose (XFrame (x :*: y :*: Z))
-  | -- infer KnownDim for both dimensions of matrix x (and y)
-    (ds@KnownDims :: Dims ns) <- dims `inSpaceOf` x
-  , dn :* _ <- ds
-    -- maxRows requires KnownBackend of Vector t n
-  , Dict <- inferKnownBackend @TestElem @'[Head ns]
-  = let m = x %* transpose y -- make it a square matrix
-        a = det m
+prop_detTranspose :: SomeSquareMatrix AnyMatrix TestElem -> Property
+prop_detTranspose (SSM m)
+  = let a = det m
         b = det $ transpose m
-        mag = eps * maxRows m * fromIntegral (product [1..dimVal dn])
+        n = (case dims `inSpaceOf` m of dn :* _ -> dimVal dn) :: Word
+        mag = eps * maxRows m * fromIntegral (product [1..n])
     in  counterexample
           (unlines
             [ "failed det/transpose:"
@@ -74,31 +69,17 @@ prop_detTranspose (XFrame (x :*: y :*: Z))
             ]
           ) $ abs (a - b) <= mag
 
-prop_inverse :: Matrix '[TestElem, TestElem] (XN 2) (XN 2) -> Property
-prop_inverse (XFrame (x :*: y :*: Z))
-  | -- infer KnownDim for both dimensions of matrix x (and y)
-    (KnownDims :: Dims ns) <- dims `inSpaceOf` x
-    -- cumbersose inverse instance requires PrimBytes (Vector t n)
-  , Dict <- inferKnownBackend @TestElem @'[Head ns]
-  = let base = 3 * max 1 (maxElem m')
-        m = diag base + m'
-        m' = x %* transpose y  -- make it invertable
-        mi = inverse m
+prop_inverse :: SomeSquareMatrix NonSingular TestElem -> Property
+prop_inverse (SSM m)
+  = let mi = inverse m
         aeq a b = maxElem (b - a) <= eps * maxRows m
     in  counterexample ("failed inverse:" ++
-                            show (base, m, mi, m %* mi, mi %* m)) $
+                            show (m, mi, m %* mi, mi %* m)) $
          aeq eye (m %* mi) && aeq eye (mi %* m)
 
-prop_LU :: Matrix '[TestElem, TestElem] (XN 2) (XN 2) -> Bool
-prop_LU (XFrame (x :*: y :*: Z))
-  | -- infer KnownDim for both dimensions of matrix x (and y)
-    (KnownDims :: Dims ns) <- dims `inSpaceOf` x
-    -- cumbersose inverse instance requires PrimBytes (Vector t n)
-  , Dict <- inferKnownBackend @TestElem @'[Head ns]
-  = let base = 3 * max 1 (maxElem m')
-        m = diag base + m'
-        m' = x %* transpose y  -- make it invertable
-        f = lu m
+prop_LU :: SomeSquareMatrix NonSingular TestElem -> Bool
+prop_LU (SSM m)
+  = let f = lu m
         aeq a b = maxElem (b - a) <= eps * maxRows m
     in aeq (luPerm f %* m) (luLower f %* luUpper f)
 

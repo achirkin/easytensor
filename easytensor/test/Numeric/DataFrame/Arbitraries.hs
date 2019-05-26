@@ -1,17 +1,18 @@
-{-# LANGUAGE AllowAmbiguousTypes   #-}
-{-# LANGUAGE ConstraintKinds       #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE KindSignatures        #-}
-{-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE PolyKinds             #-}
-{-# LANGUAGE Rank2Types            #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE AllowAmbiguousTypes       #-}
+{-# LANGUAGE ConstraintKinds           #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE KindSignatures            #-}
+{-# LANGUAGE PartialTypeSignatures     #-}
+{-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE TypeOperators             #-}
+{-# LANGUAGE UndecidableInstances      #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 -- | Provide instance of Arbitrary for all DataFrame types.
 --   Also, this module is an example of fancy type inference and DataFrame
@@ -171,7 +172,7 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t)
       case inferKnownBackend @t @ds of
         -- ... and generating a random DataFrame becomes a one-liner
         Dict -> SomeDataFrame <$> arbitrary @(DataFrame t ds)
-    shrink _ = []
+    shrink (SomeDataFrame df) = SomeDataFrame <$> shrink df
 
 -- All same as above, just change constraints a bit
 instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
@@ -181,7 +182,7 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
       SomeDims (Dims :: Dims ds) <- arbitrary
       case inferKnownBackend @ts @ds of
         Dict -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
-    shrink _ = []
+    shrink (SomeDataFrame df) = SomeDataFrame <$> shrink df
 
 instance ( Arbitrary t, PrimBytes t, Num t, Ord t
          , Arbitrary (Dims xs), All KnownXNatType xs)
@@ -201,3 +202,37 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
       case inferKnownBackend @ts @ds of
         Dict -> XFrame <$> arbitrary @(DataFrame ts ds)
     shrink (XFrame df) = XFrame <$> shrink df
+
+
+data AnyMatrix
+data NonSingular
+
+data SomeSquareMatrix prop t
+  = forall (n :: Nat)
+  . (KnownDim n, KnownBackend t '[n], KnownBackend t '[n, n])
+  => SSM (DataFrame t '[n,n])
+
+instance Show t => Show (SomeSquareMatrix prop t) where
+  show (SSM df) = show df
+
+instance (Arbitrary t, PrimBytes t, Num t, Ord t)
+      => Arbitrary (SomeSquareMatrix AnyMatrix t) where
+    arbitrary = do
+      Dx (D :: Dim n) <- arbitrary @(Dim (XN 2))
+      case inferKnownBackend @t @'[n] of
+        Dict -> SSM <$> arbitrary @(DataFrame t '[n,n])
+    shrink (SSM df)= SSM <$> shrink df
+
+instance (Arbitrary t, PrimBytes t, Num t, Ord t)
+      => Arbitrary (SomeSquareMatrix NonSingular t) where
+    arbitrary = do
+      SSM (someMat :: DataFrame t '[n, n]) <- arbitrary @(SomeSquareMatrix AnyMatrix t)
+      -- https://en.wikipedia.org/wiki/Diagonally_dominant_matrix
+      return . SSM $
+        iwmap @t @'[n] @'[n] @'[n,n]
+              @t @'[n] @'[n,n]
+          ( \i v ->
+            let s = ewfoldl (\a -> (a +) . abs) 1 v
+            in update i s v
+          ) someMat
+    shrink _ = []
