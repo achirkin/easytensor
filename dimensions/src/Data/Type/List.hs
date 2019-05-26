@@ -33,10 +33,10 @@ module Data.Type.List
   , ConcatList, evStripSuffix, evStripPrefix, evConcat
   ) where
 
-import           Data.Constraint         ((:-) (..), Constraint, Dict (..))
-import           Data.Type.List.Internal (Snoc)
-import           GHC.TypeLits
-import           Unsafe.Coerce           (unsafeCoerce)
+import Data.Constraint         ((:-) (..), Constraint, Dict (..))
+import Data.Type.List.Internal (Snoc)
+import GHC.TypeLits
+import Unsafe.Coerce           (unsafeCoerce)
 
 -- | Empty list, same as @'[]@.
 type Empty = '[]
@@ -54,7 +54,6 @@ type family Head (xs :: [k]) :: k where
 type family Tail (xs :: [k]) :: [k] where
     Tail ('[] :: [k]) = TypeError ( ListError k "Tail: empty type-level list." )
     Tail (_ ': xs)    = xs
-
 
 -- | Extract the last element of a list, which must be non-empty.
 type family Last (xs :: [k]) :: k where

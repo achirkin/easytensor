@@ -60,14 +60,14 @@ module Numeric.Dimensions.Dims
 
 
 import           Data.Constraint
-import           Data.List         (stripPrefix)
-import           GHC.Exts          (Constraint, unsafeCoerce#)
-import qualified Text.Read         as Read
+import           Data.List       (stripPrefix)
+import           GHC.Exts        (Constraint, unsafeCoerce#)
+import qualified Text.Read       as Read
 
-import           Data.Type.List
-import           Numeric.Dim
-import           Numeric.TypedList (RepresentableList (..), TypeList,
-                                    TypedList (..), order, order', types)
+import Data.Type.List
+import Numeric.Dim
+import Numeric.TypedList (RepresentableList (..), TypeList, TypedList (..),
+                          order, order', types)
 
 
 -- | Type-level dimensionality.
