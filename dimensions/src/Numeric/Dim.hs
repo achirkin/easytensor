@@ -1,6 +1,8 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE DeriveDataTypeable    #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE ExplicitNamespaces    #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
@@ -67,13 +69,15 @@ module Numeric.Dim
   ) where
 
 
-import           Numeric.Natural (Natural)
-import           GHC.Base        (Type)
-import           GHC.Exts        (Constraint, Proxy#, proxy#, unsafeCoerce#)
-import           GHC.TypeLits    (ErrorMessage (..), TypeError)
-import           GHC.TypeNats    as TN
+import Data.Data       (Data)
+import GHC.Base        (Type)
+import GHC.Exts        (Constraint, Proxy#, proxy#, unsafeCoerce#)
+import GHC.Generics    (Generic, Generic1)
+import GHC.TypeLits    (ErrorMessage (..), TypeError)
+import GHC.TypeNats    as TN
+import Numeric.Natural (Natural)
 
-import           Data.Constraint
+import Data.Constraint
 
 
 -- | Either known or unknown at compile-time natural number
@@ -104,6 +108,7 @@ type SomeDim = Dim ('XN 0)
 --   if you know the size of some dimensions, but do not know the size
 --   of others, use @XNat@s to represent them.
 newtype Dim (x :: k) = DimSing Word
+  deriving ( Data, Generic, Generic1 )
 {-# COMPLETE D #-}
 {-# COMPLETE Dn, Dx #-}
 {-# COMPLETE Dim #-}

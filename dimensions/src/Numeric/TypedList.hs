@@ -1,6 +1,8 @@
 {-# LANGUAGE AllowAmbiguousTypes       #-}
 {-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE DeriveDataTypeable        #-}
+{-# LANGUAGE DeriveGeneric             #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE FlexibleInstances         #-}
@@ -12,6 +14,7 @@
 {-# LANGUAGE PolyKinds                 #-}
 {-# LANGUAGE Rank2Types                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE StandaloneDeriving        #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE TypeFamilyDependencies    #-}
@@ -57,20 +60,23 @@ module Numeric.TypedList
     , module Data.Type.List
     ) where
 
-import           Control.Arrow      (first)
-import           Data.Constraint    hiding ((***))
-import           Data.Proxy
-import           Data.Type.Equality
-import           Data.Typeable
-import           GHC.Base           (Type)
+import           Control.Arrow   (first)
+import           Data.Constraint hiding ((***))
+import           Data.Data
+import           Data.Void
+import           GHC.Base        (Type)
 import           GHC.Exts
+import           GHC.Generics    hiding (Infix, Prefix)
+import           Type.Reflection (pattern App, withTypeable)
+import qualified Type.Reflection as R
 
-import           Data.Type.List
-import           Numeric.Dim
+import Data.Type.List
+import Numeric.Dim
 
 
 -- | Type-indexed list
 newtype TypedList (f :: (k -> Type)) (xs :: [k]) = TypedList [Any]
+  deriving (Typeable)
 {-# COMPLETE TypeList #-}
 {-# COMPLETE EvList #-}
 {-# COMPLETE U, (:*) #-}
@@ -81,6 +87,63 @@ newtype TypedList (f :: (k -> Type)) (xs :: [k]) = TypedList [Any]
 {-# COMPLETE Empty, Snoc #-}
 {-# COMPLETE Reverse #-}
 
+withTypeableTail :: forall (k :: Type) (ys :: [k]) (x::k) (xs :: [k]) (r :: Type)
+                  . (Typeable ys, ys ~ (x ': xs))
+                 => (Typeable xs => r) -> r
+withTypeableTail f = case R.typeRep @ys of
+  App _ xsRep -> withTypeable xsRep f
+
+instance (Typeable k, Typeable f, Typeable xs, All Data (Map f xs))
+      => Data (TypedList (f :: (k -> Type)) (xs :: [k])) where
+    gfoldl _ z U         = z U
+    gfoldl k z (x :* xs) = withTypeableTail @_ @xs $ z (:*) `k` x `k` xs
+    gunfold k z c = case constrIndex c of
+        1 -> case unsafeEqTypes @[k] @xs @'[] of
+               Dict -> z (unsafeCoerce# U)
+        2 -> case unsafeEqTypes @[k] @xs @(Head xs ': Tail xs) of
+               Dict -> withTypeableTail @_ @xs $ k (k (z (:*)))
+        _ -> error "gunfold"
+    toConstr U        = typedListConstrEmpty
+    toConstr (_ :* _) = typedListConstrCons
+    dataTypeOf _ = typedListDataType
+
+typedListDataType :: DataType
+typedListDataType = mkDataType
+  "Numeric.TypedList.TypedList" [typedListConstrEmpty, typedListConstrCons]
+
+typedListConstrEmpty :: Constr
+typedListConstrEmpty = mkConstr typedListDataType "U" [] Prefix
+
+typedListConstrCons :: Constr
+typedListConstrCons = mkConstr typedListDataType ":*" [] Infix
+
+
+type family TypedListRepLeft (xs :: [k]) :: (Type -> Type) where
+    TypedListRepLeft '[]      = C1 ('MetaCons "U" 'PrefixI 'False) U1
+    TypedListRepLeft (_ ': _) = Rec0 Void
+
+type family TypedListRepRight (f :: (k -> Type)) (xs :: [k]) :: (Type -> Type) where
+    TypedListRepRight _ '[]       = Rec0 Void
+    TypedListRepRight f (x ': xs) = C1 ('MetaCons ":*" ('InfixI 'RightAssociative 5) 'False)
+      ( S1 ('MetaSel 'Nothing 'NoSourceUnpackedness 'NoSourceStrictness 'DecidedLazy)
+           (Rec0 (f x))
+       :*:
+        S1 ('MetaSel 'Nothing 'NoSourceUnpackedness 'NoSourceStrictness 'DecidedLazy)
+           (Rec0 (TypedList f xs))
+      )
+
+instance Generic (TypedList (f :: (k -> Type)) (xs :: [k])) where
+    type Rep (TypedList f xs) = D1
+          ('MetaData "TypedList" "Numeric.TypedList" "dimensions" 'False)
+          ( TypedListRepLeft xs :+: TypedListRepRight f xs  )
+    from U         = M1 (L1 (M1 U1))
+    from (x :* xs) = M1 (R1 (M1 (M1 (K1 x) :*: M1 (K1 xs))))
+    to (M1 (L1 _))
+      | Dict <- unsafeEqTypes @[k] @xs @'[] = U
+    to (M1 (R1 xxs))
+      | Dict <- unsafeEqTypes @[k] @xs @(Head xs ': Tail xs)
+      , M1 (M1 (K1 x) :*: M1 (K1 xs)) <- xxs = x :* xs
+
 
 -- | A list of type proxies
 type TypeList (xs :: [k]) = TypedList Proxy xs
@@ -89,6 +152,27 @@ type TypeList (xs :: [k]) = TypedList Proxy xs
 --   the type it is applied to.
 data Dict1 :: (k -> Constraint) -> k -> Type where
     Dict1 :: c a => Dict1 c a
+    deriving Typeable
+
+instance (Typeable k, Typeable p, Typeable a, p a)
+      => Data (Dict1 (p :: k -> Constraint) (a :: k)) where
+  gfoldl _ z Dict1 = z Dict1
+  toConstr _ = dictConstr
+  gunfold _ z c = case constrIndex c of
+    1 -> z Dict1
+    _ -> error "gunfold"
+  dataTypeOf _ = dictDataType
+
+dictConstr :: Constr
+dictConstr = mkConstr dictDataType "Dict1" [] Prefix
+
+dictDataType :: DataType
+dictDataType = mkDataType "Numeric.TypedList.Dict1" [dictConstr]
+
+deriving instance Eq (Dict1 (p :: k -> Constraint) (a :: k))
+deriving instance Ord (Dict1 (p :: k -> Constraint) (a :: k))
+deriving instance Show (Dict1 (p :: k -> Constraint) (a :: k))
+
 
 -- | A list of dicts for the same constraint over several types.
 type DictList (c :: k -> Constraint) (xs :: [k])
@@ -343,10 +427,10 @@ data PatSnoc f xs where
 
 unsnocTL :: forall f xs . TypedList f xs -> PatSnoc f xs
 unsnocTL (TypedList [])
-  = case (unsafeCoerce# (Dict @(xs ~ xs)) :: Dict (xs ~ '[])) of
+  = case unsafeEqTypes @_ @xs @'[] of
       Dict -> PatSNil
 unsnocTL (TypedList (x:xs))
-  = case (unsafeCoerce# (Dict @(xs ~ xs)) :: Dict (xs ~ (Init xs +: Last xs))) of
+  = case unsafeEqTypes @_ @xs @(Init xs +: Last xs) of
       Dict -> PatSnoc (unsafeCoerce# sy) (unsafeCoerce# y)
   where
     (sy, y) = unsnoc x xs
@@ -362,10 +446,10 @@ data PatCons f xs where
 
 patTL :: forall f xs . TypedList f xs -> PatCons f xs
 patTL (TypedList [])
-  = case (unsafeCoerce# (Dict @(xs ~ xs)) :: Dict (xs ~ '[])) of
+  = case unsafeEqTypes @_ @xs @'[] of
       Dict -> PatCNil
 patTL (TypedList (x : xs))
-  = case (unsafeCoerce# (Dict @(xs ~ xs)) :: Dict (xs ~ (Head xs ': Tail xs))) of
+  = case unsafeEqTypes @_ @xs  @(Head xs ': Tail xs) of
       Dict -> PatCons (unsafeCoerce# x) (unsafeCoerce# xs)
 {-# INLINE patTL #-}
 
@@ -383,3 +467,6 @@ _evList :: forall (k :: Type) (c :: k -> Constraint) (xs :: [k]) (f :: (k -> Typ
         . All c xs => TypedList f xs -> DictList c xs
 _evList U         = U
 _evList (_ :* xs) = case _evList xs of evs -> Dict1 :* evs
+
+unsafeEqTypes :: forall k (a :: k) (b :: k) . Dict (a ~ b)
+unsafeEqTypes = unsafeCoerce# (Dict :: Dict (a ~ a))
