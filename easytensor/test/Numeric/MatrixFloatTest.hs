@@ -77,6 +77,12 @@ prop_inverse (SSM m)
                             show (m, mi, m %* mi, mi %* m)) $
          aeq eye (m %* mi) && aeq eye (mi %* m)
 
+-- TODO: improve lu!
+-- lu factorization is very unstable in some cases
+--
+-- >>> m = unsafeFromFlatList (Dims @'[4,4]) [1,0,1,-2, 0,-1,1,2, 2,-4,2,-2, 4,-8,-2,2 ] :: Mat44f
+-- >>> det m == 0
+-- >>> det (transpose m) == 60
 prop_LU :: SomeSquareMatrix NonSingular TestElem -> Bool
 prop_LU (SSM m)
   = let f = lu m
