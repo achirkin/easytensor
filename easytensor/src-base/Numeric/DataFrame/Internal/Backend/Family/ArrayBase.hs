@@ -568,6 +568,11 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
         {-# NOINLINE go #-}
     {-# INLINE upd# #-}
 
+    arrayContent# (ArrayBase a) = case a of
+      (# x | #)                     -> (# x | #)
+      (# | (# off, arr, cd, _ #) #) -> (# | (# cd, off, arr #) #)
+    {-# INLINE arrayContent# #-}
+
     offsetElems (ArrayBase a) = case a of
       (# _ | #)                  -> 0#
       (# | (# off, _, _, _ #) #) -> off

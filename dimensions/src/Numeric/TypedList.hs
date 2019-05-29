@@ -40,7 +40,8 @@ module Numeric.TypedList
     ( TypedList (U, (:*), Empty, TypeList, EvList, Cons, Snoc, Reverse)
     , RepresentableList (..)
     , Dict1 (..), DictList
-    , TypeList, types, order, order'
+    , TypeList, types, typeables,inferTypeableList
+    , order, order'
     , cons, snoc
     , Numeric.TypedList.reverse
     , Numeric.TypedList.take
@@ -66,7 +67,6 @@ import           Data.Void
 import           GHC.Base        (Type)
 import           GHC.Exts
 import           GHC.Generics    hiding (Infix, Prefix)
-import           Type.Reflection (pattern App, withTypeable)
 import qualified Type.Reflection as R
 
 import Data.Type.List
@@ -86,22 +86,18 @@ newtype TypedList (f :: (k -> Type)) (xs :: [k]) = TypedList [Any]
 {-# COMPLETE Empty, Snoc #-}
 {-# COMPLETE Reverse #-}
 
-withTypeableTail :: forall (k :: Type) (ys :: [k]) (x::k) (xs :: [k]) (r :: Type)
-                  . (Typeable ys, ys ~ (x ': xs))
-                 => (Typeable xs => r) -> r
-withTypeableTail f = case R.typeRep @ys of
-  App _ xsRep -> withTypeable xsRep f
-
+-- | Term-level structure of a @TypedList f xs@ is fully determined by its
+--   type @Typeable xs@.
+--   Thus, @gunfold@ does not use its last argument (@Constr@) at all,
+--   relying on the structure of the type parameter.
 instance (Typeable k, Typeable f, Typeable xs, All Data (Map f xs))
       => Data (TypedList (f :: (k -> Type)) (xs :: [k])) where
     gfoldl _ z U         = z U
-    gfoldl k z (x :* xs) = withTypeableTail @_ @xs $ z (:*) `k` x `k` xs
-    gunfold k z c = case constrIndex c of
-        1 -> case unsafeEqTypes @[k] @xs @'[] of
-               Dict -> z (unsafeCoerce# U)
-        2 -> case unsafeEqTypes @[k] @xs @(Head xs ': Tail xs) of
-               Dict -> withTypeableTail @_ @xs $ k (k (z (:*)))
-        _ -> error "gunfold"
+    gfoldl k z (x :* xs) = case inferTypeableCons @_ @xs of
+      Dict -> z (:*) `k` x `k` xs
+    gunfold k z _ = case typeables @k @xs of
+        U      -> z U
+        _ :* _ -> case inferTypeableCons @_ @xs of Dict -> k (k (z (:*)))
     toConstr U        = typedListConstrEmpty
     toConstr (_ :* _) = typedListConstrCons
     dataTypeOf _ = typedListDataType
@@ -157,9 +153,7 @@ instance (Typeable k, Typeable p, Typeable a, p a)
       => Data (Dict1 (p :: k -> Constraint) (a :: k)) where
   gfoldl _ z Dict1 = z Dict1
   toConstr _ = dictConstr
-  gunfold _ z c = case constrIndex c of
-    1 -> z Dict1
-    _ -> error "gunfold"
+  gunfold _ z _ = z Dict1
   dataTypeOf _ = dictDataType
 
 dictConstr :: Constr
@@ -355,9 +349,35 @@ map k (TypedList xs) = unsafeCoerce# (Prelude.map k' xs)
 --
 --   > case types ts of TypeList -> ...
 --
-types :: TypedList f xs -> TypeList xs
+types :: forall (f :: k -> Type) (xs :: [k]) . TypedList f xs -> TypeList xs
 types (TypedList xs) = unsafeCoerce# (Prelude.map (const Proxy) xs)
 {-# INLINE types #-}
+
+-- | Construct a @TypeList xs@ if there is an instance of @Typeable xs@ around.
+--
+--   This way, you can always bring `RepresentableList` instance into the scope
+--   if you have a `Typeable` instance.
+--
+typeables :: forall (k :: Type) (xs :: [k]) . Typeable xs => TypeList xs
+typeables = case R.typeRep @xs of
+    R.App (R.App _ (_ :: R.TypeRep (n :: k1))) (txs :: R.TypeRep (ns :: k2))
+      -> case (unsafeCoerce# (Dict @(k1 ~ k1, k2 ~ k2))
+                :: Dict (k ~ k1, [k] ~ k2)) of
+          Dict -> case (unsafeCoerce# (Dict @(xs ~ xs))
+                          :: Dict (xs ~ (n ': ns))) of
+            Dict -> Proxy @n :* R.withTypeable txs (typeables @k @ns)
+    R.Con _
+      -> unsafeCoerce# U
+    r -> error ("typeables -- impossible typeRep: " ++ show r)
+{-# INLINE typeables #-}
+
+-- | If all elements of a @TypedList@ are @Typeable@,
+--   then the list of these elements is also @Typeable@.
+inferTypeableList :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+                   . (Typeable k, All Typeable xs)
+                  => TypedList f xs -> Dict (Typeable xs)
+inferTypeableList U         = Dict
+inferTypeableList (_ :* xs) = case inferTypeableList xs of Dict -> Dict
 
 -- | Representable type lists.
 --   Allows getting type information about list structure at runtime.

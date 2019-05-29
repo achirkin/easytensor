@@ -41,23 +41,22 @@ module Numeric.Dimensions.Idxs
   ) where
 
 
-import           Control.Arrow           (first)
-import           Data.Data               (Data)
-import           Foreign.Storable        (Storable)
-import           GHC.Base                (Int (..), Word (..), int2Word#,
-                                          maxInt, plusWord2#, timesWord2#,
-                                          unsafeCoerce#, word2Int#)
-import           GHC.Enum
-import           GHC.Generics            (Generic, Generic1)
+import Control.Arrow    (first)
+import Data.Data        (Data)
+import Foreign.Storable (Storable)
+import GHC.Base         (Int (..), Word (..), int2Word#, maxInt, plusWord2#,
+                         timesWord2#, unsafeCoerce#, word2Int#)
+import GHC.Enum
+import GHC.Generics     (Generic)
 
-import           Numeric.Dimensions.Dims
+import Numeric.Dimensions.Dims
 
 
 -- | This type is used to index a single dimension;
 --   the range of indices is from @0@ to @n-1@.
 --
 newtype Idx n = Idx { unIdx :: Word }
-  deriving ( Data, Generic, Generic1, Integral, Real, Storable, Eq, Ord )
+  deriving ( Data, Generic, Integral, Real, Storable, Eq, Ord )
 
 instance Read (Idx n) where
     readsPrec d = fmap (first Idx) . readsPrec d

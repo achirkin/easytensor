@@ -257,7 +257,7 @@ instance ( KnownDim n, KnownDim m
 instance MatrixTranspose (t :: Type) (xn :: XNat) (xm :: XNat) where
     transpose (XFrame (df :: DataFrame t ns))
       | ((D :: Dim n) :* (D :: Dim m) :* U) <- dims @Nat @ns
-      , Just Dict <- inferPrimElem df
+      , Dict <- inferPrimElem df
       = XFrame (transpose df :: Matrix t m n)
     transpose _ = error "MatrixTranspose/transpose: impossible argument"
 

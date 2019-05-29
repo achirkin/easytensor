@@ -153,18 +153,19 @@ inferBackendInstance = case bSing @t @ds @b of
     BPB -> Dict
 {-# INLINE inferBackendInstance #-}
 
-inferPrimElem :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
-               . (KnownBackend t ds b, b ~ BackendFamily t ds)
-              => b -> Maybe (Dict (PrimBytes t))
-inferPrimElem _ = case bSing @t @ds @b of
-    BSC -> Nothing
-    BF2 -> Just Dict
-    BF3 -> Just Dict
-    BF4 -> Just Dict
-    BD2 -> Just Dict
-    BD3 -> Just Dict
-    BD4 -> Just Dict
-    BPB -> Just Dict
+inferPrimElem :: forall (t :: Type) (d :: Nat) (ds :: [Nat]) (b :: Type)
+               . ( KnownBackend t (d ': ds) b
+                 , b ~ BackendFamily t (d ': ds)
+                 )
+              => b -> Dict (PrimBytes t)
+inferPrimElem _ = case bSing @t @(d ': ds) @b of
+    BF2 -> Dict
+    BF3 -> Dict
+    BF4 -> Dict
+    BD2 -> Dict
+    BD3 -> Dict
+    BD4 -> Dict
+    BPB -> Dict
 
 -- Need a separate function for this one due to a functional dependency
 inferPrimArray

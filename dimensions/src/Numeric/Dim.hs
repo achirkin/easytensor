@@ -40,10 +40,14 @@ module Numeric.Dim
   ( -- * Type level numbers that can be unknown.
     XNat (..), XN, N, XNatType (..)
     -- * Term level dimension
-  , Dim (Dim, D, Dn, Dx), SomeDim
+  , Dim ( Dim, D, Dn, Dx
+        , D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13, D14
+        , D15, D16, D17, D18, D19, D20, D21, D22, D23, D24, D25
+        )
+  , SomeDim
   , KnownDim (..), KnownXNatType (..)
   , MinDim, FixedDim, Compared, SOrdering (..)
-  , dimVal, dimVal', someDimVal
+  , dimVal, dimVal', typeableDim, someDimVal
   , sameDim, sameDim'
   , compareDim, compareDim'
   , constrain, constrainBy, relax
@@ -61,21 +65,23 @@ module Numeric.Dim
     --   their results are subject to integer overflow.
     --   The good side is the confidence that they behave exactly as
     --   their @Word@ counterparts.
-  , plusDim, minusDim, minusDimM, timesDim, powerDim
+  , plusDim, minusDim, minusDimM -- , timesDim, powerDim
     -- * Re-export part of `GHC.TypeNats` for convenience
-  , TN.Nat, TN.CmpNat, type (TN.+), type (TN.-), type (TN.*), type (TN.^)
+  , TN.Nat, TN.CmpNat, type (TN.+), type (TN.-) -- , type (TN.*), type (TN.^)
     -- * Inferring kind of type-level dimension
   , KnownDimKind (..), DimKind (..)
   ) where
 
 
-import Data.Data       (Data)
-import GHC.Base        (Type)
-import GHC.Exts        (Constraint, Proxy#, proxy#, unsafeCoerce#)
-import GHC.Generics    (Generic, Generic1)
-import GHC.TypeLits    (ErrorMessage (..), TypeError)
-import GHC.TypeNats    as TN
-import Numeric.Natural (Natural)
+import           Data.Data       hiding (TypeRep, typeRep, typeRepTyCon)
+import           GHC.Base        (Type)
+import           GHC.Exts        (Constraint, Proxy#, proxy#, unsafeCoerce#)
+import qualified GHC.Generics    as G
+import           GHC.TypeLits    (AppendSymbol, ErrorMessage (..), Symbol,
+                                  TypeError)
+import           GHC.TypeNats    as TN
+import           Numeric.Natural (Natural)
+import           Type.Reflection
 
 import Data.Constraint
 
@@ -108,10 +114,44 @@ type SomeDim = Dim ('XN 0)
 --   if you know the size of some dimensions, but do not know the size
 --   of others, use @XNat@s to represent them.
 newtype Dim (x :: k) = DimSing Word
-  deriving ( Data, Generic, Generic1 )
+  deriving ( Typeable )
 {-# COMPLETE D #-}
 {-# COMPLETE Dn, Dx #-}
 {-# COMPLETE Dim #-}
+
+instance Typeable d => Data (Dim (d :: Nat)) where
+    gfoldl _ z = z
+    gunfold _ z _ = z (typeableDim @d)
+    toConstr _ = dimNatConstr $ dimVal (typeableDim @d)
+    dataTypeOf _ = dimDataType $ dimVal (typeableDim @d)
+
+dimDataType :: Word -> DataType
+dimDataType = mkDataType "Numeric.Dim.Dim" . (:[]) . dimNatConstr
+
+dimNatConstr :: Word -> Constr
+dimNatConstr d = mkConstr (dimDataType d) ("D" ++ show d) [] Prefix
+
+instance KnownDim d => G.Generic (Dim (d :: Nat)) where
+    type Rep (Dim d) = G.D1
+          ('G.MetaData "Dim" "Numeric.Dim" "dimensions" 'False)
+          (G.C1 ('G.MetaCons (AppendSymbol "D" (ShowNat d)) 'G.PrefixI 'False) G.U1)
+    from D = G.M1 (G.M1 G.U1)
+    to _ = dim @_ @d
+
+-- | Convert type-level @Nat@ into a type-level @Symbol@.
+type family ShowNat (n :: Nat) :: Symbol where
+    -- LOL
+    ShowNat 0 = "0"
+    ShowNat 1 = "1"
+    ShowNat 2 = "2"
+    ShowNat 3 = "3"
+    ShowNat 4 = "4"
+    ShowNat 5 = "5"
+    ShowNat 6 = "6"
+    ShowNat 7 = "7"
+    ShowNat 8 = "8"
+    ShowNat 9 = "9"
+    ShowNat d = AppendSymbol (ShowNat (Div d 10)) (ShowNat (Mod d 10))
 
 
 -- | Independently of the kind of type-level number,
@@ -186,7 +226,6 @@ instance KnownXNatType ('XN n) where
     xNatType = XNt
     {-# INLINE xNatType #-}
 
-
 -- | Similar to `natVal` from `GHC.TypeNats`, but returns `Word`.
 dimVal :: Dim (x :: k) -> Word
 dimVal = unsafeCoerce#
@@ -196,6 +235,22 @@ dimVal = unsafeCoerce#
 dimVal' :: forall n . KnownDim n => Word
 dimVal' = unsafeCoerce# (dim @_ @n)
 {-# INLINE dimVal' #-}
+
+-- | Construct a @Dim n@ if there is an instance of @Typeable n@ around.
+typeableDim :: forall (n :: Nat) . Typeable n => Dim n
+{- YES, that's right. TyCon of a Nat is a string containing the Nat value.
+   There simply no place in a TyCon to keep the Nat as a number
+     (check GHC.Types for the definition of TyCon).
+
+  Here is an excert from Data.Typeable.Internal:
+
+  -- | Used to make `'Typeable' instance for things of kind Nat
+  typeNatTypeRep :: KnownNat a => Proxy# a -> TypeRep a
+  typeNatTypeRep p = typeLitTypeRep (show (natVal' p)) tcNat
+
+ -}
+typeableDim = DimSing . read . tyConName . typeRepTyCon $ typeRep @n
+{-# INLINE typeableDim #-}
 
 -- | Friendly error message if `m <= n` constraint is not satisfied.
 type family MinDim (m :: Nat) (n :: Nat) :: Constraint where
@@ -405,13 +460,13 @@ minusDimM (DimSing a) (DimSing b)
   | otherwise = Nothing
 {-# INLINE minusDimM #-}
 
-timesDim :: Dim n -> Dim m -> Dim ((TN.*) n m)
-timesDim (DimSing a) (DimSing b) = unsafeCoerce# (a * b)
-{-# INLINE timesDim #-}
-
-powerDim :: Dim n -> Dim m -> Dim ((TN.^) n m)
-powerDim (DimSing a) (DimSing b) = unsafeCoerce# (a ^ b)
-{-# INLINE powerDim #-}
+-- timesDim :: Dim n -> Dim m -> Dim ((TN.*) n m)
+-- timesDim (DimSing a) (DimSing b) = unsafeCoerce# (a * b)
+-- {-# INLINE timesDim #-}
+--
+-- powerDim :: Dim n -> Dim m -> Dim ((TN.^) n m)
+-- powerDim (DimSing a) (DimSing b) = unsafeCoerce# (a ^ b)
+-- {-# INLINE powerDim #-}
 
 
 
@@ -472,3 +527,126 @@ dimXNEv XNt xn@(DimSing k) = reifyDim dd (f dd xn)
                ) of
       Dict -> PatXN d
 {-# INLINE dimXNEv #-}
+
+-- MOAR PATTERNS
+-- NB: I don't provide D0 and D1 to discourage their use.
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D2 :: forall (n :: Nat) . () => n ~ 2 => Dim n
+pattern D2 <- (sameDim (D @2) -> Just Dict)
+  where D2 = DimSing 2
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D3 :: forall (n :: Nat) . () => n ~ 3 => Dim n
+pattern D3 <- (sameDim (D @3) -> Just Dict)
+  where D3 = DimSing 3
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D4 :: forall (n :: Nat) . () => n ~ 4 => Dim n
+pattern D4 <- (sameDim (D @4) -> Just Dict)
+  where D4 = DimSing 4
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D5 :: forall (n :: Nat) . () => n ~ 5 => Dim n
+pattern D5 <- (sameDim (D @5) -> Just Dict)
+  where D5 = DimSing 5
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D6 :: forall (n :: Nat) . () => n ~ 6 => Dim n
+pattern D6 <- (sameDim (D @6) -> Just Dict)
+  where D6 = DimSing 6
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D7 :: forall (n :: Nat) . () => n ~ 7 => Dim n
+pattern D7 <- (sameDim (D @7) -> Just Dict)
+  where D7 = DimSing 7
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D8 :: forall (n :: Nat) . () => n ~ 8 => Dim n
+pattern D8 <- (sameDim (D @8) -> Just Dict)
+  where D8 = DimSing 8
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D9 :: forall (n :: Nat) . () => n ~ 9 => Dim n
+pattern D9 <- (sameDim (D @9) -> Just Dict)
+  where D9 = DimSing 9
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D10 :: forall (n :: Nat) . () => n ~ 10 => Dim n
+pattern D10 <- (sameDim (D @10) -> Just Dict)
+  where D10 = DimSing 10
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D11 :: forall (n :: Nat) . () => n ~ 11 => Dim n
+pattern D11 <- (sameDim (D @11) -> Just Dict)
+  where D11 = DimSing 11
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D12 :: forall (n :: Nat) . () => n ~ 12 => Dim n
+pattern D12 <- (sameDim (D @12) -> Just Dict)
+  where D12 = DimSing 12
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D13 :: forall (n :: Nat) . () => n ~ 13 => Dim n
+pattern D13 <- (sameDim (D @13) -> Just Dict)
+  where D13 = DimSing 13
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D14 :: forall (n :: Nat) . () => n ~ 14 => Dim n
+pattern D14 <- (sameDim (D @14) -> Just Dict)
+  where D14 = DimSing 14
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D15 :: forall (n :: Nat) . () => n ~ 15 => Dim n
+pattern D15 <- (sameDim (D @15) -> Just Dict)
+  where D15 = DimSing 15
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D16 :: forall (n :: Nat) . () => n ~ 16 => Dim n
+pattern D16 <- (sameDim (D @16) -> Just Dict)
+  where D16 = DimSing 16
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D17 :: forall (n :: Nat) . () => n ~ 17 => Dim n
+pattern D17 <- (sameDim (D @17) -> Just Dict)
+  where D17 = DimSing 17
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D18 :: forall (n :: Nat) . () => n ~ 18 => Dim n
+pattern D18 <- (sameDim (D @18) -> Just Dict)
+  where D18 = DimSing 18
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D19 :: forall (n :: Nat) . () => n ~ 19 => Dim n
+pattern D19 <- (sameDim (D @19) -> Just Dict)
+  where D19 = DimSing 19
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D20 :: forall (n :: Nat) . () => n ~ 20 => Dim n
+pattern D20 <- (sameDim (D @20) -> Just Dict)
+  where D20 = DimSing 20
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D21 :: forall (n :: Nat) . () => n ~ 21 => Dim n
+pattern D21 <- (sameDim (D @21) -> Just Dict)
+  where D21 = DimSing 21
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D22 :: forall (n :: Nat) . () => n ~ 22 => Dim n
+pattern D22 <- (sameDim (D @22) -> Just Dict)
+  where D22 = DimSing 22
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D23 :: forall (n :: Nat) . () => n ~ 23 => Dim n
+pattern D23 <- (sameDim (D @23) -> Just Dict)
+  where D23 = DimSing 23
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D24 :: forall (n :: Nat) . () => n ~ 24 => Dim n
+pattern D24 <- (sameDim (D @24) -> Just Dict)
+  where D24 = DimSing 24
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D25 :: forall (n :: Nat) . () => n ~ 25 => Dim n
+pattern D25 <- (sameDim (D @25) -> Just Dict)
+  where D25 = DimSing 25

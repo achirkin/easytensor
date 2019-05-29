@@ -3,6 +3,7 @@
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE UnboxedSums           #-}
 {-# LANGUAGE UnboxedTuples         #-}
 module Numeric.DataFrame.Internal.Backend.Family.FloatX3 (FloatX3 (..)) where
 
@@ -422,6 +423,9 @@ instance PrimArray Float FloatX3 where
     upd# _ 2# (F# q) (FloatX3# x y _) = FloatX3# x y q
     upd# _ _ _ x                      = x
     {-# INLINE upd# #-}
+
+    arrayContent# x = (# | (# CumulDims [ELEM_N, 1], 0#, getBytes x #) #)
+    {-# INLINE arrayContent# #-}
 
     offsetElems _ = 0#
     {-# INLINE offsetElems #-}

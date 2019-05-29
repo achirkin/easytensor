@@ -42,6 +42,7 @@ module Numeric.Dimensions.Dims
   ( Dims, SomeDims (..), Dimensions (..), XDimensions (..)
   , TypedList ( Dims, XDims, AsXDims, KnownDims
               , U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
+  , typeableDims, inferTypeableDims
   , listDims, someDimsVal, totalDim, totalDim'
   , sameDims, sameDims'
   , compareDims, compareDims'
@@ -63,6 +64,7 @@ import           Data.Constraint
 import           Data.List       (stripPrefix)
 import           GHC.Exts        (Constraint, unsafeCoerce#)
 import qualified Text.Read       as Read
+import           Type.Reflection
 
 import Data.Type.List
 import Numeric.Dim
@@ -186,6 +188,30 @@ instance (XDimensions xs, KnownDim n) => XDimensions (N n ': xs) where
       | unsafeCoerce# d == dimVal' @n = (Dn D :*) <$> constrainDims ds
       | otherwise                     = Nothing
     constrainDims Empty = Nothing
+
+
+-- | Construct a @Dims ds@ if there is an instance of @Typeable ds@ around.
+typeableDims :: forall (ds :: [Nat]) . Typeable ds => Dims ds
+typeableDims = case typeRep @ds of
+    App (App _ (tx :: TypeRep (n :: k1))) (txs :: TypeRep (ns :: k2))
+      -> case (unsafeCoerce# (Dict @(Nat ~ Nat, [Nat] ~ [Nat]))
+                :: Dict (Nat ~ k1, [Nat] ~ k2)) of
+          Dict -> case (unsafeCoerce# (Dict @(ds ~ ds))
+                          :: Dict (ds ~ (n ': ns))) of
+            Dict -> withTypeable tx (typeableDim @n)
+                 :* withTypeable txs (typeableDims @ns)
+    Con _
+      -> unsafeCoerce# U
+    r -> error ("typeableDims -- impossible typeRep: " ++ show r)
+{-# INLINE typeableDims #-}
+
+-- | @Dims (ds :: [Nat])@ is always @Typeable@.
+inferTypeableDims :: forall (ds :: [Nat]) . Dims ds -> Dict (Typeable ds)
+inferTypeableDims U         = Dict
+inferTypeableDims ((D :: Dim d) :* ds)
+  | Dict <- mapDict cls (Dict @(KnownDim d))
+  , Dict <- inferTypeableDims ds
+    = Dict
 
 
 -- | Convert `Dims xs` to a plain haskell list of dimension sizes @O(1)@.

@@ -3,6 +3,7 @@
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE UnboxedSums           #-}
 {-# LANGUAGE UnboxedTuples         #-}
 module Numeric.DataFrame.Internal.Backend.Family.DoubleX3 (DoubleX3 (..)) where
 
@@ -421,6 +422,9 @@ instance PrimArray Double DoubleX3 where
     upd# _ 2# (D# q) (DoubleX3# x y _) = DoubleX3# x y q
     upd# _ _ _ x                       = x
     {-# INLINE upd# #-}
+
+    arrayContent# x = (# | (# CumulDims [ELEM_N, 1], 0#, getBytes x #) #)
+    {-# INLINE arrayContent# #-}
 
     offsetElems _ = 0#
     {-# INLINE offsetElems #-}

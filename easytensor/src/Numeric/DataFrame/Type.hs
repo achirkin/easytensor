@@ -1,6 +1,9 @@
 {-# LANGUAGE AllowAmbiguousTypes        #-}
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
@@ -11,6 +14,7 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
@@ -20,26 +24,40 @@
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE ViewPatterns               #-}
-
+{- |
+  The core @easytensor@ types.
+ -}
 module Numeric.DataFrame.Type
   ( -- * Data types
-    DataFrame (..)
+-- #if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
+--     DataFrame (SingleFrame, MultiFrame, XFrame)
+--   , pattern Z, pattern (:*:)
+--   , pattern S, pattern DF2, pattern DF3, pattern DF4, pattern DF5
+--   , pattern DF6, pattern DF7, pattern DF8, pattern DF9
+-- #else
+    DataFrame ( SingleFrame, MultiFrame, XFrame, (:*:), Z
+              , S, DF2, DF3, DF4, DF5, DF6, DF7, DF8, DF9)
+-- #endif
   , SomeDataFrame (..), DataFrame'
-  , pattern (:*:), pattern Z
+    -- * Flexible assembling and disassembling
+  , PackDF, packDF, unpackDF
     -- * Infer type class instances
   , KnownBackend (), DFBackend, KnownBackends
   , InferKnownBackend (..), inferPrimElem
     -- * Re-exports
   , Dim (..), Idx (..), XNat (..), N, XN, Dims, Idxs, TypedList (..)
   , PrimBytes (), bSizeOf, bAlignOf
-  , PrimArray (), ixOff, unsafeFromFlatList
+  , PrimArray (), ixOff, fromFlatList
   ) where
 
 
+import Data.Data
 import Data.Proxy       (Proxy)
 import Foreign.Storable (Storable (..))
 import GHC.Base
-import GHC.Ptr          (Ptr (..))
+import GHC.Exts
+-- import           GHC.Generics     hiding (Infix, Prefix)
+import GHC.Ptr (Ptr (..))
 
 import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.Dimensions
@@ -47,6 +65,7 @@ import           Numeric.PrimBytes
 import           Numeric.ProductOrd
 import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
 import qualified Numeric.ProductOrd.Partial           as Partial
+import           Numeric.TypedList                    (typeables)
 
 import {-# SOURCE #-} Numeric.DataFrame.Internal.Backend (DFBackend,
                                                           KnownBackend)
@@ -58,11 +77,11 @@ data family DataFrame (t :: l) (xs :: [k])
 
 -- | Single frame
 newtype instance DataFrame (t :: Type) (ns :: [Nat])
-  = SingleFrame { _getDF :: DFBackend t ns }
+  = SingleFrame { getSingleFrame :: DFBackend t ns }
 
 -- | Multiple "columns" of data frames of the same shape
 newtype instance DataFrame (ts :: [Type]) (ns :: [Nat])
-  = MultiFrame { _getDFS ::  TypedList (DataFrame' ns) ts }
+  = MultiFrame ( TypedList (DataFrame' ns) ts )
 
 -- | Data frame with some dimensions missing at compile time.
 --   Pattern-match against its constructor to get a Nat-indexed data frame.
@@ -76,9 +95,11 @@ data instance DataFrame (ts :: l) (xns :: [XNat])
 data SomeDataFrame (t :: l)
   = forall (ns :: [Nat]) . (Dimensions ns, KnownBackends t ns)
   => SomeDataFrame (DataFrame t ns)
+  deriving Typeable
 
 -- | DataFrame with its type arguments swapped.
 newtype DataFrame' (xs :: [k]) (t :: l) = DataFrame' (DataFrame t xs)
+  deriving Typeable
 
 {-# COMPLETE Z, (:*:) #-}
 
@@ -105,7 +126,9 @@ type family KnownBackends (ts :: l) (ns :: [Nat]) :: Constraint where
     KnownBackends (t ': ts :: [Type]) ns =
       (KnownBackend t ns, KnownBackends ts ns)
 
+-- | Allow inferring @KnownBackends@ if you know the dimensions and the element types.
 class InferKnownBackend (t :: k) ds where
+    -- Infer @KnownBackends@ if you know the dimensions and the element types.
     inferKnownBackend :: Dict (KnownBackends t ds)
 
 instance (PrimBytes t, Dimensions ds) => InferKnownBackend (t :: Type) ds where
@@ -122,13 +145,17 @@ instance (RepresentableList ts, All PrimBytes ts, Dimensions ds)
                  Dict -> case go ts of
                    Dict -> Dict
 
-
+-- | All component data frames must satisfy a given constraint.
 type family AllFrames (f :: Type -> Constraint) (ts :: [Type]) (ds :: [Nat])
                                                              :: Constraint where
     AllFrames _ '[] _ = ()
     AllFrames f (t ': ts) ds = (f (DataFrame t ds), AllFrames f ts ds)
 
 
+deriving instance Typeable (DataFrame (t :: l) (xs :: [k]))
+deriving instance ( Data (DataFrame t xs)
+                  , Typeable t, Typeable xs, Typeable k, Typeable l)
+               => Data (DataFrame' (xs :: [k]) (t :: l))
 deriving instance Eq (DFBackend t ds)
                => Eq (DataFrame t ds)
 deriving instance Ord (DFBackend t ds)
@@ -260,9 +287,369 @@ instance All Show ts => Show (SomeDataFrame (ts :: [Type])) where
 deriving instance Read (DFBackend t ds)
                => Read (DataFrame t ds)
 
-
+-- | Evidence that the elements of the DataFrame are PrimBytes.
 inferPrimElem
-  :: forall (t :: Type) (ds :: [Nat])
-   . KnownBackend t ds
-  => DataFrame t ds -> Maybe (Dict (PrimBytes t))
-inferPrimElem = Backend.inferPrimElem . _getDF
+  :: forall (t :: Type) (d :: Nat) (ds :: [Nat])
+   . KnownBackend t (d ': ds)
+  => DataFrame t (d ': ds) -> Dict (PrimBytes t)
+inferPrimElem = Backend.inferPrimElem . getSingleFrame
+
+-- | Construct a DataFrame from a flat list.
+--
+--   The values are filled according to the DataFrame layout: row-by-row and
+--   further from the last dimension (least significant) to the first dimension
+--   (most significant).
+--
+--   If the argument list is shorter than @totalDim@, then the rest of the frame
+--   is padded with a default value (second argument).
+--
+--   If the argument list is longer than @totalDim@, then unused values are dropped.
+--   If you want, you can pass an infinite list as an argument, i.e. the following
+--   is a valid use:
+--
+--   >>> fromFlatList (dims :: Dims '[2,5]) 0 [6,8..]
+--
+fromFlatList :: forall (t :: Type) (ds :: [Nat])
+              . PrimArray t (DataFrame t ds)
+             => Dims ds -> t -> [t] -> DataFrame t ds
+fromFlatList = unsafeFromFlatList
+
+
+
+-- | A scalar DataFrame is just a newtype wrapper on a value.
+pattern S :: t -> DataFrame t '[]
+-- rely on that Scalar is just two times newtype alias to t
+pattern S x <- (unsafeCoerce# -> x)
+  where
+    S = unsafeCoerce#
+{-# COMPLETE S #-}
+
+
+pattern DF2 :: forall (t :: Type) (ds :: [Nat])
+             . (PrimBytes t, Dimensions (2 ': ds))
+            => (Dimensions ds, KnownBackend t ds)
+            => DataFrame t ds -> DataFrame t ds -> DataFrame t (2 ': ds)
+pattern DF2 a1 a2
+    <- (unpackDF @t @2 @ds (#,,#) -> (# a1,a2,Dict #))
+  where DF2 = packDF @t @2 @ds
+{-# COMPLETE DF2 #-}
+
+pattern DF3 :: forall (t :: Type) (ds :: [Nat])
+             . (PrimBytes t, Dimensions (3 ': ds))
+            => (Dimensions ds, KnownBackend t ds)
+            => DataFrame t ds -> DataFrame t ds -> DataFrame t ds
+            -> DataFrame t (3 ': ds)
+pattern DF3 a1 a2 a3
+    <- (unpackDF @t @3 @ds (#,,,#) -> (# a1,a2,a3,Dict #))
+  where DF3 = packDF @t @3 @ds
+{-# COMPLETE DF3 #-}
+
+pattern DF4 :: forall (t :: Type) (ds :: [Nat])
+             . (PrimBytes t, Dimensions (4 ': ds))
+            => (Dimensions ds, KnownBackend t ds)
+            => DataFrame t ds -> DataFrame t ds -> DataFrame t ds -> DataFrame t ds
+            -> DataFrame t (4 ': ds)
+pattern DF4 a1 a2 a3 a4
+    <- (unpackDF @t @4 @ds (#,,,,#) -> (# a1,a2,a3,a4,Dict #))
+  where DF4 = packDF @t @4 @ds
+{-# COMPLETE DF4 #-}
+
+pattern DF5 :: forall (t :: Type) (ds :: [Nat])
+             . (PrimBytes t, Dimensions (5 ': ds))
+            => (Dimensions ds, KnownBackend t ds)
+            => DataFrame t ds -> DataFrame t ds -> DataFrame t ds -> DataFrame t ds
+            -> DataFrame t ds
+            -> DataFrame t (5 ': ds)
+pattern DF5 a1 a2 a3 a4 a5
+    <- (unpackDF @t @5 @ds (#,,,,,#) -> (# a1,a2,a3,a4,a5,Dict #))
+  where DF5 = packDF @t @5 @ds
+{-# COMPLETE DF5 #-}
+
+pattern DF6 :: forall (t :: Type) (ds :: [Nat])
+             . (PrimBytes t, Dimensions (6 ': ds))
+            => (Dimensions ds, KnownBackend t ds)
+            => DataFrame t ds -> DataFrame t ds -> DataFrame t ds -> DataFrame t ds
+            -> DataFrame t ds -> DataFrame t ds
+            -> DataFrame t (6 ': ds)
+pattern DF6 a1 a2 a3 a4 a5 a6
+    <- (unpackDF @t @6 @ds (#,,,,,,#) -> (# a1,a2,a3,a4,a5,a6,Dict #))
+  where DF6 = packDF @t @6 @ds
+{-# COMPLETE DF6 #-}
+
+pattern DF7 :: forall (t :: Type) (ds :: [Nat])
+             . (PrimBytes t, Dimensions (7 ': ds))
+            => (Dimensions ds, KnownBackend t ds)
+            => DataFrame t ds -> DataFrame t ds -> DataFrame t ds -> DataFrame t ds
+            -> DataFrame t ds -> DataFrame t ds -> DataFrame t ds
+            -> DataFrame t (7 ': ds)
+pattern DF7 a1 a2 a3 a4 a5 a6 a7
+    <- (unpackDF @t @7 @ds (#,,,,,,,#) -> (# a1,a2,a3,a4,a5,a6,a7,Dict #))
+  where DF7 = packDF @t @7 @ds
+{-# COMPLETE DF7 #-}
+
+pattern DF8 :: forall (t :: Type) (ds :: [Nat])
+             . (PrimBytes t, Dimensions (8 ': ds))
+            => (Dimensions ds, KnownBackend t ds)
+            => DataFrame t ds -> DataFrame t ds -> DataFrame t ds -> DataFrame t ds
+            -> DataFrame t ds -> DataFrame t ds -> DataFrame t ds -> DataFrame t ds
+            -> DataFrame t (8 ': ds)
+pattern DF8 a1 a2 a3 a4 a5 a6 a7 a8
+    <- (unpackDF @t @8 @ds (#,,,,,,,,#) -> (# a1,a2,a3,a4,a5,a6,a7,a8,Dict #))
+  where DF8 = packDF @t @8 @ds
+{-# COMPLETE DF8 #-}
+
+pattern DF9 :: forall (t :: Type) (ds :: [Nat])
+             . (PrimBytes t, Dimensions (9 ': ds))
+            => (Dimensions ds, KnownBackend t ds)
+            => DataFrame t ds -> DataFrame t ds -> DataFrame t ds -> DataFrame t ds
+            -> DataFrame t ds -> DataFrame t ds -> DataFrame t ds -> DataFrame t ds
+            -> DataFrame t ds
+            -> DataFrame t (9 ': ds)
+pattern DF9 a1 a2 a3 a4 a5 a6 a7 a8 a9
+    <- (unpackDF @t @9 @ds (#,,,,,,,,,#) -> (# a1,a2,a3,a4,a5,a6,a7,a8,a9,Dict #))
+  where DF9 = packDF @t @9 @ds
+{-# COMPLETE DF9 #-}
+
+
+-- | Represent smart constructor functions `packDF` and `unpackDF`.
+type family PackDF (t :: Type) (ds :: [Nat]) (d :: Nat) (r :: Type) :: Type where
+    PackDF _ _  0 r = r
+    PackDF t ds d r = DataFrame t ds -> PackDF t ds (d - 1) r
+
+{- |
+   Takes @d@ arguments of type @DataFrame t ds@ and produce a @DataFrame t (d ': ds)@.
+
+   NB: always use @TypeApplications@ extension with this function to apply all
+       type arguments!
+       Otherwise, a very dumb type family @PackDF@ will not infer the types for you.
+
+   The following example creates a @Matrix Double 12 3@ filled with twelve
+   3D vectors (using @fromInteger@ of @Vector Double 3@):
+
+   >>> packDF @Double @12 @'[3] 1 2 3 4 5 6 7 8 9 10 11 12
+
+  `packDF` and `unpackDF`  together serve as a generic constructor for a DataFrame
+   of an arbitrary (statically known) size.
+
+ -}
+packDF :: forall (t :: Type) (d :: Nat) (ds :: [Nat])
+        . (PrimBytes t, Dimensions (d ': ds))
+       => PackDF t ds d (DataFrame t (d ': ds))
+packDF
+  | d :* Dims <- dims @Nat @(d ': ds)
+  , Dict <- inferKnownBackend @t @(d ': ds)
+  , Dict <- inferKnownBackend @t @ds
+    = go d
+  | otherwise = error "Numeric.DataFrame.Type.packDF: impossible args"
+  where
+    go :: (Dimensions ds, KnownBackend t ds, KnownBackend t (d ': ds))
+       => Dim d
+       -> PackDF t ds d (DataFrame t (d ': ds))
+    go d = recur d getResult
+      where
+        -- number of elements in the frame as Int#
+        els = case dimVal d of W# w -> word2Int# w
+        -- size of a single element in bytes
+        asize = byteSize @(DataFrame t ds) undefined
+
+        getResult :: forall rRep (r :: TYPE rRep)
+                  . (forall s. Int# -> MutableByteArray# s -> State# s -> r)
+                  -> r
+        getResult f = runRW#
+          ( \s0 -> case newByteArray# (asize *# els) s0 of
+               (# s1, mba #) -> f 0# mba s1
+          )
+
+        recur :: forall n . Dim n
+              -> (forall rRep (r :: TYPE rRep)
+                    . (forall s. Int# -> MutableByteArray# s -> State# s -> r ) -> r)
+              -> PackDF t ds n (DataFrame t (d ': ds))
+        recur n f = case minusDimM n (Dim :: Dim 1) of
+          Nothing -> case unsafeEqTypes @Nat @n @0 of
+            Dict -> f (\_ mba s -> case unsafeFreezeByteArray# mba s of
+                                     (# _, ba #) -> fromBytes 0# ba )
+          Just n' -> case unsafeEqTypes @_
+                           @(PackDF t ds n (DataFrame t (d ': ds)))
+                           @(DataFrame t ds -> PackDF t ds (n - 1) (DataFrame t (d ': ds))) of
+            Dict -> \x -> recur n'
+              ( \c -> f (\off mba s -> c (off +# asize) mba (writeBytes mba off x s)) )
+
+
+
+{- |
+  Takes a function (e.g. a constructor) with @d+1@ argument (df1, df2, .. dfd, Dict)
+   and a @DataFrame t (d ': ds)@.
+   Feeds the dataframe elements into that function.
+   For example, you can pass a tuple to this function, and get all dataframe elements
+    (and some dictionaries -- useful evidence to work with element frames)
+
+   NB: always use @TypeApplications@ extension with this function to apply all
+       type arguments!
+       Otherwise, a very dumb type family @PackDF@ will not infer the types for you.
+
+   The following example unpacks a 3D vector
+     (created using @fromInteger@ of @Vector Double 3@)
+   into a 4-tuple with three scalars and one Dict:
+
+   >>> unpackDF @Double @3 @'[] (,,,) 2
+
+  `packDF` and `unpackDF`  together serve as a generic constructor for a DataFrame
+   of an arbitrary (statically known) size.
+
+ -}
+unpackDF :: forall (t :: Type) (d :: Nat) (ds :: [Nat])
+                   (rep :: RuntimeRep) (r :: TYPE rep)
+          . (PrimBytes t, Dimensions (d ': ds))
+         => ( PackDF t ds d (Dict (Dimensions ds, KnownBackend t ds) -> r) )
+         -> DataFrame t (d ': ds) -> r
+unpackDF c
+  | d :* Dims <- dims @Nat @(d ': ds)
+    = unpackDF' (go d)
+  | otherwise = error "Numeric.DataFrame.Type.unpackDF: impossible args"
+  where
+    go :: forall a . (a ~ Dict (Dimensions ds, KnownBackend t ds))
+       => Dim d -> a
+       -> (forall (zRep :: RuntimeRep) (z :: TYPE zRep)
+                  . (Int# -> DataFrame t ds -> z) -> Int# -> z)
+       -> Int# -> r
+    go d a k = recur d (\_ -> c)
+      where
+        recur :: forall n
+               . Dim n
+              -> (Int# -> PackDF t ds n (a -> r))
+              -> Int# -> r
+        recur n f = case minusDimM n (Dim :: Dim 1) of
+          Nothing -> case unsafeEqTypes @Nat @n @0 of
+            Dict -> (`f` a)
+          Just n' -> case unsafeEqTypes @_
+                           @(PackDF t ds n (a -> r))
+                           @(DataFrame t ds -> PackDF t ds (n - 1) (a -> r)) of
+            Dict -> recur n' (k f)
+
+
+packDF' :: forall (t :: Type) (d :: Nat) (ds :: [Nat]) c
+         . (PrimBytes t, Dimensions (d ': ds))
+        => (forall r. c (DataFrame t ds -> r) -> c r)
+        -> (forall r. r -> c r)
+        -> c (DataFrame t (d ': ds))
+packDF' k z
+  | d :* _ <- dims @Nat @(d ': ds)
+    = go d (z (packDF @t @d @ds))
+  | otherwise = error "Numeric.DataFrame.Type.packDF': impossible args"
+  where
+    go :: forall n . Dim n
+       -> c (PackDF t ds n (DataFrame t (d ': ds))) -> c (DataFrame t (d ': ds))
+    go n = case minusDimM n (Dim :: Dim 1) of
+      Nothing -> case unsafeEqTypes @Nat @n @0 of Dict -> id
+      Just n' -> case unsafeEqTypes @_
+                       @(PackDF t ds n (DataFrame t (d ': ds)))
+                       @(DataFrame t ds -> PackDF t ds (n - 1) (DataFrame t (d ': ds))) of
+        Dict -> go n' . k
+
+
+-- Parameter Int# here is an element offset, it should not be used at the call site.
+unpackDF' :: forall (rep :: RuntimeRep)
+                    (t :: Type) (d :: Nat) (ds :: [Nat]) (r :: TYPE rep)
+           . (PrimBytes t, Dimensions (d ': ds))
+          => ( Dict (Dimensions ds, KnownBackend t ds)
+               -> (forall (zRep :: RuntimeRep) (z :: TYPE zRep)
+                          . (Int# -> DataFrame t ds -> z) -> Int# -> z)
+               -> Int# -> r)
+          -> DataFrame t (d ': ds)
+          -> r
+unpackDF' k df
+  | d :* Dims <- dims @Nat @(d ': ds)
+  , Dict <- inferKnownBackend @t @(d ': ds)
+  , Dict <- inferKnownBackend @t @ds
+    = case arrayContent# df of
+        (# x | #)
+          | e <- broadcast x
+            -> let f :: forall (zr :: RuntimeRep) (z :: TYPE zr)
+                      . (Int# -> DataFrame t ds -> z) -> Int# -> z
+                   f consume o = consume o e
+               in k Dict f 0#
+        (# | (# cdims, off, arr #) #)
+          | cd <- CumulDims . tail $ unCumulDims cdims
+          , td <- cdTotalDim# cd
+          , n <- case dimVal d of W# w -> word2Int# w
+            -> let f :: forall (zr :: RuntimeRep) (z :: TYPE zr)
+                      . (Int# -> DataFrame t ds -> z) -> Int# -> z
+                   f consume o = consume (o -# td) (fromElems cd o arr)
+               in k Dict f (off +# td *# (n -# 1#))
+  | otherwise = error "Numeric.DataFrame.Type.unpackDF: impossible args"
+
+
+
+-- Need this for @packDF'@ to make @Int# -> c z@ a proper second-order type
+-- parameterized by the result type.
+newtype Off c z = Off { runOff :: Int# -> c z }
+
+-- | Term-level structure of a @SingleFrame t ds@ is fully determined by its
+--   type dimensionality @Typeable ds@.
+--   Thus, @gunfold@ does not use its last argument (@Constr@) at all,
+--   relying on the structure of the type parameter.
+instance (Data t, PrimBytes t, Typeable ds)
+      => Data (DataFrame (t :: Type) (ds :: [Nat])) where
+    gfoldl k z v = case typeableDims @ds of
+      U | S x <- v
+        -> z S `k` x
+      D :* (Dims :: Dims ns)
+        -> case inferTypeableCons @_ @ds of
+          Dict ->
+            -- PLZ don't ask me how does this work
+            unpackDF' (\_ f -> runOff $ packDF'
+                           (\g -> Off (f (\o -> k (runOff g o))))
+                           (\r -> Off (\_ -> z r))
+                       ) v
+    gunfold k z _ = case typeableDims @ds of
+      U      -> k (z S)
+      D :* (Dims :: Dims ns)
+        -> case inferTypeableCons @_ @ds of Dict -> packDF' k z
+    toConstr _ = case typeableDims @ds of
+      U      -> scalarFrameConstr
+      d :* _ -> singleFrameConstr $ dimVal d
+    dataTypeOf _ = case typeableDims @ds of
+      U      -> dataFrameDataType [scalarFrameConstr]
+      d :* _ -> dataFrameDataType . (:[]). singleFrameConstr $ dimVal d
+
+-- | Term-level structure of a @MultiFrame ts@ is fully determined by its
+--   type @Typeable ts@.
+--   Thus, @gunfold@ does not use its last argument (@Constr@) at all,
+--   relying on the structure of the type parameter.
+instance (AllFrames Data ts ds, Typeable ts, Typeable ds)
+      => Data (DataFrame (ts :: [Type]) (ds :: [Nat])) where
+    gfoldl _ z Z = z Z
+    gfoldl k z (x :*: xs) = case inferTypeableCons @Type @ts of
+      Dict -> z (:*:) `k` x `k` xs
+    gunfold k z _ = case typeables @Type @ts of
+      U      -> z Z
+      _ :* _ -> case inferTypeableCons @_ @ts of Dict -> k (k (z (:*:)))
+    toConstr Z         = multiFrameZConstr
+    toConstr (_ :*: _) = multiFrameConsConstr
+    dataTypeOf _ = dataFrameDataType [multiFrameZConstr, multiFrameConsConstr]
+
+
+dataFrameDataType :: [Constr] -> DataType
+dataFrameDataType = mkDataType "Numeric.DataFrame.Type.DataFrame"
+
+scalarFrameConstr :: Constr
+scalarFrameConstr
+  = mkConstr (dataFrameDataType [scalarFrameConstr]) "S" [] Prefix
+
+singleFrameConstr :: Word -> Constr
+singleFrameConstr d
+  = mkConstr (dataFrameDataType [singleFrameConstr d]) ("DF" ++ show d) [] Prefix
+
+multiFrameZConstr :: Constr
+multiFrameZConstr = mkConstr
+     (dataFrameDataType [multiFrameZConstr, multiFrameConsConstr])
+     "Z" [] Prefix
+
+multiFrameConsConstr :: Constr
+multiFrameConsConstr = mkConstr
+     (dataFrameDataType [multiFrameZConstr, multiFrameConsConstr])
+     ":*:" [] Infix
+
+
+unsafeEqTypes :: forall k (a :: k) (b :: k) . Dict (a ~ b)
+unsafeEqTypes = unsafeCoerce# (Dict :: Dict (a ~ a))

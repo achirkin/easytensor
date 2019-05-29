@@ -5,6 +5,7 @@
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeInType             #-}
 {-# LANGUAGE TypeOperators          #-}
@@ -31,11 +32,14 @@ module Data.Type.List
   , All, Map
     -- * Concatenation and its evidence
   , ConcatList, evStripSuffix, evStripPrefix, evConcat
+    -- * Data.Typeable
+  , inferTypeableCons
   ) where
 
 import Data.Constraint         ((:-) (..), Constraint, Dict (..))
 import Data.Type.List.Internal (Snoc)
 import GHC.TypeLits
+import Type.Reflection
 import Unsafe.Coerce           (unsafeCoerce)
 
 -- | Empty list, same as @'[]@.
@@ -209,3 +213,14 @@ evStripPrefix = Sub $ unsafeCoerce
     , bs   ~ StripPrefix as asbs
     )
   )
+
+-- | Given a @Typeable@ list, infer this constraint for its parts.
+inferTypeableCons :: forall k (ys :: [k]) (x :: k) (xs :: [k])
+                   . (Typeable ys, ys ~ (x ': xs))
+                  => Dict (Typeable x, Typeable xs)
+inferTypeableCons = case typeRep @ys of
+  App _ xRep `App` xsRep
+    -> case ( withTypeable xRep  (Dict @(Typeable x))
+            , withTypeable xsRep (Dict @(Typeable xs))
+            ) of
+        (Dict, Dict) -> Dict
