@@ -12,7 +12,7 @@
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE PatternSynonyms           #-}
 {-# LANGUAGE PolyKinds                 #-}
-{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE RoleAnnotations           #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
@@ -39,10 +39,10 @@
 -----------------------------------------------------------------------------
 
 module Numeric.Dimensions.Dims
-  ( Dims, SomeDims (..), Dimensions (..), XDimensions (..)
+  ( Dims, SomeDims (..), Dimensions (..), BoundedDims, DimsBound
   , TypedList ( Dims, XDims, AsXDims, KnownDims
               , U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
-  , typeableDims, inferTypeableDims
+  , constrainDims, dimsBound, typeableDims, inferTypeableDims
   , listDims, someDimsVal, totalDim, totalDim'
   , sameDims, sameDims'
   , compareDims, compareDims'
@@ -62,6 +62,8 @@ module Numeric.Dimensions.Dims
 
 import           Data.Constraint
 import           Data.List       (stripPrefix)
+import           Data.Proxy      (Proxy)
+import           GHC.Base        (Type)
 import           GHC.Exts        (Constraint, unsafeCoerce#)
 import qualified Text.Read       as Read
 import           Type.Reflection
@@ -84,17 +86,19 @@ type Dims (xs :: [k]) = TypedList Dim xs
 --   instance into the scope.
 --   Thus, you can do arbitrary operations on your dims and use this pattern
 --   at any time to reconstruct the class instance at runtime.
-pattern Dims :: forall ds . () => Dimensions ds => Dims ds
+pattern Dims :: forall (ds :: [Nat]) . () => Dimensions ds => Dims ds
 pattern Dims <- (dimsEv -> Dict)
   where
-    Dims = dims @_ @ds
+    Dims = dims @ds
 
--- | @O(Length ds)@ `Dimensions` and `KnownDim` for each individual dimension.
-pattern KnownDims :: forall ds . ()
-                  => (All KnownDim ds, Dimensions ds) => Dims ds
+-- | @O(Length ds)@ A heavy weapon against all sorts of type errors
+pattern KnownDims :: forall (ds :: [Nat]) . ()
+                  => ( All KnownDim ds, All BoundedDim ds
+                     , RepresentableList ds, Dimensions ds)
+                     => Dims ds
 pattern KnownDims <- (patKDims -> PatKDims)
   where
-    KnownDims = dims @_ @ds
+    KnownDims = dims @ds
 
 
 -- | Pattern-matching against this constructor reveals Nat-kinded list of dims,
@@ -126,68 +130,77 @@ data SomeDims = forall (ns :: [Nat]) . SomeDims (Dims ns)
 
 -- | Put runtime evidence of `Dims` value inside function constraints.
 --   Similar to `KnownDim` or `KnownNat`, but for lists of numbers.
---   Normally, the kind paramater is `Nat` (known dimenionality)
---   or `XNat` (either known or constrained dimensionality).
-class Dimensions (ds :: [k]) where
+--
+--   Note, kind of the @Dimensions@ list is always @Nat@, restricted by
+--   @KnownDim@ being also @Nat@-indexed
+--     (it is impossible to create a unique @KnownDim (XN m)@ instance).
+class Dimensions (ds :: [Nat]) where
     -- | Get dimensionality of a space at runtime,
     --   represented as a list of `Dim`.
     --
-    --   Note, this function is supposed to be used with @TypeApplications@,
-    --   and the @Dimensions@ class has varying kind of the parameter;
-    --   thus, the function has two type paremeters (kind and type of @ds@).
+    --   Note, this function is supposed to be used with @TypeApplications@.
     --   For example, you can type:
     --
     --   >>>:set -XTypeApplications
     --   >>>:set -XDataKinds
-    --   >>>:t dims @_ @'[N 17, N 12]
-    --   dims @_ @'[N 17, N 12] :: Dims '[N 17, N 12]
+    --   >>>:t dims @'[17, 12]
+    --   dims @'[17, 12] :: Dims '[17, 12]
     --
-    --   >>>:t dims @XNat @'[]
-    --   dims @XNat @'[] :: Dims '[]
+    --   >>>:t dims @'[]
+    --   dims @'[] :: Dims '[]
     --
-    --
-    --   >>>:t dims @_ @(Tail '[3,2,5,7])
-    --   dims @_ @(Tail '[3,2,5,7]) :: Dims '[2, 5, 7]
+    --   >>>:t dims @(Tail '[3,2,5,7])
+    --   dims @(Tail '[3,2,5,7]) :: Dims '[2, 5, 7]
     --
     dims :: Dims ds
 
-instance Dimensions ('[] :: [k]) where
+instance Dimensions '[] where
     dims = U
     {-# INLINE dims #-}
 
-instance (KnownDim d, Dimensions ds) => Dimensions (d ': ds :: [k]) where
+instance (KnownDim d, Dimensions ds) => Dimensions (d ': ds) where
     dims = dim :* dims
     {-# INLINE dims #-}
 
--- | Analogous to `Dimensions`, but weaker and more specific (list of `XNat`).
---   This class is used to check if an existing fixed `Dims` satisfy
---   constraints imposed by some interface (e.g. all dimensions are greater than 2).
---   It is weaker than `Dimensions` in that it only requires knowledge of constraints
---   rather than exact dimension values.
-class KnownXNatTypes xds => XDimensions (xds :: [XNat]) where
-    -- | Given a `Dims`, test if its runtime value satisfies constraints imposed by
-    --   @XDimensions@, and returns it back being `XNat`-indexed on success.
-    --
-    --   This function allows to guess safely individual dimension values,
-    --   as well as the length of the dimension list.
-    constrainDims :: Dims (ds :: [k]) -> Maybe (Dims xds)
 
-instance XDimensions '[] where
-    constrainDims U = Just U
-    constrainDims _ = Nothing
-    {-# INLINE constrainDims #-}
+-- | Constrain a list of @Dims@.
+type BoundedDims (xds :: [k]) = (RepresentableList xds, All BoundedDim xds)
+-- | Plural form of `DimBound`
+type family DimsBound (xds :: [k]) :: [Nat] where
+  DimsBound '[] = '[]
+  DimsBound (n ': ns) = DimBound n ': DimsBound ns
 
-instance (XDimensions xs, KnownDim m) => XDimensions (XN m ': xs) where
-    constrainDims (d :* ds) = case constrain d of
-      Nothing -> Nothing
-      Just xd -> (xd :*) <$> constrainDims ds
-    constrainDims Empty = Nothing
 
-instance (XDimensions xs, KnownDim n) => XDimensions (N n ': xs) where
-    constrainDims (d :* ds)
-      | unsafeCoerce# d == dimVal' @n = (Dn D :*) <$> constrainDims ds
-      | otherwise                     = Nothing
-    constrainDims Empty = Nothing
+-- | Given a @Dims ds@, test if its runtime value satisfies constraints imposed by
+--   @All BoundedDim xds@, and returns it back coerced to @Dims xds@ on success.
+--
+--   This function allows to guess safely individual dimension values,
+--   as well as the length of the dimension list.
+--   It returns @Nothing@ if @ds@ and @xds@ have different length or if any
+--   of the values in @ds@ is less than in @xds@.
+constrainDims :: forall (k :: Type) (xds :: [k]) (ds :: [Nat])
+               . BoundedDims xds
+              => Dims ds -> Maybe (Dims xds)
+constrainDims = go (tList @k @xds)
+  where
+    go :: forall (xns :: [k]) (ns :: [Nat])
+        . All BoundedDim xns => TypeList xns -> Dims ns ->  Maybe (Dims xns)
+    go U U = Just U
+    go ((_ :: Proxy xn) :* xns) (d :* ns)
+           = (:*) <$> constrain @k @xn d <*> go xns ns
+    go _ _ = Nothing
+
+-- | Plural form of `dimBound`
+dimsBound :: forall (k :: Type) (xds :: [k])
+           . BoundedDims xds => Dims (DimsBound xds)
+dimsBound = go (tList @k @xds)
+  where
+    go :: forall (xns :: [k])
+        . All BoundedDim xns => TypeList xns -> Dims (DimsBound xds)
+    go U = unsafeCoerce# U
+    go ((_ :: Proxy xn) :* xns)
+         = unsafeCoerce# (dimBound @k @xn :* go xns)
+
 
 
 -- | Construct a @Dims ds@ if there is an instance of @Typeable ds@ around.
@@ -215,7 +228,10 @@ inferTypeableDims ((D :: Dim d) :* ds)
 
 
 -- | Convert `Dims xs` to a plain haskell list of dimension sizes @O(1)@.
-listDims :: Dims xs -> [Word]
+--
+--   Note, for @XNat@-indexed list it returns actual content dimensions,
+--   not the constraint numbers (@XN m@)
+listDims :: forall (k :: Type) (xs :: [k]) . Dims xs -> [Word]
 listDims = unsafeCoerce#
 {-# INLINE listDims #-}
 
@@ -226,29 +242,32 @@ someDimsVal = SomeDims . unsafeCoerce#
 {-# INLINE someDimsVal #-}
 
 -- | Product of all dimension sizes @O(Length xs)@.
-totalDim :: Dims xs -> Word
+totalDim :: forall (k :: Type) (xs :: [k]) . Dims xs -> Word
 totalDim = product . listDims
 {-# INLINE totalDim #-}
 
 -- | Product of all dimension sizes @O(Length xs)@.
-totalDim' :: forall xs . Dimensions xs => Word
-totalDim' = totalDim (dims @_ @xs)
+totalDim' :: forall (xs :: [Nat]) . Dimensions xs => Word
+totalDim' = totalDim (dims @xs)
 {-# INLINE totalDim' #-}
 
 -- | Get XNat-indexed dims given their fixed counterpart.
-xDims :: FixedDims xns ns => Dims ns -> Dims xns
+xDims :: forall (xns :: [XNat]) (ns :: [Nat])
+       . FixedDims xns ns => Dims ns -> Dims xns
 xDims = unsafeCoerce#
 {-# INLINE xDims #-}
 
 -- | Get XNat-indexed dims given their fixed counterpart.
-xDims' :: forall xns ns . (FixedDims xns ns, Dimensions ns) => Dims xns
-xDims' = xDims @xns (dims @Nat @ns)
+xDims' :: forall (xns :: [XNat]) (ns :: [Nat])
+        . (FixedDims xns ns, Dimensions ns) => Dims xns
+xDims' = xDims @xns (dims @ns)
 {-# INLINE xDims' #-}
 
 -- | Drop the given prefix from a Dims list.
 --   It returns Nothing if the list did not start with the prefix given,
 --    or Just the Dims after the prefix, if it does.
-stripPrefixDims :: Dims (xs :: [Nat]) -> Dims (ys :: [Nat])
+stripPrefixDims :: forall (xs :: [Nat]) (ys :: [Nat])
+                 . Dims xs -> Dims ys
                 -> Maybe (Dims (StripPrefix xs ys))
 stripPrefixDims = unsafeCoerce# (stripPrefix :: [Word] -> [Word] -> Maybe [Word])
 {-# INLINE stripPrefixDims #-}
@@ -256,7 +275,8 @@ stripPrefixDims = unsafeCoerce# (stripPrefix :: [Word] -> [Word] -> Maybe [Word]
 -- | Drop the given suffix from a Dims list.
 --   It returns Nothing if the list did not end with the suffix given,
 --    or Just the Dims before the suffix, if it does.
-stripSuffixDims :: Dims (xs :: [Nat]) -> Dims (ys :: [Nat])
+stripSuffixDims :: forall (xs :: [Nat]) (ys :: [Nat])
+                 . Dims xs -> Dims ys
                 -> Maybe (Dims (StripSuffix xs ys))
 stripSuffixDims = unsafeCoerce# (stripSuffix :: [Word] -> [Word] -> Maybe [Word])
 {-# INLINE stripSuffixDims #-}
@@ -275,11 +295,8 @@ stripSuffix suf whole = go pref whole
 
 -- | We either get evidence that this function was instantiated with the
 --   same type-level Dimensions, or 'Nothing' @O(Length xs)@.
---
---   Note, this function works on @Nat@-indexed dimensions only,
---   because @Dims '[XN x]@ does not have runtime evidence to infer @x@
---   and `KnownDim x` does not imply `KnownDim (XN x)`.
-sameDims :: Dims (as :: [Nat]) -> Dims (bs :: [Nat]) -> Maybe (Dict (as ~ bs))
+sameDims :: forall (as :: [Nat]) (bs :: [Nat])
+          . Dims as -> Dims bs -> Maybe (Dict (as ~ bs))
 sameDims as bs
   | listDims as == listDims bs
     = Just (unsafeCoerce# (Dict @('[] ~ '[])))
@@ -288,10 +305,10 @@ sameDims as bs
 
 -- | We either get evidence that this function was instantiated with the
 --   same type-level Dimensions, or 'Nothing' @O(Length xs)@.
-sameDims' :: forall (as :: [Nat]) (bs :: [Nat]) p q
+sameDims' :: forall (as :: [Nat]) (bs :: [Nat]) (p :: [Nat] -> Type) (q :: [Nat] -> Type)
            . (Dimensions as, Dimensions bs)
           => p as -> q bs -> Maybe (Dict (as ~ bs))
-sameDims' _ _ = sameDims (dims @Nat @as) (dims @Nat @bs)
+sameDims' _ _ = sameDims (dims @as) (dims @bs)
 {-# INLINE sameDims' #-}
 
 -- | Compare dimensions by their size in lexicorgaphic order
@@ -302,7 +319,8 @@ sameDims' _ _ = sameDims (dims @Nat @as) (dims @Nat @bs)
 --
 --   Note: `CmpNats` forces type parameters to kind `Nat`;
 --         if you want to compare unknown `XNat`s, use `Ord` instance of `Dims`.
-compareDims :: Dims as -> Dims bs -> SOrdering (CmpNats as bs)
+compareDims :: forall (as :: [Nat]) (bs :: [Nat])
+             . Dims as -> Dims bs -> SOrdering (CmpNats as bs)
 compareDims a b
   = case unsafeCoerce# (compare :: [Word] -> [Word] -> Ordering) a b of
     LT -> unsafeCoerce# SLT
@@ -315,22 +333,25 @@ compareDims a b
 --   (the first dimension is the most significant one).
 --
 --   This is the same @compare@ rule, as for `Idxs` and normal Haskell lists.
-compareDims' :: forall as bs p q
+compareDims' :: forall (as :: [Nat]) (bs :: [Nat]) (p :: [Nat] -> Type) (q :: [Nat] -> Type)
               . (Dimensions as, Dimensions bs)
              => p as -> q bs -> SOrdering (CmpNats as bs)
-compareDims' _ _ = compareDims (dims @_ @as) (dims @_ @bs)
+compareDims' _ _ = compareDims (dims @as) (dims @bs)
 {-# INLINE compareDims' #-}
 
 -- | Similar to `const` or `asProxyTypeOf`;
 --   to be used on such implicit functions as `dim`, `dimMax`, etc.
-inSpaceOf :: a ds -> b ds -> a ds
-inSpaceOf x _ = x
+inSpaceOf :: forall (ds :: [Nat]) (p :: [Nat] -> Type) (q :: [Nat] -> Type)
+           . p ds -> q ds -> p ds
+inSpaceOf = const
 {-# INLINE inSpaceOf #-}
 
 -- | Similar to `asProxyTypeOf`,
 --   Give a hint to type checker to fix the type of a function argument.
-asSpaceOf :: a ds -> (b ds -> c) -> (b ds -> c)
-asSpaceOf _ = id
+asSpaceOf :: forall (ds :: [Nat])
+                    (p :: [Nat] -> Type) (q :: [Nat] -> Type) (r :: Type)
+           . p ds -> (q ds -> r) -> (q ds -> r)
+asSpaceOf = const id
 {-# INLINE asSpaceOf #-}
 
 
@@ -413,12 +434,12 @@ type KnownXNatTypes xns = All KnownXNatType xns
 --   to create an instance of `Dimensions` typeclass at runtime.
 --   The trick is taken from Edward Kmett's reflection library explained
 --   in https://www.schoolofhaskell.com/user/thoughtpolice/using-reflection
-reifyDims :: forall r ds . Dims ds -> (Dimensions ds => r) -> r
+reifyDims :: forall (r :: Type) (ds :: [Nat]) . Dims ds -> (Dimensions ds => r) -> r
 reifyDims ds k = unsafeCoerce# (MagicDims k :: MagicDims ds r) ds
 {-# INLINE reifyDims #-}
-newtype MagicDims ds r = MagicDims (Dimensions ds => r)
+newtype MagicDims (ds :: [Nat]) (r :: Type) = MagicDims (Dimensions ds => r)
 
-dimsEv :: Dims ds -> Dict (Dimensions ds)
+dimsEv :: forall (ds :: [Nat]) . Dims ds -> Dict (Dimensions ds)
 dimsEv ds = reifyDims ds Dict
 {-# INLINE dimsEv #-}
 
@@ -428,7 +449,8 @@ data PatXDims (xns :: [XNat])
   . (FixedDims xns ns, Dimensions ns) => PatXDims (Dims ns)
 
 
-patXDims :: All KnownXNatType xns => Dims xns -> PatXDims xns
+patXDims :: forall (xns :: [XNat])
+          . All KnownXNatType xns => Dims xns -> PatXDims xns
 patXDims U = PatXDims U
 patXDims (Dn n :* xns) = case patXDims xns of
   PatXDims ns -> PatXDims (n :* ns)
@@ -442,7 +464,7 @@ data PatAsXDims (ns :: [Nat])
   => PatAsXDims (Dims (AsXDims ns))
 
 
-patAsXDims :: Dims ns -> PatAsXDims ns
+patAsXDims :: forall (ns :: [Nat]) . Dims ns -> PatAsXDims ns
 patAsXDims U = PatAsXDims U
 patAsXDims (n@D :* ns) = case patAsXDims ns of
   PatAsXDims xns -> PatAsXDims (Dn n :* xns)
@@ -450,12 +472,12 @@ patAsXDims (n@D :* ns) = case patAsXDims ns of
 
 
 
-data PatKDims (ns :: [k])
-  = (All KnownDim ns, Dimensions ns) => PatKDims
+data PatKDims (ns :: [Nat])
+  = (All KnownDim ns, All BoundedDim ns, RepresentableList ns, Dimensions ns) => PatKDims
 
 
-patKDims :: Dims ns -> PatKDims ns
+patKDims :: forall (ns :: [Nat]) . Dims ns -> PatKDims ns
 patKDims U = PatKDims
-patKDims (Dim :* ns) = case patKDims ns of
+patKDims (D :* ns) = case patKDims ns of
   PatKDims -> PatKDims
 {-# INLINE patKDims #-}

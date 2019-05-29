@@ -72,7 +72,7 @@ class ( ConcatList as bs asbs
                  -> DataFrame t asbs -> DataFrame t bs
     indexOffset# off df = case uniqueOrCumulDims df of
       Left a      -> broadcast a
-      Right steps -> fromElems (dropPref (dims @_ @as) steps) (offsetElems df +# off) (getBytes df)
+      Right steps -> fromElems (dropPref (dims @as) steps) (offsetElems df +# off) (getBytes df)
     {-# INLINE [1] indexOffset# #-}
 
     -- | Unsafely update a sub-dataframe by its primitive element offset.
@@ -86,7 +86,7 @@ class ( ConcatList as bs asbs
     updateOffset# :: Int# -- ^ Prim element offset
                   -> DataFrame t bs -> DataFrame t asbs -> DataFrame t asbs
     updateOffset# off x df
-      | steps <- getSteps (dims @_ @asbs) df
+      | steps <- getSteps (dims @asbs) df
       , elemBS <- byteSize @t undefined = case runRW#
         ( \s0 -> case newByteArray# (cdTotalDim# steps *# elemBS) s0 of
           (# s1, mba #) -> unsafeFreezeByteArray# mba
@@ -101,13 +101,13 @@ class ( ConcatList as bs asbs
     index i df = case uniqueOrCumulDims df of
       Left a      -> broadcast a
       Right steps -> case cdIx steps i of
-        I# off -> fromElems (dropPref (dims @_ @as) steps) (offsetElems df +# off) (getBytes df)
+        I# off -> fromElems (dropPref (dims @as) steps) (offsetElems df +# off) (getBytes df)
     {-# INLINE [1] index #-}
 
     -- | Set a new value to an element
     update :: Idxs as -> DataFrame t bs -> DataFrame t asbs -> DataFrame t asbs
     update i x df
-      | steps <- getSteps (dims @_ @asbs) df
+      | steps <- getSteps (dims @asbs) df
       , I# off <- cdIx steps i
       , elemBS <- byteSize @t undefined = case runRW#
         ( \s0 -> case newByteArray# (cdTotalDim# steps *# elemBS) s0 of
@@ -125,9 +125,9 @@ class ( ConcatList as bs asbs
            -> DataFrame s asbs' -> DataFrame t asbs
     ewmap f df
       | bsizeT    <- byteSize @t undefined
-      , stepsAS   <- cumulDims $ dims @_ @as
-      , stepsBS   <- cumulDims $ dims @_ @bs
-      , stepsBS'  <- cumulDims $ dims @_ @bs'
+      , stepsAS   <- cumulDims $ dims @as
+      , stepsBS   <- cumulDims $ dims @bs
+      , stepsBS'  <- cumulDims $ dims @bs'
       , stepsASBS <- stepsAS <> stepsBS
       , lenAS     <- cdTotalDim# stepsAS
       , lenBS     <- cdTotalDim# stepsBS
@@ -153,9 +153,10 @@ class ( ConcatList as bs asbs
            -> DataFrame s asbs' -> DataFrame t asbs
     iwmap f df
       | bsizeT    <- byteSize @t undefined
-      , stepsAS   <- cumulDims $ dims @_ @as
-      , stepsBS   <- cumulDims $ dims @_ @bs
-      , stepsBS'  <- cumulDims $ dims @_ @bs'
+      , as@KnownDims <- dims @as
+      , stepsAS   <- cumulDims as
+      , stepsBS   <- cumulDims $ dims @bs
+      , stepsBS'  <- cumulDims $ dims @bs'
       , stepsASBS <- stepsAS <> stepsBS
       , lenAS     <- cdTotalDim# stepsAS
       , lenBS     <- cdTotalDim# stepsBS
@@ -170,6 +171,7 @@ class ( ConcatList as bs asbs
           ( \s0 -> case newByteArray# lenASBSB s0 of
             (# s1, mba #) -> unsafeFreezeByteArray# mba ( go mba [minBound..maxBound] 0# 0# s1 )
           ) of (# _, r #) -> fromElems stepsASBS 0# r
+    iwmap _ _ = error "iwmap: impossible args"
     {-# INLINE [1] iwmap #-}
 
     -- | Generate a DataFrame by repeating an element
@@ -177,7 +179,7 @@ class ( ConcatList as bs asbs
     ewgen df = case uniqueOrCumulDims df of
       Left a -> broadcast a
       Right stepsBS
-        | stepsAS <- cumulDims $ dims @_ @as
+        | stepsAS <- cumulDims $ dims @as
         , stepsASBS <- stepsAS <> stepsBS
         , elS       <- byteSize @t undefined
         , lenBSB    <- cdTotalDim# stepsBS *# elS
@@ -197,8 +199,9 @@ class ( ConcatList as bs asbs
     -- | Generate a DataFrame by iterating a function (index -> element)
     iwgen :: (Idxs as -> DataFrame t bs) -> DataFrame t asbs
     iwgen f
-        | stepsAS <- cumulDims $ dims @_ @as
-        , stepsBS <- cumulDims $ dims @_ @bs
+        | as@KnownDims <- dims @as
+        , stepsAS <- cumulDims as
+        , stepsBS <- cumulDims $ dims @bs
         , stepsASBS <- stepsAS <> stepsBS
         , elS       <- byteSize @t undefined
         , lenBSB    <- cdTotalDim# stepsBS *# elS
@@ -210,6 +213,7 @@ class ( ConcatList as bs asbs
               ( \s0 -> case newByteArray# lenASBSB s0 of
                 (# s1, mba #) -> unsafeFreezeByteArray# mba ( go mba [minBound..maxBound] 0# s1 )
               ) of (# _, r #) -> fromElems stepsASBS 0# r
+    iwgen _ = error "iwgen: impossible args"
     {-# INLINE [1] iwgen #-}
 
     -- | Left-associative fold of a DataFrame.
@@ -224,7 +228,7 @@ class ( ConcatList as bs asbs
             go n x = go (n-1) $! f x b
         in  go (totalDim' @as) x0
       Right stepsASBS
-        | stepsBS <- dropPref (dims @_ @as) stepsASBS
+        | stepsBS <- dropPref (dims @as) stepsASBS
         , lenBS   <- cdTotalDim# stepsBS
         , lenASBS <- cdTotalDim# stepsASBS
           -> let go sourceOffE x
@@ -239,19 +243,21 @@ class ( ConcatList as bs asbs
     --   but you'd better make sure that the function is strict enough to not
     --   produce memory leaks deeply inside the result data type.
     iwfoldl :: (Idxs as -> b -> DataFrame t bs -> b) -> b -> DataFrame t asbs -> b
-    iwfoldl f x0 df = case uniqueOrCumulDims df of
+    iwfoldl f x0 df
+      | as@KnownDims <- dims @as = case uniqueOrCumulDims df of
       Left a ->
         let b = broadcast a
             go [] x     = x
             go (i:is) x = go is $! f i x b
         in  go [minBound..maxBound] x0
       Right stepsASBS
-        | stepsBS <- dropPref (dims @_ @as) stepsASBS
+        | stepsBS <- dropPref as stepsASBS
         , lenBS   <- cdTotalDim# stepsBS
           -> let go [] _ x = x
                  go (i:is) sourceOffE x
                     = go is (sourceOffE +# lenBS) $! f i x (indexOffset# sourceOffE df)
              in  go [minBound..maxBound] 0# x0
+    iwfoldl _ _ _ = error "iwfoldl: impossible args"
 
     -- | Right-associative fold of a DataFrame
     --   The fold is strict, so accumulater is evaluated to WHNF;
@@ -265,7 +271,7 @@ class ( ConcatList as bs asbs
             go n x = go (n-1) $! f b x
         in  go (totalDim' @as) x0
       Right stepsASBS
-        | stepsBS <- dropPref (dims @_ @as) stepsASBS
+        | stepsBS <- dropPref (dims @as) stepsASBS
         , lenBS   <- cdTotalDim# stepsBS
         , lenASBS <- cdTotalDim# stepsASBS
           -> let go sourceOffE x
@@ -280,20 +286,22 @@ class ( ConcatList as bs asbs
     --   but you'd better make sure that the function is strict enough to not
     --   produce memory leaks deeply inside the result data type.
     iwfoldr :: (Idxs as -> DataFrame t bs -> b -> b) -> b -> DataFrame t asbs -> b
-    iwfoldr f x0 df = case uniqueOrCumulDims df of
+    iwfoldr f x0 df
+      | as@KnownDims <- dims @as = case uniqueOrCumulDims df of
       Left a ->
         let b = broadcast a
             go [] x     = x
             go (i:is) x = go is $! f i b x
         in  go [maxBound, pred maxBound .. minBound] x0
       Right stepsASBS
-        | stepsBS <- dropPref (dims @_ @as) stepsASBS
+        | stepsBS <- dropPref as stepsASBS
         , lenBS   <- cdTotalDim# stepsBS
         , lenASBS <- cdTotalDim# stepsASBS
           -> let go [] _ x = x
                  go (i:is) sourceOffE x
                     = go is (sourceOffE -# lenBS) $! f i (indexOffset# sourceOffE df) x
              in  go [maxBound, pred maxBound .. minBound] (lenASBS -# lenBS) x0
+    iwfoldr _ _ _ = error "iwfoldr: impossible args"
 
     -- | Apply an applicative functor on each element (Lens-like traversal)
     elementWise :: forall (s :: Type) (bs' :: [Nat]) (asbs' :: [Nat]) (f :: Type -> Type)
@@ -315,7 +323,7 @@ class ( ConcatList as bs asbs
               -> DataFrame s asbs' -> f (DataFrame t asbs)
     indexWise f df = runWithState <$> iwfoldl applyF (pure initialState) df
       where
-        steps = cumulDims $ dims @_ @asbs
+        steps = cumulDims $ dims @asbs
         -- run a state-based continuation within RW
         runWithState :: ( State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))
                      -> DataFrame t asbs

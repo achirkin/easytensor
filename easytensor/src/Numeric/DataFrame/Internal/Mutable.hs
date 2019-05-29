@@ -55,7 +55,7 @@ newDataFrame# :: forall t (ns :: [Nat]) s
                . ( PrimBytes t, Dimensions ns)
               => State# s -> (# State# s, MDataFrame s t ns #)
 newDataFrame# s0
-    | steps <- cumulDims $ dims @_ @ns
+    | steps <- cumulDims $ dims @ns
     , n <- cdTotalDim# steps
     , (# s1, mba #) <- newByteArray# (n *# byteSize @t undefined) s0
     = (# s1,  MDataFrame# 0# steps mba #)
@@ -66,7 +66,7 @@ newPinnedDataFrame# :: forall t (ns :: [Nat]) s
                      . ( PrimBytes t, Dimensions ns)
                     => State# s -> (# State# s, MDataFrame s t ns #)
 newPinnedDataFrame# s0
-    | steps <- cumulDims $ dims @_ @ns
+    | steps <- cumulDims $ dims @ns
     , n <- cdTotalDim# steps
     , (# s1, mba #)  <- newAlignedPinnedByteArray#
         (n *# byteSize @t undefined)
@@ -184,7 +184,7 @@ thawDataFrame# df s0
     | arrA  <- getBytes df
     , boff  <- byteOffset df
     , bsize <- byteSize df
-    , steps <- cumulDims $ dims @_ @ns
+    , steps <- cumulDims $ dims @ns
     , (# s1, arrM #) <- newByteArray# bsize s0
     , s2 <- copyByteArray# arrA boff arrM 0# bsize s1
     = (# s2, MDataFrame# 0# steps arrM #)
@@ -200,7 +200,7 @@ thawPinDataFrame# df s0
     | arrA  <- getBytes df
     , boff  <- byteOffset df
     , bsize <- byteSize df
-    , steps <- cumulDims $ dims @_ @ns
+    , steps <- cumulDims $ dims @ns
     , (# s1, arrM #) <- newAlignedPinnedByteArray# bsize (byteAlign df) s0
     , s2 <- copyByteArray# arrA boff arrM 0# bsize s1
     = (# s2, MDataFrame# 0# steps arrM #)
@@ -216,7 +216,7 @@ unsafeThawDataFrame# df s0
     | elS  <- byteSize @t undefined
     , arrA <- getBytes df
     , boff <- byteOffset df
-    , steps <- cumulDims $ dims @_ @ns
+    , steps <- cumulDims $ dims @ns
     = (# s0
        , MDataFrame# (quotInt# boff elS) steps (unsafeCoerce# arrA)
        #)

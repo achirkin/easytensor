@@ -7,7 +7,7 @@
 {-# LANGUAGE MagicHash                 #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE PolyKinds                 #-}
-{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
@@ -102,7 +102,7 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
           0# -> ArrayBase (# | (#  offN, ba, steps, Dict #) #)
           _  -> case cdTotalDim# steps of n -> go (tbs *# n)
       where
-        steps = cumulDims $ dims @_ @ds
+        steps = cumulDims $ dims @ds
         go bsize = case runRW#
          ( \s0 -> case ( if isTrue# (isByteArrayPinned# ba)
                          then newAlignedPinnedByteArray# bsize
@@ -117,7 +117,7 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
     {-# INLINE fromBytes #-}
 
     readBytes mba bOff s0
-      | steps <- cumulDims $ dims @_ @ds
+      | steps <- cumulDims $ dims @ds
       , n <- cdTotalDim# steps
       , tbs <- byteSize (undefined :: t)
       , bsize <- tbs *# n
@@ -137,7 +137,7 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
     {-# INLINE writeBytes #-}
 
     readAddr addr s0
-      | steps <- cumulDims $ dims @_ @ds
+      | steps <- cumulDims $ dims @ds
       , n <- cdTotalDim# steps
       , tbs <- byteSize (undefined :: t)
       , bsize <- tbs *# n
@@ -170,7 +170,7 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
     {-# INLINE byteOffset #-}
 
     indexArray ba off
-      | steps <- cumulDims $ dims @_ @ds
+      | steps <- cumulDims $ dims @ds
       , n <- cdTotalDim# steps
       = ArrayBase (# | (# off *# n, ba, steps, Dict #) #)
     {-# INLINE indexArray #-}
@@ -363,19 +363,19 @@ instance (Show t, Dimensions ds)
       => Show (ArrayBase t ds) where
     showsPrec _ = pprDF id ds ds
       where
-        ds = dims @_ @ds
+        ds = dims @ds
 
 pprDF :: forall t (bs :: [Nat]) (asbs :: [Nat])
        . Show t
       => (Idxs bs -> Idxs asbs) -> Dims bs -> Dims asbs -> ArrayBase t asbs -> ShowS
 pprDF u U _ x = showString "{ " . shows (ix (u U) x) . showString " }"
-pprDF u (Dim :* U) _ x
+pprDF u (D :* U) _ x
   = showChar '{'
   . drop 1
   . foldr (\i s -> showString ", " . shows (ix (u i) x) . s)
       (showString " }")
       [minBound .. maxBound]
-pprDF u bs@((n@Dim :: Dim n) :* (m@Dim :: Dim m) :* U) asbs x
+pprDF u bs@((n@D :: Dim n) :* (m@D :: Dim m) :* U) asbs x
   = maybeDimSize
   . showChar '{'
   . drop 2
@@ -397,7 +397,7 @@ pprDF u bs@((n@Dim :: Dim n) :* (m@Dim :: Dim m) :* U) asbs x
       _ -> showChar '('
          . showString (drop 6 . dropE4 . show . u $ 0 :* 0 :* U)
          . showString "i,j):\n"
-pprDF u ((Dim :: Dim n) :* ns@(Dims :: Dims ns)) asbs x
+pprDF u ((D :: Dim n) :* ns@(Dims :: Dims ns)) asbs x
   | Just Dims <- stripSuffixDims ns asbs
   = drop 1
   . foldr (\i s -> showChar '\n' . pprDF (u . (i :*)) ns asbs x . s) id [minBound..maxBound]

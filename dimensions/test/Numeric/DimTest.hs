@@ -6,7 +6,7 @@
 {-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE KindSignatures            #-}
 {-# LANGUAGE PolyKinds                 #-}
-{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TemplateHaskell           #-}
 {-# LANGUAGE TypeApplications          #-}
@@ -23,10 +23,10 @@
 --
 module Numeric.DimTest (runTests) where
 
-import           Data.Constraint (Dict (..))
-import           Test.QuickCheck (quickCheckAll)
+import Data.Constraint (Dict (..))
+import Test.QuickCheck (quickCheckAll)
 
-import           Numeric.Dim
+import Numeric.Dim
 
 
 -- | Try inference of type-level natural values via term-level binary functions.
@@ -71,8 +71,8 @@ prop_minusDim a' b'
   | a <- max a' b'
   , b <- min a' b'
   , xda <- someDimVal a -- this is an unknown (Dim (XN 0))
-  , Dx db <- someDimVal b
-  , Just (Dx da) <- constrainBy db xda -- here da >= db
+  , Dx (db :: Dim b) <- someDimVal b
+  , Just (Dx da) <- constrain @_ @(XN b) xda -- here da >= db
   = a - b == dimVal (minusDim da db)
 prop_minusDim _ _ = False
 

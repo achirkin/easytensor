@@ -6,7 +6,7 @@
 {-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE KindSignatures            #-}
 {-# LANGUAGE PolyKinds                 #-}
-{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TemplateHaskell           #-}
 {-# LANGUAGE TypeApplications          #-}
@@ -15,12 +15,12 @@
 
 module Numeric.Dimensions.IdxsTest (runTests) where
 
-import           Control.Arrow
-import           Data.List
-import           Data.Maybe
-import           Test.QuickCheck         (quickCheckAll)
+import Control.Arrow
+import Data.List
+import Data.Maybe
+import Test.QuickCheck (quickCheckAll)
 
-import           Numeric.Dimensions.Idxs
+import Numeric.Dimensions.Idxs
 
 minMaxSeq :: [(Word, Word)] -> ([Word], [Word])
 minMaxSeq []          = ([], [])
@@ -48,7 +48,7 @@ prop_idxsFromWords1 :: [(Word, Word)] -> Bool
 prop_idxsFromWords1 ins
   | (xs, ys) <- minMaxSeq ins
   , SomeDims (KnownDims :: Dims ds) <- someDimsVal ys
-  , mIs <- idxsFromWords @ds xs
+  , mIs <- idxsFromWords @Nat @ds xs
     = or (zipWith (==) xs ys) || isJust mIs
   | otherwise
     = error "Impossible arguments"
@@ -58,7 +58,7 @@ prop_idxsFromWords2 :: [(Word, Word)] -> Bool
 prop_idxsFromWords2 ins
   | (xs, ys) <- minMaxSeq ins
   , SomeDims (KnownDims :: Dims ds) <- someDimsVal xs
-  , mIs <- idxsFromWords @ds ys
+  , mIs <- idxsFromWords @Nat @ds ys
     = null xs || isNothing mIs
   | otherwise
     = error "Impossible arguments"
@@ -68,14 +68,14 @@ prop_idxsFromWords3 :: [(Word, Word)] -> Bool
 prop_idxsFromWords3 ins
   | (xs, ys) <- minMaxSeq ins
   , SomeDims (ds@KnownDims :: Dims ds) <- someDimsVal ys
-  , mIs <- idxsFromWords @ds xs
+  , mIs <- idxsFromWords @Nat @ds xs
     = Just False /= (go xs ds <$> mIs)
   | otherwise
     = error "Impossible arguments"
   where
-    go :: forall ns . [Word] -> Dims ns -> Idxs ns -> Bool
+    go :: forall (ns :: [Nat]) . [Word] -> Dims ns -> Idxs ns -> Bool
     go [] U U = True
-    go (w:ws) (Dim :* ds) (i :* is)
+    go (w:ws) (D :* ds) (i :* is)
               = Just i == idxFromWord w && go ws ds is
     go _ _ _  = False
 
@@ -92,7 +92,7 @@ prop_idxsFromEnum ins
   | (xs, ys) <- minMaxSeq ins
   , wouldNotOverflow ys
   , SomeDims (KnownDims :: Dims ds) <- someDimsVal ys
-  , Just ids <- idxsFromWords @ds xs
+  , Just ids <- idxsFromWords @Nat @ds xs
     = ids == toEnum (fromEnum ids)
   | otherwise = True
 
@@ -101,7 +101,7 @@ prop_idxsSucc ins
   | (xs, ys) <- minMaxSeq ins
   , wouldNotOverflow ys
   , SomeDims (KnownDims :: Dims ds) <- someDimsVal ys
-  , Just ids <- idxsFromWords @ds xs
+  , Just ids <- idxsFromWords @Nat @ds xs
     = ids == maxBound || fromEnum (succ ids) == succ (fromEnum ids)
   | otherwise = True
 
@@ -110,7 +110,7 @@ prop_idxsPred ins
   | (xs, ys) <- minMaxSeq ins
   , wouldNotOverflow ys
   , SomeDims (KnownDims :: Dims ds) <- someDimsVal ys
-  , Just ids <- idxsFromWords @ds xs
+  , Just ids <- idxsFromWords @Nat @ds xs
     = ids == minBound || fromEnum (pred ids) == pred (fromEnum ids)
   | otherwise = True
 
@@ -118,7 +118,7 @@ prop_idxsPredSucc :: [(Word, Word)] -> Bool
 prop_idxsPredSucc ins
   | (xs, ys) <- minMaxSeq ins
   , SomeDims (KnownDims :: Dims ds) <- someDimsVal ys
-  , Just ids <- idxsFromWords @ds xs
+  , Just ids <- idxsFromWords @Nat @ds xs
     =  ids == minBound || ids == maxBound
     || ( succ (pred ids) == ids && pred (succ ids) == ids )
   | otherwise = True
@@ -129,23 +129,23 @@ prop_idxsEnumFrom ins
   , wouldNotOverflow ys
   , product ys < 100000
   , SomeDims (KnownDims :: Dims ds) <- someDimsVal ys
-  , Just ids <- idxsFromWords @ds xs
+  , Just ids <- idxsFromWords @Nat @ds xs
     = [ids..] == map toEnum [fromEnum ids .. fromEnum (maxBound @(Idxs ds))]
   | otherwise = True
 
 prop_idxsEnumFromTo :: [(Word, Word, Word)] -> Bool
 prop_idxsEnumFromTo ins
   | (xs, ys, SomeDims (KnownDims :: Dims ds)) <- twoIdxsSeq ins
-  , Just ids <- idxsFromWords @ds xs
-  , Just jds <- idxsFromWords @ds ys
+  , Just ids <- idxsFromWords @Nat @ds xs
+  , Just jds <- idxsFromWords @Nat @ds ys
     = [ids..jds] == map toEnum [fromEnum ids .. fromEnum jds]
   | otherwise = True
 
 prop_idxsEnumFromThen :: [(Word, Word, Word)] -> Bool
 prop_idxsEnumFromThen ins
   | (xs, ys, SomeDims (KnownDims :: Dims ds)) <- twoIdxsSeq ins
-  , Just ids <- idxsFromWords @ds xs
-  , Just jds <- idxsFromWords @ds ys
+  , Just ids <- idxsFromWords @Nat @ds xs
+  , Just jds <- idxsFromWords @Nat @ds ys
   , lim <- if jds >= ids then maxBound else minBound :: Idxs ds
     = take 1000 [ids, jds ..]
       ==
@@ -155,8 +155,8 @@ prop_idxsEnumFromThen ins
 prop_idxsEnumFromThenTo :: Bool -> [(Word, Word, Word)] -> Bool
 prop_idxsEnumFromThenTo up ins
   | (xs, ys, SomeDims (KnownDims :: Dims ds)) <- twoIdxsSeq ins
-  , Just ids <- idxsFromWords @ds xs
-  , Just jds <- idxsFromWords @ds ys
+  , Just ids <- idxsFromWords @Nat @ds xs
+  , Just jds <- idxsFromWords @Nat @ds ys
   , lim <- if up then maxBound else minBound :: Idxs ds
     = take 1000 [ids, jds .. lim]
       ==

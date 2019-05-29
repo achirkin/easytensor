@@ -252,7 +252,7 @@ instance ( Show t
          , KnownBackend t ds
          ) => Show (DataFrame (t :: Type) (ds :: [Nat])) where
     show (SingleFrame df) = unlines
-        [ "DF " ++ drop 5 (show $ dims @_ @ds) ++ ":"
+        [ "DF " ++ drop 5 (show $ dims @ds) ++ ":"
         , show df
         ]
 
@@ -264,7 +264,7 @@ instance ( All Show ts
         ("DF " ++ show (order dds) ++ " x "  ++ drop 5 (show dds) ++ ":")
         : showAll 1 dfs
       where
-        dds = dims @_ @ds
+        dds = dims @ds
         showAll :: forall (xs :: [Type]) . (All Show xs, KnownBackends xs ds)
                 => Word -> DataFrame xs ds -> [String]
         showAll _ Z = []
@@ -436,7 +436,7 @@ packDF :: forall (t :: Type) (d :: Nat) (ds :: [Nat])
         . (PrimBytes t, Dimensions (d ': ds))
        => PackDF t ds d (DataFrame t (d ': ds))
 packDF
-  | d :* Dims <- dims @Nat @(d ': ds)
+  | d :* Dims <- dims @(d ': ds)
   , Dict <- inferKnownBackend @t @(d ': ds)
   , Dict <- inferKnownBackend @t @ds
     = go d
@@ -464,7 +464,7 @@ packDF
               -> (forall rRep (r :: TYPE rRep)
                     . (forall s. Int# -> MutableByteArray# s -> State# s -> r ) -> r)
               -> PackDF t ds n (DataFrame t (d ': ds))
-        recur n f = case minusDimM n (Dim :: Dim 1) of
+        recur n f = case minusDimM n (D :: Dim 1) of
           Nothing -> case unsafeEqTypes @Nat @n @0 of
             Dict -> f (\_ mba s -> case unsafeFreezeByteArray# mba s of
                                      (# _, ba #) -> fromBytes 0# ba )
@@ -503,7 +503,7 @@ unpackDF :: forall (t :: Type) (d :: Nat) (ds :: [Nat])
          => ( PackDF t ds d (Dict (Dimensions ds, KnownBackend t ds) -> r) )
          -> DataFrame t (d ': ds) -> r
 unpackDF c
-  | d :* Dims <- dims @Nat @(d ': ds)
+  | d :* Dims <- dims @(d ': ds)
     = unpackDF' (go d)
   | otherwise = error "Numeric.DataFrame.Type.unpackDF: impossible args"
   where
@@ -518,7 +518,7 @@ unpackDF c
                . Dim n
               -> (Int# -> PackDF t ds n (a -> r))
               -> Int# -> r
-        recur n f = case minusDimM n (Dim :: Dim 1) of
+        recur n f = case minusDimM n (D :: Dim 1) of
           Nothing -> case unsafeEqTypes @Nat @n @0 of
             Dict -> (`f` a)
           Just n' -> case unsafeEqTypes @_
@@ -533,13 +533,13 @@ packDF' :: forall (t :: Type) (d :: Nat) (ds :: [Nat]) c
         -> (forall r. r -> c r)
         -> c (DataFrame t (d ': ds))
 packDF' k z
-  | d :* _ <- dims @Nat @(d ': ds)
+  | d :* _ <- dims @(d ': ds)
     = go d (z (packDF @t @d @ds))
   | otherwise = error "Numeric.DataFrame.Type.packDF': impossible args"
   where
     go :: forall n . Dim n
        -> c (PackDF t ds n (DataFrame t (d ': ds))) -> c (DataFrame t (d ': ds))
-    go n = case minusDimM n (Dim :: Dim 1) of
+    go n = case minusDimM n (D :: Dim 1) of
       Nothing -> case unsafeEqTypes @Nat @n @0 of Dict -> id
       Just n' -> case unsafeEqTypes @_
                        @(PackDF t ds n (DataFrame t (d ': ds)))
@@ -558,7 +558,7 @@ unpackDF' :: forall (rep :: RuntimeRep)
           -> DataFrame t (d ': ds)
           -> r
 unpackDF' k df
-  | d :* Dims <- dims @Nat @(d ': ds)
+  | d :* Dims <- dims @(d ': ds)
   , Dict <- inferKnownBackend @t @(d ': ds)
   , Dict <- inferKnownBackend @t @ds
     = case arrayContent# df of

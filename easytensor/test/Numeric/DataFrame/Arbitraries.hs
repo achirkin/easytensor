@@ -8,7 +8,7 @@
 {-# LANGUAGE KindSignatures            #-}
 {-# LANGUAGE PartialTypeSignatures     #-}
 {-# LANGUAGE PolyKinds                 #-}
-{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeOperators             #-}
@@ -130,13 +130,13 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
 
 
 instance KnownDim a => Arbitrary (Dim (N a)) where
-    arbitrary = return $ Dn (dim @_ @a)
+    arbitrary = return $ Dn (dim @a)
     shrink _ = []
 
 instance KnownDim m => Arbitrary (Dim (XN m)) where
     arbitrary = do
       dimN <- choose (dimVal' @m, maxDims)
-      case constrain @m (someDimVal dimN) of
+      case constrain @XNat @(XN m) (someDimVal dimN) of
         Nothing -> error "impossible argument"
         Just d  -> return d
     shrink _ = []

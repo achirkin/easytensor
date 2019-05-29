@@ -124,7 +124,7 @@ instance ( Dimensions (n :+ ns)
          )
          => DataFrameToList t (n :: Nat) (ns :: [Nat]) where
     toList df
-      | Dims.Cons dn (dns@Dims :: Dims ns) <- dims @Nat @(n :+ ns)
+      | Dims.Cons dn (dns@Dims :: Dims ns) <- dims @(n :+ ns)
       , steps <- cumulDims dns
       , Dict <- inferKnownBackend @t @ns
       , Dict <- inferKnownBackend @t @(n :+ ns)
@@ -139,7 +139,7 @@ instance ( Dimensions (n :+ ns)
 
 instance DataFrameToList t (xn :: XNat) (xns :: [XNat]) where
     toList (XFrame (df :: DataFrame t nns))
-      | Dims.Cons (_ :: Dim n) (Dims :: Dims ns) <- dims @Nat @nns
+      | Dims.Cons (_ :: Dim n) (Dims :: Dims ns) <- dims @nns
       , Dict <- inferPrimElem df
       , Dict <- inferKnownBackend @t @ns
       = map XFrame (toList df)
@@ -160,11 +160,11 @@ fromListN :: forall (m :: Nat) (ns :: [Nat]) (t :: Type)
           -> [DataFrame t ns]
              -- ^ List of frames to concatenate
           -> Maybe (DataFrame t (XN m :+ AsXDims ns))
-fromListN Dim n xs'
+fromListN D n xs'
   | n < 0 = Nothing
-  | Just dxn@(Dx dn@(D :: Dim n)) <- constrain @m (someDimVal (fromIntegral n))
+  | Just dxn@(Dx dn@(D :: Dim n)) <- constrain @XNat @(XN m) (someDimVal (fromIntegral n))
   , Just xs <- takeMaybe n xs'
-  , dns@(AsXDims dxns) <- dims @Nat @ns
+  , dns@(AsXDims dxns) <- dims @ns
   , dnns@Dims <- dn  :* dns
   , dxnns     <- dxn :* dxns
   , XDims dnns' <- dxnns

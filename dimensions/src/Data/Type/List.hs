@@ -38,6 +38,7 @@ module Data.Type.List
 
 import Data.Constraint         ((:-) (..), Constraint, Dict (..))
 import Data.Type.List.Internal (Snoc)
+import GHC.Base                (Type)
 import GHC.TypeLits
 import Type.Reflection
 import Unsafe.Coerce           (unsafeCoerce)
@@ -182,7 +183,7 @@ type ConcatList (as :: [k]) (bs :: [k]) (asbs :: [k]) =
     )
 
 -- | Derive @ConcatList@ given @Concat@
-evConcat :: forall as bs asbs
+evConcat :: forall (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k])
           . (asbs ~ Concat as bs) :- ConcatList as bs asbs
 evConcat = Sub $ unsafeCoerce
   ( Dict :: Dict
@@ -193,7 +194,7 @@ evConcat = Sub $ unsafeCoerce
   )
 
 -- | Derive @ConcatList@ given @StripSuffix@
-evStripSuffix :: forall as bs asbs
+evStripSuffix :: forall (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k])
                . (as ~ StripSuffix bs asbs) :- ConcatList as bs asbs
 evStripSuffix = Sub $ unsafeCoerce
   ( Dict :: Dict
@@ -204,7 +205,7 @@ evStripSuffix = Sub $ unsafeCoerce
   )
 
 -- | Derive @ConcatList@ given @StripPrefix@
-evStripPrefix :: forall as bs asbs
+evStripPrefix :: forall (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k])
                . (bs ~ StripPrefix as asbs) :- ConcatList as bs asbs
 evStripPrefix = Sub $ unsafeCoerce
   ( Dict :: Dict
@@ -215,7 +216,7 @@ evStripPrefix = Sub $ unsafeCoerce
   )
 
 -- | Given a @Typeable@ list, infer this constraint for its parts.
-inferTypeableCons :: forall k (ys :: [k]) (x :: k) (xs :: [k])
+inferTypeableCons :: forall (k :: Type) (ys :: [k]) (x :: k) (xs :: [k])
                    . (Typeable ys, ys ~ (x ': xs))
                   => Dict (Typeable x, Typeable xs)
 inferTypeableCons = case typeRep @ys of
