@@ -65,9 +65,9 @@ module Numeric.Dim
     --   their results are subject to integer overflow.
     --   The good side is the confidence that they behave exactly as
     --   their @Word@ counterparts.
-  , plusDim, minusDim, minusDimM -- , timesDim, powerDim
+  , plusDim, minusDim, minusDimM, timesDim, powerDim
     -- * Re-export part of `GHC.TypeNats` for convenience
-  , TN.Nat, TN.CmpNat, type (TN.+), type (TN.-) -- , type (TN.*), type (TN.^)
+  , TN.Nat, TN.CmpNat, type (TN.+), type (TN.-), type (TN.*), type (TN.^)
     -- * Inferring kind of type-level dimension
   , KnownDimKind (..), DimKind (..)
   ) where
@@ -460,13 +460,13 @@ minusDimM (DimSing a) (DimSing b)
   | otherwise = Nothing
 {-# INLINE minusDimM #-}
 
--- timesDim :: Dim n -> Dim m -> Dim ((TN.*) n m)
--- timesDim (DimSing a) (DimSing b) = unsafeCoerce# (a * b)
--- {-# INLINE timesDim #-}
---
--- powerDim :: Dim n -> Dim m -> Dim ((TN.^) n m)
--- powerDim (DimSing a) (DimSing b) = unsafeCoerce# (a ^ b)
--- {-# INLINE powerDim #-}
+timesDim :: Dim n -> Dim m -> Dim ((TN.*) n m)
+timesDim (DimSing a) (DimSing b) = unsafeCoerce# (a * b)
+{-# INLINE timesDim #-}
+
+powerDim :: Dim n -> Dim m -> Dim ((TN.^) n m)
+powerDim (DimSing a) (DimSing b) = unsafeCoerce# (a ^ b)
+{-# INLINE powerDim #-}
 
 
 
