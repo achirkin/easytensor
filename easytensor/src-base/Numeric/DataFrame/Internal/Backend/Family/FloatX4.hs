@@ -4,6 +4,7 @@
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE UnboxedSums           #-}
 {-# LANGUAGE UnboxedTuples         #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 module Numeric.DataFrame.Internal.Backend.Family.FloatX4 (FloatX4 (..)) where
@@ -458,6 +459,9 @@ instance PrimArray Float FloatX4 where
     upd# _ 3# (F# q) (FloatX4# x y z _) = FloatX4# x y z q
     upd# _ _ _ x                        = x
     {-# INLINE upd# #-}
+
+    arrayContent# x = (# | (# CumulDims [ELEM_N, 1], 0#, getBytes x #) #)
+    {-# INLINE arrayContent# #-}
 
     offsetElems _ = 0#
     {-# INLINE offsetElems #-}

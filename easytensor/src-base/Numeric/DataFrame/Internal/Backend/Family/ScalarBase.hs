@@ -4,6 +4,7 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeInType                 #-}
+{-# LANGUAGE UnboxedSums                #-}
 {-# LANGUAGE UnboxedTuples              #-}
 module Numeric.DataFrame.Internal.Backend.Family.ScalarBase (ScalarBase (..)) where
 
@@ -49,6 +50,8 @@ instance PrimBytes t => PrimArray t (ScalarBase t) where
   upd# _ 0# = const . ScalarBase
   upd# _ _  = const id
   {-# INLINE upd# #-}
+  arrayContent# x = (# _unScalarBase x | #)
+  {-# INLINE arrayContent# #-}
   offsetElems _ = 0#
   {-# INLINE offsetElems #-}
   uniqueOrCumulDims = Left . _unScalarBase

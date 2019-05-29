@@ -3,6 +3,7 @@
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE UnboxedSums           #-}
 {-# LANGUAGE UnboxedTuples         #-}
 module Numeric.DataFrame.Internal.Backend.Family.FloatX2 (FloatX2 (..)) where
 
@@ -386,6 +387,9 @@ instance PrimArray Float FloatX2 where
     upd# _ 1# (F# q) (FloatX2# x _) = FloatX2# x q
     upd# _ _ _ x                    = x
     {-# INLINE upd# #-}
+
+    arrayContent# x = (# | (# CumulDims [ELEM_N, 1], 0#, getBytes x #) #)
+    {-# INLINE arrayContent# #-}
 
     offsetElems _ = 0#
     {-# INLINE offsetElems #-}

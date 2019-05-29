@@ -140,7 +140,7 @@ instance ( Dimensions (n :+ ns)
 instance DataFrameToList t (xn :: XNat) (xns :: [XNat]) where
     toList (XFrame (df :: DataFrame t nns))
       | Dims.Cons (_ :: Dim n) (Dims :: Dims ns) <- dims @Nat @nns
-      , Just Dict <- inferPrimElem df
+      , Dict <- inferPrimElem df
       , Dict <- inferKnownBackend @t @ns
       = map XFrame (toList df)
     toList _ = []

@@ -14,12 +14,13 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
-{-# OPTIONS_GHC -fplugin Data.Constraint.Deriving #-}
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 #if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
 {-# OPTIONS_GHC -fno-warn-simplifiable-class-constraints #-}
 {-# OPTIONS_GHC -fno-warn-unused-binds #-}
 {-# OPTIONS_GHC -fno-warn-unused-imports #-}
+#else
+{-# OPTIONS_GHC -fplugin Data.Constraint.Deriving #-}
 #endif
 
 module Numeric.DataFrame.Internal.Backend
@@ -91,10 +92,10 @@ inferKnownBackend
   = Impl.inferKnownBackend @t @ds @(BackendFamily t ds)
 
 inferPrimElem
-  :: forall (t :: Type) (ds :: [Nat])
-   . KnownBackend t ds
-  => DFBackend t ds -> Maybe (Dict (PrimBytes t))
-inferPrimElem = Impl.inferPrimElem @t @ds . _getBackend
+  :: forall (t :: Type) (d :: Nat) (ds :: [Nat])
+   . KnownBackend t (d ': ds)
+  => DFBackend t (d ': ds) -> Dict (PrimBytes t)
+inferPrimElem = Impl.inferPrimElem @t @d @ds . _getBackend
 
 
 
@@ -376,6 +377,7 @@ instance {-# INCOHERENT #-}
     ix# = undefined
     gen# = undefined
     upd# = undefined
+    arrayContent# = undefined
     offsetElems = undefined
     uniqueOrCumulDims = undefined
     fromElems = undefined

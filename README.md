@@ -59,10 +59,12 @@ Following is the list of what I want to do before v2 becomes the master branch:
   - [ ] Better test coverage.
   - [ ] A more conventional Show and Read instance for DataFrame.
   - [ ] Move current show instances into `easytensor-pretty` and improve them.
-  - [ ] Try `Typeable`, `Data`, `Generic` for data frames.
+  - [x] Try `Typeable`, `Data`, `Generic` for data frames
+        (All done except tests and `Generic (DataFrame t ds)`)
   - [x] Refactor module dependency tree (try not to depend on implementation anywhere).
   - [x] Polymorphic vector constructors.
   - [ ] MinMax is too unconventional for haskellers to be accepted.
+  - [ ] Shall I remove `Bounded` as too unconventional?
 
 ### Supported GHC versions
 

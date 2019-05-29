@@ -80,7 +80,7 @@ prop_inverse (SSM m)
 -- TODO: improve lu!
 -- lu factorization is very unstable in some cases
 --
--- >>> m = unsafeFromFlatList (Dims @'[4,4]) [1,0,1,-2, 0,-1,1,2, 2,-4,2,-2, 4,-8,-2,2 ] :: Mat44f
+-- >>> m = unsafeFromFlatList (Dims @'[4,4]) 0 [1,0,1,-2, 0,-1,1,2, 2,-4,2,-2, 4,-8,-2,2 ] :: Mat44f
 -- >>> det m == 0
 -- >>> det (transpose m) == 60
 prop_LU :: SomeSquareMatrix NonSingular TestElem -> Bool

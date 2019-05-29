@@ -9,15 +9,14 @@
 module Numeric.DataFrame.Internal.PrimArray
   ( PrimArray (..), CumulDims (..)
   , cumulDims, cdTotalDim, cdTotalDim#, cdIx
-  , ixOff, unsafeFromFlatList, getSteps
+  , ixOff, unsafeFromFlatList, getSteps, fromSteps
   ) where
 
-import           Data.Monoid        as Mon (Monoid (..))
-import           Data.Semigroup     as Sem (Semigroup (..))
-import           GHC.Base           (ByteArray#, Int (..), Int#, Word (..),
-                                     word2Int#)
-import           Numeric.Dimensions
-import           Numeric.PrimBytes
+import Data.Monoid        as Mon (Monoid (..))
+import Data.Semigroup     as Sem (Semigroup (..))
+import GHC.Base           (ByteArray#, Int (..), Int#, Word (..), word2Int#)
+import Numeric.Dimensions
+import Numeric.PrimBytes
 
 -- | Given @Dims ns@, @CumulativeDims@ is a list of length @Length ns + 1@;
 --   which cumulative @totalDim@ accumulated on the right.
@@ -55,10 +54,25 @@ cdIx :: CumulDims -> Idxs ns -> Int
 cdIx ~(CumulDims ~(_:steps))
   = fromIntegral . sum . zipWith (*) steps . listIdxs
 
+-- | Try to get @CumulDims@ from an array,
+--   and create it using @Dims@ if failed.
 getSteps :: PrimArray t a => Dims (ns :: [k]) -> a -> CumulDims
 getSteps dds df = case uniqueOrCumulDims df of
    Left  _  -> cumulDims dds
    Right ds -> ds
+{-# INLINE getSteps #-}
+
+-- | Get @Dims@ by "de-accumulating" @CumulDims@.
+fromSteps :: CumulDims -> SomeDims
+fromSteps = someDimsVal . f . unCumulDims
+  where
+    -- ignore last value, which is always 1
+    f :: [Word] -> [Word]
+    f []       = []
+    f [_]      = []
+    f [n,_]    = [n]
+    f (a:b:cs) = a `quot` b : f (b:cs)
+{-# INLINE fromSteps #-}
 
 class PrimBytes t => PrimArray t a | a -> t where
     -- | Broadcast element into array
@@ -79,8 +93,18 @@ class PrimBytes t => PrimArray t a | a -> t where
             --   types and is not checked at runtime.
          -> Int# -> t -> a -> a
 
+    -- | If the array represented as a single broadcasted value,
+    --   return this value.
+    --   Otherwise, return full array content:
+    --    @CumulDims@, array offset (elements), byte array with the content.
+    arrayContent# :: a -> (# t | (# CumulDims, Int#, ByteArray# #) #)
+
     -- | Offset of an array as a number of elements
     offsetElems :: a -> Int#
+    offsetElems a = case arrayContent# a of
+      (# _ | #)             -> 0#
+      (# | (# _, o, _ #) #) -> o
+    {-# INLINE offsetElems #-}
 
     -- | Normally, this returns a cumulative @totalDim@s.
     --   However, if a particular implementation does not have the dimensionality
@@ -91,6 +115,10 @@ class PrimBytes t => PrimArray t a | a -> t where
     --   Note, this function returns the only unique element only if it is
     --   a such by construction (there is no equality checks involved).
     uniqueOrCumulDims :: a -> Either t CumulDims
+    uniqueOrCumulDims a = case arrayContent# a of
+      (# x | #)              -> Left x
+      (# | (# cd, _, _ #) #) -> Right cd
+    {-# INLINE uniqueOrCumulDims #-}
 
     -- | Get array by its offset and cumulative dims in a ByteArray.
     --   Both offset and dims are given in element number (not in bytes).
@@ -106,9 +134,8 @@ ixOff (I# i) = ix# i
 -- | Construct an array from a flat list and @Dims@;
 --   Be careful! @ns@ depends on @a@, but this is not reflected in
 --   types and is not checked at runtime.
-unsafeFromFlatList :: PrimArray t a => Dims ns -> [t] -> a
-unsafeFromFlatList ds vs = case gen# (cumulDims ds) f vs of (# _, r #) -> r
+unsafeFromFlatList :: PrimArray t a => Dims ns -> t -> [t] -> a
+unsafeFromFlatList ds x0 vs = case gen# (cumulDims ds) f vs of (# _, r #) -> r
   where
-    f :: [t] -> (# [t], t #)
-    f []     = (# [], undefined #)
+    f []     = (# [], x0 #)
     f (x:xs) = (# xs, x #)

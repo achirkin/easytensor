@@ -54,9 +54,9 @@ inferKnownBackend
   => Dict (KnownBackend t ds)
 
 inferPrimElem
-  :: forall (t :: Type) (ds :: [Nat])
-   . KnownBackend t ds
-  => DFBackend t ds -> Maybe (Dict (PrimBytes t))
+  :: forall (t :: Type) (d :: Nat) (ds :: [Nat])
+   . KnownBackend t (d ': ds)
+  => DFBackend t (d ': ds) -> Dict (PrimBytes t)
 
 instance {-# INCOHERENT #-}
     forall (t :: Type) (ds :: [Nat]) (b :: Type)
