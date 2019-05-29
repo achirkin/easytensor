@@ -7,7 +7,7 @@
 {-# LANGUAGE MagicHash              #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
-{-# LANGUAGE Rank2Types             #-}
+{-# LANGUAGE RankNTypes             #-}
 {-# LANGUAGE RoleAnnotations        #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE TypeApplications       #-}
@@ -116,7 +116,7 @@ instance PrimBytes t
 inferKnownBackend :: forall t ds b
                   . (PrimBytes t, Dimensions ds, b ~ BackendFamily t ds)
                   => Dict (KnownBackend t ds b)
-inferKnownBackend = case (dims @_ @ds, primTag @t undefined) of
+inferKnownBackend = case (dims @ds, primTag @t undefined) of
   (U, _) -> Dict
   (d :* U, PTagFloat)
       | Just Dict <- sameDim (D @2) d -> Dict

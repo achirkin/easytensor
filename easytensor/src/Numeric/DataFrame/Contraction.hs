@@ -82,7 +82,7 @@ instance ( ConcatList as bs asbs
     contract x y = case (# uniqueOrCumulDims x, uniqueOrCumulDims y #) of
       (# Left x0, Left y0 #) -> broadcast (x0 * y0)
       (# ux, uy #)
-        | dm <- dim @_ @m
+        | dm <- dim @m
         , (ixX, xs) <- getStepsAndIx (Snoc dims dm) x ux
         , (ixY, ys) <- getStepsAndIx (Cons dm dims) y uy
         , (# n, m, k, steps #) <- conSteps xs ys ->

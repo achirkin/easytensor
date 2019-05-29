@@ -11,7 +11,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PatternSynonyms       #-}
 {-# LANGUAGE PolyKinds             #-}
-{-# LANGUAGE Rank2Types            #-}
+{-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE RoleAnnotations       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE Strict                #-}
@@ -40,17 +40,17 @@ module Numeric.Dim
   ( -- * Type level numbers that can be unknown.
     XNat (..), XN, N, XNatType (..)
     -- * Term level dimension
-  , Dim ( Dim, D, Dn, Dx
+  , Dim ( D, Dn, Dx
         , D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13, D14
         , D15, D16, D17, D18, D19, D20, D21, D22, D23, D24, D25
         )
   , SomeDim
-  , KnownDim (..), KnownXNatType (..)
+  , KnownDim (..), BoundedDim (..), KnownXNatType (..)
   , MinDim, FixedDim, Compared, SOrdering (..)
   , dimVal, dimVal', typeableDim, someDimVal
   , sameDim, sameDim'
   , compareDim, compareDim'
-  , constrain, constrainBy, relax
+  , constrainBy, relax
     -- * Simple Dim arithmetics
     --
     --   The functions below create singleton values that work as a witness
@@ -117,7 +117,6 @@ newtype Dim (x :: k) = DimSing Word
   deriving ( Typeable )
 {-# COMPLETE D #-}
 {-# COMPLETE Dn, Dx #-}
-{-# COMPLETE Dim #-}
 
 instance Typeable d => Data (Dim (d :: Nat)) where
     gfoldl _ z = z
@@ -136,7 +135,7 @@ instance KnownDim d => G.Generic (Dim (d :: Nat)) where
           ('G.MetaData "Dim" "Numeric.Dim" "dimensions" 'False)
           (G.C1 ('G.MetaCons (AppendSymbol "D" (ShowNat d)) 'G.PrefixI 'False) G.U1)
     from D = G.M1 (G.M1 G.U1)
-    to _ = dim @_ @d
+    to _ = dim @d
 
 -- | Convert type-level @Nat@ into a type-level @Symbol@.
 type family ShowNat (n :: Nat) :: Symbol where
@@ -154,22 +153,11 @@ type family ShowNat (n :: Nat) :: Symbol where
     ShowNat d = AppendSymbol (ShowNat (Div d 10)) (ShowNat (Mod d 10))
 
 
--- | Independently of the kind of type-level number,
---   construct an instance of `KnownDim` from it.
---
---   Match against this pattern to bring `KnownDim` instance into scope
---   when you don't know the kind of the @Dim@ parameter.
-pattern Dim :: forall (k :: Type) (n :: k) . () => KnownDim n => Dim n
-pattern Dim <- (dimEv -> Dict)
-  where
-    Dim = dim @_ @n
-
-
--- | Same as @Dim@ pattern, but constrained to @Nat@ kind.
+-- | Match against this pattern to bring `KnownDim` instance into scope.
 pattern D :: forall (n :: Nat) . () => KnownDim n => Dim n
 pattern D <- (dimEv -> Dict)
   where
-    D = dim @_ @n
+    D = dim @n
 
 -- | Statically known `XNat`
 pattern Dn :: forall (xn :: XNat) . KnownXNatType xn
@@ -189,29 +177,72 @@ pattern Dx k <- (dimXNEv (xNatType @xn) -> PatXN k)
     Dx k = unsafeCoerce# k
 
 -- | This class provides the `Dim` associated with a type-level natural.
-class KnownDim (n :: k) where
+--
+--   Note, kind of the @KnownDim@ argument is always @Nat@, because
+--     it is impossible to create a unique @KnownDim (XN m)@ instance.
+class KnownDim (n :: Nat) where
     -- | Get value of type-level dim at runtime.
     --
-    --   Note, this function is supposed to be used with @TypeApplications@,
-    --   and the @KnownDim@ class has varying kind of the parameter;
-    --   thus, the function has two type paremeters (kind and type of @n@).
+    --   Note, this function is supposed to be used with @TypeApplications@.
     --   For example, you can type:
     --
     --   >>>:set -XTypeApplications
     --   >>>:set -XDataKinds
-    --   >>>:t dim @Nat @3
-    --   dim @Nat @3 :: Dim 3
+    --   >>>:t dim @3
+    --   dim @3 :: Dim 3
     --
     --   >>>:set -XTypeOperators
-    --   >>>:t dim @_ @(13 - 6)
-    --   dim @_ @(13 - 6) :: Dim 7
-    --
-    --
-    --   >>>:t dim @_ @(N 17)
-    --   dim @_ @(N 17) :: Dim (N 17)
+    --   >>>:t dim @(13 - 6)
+    --   dim @(13 - 6) :: Dim 7
     --
     dim :: Dim n
 
+
+-- | Get a minimal or exact bound of a @Dim@.
+--
+--   To satisfy the @BoundedDim@ means to be equal to @N n@ or be not less than @XN m@.
+class KnownDimKind k => BoundedDim (n :: k) where
+    -- | Minimal or exact bound of a @Dim@.
+    --   Useful for indexing: it is safe to index something by an index less than
+    --   @DimBound n@ (for both @Nat@ and @Xnat@ indexed dims).
+    type family DimBound n :: Nat
+    -- | Get such a minimal @Dim (DimBound n)@, that @Dim n@ is guaranteed
+    --   to be not less than @dimBound@ if @n ~ XN a@,
+  --     otherwise, the return @Dim@ is the same as @n@.
+    dimBound :: Dim (DimBound n)
+    -- | If the runtime value of @Dim y@ satisfies @dimBound @k @x@,
+    --   then coerce to @Dim x@. Otherwise, return @Nothing@.
+    --
+    --   To satisfy the @dimBound@ means to be equal to @N n@ or be not less than @XN m@.
+    constrain :: forall (l :: Type) (y :: l) . Dim y -> Maybe (Dim n)
+
+
+instance KnownDim n => BoundedDim (n :: Nat) where
+    type DimBound n = n
+    dimBound = dim @n
+    {-# INLINE dimBound #-}
+    constrain (DimSing y)
+       | dimVal' @n == y = Just (DimSing y)
+       | otherwise            = Nothing
+    {-# INLINE constrain #-}
+
+instance KnownDim n => BoundedDim ('N n) where
+    type DimBound ('N n) = n
+    dimBound = dim @n
+    {-# INLINE dimBound #-}
+    constrain (DimSing y)
+       | dimVal' @n == y = Just (DimSing y)
+       | otherwise            = Nothing
+    {-# INLINE constrain #-}
+
+instance KnownDim m => BoundedDim ('XN m) where
+    type DimBound ('XN m) = m
+    dimBound = dim @m
+    {-# INLINE dimBound #-}
+    constrain (DimSing y)
+       | dimVal' @m <= y = Just (DimSing y)
+       | otherwise            = Nothing
+    {-# INLINE constrain #-}
 
 -- | Find out the type of `XNat` constructor
 class KnownXNatType (n :: XNat) where
@@ -227,13 +258,13 @@ instance KnownXNatType ('XN n) where
     {-# INLINE xNatType #-}
 
 -- | Similar to `natVal` from `GHC.TypeNats`, but returns `Word`.
-dimVal :: Dim (x :: k) -> Word
+dimVal :: forall (k :: Type) (x :: k) . Dim (x :: k) -> Word
 dimVal = unsafeCoerce#
 {-# INLINE dimVal #-}
 
 -- | Similar to `natVal` from `GHC.TypeNats`, but returns `Word`.
-dimVal' :: forall n . KnownDim n => Word
-dimVal' = unsafeCoerce# (dim @_ @n)
+dimVal' :: forall (n :: Nat) . KnownDim n => Word
+dimVal' = unsafeCoerce# (dim @n)
 {-# INLINE dimVal' #-}
 
 -- | Construct a @Dim n@ if there is an instance of @Typeable n@ around.
@@ -342,28 +373,18 @@ instance {-# OVERLAPPING #-} KnownDim 20 where
 instance Class (KnownNat n) (KnownDim n) where
     cls = Sub $ reifyNat @_ @n (fromIntegral $ dimVal' @n) Dict
 
-instance KnownDim n => KnownDim ('N n) where
-    {-# INLINE dim #-}
-    dim = unsafeCoerce# (dim @Nat @n)
-
 -- | Similar to `someNatVal` from `GHC.TypeNats`.
 someDimVal :: Word -> SomeDim
 someDimVal = unsafeCoerce#
 {-# INLINE someDimVal #-}
 
 
--- | Change the minimum allowed size of a @Dim (XN x)@,
---   while testing if the value inside satisfies it.
-constrain :: forall (m :: Nat) x . KnownDim m
-          => Dim x -> Maybe (Dim (XN m))
-constrain (DimSing x) | dimVal' @m > x = Nothing
-                      | otherwise      = Just (unsafeCoerce# x)
-{-# INLINE constrain #-}
 
 -- | `constrain` with explicitly-passed constraining @Dim@
 --   to avoid @AllowAmbiguousTypes@.
-constrainBy :: forall m x . Dim m -> Dim x -> Maybe (Dim (XN m))
-constrainBy D = constrain @m
+constrainBy :: forall (k :: Type) (x :: k) (l :: Type) (y :: l)
+             . BoundedDim x => Dim x -> Dim y -> Maybe (Dim x)
+constrainBy _ = constrain @k @x @l @y
 {-# INLINE constrainBy #-}
 
 
@@ -388,17 +409,18 @@ sameDim (DimSing a) (DimSing b)
 
 -- | We either get evidence that this function
 --   was instantiated with the same type-level numbers, or Nothing.
-sameDim' :: forall (x :: Nat) (y :: Nat) p q
+sameDim' :: forall (x :: Nat) (y :: Nat) (p :: Nat -> Type) (q :: Nat -> Type)
           . (KnownDim x, KnownDim y)
          => p x -> q y -> Maybe (Dict (x ~ y))
-sameDim' _ _ = sameDim (dim @Nat @x) (dim @Nat @y)
+sameDim' _ _ = sameDim (dim @x) (dim @y)
 {-# INLINE sameDim' #-}
 
 -- | Ordering of dimension values.
 --
 --   Note: `CmpNat` forces type parameters to kind `Nat`;
 --         if you want to compare unknown `XNat`s, use `Ord` instance of `Dim`.
-compareDim :: Dim a -> Dim b -> SOrdering (CmpNat a b)
+compareDim :: forall (a :: Nat) (b :: Nat)
+            . Dim a -> Dim b -> SOrdering (CmpNat a b)
 compareDim a b
   = case unsafeCoerce# (compare :: Word -> Word -> Ordering) a b of
     LT -> unsafeCoerce# SLT
@@ -411,9 +433,9 @@ compareDim a b
 --
 --   Note: `CmpNat` forces type parameters to kind `Nat`;
 --         if you want to compare unknown `XNat`s, use `Ord` instance of `Dim`.
-compareDim' :: forall a b p q
+compareDim' :: forall (a :: Nat) (b :: Nat) (p :: Nat -> Type) (q :: Nat -> Type)
              . (KnownDim a, KnownDim b) => p a -> q b -> SOrdering (CmpNat a b)
-compareDim' _ _ = compareDim (dim @_ @a)  (dim @_ @b)
+compareDim' _ _ = compareDim (dim @a)  (dim @b)
 {-# INLINE compareDim' #-}
 
 
@@ -446,25 +468,25 @@ instance KnownDim m => Read (Dim ('XN m)) where
 
 
 
-plusDim :: Dim n -> Dim m -> Dim (n + m)
+plusDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim (n + m)
 plusDim (DimSing a) (DimSing b) = unsafeCoerce# (a + b)
 {-# INLINE plusDim #-}
 
-minusDim :: MinDim m n => Dim n -> Dim m -> Dim (n - m)
+minusDim :: forall (n :: Nat) (m :: Nat) . MinDim m n => Dim n -> Dim m -> Dim (n - m)
 minusDim (DimSing a) (DimSing b) = unsafeCoerce# (a - b)
 {-# INLINE minusDim #-}
 
-minusDimM :: Dim n -> Dim m -> Maybe (Dim (n - m))
+minusDimM :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Maybe (Dim (n - m))
 minusDimM (DimSing a) (DimSing b)
   | a >= b    = Just (unsafeCoerce# (a - b))
   | otherwise = Nothing
 {-# INLINE minusDimM #-}
 
-timesDim :: Dim n -> Dim m -> Dim ((TN.*) n m)
+timesDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim ((TN.*) n m)
 timesDim (DimSing a) (DimSing b) = unsafeCoerce# (a * b)
 {-# INLINE timesDim #-}
 
-powerDim :: Dim n -> Dim m -> Dim ((TN.^) n m)
+powerDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim ((TN.^) n m)
 powerDim (DimSing a) (DimSing b) = unsafeCoerce# (a ^ b)
 {-# INLINE powerDim #-}
 
@@ -480,7 +502,7 @@ data DimKind :: Type -> Type where
 
 -- | Figure out whether the type-level dimension is `Nat` or `XNat`.
 --   Useful for generalized inference functions.
-class KnownDimKind k where
+class KnownDimKind (k :: Type) where
     dimKind :: DimKind k
 
 instance KnownDimKind Nat where
@@ -489,23 +511,25 @@ instance KnownDimKind Nat where
 instance KnownDimKind XNat where
     dimKind = DimXNat
 
+
+
 --------------------------------------------------------------------------------
 
 -- | This function does GHC's magic to convert user-supplied `dim` function
 --   to create an instance of `KnownDim` typeclass at runtime.
 --   The trick is taken from Edward Kmett's reflection library explained
 --   in https://www.schoolofhaskell.com/user/thoughtpolice/using-reflection
-reifyDim :: forall r d . Dim d -> (KnownDim d => r) -> r
+reifyDim :: forall (r :: Type) (d :: Nat) . Dim d -> (KnownDim d => r) -> r
 reifyDim d k = unsafeCoerce# (MagicDim k :: MagicDim d r) d
 {-# INLINE reifyDim #-}
-newtype MagicDim d r = MagicDim (KnownDim d => r)
+newtype MagicDim (d :: Nat) (r :: Type) = MagicDim (KnownDim d => r)
 
-reifyNat :: forall r d . Natural -> (KnownNat d => r) -> r
+reifyNat :: forall (r :: Type) (d :: Nat) . Natural -> (KnownNat d => r) -> r
 reifyNat d k = unsafeCoerce# (MagicNat k :: MagicNat d r) d
 {-# INLINE reifyNat #-}
-newtype MagicNat d r = MagicNat (KnownNat d => r)
+newtype MagicNat (d :: Nat) (r :: Type) = MagicNat (KnownNat d => r)
 
-dimEv :: Dim d -> Dict (KnownDim d)
+dimEv :: forall (d :: Nat) . Dim d -> Dict (KnownDim d)
 dimEv d = reifyDim d Dict
 {-# INLINE dimEv #-}
 

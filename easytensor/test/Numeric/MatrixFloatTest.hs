@@ -152,8 +152,9 @@ prop_rotateEuler :: TestElem -> TestElem -> TestElem -> Bool
 prop_rotateEuler pitch yaw roll =
   rotateEuler pitch yaw roll `approxEq` rotateZ roll %* rotateY yaw %* rotateX pitch
 
-prop_lookAt :: Vector TestElem 3 -> Vector TestElem 3 -> Vector TestElem 3 -> Bool
+prop_lookAt :: Vector TestElem 3 -> Vector TestElem 3 -> Vector TestElem 3 -> Property
 prop_lookAt up cam foc =
+  (apart cam foc && apart up cam) ==>
   and [
     (normalized . fromHom $ toHomPoint foc %* m) `approxEq` vec3 0 0 (-1),
     fromHom (toHomPoint cam %* m) `approxEq` 0,
@@ -162,6 +163,7 @@ prop_lookAt up cam foc =
     fromHom (toHomVector zb %* m) `approxEq` vec3 0 0 1
   ]
   where
+    apart a b = maxElem (a - b) > 0.01 * (maxElem a `max` maxElem b)
     m = lookAt up cam foc
     zb = normalized $ cam - foc
     xb = normalized $ up `cross` zb

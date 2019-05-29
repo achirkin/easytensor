@@ -1235,7 +1235,7 @@ instance RepresentableList xs => PrimBytes (Idxs xs) where
         go i (W# x :xs) s = go (plusAddr# i SIZEOF_HSWORD#) xs
                                (writeWordOffAddr# i 0# x s)
     {-# INLINE writeAddr #-}
-    byteSize _ = case dimVal (order' @xs) of
+    byteSize _ = case dimVal (order' @_ @xs) of
       W# n -> byteSize (undefined :: Idx x) *# word2Int# n
     {-# INLINE byteSize #-}
     byteAlign _ = byteAlign (undefined :: Idx x)
@@ -1243,14 +1243,14 @@ instance RepresentableList xs => PrimBytes (Idxs xs) where
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
     indexArray ba off
-      | n@(W# n#) <- dimVal (order' @xs)
+      | n@(W# n#) <- dimVal (order' @_ @xs)
         = unsafeCoerce# (go (off *# word2Int# n#) n)
       where
         go _ 0 = []
         go i n = W# (indexWordArray# ba i) : go (i +# 1#) (n-1)
     {-# INLINE indexArray #-}
     readArray mba off s
-      | n@(W# n#) <- dimVal (order' @xs)
+      | n@(W# n#) <- dimVal (order' @_ @xs)
         = unsafeCoerce# (go (off *# word2Int# n#) n s)
       where
         go _ 0 s0 = (# s0, [] #)
@@ -1259,7 +1259,7 @@ instance RepresentableList xs => PrimBytes (Idxs xs) where
              (# s2, xs #) -> (# s2, W# w : xs #)
     {-# INLINE readArray #-}
     writeArray mba off is
-      | W# n# <- dimVal (order' @xs)
+      | W# n# <- dimVal (order' @_ @xs)
         = go (off *# word2Int# n#) (listIdxs is)
       where
         go _ [] s         = s

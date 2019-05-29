@@ -11,7 +11,7 @@
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE PatternSynonyms           #-}
 {-# LANGUAGE PolyKinds                 #-}
-{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE StandaloneDeriving        #-}
 {-# LANGUAGE TypeApplications          #-}
@@ -192,7 +192,7 @@ pattern EvList <- (mkEVL -> Dict)
 -- | Zero-length type list
 pattern U :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
            . () => (xs ~ '[]) => TypedList f xs
-pattern U <- (patTL @f @xs -> PatCNil)
+pattern U <- (patTL @k @f @xs -> PatCNil)
   where
     U = unsafeCoerce# []
 
@@ -214,7 +214,7 @@ pattern Cons :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
               . ()
              => forall (y :: k) (ys :: [k])
               . (xs ~ (y ': ys)) => f y -> TypedList f ys -> TypedList f xs
-pattern Cons x xs <- (patTL @f @xs -> PatCons x xs)
+pattern Cons x xs <- (patTL @k @f @xs -> PatCons x xs)
   where
     Cons = Numeric.TypedList.cons
 
@@ -223,7 +223,7 @@ pattern Snoc :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
               . ()
              => forall (sy :: [k]) (y :: k)
               . (xs ~ (sy +: y)) => TypedList f sy -> f y -> TypedList f xs
-pattern Snoc sx x <- (unsnocTL @f @xs -> PatSnoc sx x)
+pattern Snoc sx x <- (unsnocTL @k @f @xs -> PatSnoc sx x)
   where
     Snoc = Numeric.TypedList.snoc
 
@@ -233,63 +233,75 @@ pattern Reverse :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
                 => forall (sx :: [k])
                  . (xs ~ Reverse sx, sx ~ Reverse xs)
                 => TypedList f sx -> TypedList f xs
-pattern Reverse sx <- (unreverseTL @f @xs -> PatReverse sx)
+pattern Reverse sx <- (unreverseTL @k @f @xs -> PatReverse sx)
   where
     Reverse = Numeric.TypedList.reverse
 
-cons :: f x -> TypedList f xs -> TypedList f (x :+ xs)
+cons :: forall (k :: Type) (f :: k -> Type) (x :: k) (xs :: [k])
+      . f x -> TypedList f xs -> TypedList f (x :+ xs)
 cons x xs = TypedList (unsafeCoerce# x : unsafeCoerce# xs)
 {-# INLINE cons #-}
 
-snoc :: TypedList f xs -> f x -> TypedList f (xs +: x)
+snoc :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) (x :: k)
+      . TypedList f xs -> f x -> TypedList f (xs +: x)
 snoc xs x = TypedList (unsafeCoerce# xs ++ [unsafeCoerce# x])
 {-# INLINE snoc #-}
 
-reverse :: TypedList f xs -> TypedList f (Reverse xs)
+reverse :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+         . TypedList f xs -> TypedList f (Reverse xs)
 reverse (TypedList sx) = unsafeCoerce# (Prelude.reverse sx)
 {-# INLINE reverse #-}
 
-take :: Dim n -> TypedList f xs -> TypedList f (Take n xs)
+take :: forall (k :: Type) (n :: Nat) (f :: k -> Type) (xs :: [k])
+      . Dim n -> TypedList f xs -> TypedList f (Take n xs)
 take d (TypedList xs) = unsafeCoerce# (Prelude.take (intD d) xs)
 {-# INLINE take #-}
 
-drop :: Dim n -> TypedList f xs -> TypedList f (Drop n xs)
+drop :: forall (k :: Type) (n :: Nat) (f :: k -> Type) (xs :: [k])
+      . Dim n -> TypedList f xs -> TypedList f (Drop n xs)
 drop d (TypedList xs) = unsafeCoerce# (Prelude.drop (intD d) xs)
 {-# INLINE drop #-}
 
-head :: TypedList f xs -> f (Head xs)
+head :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+      . TypedList f xs -> f (Head xs)
 head (TypedList xs) = unsafeCoerce# (Prelude.head xs)
 {-# INLINE head #-}
 
-tail :: TypedList f xs -> TypedList f (Tail xs)
+tail :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+      . TypedList f xs -> TypedList f (Tail xs)
 tail (TypedList xs) = unsafeCoerce# (Prelude.tail xs)
 {-# INLINE tail #-}
 
-init :: TypedList f xs -> TypedList f (Init xs)
+init :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+      . TypedList f xs -> TypedList f (Init xs)
 init (TypedList xs) = unsafeCoerce# (Prelude.init xs)
 {-# INLINE init #-}
 
-last :: TypedList f xs -> f (Last xs)
+last :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+      . TypedList f xs -> f (Last xs)
 last (TypedList xs) = unsafeCoerce# (Prelude.last xs)
 {-# INLINE last #-}
 
-length :: TypedList f xs -> Dim (Length xs)
+length :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+       . TypedList f xs -> Dim (Length xs)
 length = order
 {-# INLINE length #-}
 
-splitAt :: Dim n
+splitAt :: forall (k :: Type) (n :: Nat) (f :: k -> Type) (xs :: [k])
+         . Dim n
         -> TypedList f xs
         -> (TypedList f (Take n xs), TypedList f (Drop n xs))
 splitAt d (TypedList xs) = unsafeCoerce# (Prelude.splitAt (intD d) xs)
 {-# INLINE splitAt #-}
 
-concat :: TypedList f xs
+concat :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) (ys :: [k])
+        . TypedList f xs
        -> TypedList f ys
        -> TypedList f (xs ++ ys)
 concat (TypedList xs) (TypedList ys) = unsafeCoerce# (xs ++ ys)
 {-# INLINE concat #-}
 
-stripPrefix :: forall xs ys f
+stripPrefix :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) (ys :: [k])
              . ( All Typeable xs, All Typeable ys, All Eq (Map f xs))
             => TypedList f xs
             -> TypedList f ys
@@ -302,7 +314,7 @@ stripPrefix ((x :: f x) :* xs) ((y :: f y) :* ys)
   | otherwise    = Nothing
 {-# INLINE stripPrefix #-}
 
-stripSuffix :: forall xs ys f
+stripSuffix :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) (ys :: [k])
              . ( All Typeable xs, All Typeable ys, All Eq (Map f xs))
             => TypedList f xs
             -> TypedList f ys
@@ -320,7 +332,8 @@ stripSuffix xs ys
 
 -- | Returns two things at once:
 --   (Evidence that types of lists match, value-level equality).
-sameList :: ( All Typeable xs, All Typeable ys, All Eq (Map f xs))
+sameList :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) (ys :: [k])
+          . ( All Typeable xs, All Typeable ys, All Eq (Map f xs))
          => TypedList f xs
          -> TypedList f ys
          -> Maybe (xs :~: ys, Bool)
@@ -334,7 +347,8 @@ sameList ((x :: f x) :* xs) ((y :: f y) :* ys)
 sameList _ _ = Nothing
 
 -- | Map a function over contents of a typed list
-map :: (forall a . f a -> g a)
+map :: forall (k :: Type) (f :: k -> Type) (g :: k -> Type) (xs :: [k])
+     . (forall (a :: k) . f a -> g a)
     -> TypedList f xs
     -> TypedList g xs
 map k (TypedList xs) = unsafeCoerce# (Prelude.map k' xs)
@@ -349,7 +363,8 @@ map k (TypedList xs) = unsafeCoerce# (Prelude.map k' xs)
 --
 --   > case types ts of TypeList -> ...
 --
-types :: forall (f :: k -> Type) (xs :: [k]) . TypedList f xs -> TypeList xs
+types :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+       . TypedList f xs -> TypeList xs
 types (TypedList xs) = unsafeCoerce# (Prelude.map (const Proxy) xs)
 {-# INLINE types #-}
 
@@ -392,11 +407,13 @@ instance RepresentableList xs => RepresentableList (x ': xs :: [k]) where
   tList = Proxy @x :* tList @k @xs
 
 
-order' :: forall xs . RepresentableList xs => Dim (Length xs)
+order' :: forall (k :: Type) (xs :: [k])
+        . RepresentableList xs => Dim (Length xs)
 order' = order (tList @_ @xs)
 {-# INLINE order' #-}
 
-order :: TypedList f xs -> Dim (Length xs)
+order :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+       . TypedList f xs -> Dim (Length xs)
 order (TypedList xs) = unsafeCoerce# (fromIntegral (Prelude.length xs) :: Word)
 {-# INLINE order #-}
 
@@ -412,7 +429,7 @@ order (TypedList xs) = unsafeCoerce# (fromIntegral (Prelude.length xs) :: Word)
 --   to create an instance of `RepresentableList` typeclass at runtime.
 --   The trick is taken from Edward Kmett's reflection library explained
 --   in https://www.schoolofhaskell.com/user/thoughtpolice/using-reflection
-reifyRepList :: forall xs r
+reifyRepList :: forall (k :: Type) (xs :: [k]) (r :: Type)
               . TypeList xs
              -> (RepresentableList xs => r)
              -> r
@@ -420,11 +437,12 @@ reifyRepList tl k = unsafeCoerce# (MagicRepList k :: MagicRepList xs r) tl
 {-# INLINE reifyRepList #-}
 newtype MagicRepList xs r = MagicRepList (RepresentableList xs => r)
 
-data PatReverse f xs
+data PatReverse (f :: k -> Type) (xs :: [k])
   = forall (sx :: [k]) . (xs ~ Reverse sx, sx ~ Reverse xs)
   => PatReverse (TypedList f sx)
 
-unreverseTL :: forall f xs . TypedList f xs -> PatReverse f xs
+unreverseTL :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+             . TypedList f xs -> PatReverse f xs
 unreverseTL (TypedList xs)
   = case (unsafeCoerce# (Dict @(xs ~ xs, xs ~ xs))
            :: Dict (xs ~ Reverse sx, sx ~ Reverse xs)
@@ -440,11 +458,12 @@ mkRTL xs = reifyRepList xs Dict
 {-# INLINE mkRTL #-}
 
 
-data PatSnoc f xs where
+data PatSnoc (f :: k -> Type) (xs :: [k]) where
   PatSNil :: PatSnoc f '[]
   PatSnoc :: TypedList f ys -> f y -> PatSnoc f (ys +: y)
 
-unsnocTL :: forall f xs . TypedList f xs -> PatSnoc f xs
+unsnocTL :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+          . TypedList f xs -> PatSnoc f xs
 unsnocTL (TypedList [])
   = case unsafeEqTypes @_ @xs @'[] of
       Dict -> PatSNil
@@ -459,11 +478,12 @@ unsnocTL (TypedList (x:xs))
 {-# INLINE unsnocTL #-}
 
 
-data PatCons f xs where
+data PatCons (f :: k -> Type) (xs :: [k]) where
   PatCNil :: PatCons f '[]
   PatCons :: f y -> TypedList f ys -> PatCons f (y ': ys)
 
-patTL :: forall f xs . TypedList f xs -> PatCons f xs
+patTL :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+       . TypedList f xs -> PatCons f xs
 patTL (TypedList [])
   = case unsafeEqTypes @_ @xs @'[] of
       Dict -> PatCNil
@@ -472,7 +492,7 @@ patTL (TypedList (x : xs))
       Dict -> PatCons (unsafeCoerce# x) (unsafeCoerce# xs)
 {-# INLINE patTL #-}
 
-intD :: Dim n -> Int
+intD :: forall (n :: Nat) . Dim n -> Int
 intD = (fromIntegral :: Word -> Int) . unsafeCoerce#
 
 
@@ -487,5 +507,5 @@ _evList :: forall (k :: Type) (c :: k -> Constraint) (xs :: [k]) (f :: (k -> Typ
 _evList U         = U
 _evList (_ :* xs) = case _evList xs of evs -> Dict1 :* evs
 
-unsafeEqTypes :: forall k (a :: k) (b :: k) . Dict (a ~ b)
+unsafeEqTypes :: forall (k :: Type) (a :: k) (b :: k) . Dict (a ~ b)
 unsafeEqTypes = unsafeCoerce# (Dict :: Dict (a ~ a))

@@ -6,7 +6,7 @@
 {-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE KindSignatures            #-}
 {-# LANGUAGE PolyKinds                 #-}
-{-# LANGUAGE Rank2Types                #-}
+{-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TemplateHaskell           #-}
 {-# LANGUAGE TypeApplications          #-}
@@ -16,9 +16,9 @@
 
 module Numeric.Dimensions.DimsTest (runTests) where
 
-import           Data.Constraint
-import           Data.Typeable
-import           Test.QuickCheck
+import Data.Constraint
+import Data.Typeable
+import Test.QuickCheck
 
 import           Numeric.Dimensions
 import qualified Numeric.TypedList  as TL
@@ -98,12 +98,12 @@ prop_stripSuffixDims n l
 
 
 dimsAllEq :: Dims (ns :: [Nat]) -> Dict (All Eq (Map Dim ns))
-dimsAllEq U           = Dict
-dimsAllEq (Dim :* ds) | Dict <- dimsAllEq ds = Dict
+dimsAllEq U         = Dict
+dimsAllEq (D :* ds) | Dict <- dimsAllEq ds = Dict
 
 dimsAllTypeable :: Dims (ns :: [Nat]) -> Dict (All Typeable ns)
 dimsAllTypeable U           = Dict
-dimsAllTypeable ((Dim :: Dim n) :* ds)
+dimsAllTypeable ((D :: Dim n) :* ds)
   | Dict <- mapDict cls (Dict @(KnownDim n))
   , Dict <- dimsAllTypeable ds = Dict
 
