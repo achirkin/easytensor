@@ -38,8 +38,8 @@ module Data.Type.List
 
 import Data.Constraint         ((:-) (..), Constraint, Dict (..))
 import Data.Type.List.Internal (Snoc)
+import Data.Type.Lits
 import GHC.Base                (Type)
-import GHC.TypeLits
 import Type.Reflection
 import Unsafe.Coerce           (unsafeCoerce)
 

@@ -78,9 +78,7 @@ tests:
     - QuickCheck
     - easytensor
     ghc-options: -O2
-    when:
-    - condition: impl(ghc >= 8.6)
-      default-extensions: NoStarIsType, NoMonadFailDesugaring
+
 
 benchmarks:
 
@@ -90,9 +88,7 @@ benchmarks:
     dependencies:
     - easytensor
     ghc-options: -O2
-    when:
-    - condition: impl(ghc >= 8.6)
-      default-extensions: NoStarIsType, NoMonadFailDesugaring
+
 
   et-bench-spfolds:
     main:                subspacefolds.hs
@@ -101,6 +97,3 @@ benchmarks:
     - time
     - easytensor
     ghc-options: -O2
-    when:
-    - condition: impl(ghc >= 8.6)
-      default-extensions: NoStarIsType, NoMonadFailDesugaring
