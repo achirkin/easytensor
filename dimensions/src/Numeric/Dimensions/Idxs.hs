@@ -1,22 +1,17 @@
-{-# LANGUAGE CPP                        #-}
-{-# LANGUAGE ConstraintKinds            #-}
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DeriveDataTypeable         #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE ExistentialQuantification  #-}
-{-# LANGUAGE ExplicitNamespaces         #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures             #-}
-{-# LANGUAGE MagicHash                  #-}
-{-# LANGUAGE PolyKinds                  #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE Strict                     #-}
-{-# LANGUAGE TypeApplications           #-}
-{-# LANGUAGE UnboxedTuples              #-}
-{-# LANGUAGE UndecidableInstances       #-}
+{-# OPTIONS_GHC -fno-warn-orphans      #-}
+{-# LANGUAGE ConstraintKinds           #-}
+{-# LANGUAGE DataKinds                 #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ExplicitNamespaces        #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE MagicHash                 #-}
+{-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE Strict                    #-}
+{-# LANGUAGE TypeApplications          #-}
+{-# LANGUAGE UndecidableInstances      #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.Idxs
@@ -24,7 +19,7 @@
 -- License     :  BSD3
 --
 --
--- Provides a data type Idx that enumerates through multiple dimensions.
+-- Provides a data type `Idxs` that enumerates through multiple dimensions.
 --
 -- Higher indices go first, i.e. assumed enumeration
 --          is i = i1*n1*n2*...*n(k-1) + ... + i(k-2)*n1*n2 + i(k-1)*n1 + ik
@@ -34,215 +29,30 @@
 
 module Numeric.Dimensions.Idxs
   ( -- * Data types
-    Idx (..), Idxs
-  , idxFromWord, unsafeIdxFromWord, idxToWord
-  , listIdxs, idxsFromWords
+    Idxs, listIdxs, idxsFromWords
+    -- * Re-export single dimension type and functions
+  , module Numeric.Idx
     -- * Re-export dimensions types
   , module Numeric.Dimensions.Dims
   ) where
 
 
-import Control.Arrow    (first)
-import Data.Data        (Data)
-import Foreign.Storable (Storable)
-import GHC.Base         (Int (..), Type, Word (..), int2Word#, maxInt,
-                         plusWord2#, timesWord2#, unsafeCoerce#, word2Int#)
-import GHC.Enum
-import GHC.Generics     (Generic)
+import           GHC.Base  (Type, Word (..), unsafeCoerce#)
+import           GHC.Enum
+import qualified Text.Read as P
 
 import Numeric.Dimensions.Dims
-
-
--- | This type is used to index a single dimension;
---   the range of indices is from @0@ to @n-1@.
---
-newtype Idx (n :: k) = Idx { unIdx :: Word }
-  deriving ( Data, Generic, Integral, Real, Storable, Eq, Ord )
-
-instance Read (Idx (n :: k)) where
-    readsPrec d = fmap (first Idx) . readsPrec d
-
-instance Show (Idx (n :: k)) where
-    showsPrec d = showsPrec d . unIdx
-
-instance BoundedDim n => Bounded (Idx (n :: k)) where
-    minBound = 0
-    {-# INLINE minBound #-}
-    maxBound = Idx (unsafeCoerce# (dimBound @k @n)  - 1)
-    {-# INLINE maxBound #-}
-
-instance BoundedDim n => Enum (Idx (n :: k)) where
-
-#ifdef UNSAFE_INDICES
-    succ = unsafeCoerce# ((+ 1) :: Word -> Word)
-#else
-    succ x@(Idx i)
-      | x /= maxBound = Idx (i + 1)
-      | otherwise = succError $ showIdxType (dimBound @k @n)
-#endif
-    {-# INLINE succ #-}
-
-#ifdef UNSAFE_INDICES
-    pred = unsafeCoerce# ((+ (-1)) :: Word -> Word)
-#else
-    pred x@(Idx i)
-      | x /= maxBound = Idx (i + 1)
-      | otherwise = predError $ showIdxType (dimBound @k @n)
-#endif
-    {-# INLINE pred #-}
-
-#ifdef UNSAFE_INDICES
-    toEnum (I# i#) = unsafeCoerce# (W# (int2Word# i#))
-#else
-    toEnum i@(I# i#)
-        | i >= 0 && i < d = unsafeCoerce# (W# (int2Word# i#))
-        | otherwise       = toEnumError (showIdxType di) i (0, d - 1)
-      where
-        di = dimBound @k @n
-        d = fromIntegral (dimVal di :: Word)
-#endif
-    {-# INLINE toEnum #-}
-
-#ifdef UNSAFE_INDICES
-    fromEnum (Idx (W# w#)) = I# (word2Int# w#)
-#else
-    fromEnum (Idx x@(W# w#))
-        | x <= maxIntWord = I# (word2Int# w#)
-        | otherwise       = fromEnumError (showIdxType (dimBound @k @n)) x
-        where
-          maxIntWord = W# (case maxInt of I# i -> int2Word# i)
-#endif
-    {-# INLINE fromEnum #-}
-
-    enumFrom (Idx n)
-      = unsafeCoerce# (enumFromTo n (dimVal (dimBound @k @n) - 1))
-    {-# INLINE enumFrom #-}
-    enumFromThen (Idx n0) (Idx n1)
-      = unsafeCoerce# (enumFromThenTo n0 n1 lim)
-      where
-        lim = if n1 >= n0 then dimVal (dimBound @k @n) - 1 else 0
-    {-# INLINE enumFromThen #-}
-    enumFromTo
-      = unsafeCoerce# (enumFromTo :: Word -> Word -> [Word])
-    {-# INLINE enumFromTo #-}
-    enumFromThenTo
-      = unsafeCoerce# (enumFromThenTo :: Word -> Word -> Word -> [Word])
-    {-# INLINE enumFromThenTo #-}
-
-instance BoundedDim n => Num (Idx (n :: k)) where
-
-#ifdef UNSAFE_INDICES
-    (+) = unsafeCoerce# ((+) :: Word -> Word -> Word)
-#else
-    (Idx a@(W# a#)) + b@(Idx (W# b#))
-        | ovf || r >= d
-          = errorWithoutStackTrace
-          $ "Num.(+){Idx " ++ show d ++ "}: sum of "
-            ++ show a ++ " and " ++ show b
-            ++ " is outside of index bounds."
-        | otherwise = Idx r
-      where
-        (ovf, r) = case plusWord2# a# b# of
-          (# r2#, r1# #) -> ( W# r2# > 0 , W# r1# )
-        d = dimVal (dimBound @k @n)
-#endif
-    {-# INLINE (+) #-}
-
-#ifdef UNSAFE_INDICES
-    (-) = unsafeCoerce# ((-) :: Word -> Word -> Word)
-#else
-    (Idx a) - (Idx b)
-        | b > a
-          = errorWithoutStackTrace
-          $ "Num.(-){Idx " ++ show (dimBound @k @n) ++ "}: difference of "
-            ++ show a ++ " and " ++ show b
-            ++ " is negative."
-        | otherwise = Idx (a - b)
-#endif
-    {-# INLINE (-) #-}
-
-#ifdef UNSAFE_INDICES
-    (*) = unsafeCoerce# ((*) :: Word -> Word -> Word)
-#else
-    (Idx a@(W# a#)) * b@(Idx (W# b#))
-        | ovf || r >= d
-          = errorWithoutStackTrace
-          $ "Num.(*){Idx " ++ show d ++ "}: product of "
-            ++ show a ++ " and " ++ show b
-            ++ " is outside of index bounds."
-        | otherwise = Idx r
-      where
-        (ovf, r) = case timesWord2# a# b# of
-          (# r2#, r1# #) -> ( W# r2# > 0 , W# r1# )
-        d = dimVal (dimBound @k @n)
-#endif
-    {-# INLINE (*) #-}
-
-    negate = errorWithoutStackTrace
-           $ "Num.(*){Idx " ++ show (dimBound @k @n) ++ "}: cannot negate index."
-    {-# INLINE negate #-}
-    abs = id
-    {-# INLINE abs #-}
-    signum _ = Idx 1
-    {-# INLINE signum #-}
-
-#ifdef UNSAFE_INDICES
-    fromInteger = unsafeCoerce# (fromInteger :: Integer -> Word)
-#else
-    fromInteger i
-      | i >= 0 && i < d = Idx $ fromInteger i
-      | otherwise       = errorWithoutStackTrace
-                        $ "Num.fromInteger{Idx "
-                        ++ show d ++ "}: integer "
-                        ++ show i ++ " is outside of index bounds."
-      where
-        d = toInteger $ dimVal (dimBound @k @n)
-#endif
-    {-# INLINE fromInteger #-}
-
-
-unsafeIdxFromWord :: forall (k :: Type) (d :: k) . BoundedDim d => Word -> Idx d
-#ifdef UNSAFE_INDICES
-unsafeIdxFromWord = unsafeCoerce#
-#else
-unsafeIdxFromWord w
-  | w < d     = Idx w
-  | otherwise = errorWithoutStackTrace
-              $ "idxFromWord{Idx "
-              ++ show d ++ "}: word "
-              ++ show w ++ " is outside of index bounds."
-  where
-    d = dimVal (dimBound @k @d)
-#endif
-{-# INLINE unsafeIdxFromWord #-}
-
-idxFromWord :: forall (k :: Type) (d :: k) . BoundedDim d => Word -> Maybe (Idx d)
-idxFromWord w
-  | w < dimVal (dimBound @k @d) = Just (Idx w)
-  | otherwise                   = Nothing
-{-# INLINE idxFromWord #-}
-
-
-idxToWord :: forall (k :: Type) (d :: k) . Idx d -> Word
-idxToWord = unsafeCoerce#
-{-# INLINE idxToWord #-}
-
-{-# RULES
-"fromIntegral/idxToWord"
-  fromIntegral = idxToWord
-  #-}
-
+import Numeric.Idx
+import Numeric.TypedList       (typedListReadPrec, typedListShowsPrec)
 
 -- | Type-level dimensional indexing with arbitrary Word values inside.
 --   Most of the operations on it require `Dimensions` constraint,
 --   because the @Idxs@ itself does not store info about dimension bounds.
 type Idxs (xs :: [k]) = TypedList Idx xs
 
-
 listIdxs :: forall (k :: Type) (xs :: [k]) . Idxs xs -> [Word]
 listIdxs = unsafeCoerce#
 {-# INLINE listIdxs #-}
-
 
 idxsFromWords :: forall (k :: Type) (xs :: [k])
                . BoundedDims xs => [Word] -> Maybe (Idxs xs)
@@ -253,7 +63,6 @@ idxsFromWords = unsafeCoerce# . go (listDims (dimsBound @k @xs))
     go (d : ds) (i : is)
       | i < d = (i:) <$> go ds is
     go _ _   = Nothing
-
 
 
 instance Eq (Idxs (xs :: [k])) where
@@ -274,15 +83,16 @@ instance Eq (Idxs (xs :: [k])) where
 --   > sort == sortOn fromEnum
 --
 instance Ord (Idxs (xs :: [k])) where
-    compare a b = compare (listIdxs a) (listIdxs b)
+    compare = unsafeCoerce# (compare :: [Word] -> [Word] -> Ordering)
     {-# INLINE compare #-}
 
-
 instance Show (Idxs (xs :: [k])) where
-    show ds = "Idxs " ++ show (listIdxs ds)
-    showsPrec p ds
-      = showParen (p >= 10)
-      $ showString "Idxs " . showsPrec p (listIdxs ds)
+    showsPrec = typedListShowsPrec @k @Idx @xs showsPrec
+
+instance BoundedDims xs => Read (Idxs (xs :: [k])) where
+    readPrec = typedListReadPrec @k @BoundedDim P.readPrec (tList @k @xs)
+    readList = P.readListDefault
+    readListPrec = P.readListPrecDefault
 
 -- | With this instance we can slightly reduce indexing expressions, e.g.
 --
@@ -454,7 +264,3 @@ instance Dimensions ds => Enum (Idxs (ds :: [Nat])) where
 -- | Show type of Idxs (for displaying nice errors).
 showIdxsType :: Dims ns -> String
 showIdxsType ds = "Idxs '" ++ show (listDims ds)
-
--- | Show type of Idx (for displaying nice errors).
-showIdxType :: Dim n -> String
-showIdxType d = "Idx '" ++ show (dimVal d)
