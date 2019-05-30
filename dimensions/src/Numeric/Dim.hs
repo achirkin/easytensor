@@ -3,11 +3,9 @@
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveDataTypeable    #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE ExplicitNamespaces    #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE KindSignatures        #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PatternSynonyms       #-}
@@ -45,8 +43,8 @@ module Numeric.Dim
     XNat (..), XN, N, XNatType (..)
     -- * Term level dimension
   , Dim ( D, Dn, Dx
-        , D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13, D14
-        , D15, D16, D17, D18, D19, D20, D21, D22, D23, D24, D25
+        , D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13
+        , D14, D15, D16, D17, D18, D19, D20, D21, D22, D23, D24, D25
         )
   , SomeDim
   , KnownDim (..), BoundedDim (..), KnownXNatType (..), FixedDim
@@ -76,15 +74,16 @@ module Numeric.Dim
   ) where
 
 
+import           Data.Coerce
+import           Data.Constraint
 import           Data.Data       hiding (TypeRep, typeRep, typeRepTyCon)
 import           Data.Type.Lits
 import           GHC.Base        (Type)
 import           GHC.Exts        (Constraint, Proxy#, proxy#, unsafeCoerce#)
 import qualified GHC.Generics    as G
 import           Numeric.Natural (Natural)
+import qualified Text.Read       as P
 import           Type.Reflection
-
-import Data.Constraint
 
 
 -- | Either known or unknown at compile-time natural number
@@ -120,10 +119,10 @@ newtype Dim (x :: k) = DimSing Word
 {-# COMPLETE Dn, Dx #-}
 
 instance Typeable d => Data (Dim (d :: Nat)) where
-    gfoldl _ z = z
-    gunfold _ z _ = z (typeableDim @d)
-    toConstr _ = dimNatConstr $ dimVal (typeableDim @d)
-    dataTypeOf _ = dimDataType $ dimVal (typeableDim @d)
+    gfoldl ~_ z = z
+    gunfold ~_ z ~_ = z (typeableDim @d)
+    toConstr ~_ = dimNatConstr $ dimVal (typeableDim @d)
+    dataTypeOf ~_ = dimDataType $ dimVal (typeableDim @d)
 
 dimDataType :: Word -> DataType
 dimDataType = mkDataType "Numeric.Dim.Dim" . (:[]) . dimNatConstr
@@ -136,7 +135,7 @@ instance KnownDim d => G.Generic (Dim (d :: Nat)) where
           ('G.MetaData "Dim" "Numeric.Dim" "dimensions" 'False)
           (G.C1 ('G.MetaCons (AppendSymbol "D" (ShowNat d)) 'G.PrefixI 'False) G.U1)
     from D = G.M1 (G.M1 G.U1)
-    to _ = dim @d
+    to ~_ = dim @d
 
 -- | Match against this pattern to bring `KnownDim` instance into scope.
 pattern D :: forall (n :: Nat) . () => KnownDim n => Dim n
@@ -149,7 +148,7 @@ pattern Dn :: forall (xn :: XNat) . KnownXNatType xn
            => forall (n :: Nat) . (KnownDim n, xn ~ 'N n) => Dim n -> Dim xn
 pattern Dn k <- (dimXNEv (xNatType @xn) -> PatN k)
   where
-    Dn k = unsafeCoerce# k
+    Dn k = coerce k
 
 -- | `XNat` that is unknown at compile time.
 --   Same as `SomeNat`, but for a dimension:
@@ -159,7 +158,7 @@ pattern Dx :: forall (xn :: XNat) . KnownXNatType xn
             . (KnownDim n, m <= n, xn ~ 'XN m) => Dim n -> Dim xn
 pattern Dx k <- (dimXNEv (xNatType @xn) -> PatXN k)
   where
-    Dx k = unsafeCoerce# k
+    Dx k = coerce k
 
 -- | This class provides the `Dim` associated with a type-level natural.
 --
@@ -181,7 +180,6 @@ class KnownDim (n :: Nat) where
     --   dim @(13 - 6) :: Dim 7
     --
     dim :: Dim n
-
 
 -- | Get a minimal or exact bound of a @Dim@.
 --
@@ -244,12 +242,12 @@ instance KnownXNatType ('XN n) where
 
 -- | Similar to `natVal` from `GHC.TypeNats`, but returns `Word`.
 dimVal :: forall (k :: Type) (x :: k) . Dim (x :: k) -> Word
-dimVal = unsafeCoerce#
+dimVal = coerce
 {-# INLINE dimVal #-}
 
 -- | Similar to `natVal` from `GHC.TypeNats`, but returns `Word`.
 dimVal' :: forall (n :: Nat) . KnownDim n => Word
-dimVal' = unsafeCoerce# (dim @n)
+dimVal' = coerce (dim @n)
 {-# INLINE dimVal' #-}
 
 -- | Construct a @Dim n@ if there is an instance of @Typeable n@ around.
@@ -319,30 +317,36 @@ instance {-# OVERLAPPING #-} KnownDim 19 where
   { {-# INLINE dim #-}; dim = DimSing 19 }
 instance {-# OVERLAPPING #-} KnownDim 20 where
   { {-# INLINE dim #-}; dim = DimSing 20 }
+instance {-# OVERLAPPING #-} KnownDim 21 where
+  { {-# INLINE dim #-}; dim = DimSing 21 }
+instance {-# OVERLAPPING #-} KnownDim 22 where
+  { {-# INLINE dim #-}; dim = DimSing 22 }
+instance {-# OVERLAPPING #-} KnownDim 23 where
+  { {-# INLINE dim #-}; dim = DimSing 23 }
+instance {-# OVERLAPPING #-} KnownDim 24 where
+  { {-# INLINE dim #-}; dim = DimSing 24 }
+instance {-# OVERLAPPING #-} KnownDim 25 where
+  { {-# INLINE dim #-}; dim = DimSing 25 }
 
 instance Class (KnownNat n) (KnownDim n) where
     cls = Sub $ reifyNat @_ @n (fromIntegral $ dimVal' @n) Dict
 
 -- | Similar to `someNatVal` from `GHC.TypeNats`.
 someDimVal :: Word -> SomeDim
-someDimVal = unsafeCoerce#
+someDimVal = coerce
 {-# INLINE someDimVal #-}
-
-
 
 -- | `constrain` with explicitly-passed constraining @Dim@
 --   to avoid @AllowAmbiguousTypes@.
-constrainBy :: forall (k :: Type) (x :: k) (l :: Type) (y :: l)
-             . BoundedDim x => Dim x -> Dim y -> Maybe (Dim x)
-constrainBy _ = constrain @k @x @l @y
+constrainBy :: forall (k :: Type) (x :: k) (p :: k -> Type) (l :: Type) (y :: l)
+             . BoundedDim x => p x -> Dim y -> Maybe (Dim x)
+constrainBy ~_ = constrain @k @x @l @y
 {-# INLINE constrainBy #-}
 
-
 -- | Decrease minimum allowed size of a @Dim (XN x)@.
-relax :: forall (m :: Nat) (n :: Nat) . m <= n => Dim (XN n) -> Dim (XN m)
-relax = unsafeCoerce#
+relax :: forall (m :: Nat) (n :: Nat) . (<=) m n => Dim (XN n) -> Dim (XN m)
+relax = coerce
 {-# INLINE relax #-}
-
 
 -- | We either get evidence that this function
 --   was instantiated with the same type-level numbers, or Nothing.
@@ -362,7 +366,7 @@ sameDim (DimSing a) (DimSing b)
 sameDim' :: forall (x :: Nat) (y :: Nat) (p :: Nat -> Type) (q :: Nat -> Type)
           . (KnownDim x, KnownDim y)
          => p x -> q y -> Maybe (Dict (x ~ y))
-sameDim' _ _ = sameDim (dim @x) (dim @y)
+sameDim' ~_ ~_ = sameDim (dim @x) (dim @y)
 {-# INLINE sameDim' #-}
 
 -- | Ordering of dimension values.
@@ -372,12 +376,11 @@ sameDim' _ _ = sameDim (dim @x) (dim @y)
 compareDim :: forall (a :: Nat) (b :: Nat)
             . Dim a -> Dim b -> SOrdering (CmpNat a b)
 compareDim a b
-  = case unsafeCoerce# (compare :: Word -> Word -> Ordering) a b of
+  = case coerce (compare :: Word -> Word -> Ordering) a b of
     LT -> unsafeCoerce# SLT
     EQ -> unsafeCoerce# SEQ
     GT -> unsafeCoerce# SGT
 {-# INLINE compareDim #-}
-
 
 -- | Ordering of dimension values.
 --
@@ -385,12 +388,11 @@ compareDim a b
 --         if you want to compare unknown `XNat`s, use `Ord` instance of `Dim`.
 compareDim' :: forall (a :: Nat) (b :: Nat) (p :: Nat -> Type) (q :: Nat -> Type)
              . (KnownDim a, KnownDim b) => p a -> q b -> SOrdering (CmpNat a b)
-compareDim' _ _ = compareDim (dim @a)  (dim @b)
+compareDim' ~_ ~_ = compareDim (dim @a)  (dim @b)
 {-# INLINE compareDim' #-}
 
-
 instance Eq (Dim (n :: Nat)) where
-    _ == _ = True
+    ~_ == ~_ = True
     {-# INLINE (==) #-}
 
 instance Eq (Dim (x :: XNat)) where
@@ -398,49 +400,48 @@ instance Eq (Dim (x :: XNat)) where
     {-# INLINE (==) #-}
 
 instance Ord (Dim (n :: Nat)) where
-    compare _ _ = EQ
+    compare ~_ ~_ = EQ
     {-# INLINE compare #-}
 
 instance Ord (Dim (x :: XNat)) where
-    compare = unsafeCoerce# (compare :: Word -> Word -> Ordering)
+    compare = coerce (compare :: Word -> Word -> Ordering)
     {-# INLINE compare #-}
 
-instance Show (Dim x) where
-    showsPrec p = showsPrec p . dimVal
+instance Show (Dim (x :: k)) where
+    showsPrec ~_ d = showChar 'D' . shows (dimVal d)
     {-# INLINE showsPrec #-}
 
-instance KnownDim m => Read (Dim ('XN m)) where
-    readsPrec p xs = do (a,ys) <- readsPrec p xs
-                        case constrain (someDimVal a) of
-                          Nothing -> []
-                          Just n  -> [(n,ys)]
-
-
-
+instance BoundedDim x => Read (Dim (x :: k)) where
+    readPrec = P.lexP >>= \case
+      P.Ident ('D':s)
+        | Just d <- P.readMaybe s
+            >>= constrain @k @x @XNat @(XN 0) . DimSing
+          -> return d
+      ~_  -> P.pfail
+    readList = P.readListDefault
+    readListPrec = P.readListPrecDefault
 
 plusDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim (n + m)
-plusDim (DimSing a) (DimSing b) = unsafeCoerce# (a + b)
+plusDim = coerce ((+) :: Word -> Word -> Word)
 {-# INLINE plusDim #-}
 
-minusDim :: forall (n :: Nat) (m :: Nat) . m <= n => Dim n -> Dim m -> Dim (n - m)
-minusDim (DimSing a) (DimSing b) = unsafeCoerce# (a - b)
+minusDim :: forall (n :: Nat) (m :: Nat) . (<=) m n => Dim n -> Dim m -> Dim (n - m)
+minusDim = coerce ((-) :: Word -> Word -> Word)
 {-# INLINE minusDim #-}
 
 minusDimM :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Maybe (Dim (n - m))
 minusDimM (DimSing a) (DimSing b)
-  | a >= b    = Just (unsafeCoerce# (a - b))
+  | a >= b    = Just (coerce (a - b))
   | otherwise = Nothing
 {-# INLINE minusDimM #-}
 
 timesDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim ((*) n m)
-timesDim (DimSing a) (DimSing b) = unsafeCoerce# (a * b)
+timesDim = coerce ((*) :: Word -> Word -> Word)
 {-# INLINE timesDim #-}
 
 powerDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim ((^) n m)
-powerDim (DimSing a) (DimSing b) = unsafeCoerce# (a ^ b)
+powerDim = coerce ((^) :: Word -> Word -> Word)
 {-# INLINE powerDim #-}
-
-
 
 -- | GADT to support `KnownDimKind` type class.
 --   Match against its constructors to know if @k@ is @Nat@ or @XNat@
@@ -460,8 +461,6 @@ instance KnownDimKind Nat where
 
 instance KnownDimKind XNat where
     dimKind = DimXNat
-
-
 
 --------------------------------------------------------------------------------
 
@@ -496,14 +495,21 @@ dimXNEv XNt xn@(DimSing k) = reifyDim dd (f dd xn)
     dd = DimSing @Nat @_ k
     f :: forall (d :: Nat) (m :: Nat)
        . KnownDim d => Dim d -> Dim ('XN m) -> PatXDim ('XN m)
-    f d _ = case ( unsafeCoerce# (Dict @(m <= m))
+    f d ~_ = case ( unsafeCoerce# (Dict @(m <= m))
                 :: Dict (m <= d)
                ) of
       Dict -> PatXN d
 {-# INLINE dimXNEv #-}
 
--- MOAR PATTERNS
--- NB: I don't provide D0 and D1 to discourage their use.
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D0 :: forall (n :: Nat) . () => n ~ 0 => Dim n
+pattern D0 <- (sameDim (D @0) -> Just Dict)
+  where D0 = DimSing 0
+
+-- | Match @Dim n@ against a concrete @Nat@
+pattern D1 :: forall (n :: Nat) . () => n ~ 1 => Dim n
+pattern D1 <- (sameDim (D @1) -> Just Dict)
+  where D1 = DimSing 1
 
 -- | Match @Dim n@ against a concrete @Nat@
 pattern D2 :: forall (n :: Nat) . () => n ~ 2 => Dim n

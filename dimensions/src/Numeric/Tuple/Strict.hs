@@ -38,23 +38,22 @@ module Numeric.Tuple.Strict
     ) where
 
 
-import           Control.Arrow     (first)
-import           Control.Monad.Fix
-import           Control.Monad.Zip
-import           Data.Bits         (Bits, FiniteBits)
-import           Data.Coerce
-import           Data.Data         (Data)
-import           Data.Foldable
-import           Data.Ix           (Ix)
-import           Data.Monoid       as Mon (Monoid (..))
-import           Data.Semigroup    as Sem (Semigroup (..))
-import           Data.String       (IsString)
-import           Foreign.Storable  (Storable)
-import           GHC.Base          (Type)
-import           GHC.Exts
-import           GHC.Generics      (Generic, Generic1)
-import qualified GHC.Read          as Read
-import qualified Text.Read         as Read
+import Control.Arrow        (first)
+import Control.Monad.Fix
+import Control.Monad.Zip
+import Data.Bits            (Bits, FiniteBits)
+import Data.Coerce
+import Data.Data            (Data)
+import Data.Foldable
+import Data.Functor.Classes
+import Data.Ix              (Ix)
+import Data.Monoid          as Mon (Monoid (..))
+import Data.Semigroup       as Sem (Semigroup (..))
+import Data.String          (IsString)
+import Foreign.Storable     (Storable)
+import GHC.Base             (Type)
+import GHC.Exts
+import GHC.Generics         (Generic, Generic1)
 
 import Data.Type.List
 import Numeric.TypedList
@@ -67,11 +66,25 @@ newtype Id a = Id { runId :: a }
              , Real, RealFrac, RealFloat, Semigroup, Storable, Traversable)
 
 
-instance (Read a) => Read (Id a) where
+instance Read a => Read (Id a) where
     readsPrec d = fmap (first Id) . readsPrec d
 
-instance (Show a) => Show (Id a) where
+instance Show a => Show (Id a) where
     showsPrec d = showsPrec d . runId
+
+instance Read1 Id where
+    liftReadPrec r _ = coerce r
+    liftReadListPrec = liftReadListPrecDefault
+    liftReadList     = liftReadListDefault
+
+instance Show1 Id where
+    liftShowsPrec f _ = coerce f
+
+instance Eq1 Id where
+    liftEq = coerce
+
+instance Ord1 Id where
+    liftCompare = coerce
 
 instance Foldable Id where
     foldMap          = coerce
@@ -206,40 +219,6 @@ instance (RepresentableList xs, All Bounded xs) => Bounded (Tuple xs) where
             . All Bounded ys => TypeList ys -> Tuple ys
         go U         = U
         go (_ :* xs) = maxBound *! go xs
-
-instance All Eq xs => Eq (Tuple xs) where
-    (==) U U                 = True
-    (==) (x :* tx) (y :* ty) = x == y && tx == ty
-    (/=) U U                 = False
-    (/=) (x :* tx) (y :* ty) = x /= y || tx /= ty
-
--- | Lexicorgaphic ordering; same as normal Haskell lists.
-instance (All Eq xs, All Ord xs) => Ord (Tuple xs) where
-    compare U U                 = EQ
-    compare (x :* tx) (y :* ty) = compare x y <> compare tx ty
-
-instance All Show xs => Show (Tuple xs) where
-    show U         = "U"
-    show (x :* xs) = show x ++ " :* " ++ show xs
-    showsPrec _ U = showString "U"
-    showsPrec p (x :* xs) = showParen (p >= 5)
-                          $ showsPrec 5 x
-                          . showString " :* "
-                          . showsPrec 5 xs
-
-instance (RepresentableList xs, All Read xs) => Read (Tuple xs) where
-    readPrec = go (tList @Type @xs)
-      where
-        go :: forall (ys :: [Type])
-            . All Read ys => TypeList ys -> Read.ReadPrec (Tuple ys)
-        go U = U <$ Read.expectP (Read.Symbol "U")
-        go (_ :* ts) = Read.parens $ Read.prec 5 $ do
-          x <- Read.step Read.readPrec
-          Read.expectP (Read.Symbol ":*")
-          xs <- Read.step $ go ts
-          return (x :* xs)
-
-
 
 --------------------------------------------------------------------------------
 -- internal

@@ -58,16 +58,23 @@ module Numeric.TypedList
     , Numeric.TypedList.length
     , Numeric.TypedList.map
     , module Data.Type.List
+      -- * Deriving Show and Read
+    , typedListShowsPrecC, typedListShowsPrec
+    , typedListReadPrec, withTypedListReadPrec
     ) where
 
-import           Control.Arrow   (first)
-import           Data.Constraint hiding ((***))
+import           Control.Arrow                   (first)
+import           Data.Constraint                 hiding ((***))
 import           Data.Data
+import           Data.Functor.Classes
 import           Data.Void
-import           GHC.Base        (Type)
+import           GHC.Base                        (Type)
 import           GHC.Exts
-import           GHC.Generics    hiding (Infix, Prefix)
-import qualified Type.Reflection as R
+import           GHC.Generics                    hiding (Infix, Prefix)
+import qualified GHC.Read                        as P
+import qualified Text.ParserCombinators.ReadPrec as P
+import qualified Text.Read                       as P
+import qualified Type.Reflection                 as R
 
 import Data.Type.List
 import Numeric.Dim
@@ -139,6 +146,28 @@ instance Generic (TypedList (f :: (k -> Type)) (xs :: [k])) where
       | Dict <- unsafeEqTypes @[k] @xs @(Head xs ': Tail xs)
       , M1 (M1 (K1 x) :*: M1 (K1 xs)) <- xxs = x :* xs
 
+instance (Eq1 f, All Eq xs)
+      => Eq (TypedList (f :: Type -> Type) (xs :: [Type])) where
+    (==) U U                 = True
+    (==) (x :* tx) (y :* ty) = eq1 x y && tx == ty
+    (/=) U U                 = False
+    (/=) (x :* tx) (y :* ty) = not (eq1 x y) || tx /= ty
+
+-- | Lexicorgaphic ordering; same as normal Haskell lists.
+instance (Eq1 f, Ord1 f, All Eq xs, All Ord xs)
+      => Ord (TypedList (f :: Type -> Type) (xs :: [Type])) where
+    compare U U                 = EQ
+    compare (x :* tx) (y :* ty) = compare1 x y <> compare tx ty
+
+instance (Show1 f, All Show xs)
+      => Show (TypedList (f :: Type -> Type) (xs :: [Type])) where
+   showsPrec = typedListShowsPrecC @Type @Show showsPrec1
+
+instance (Read1 f, All Read xs, RepresentableList xs)
+      => Read (TypedList (f :: Type -> Type) (xs :: [Type])) where
+   readPrec = typedListReadPrec @Type @Read readPrec1 (tList @Type @xs)
+   readList = P.readListDefault
+   readListPrec = P.readListPrecDefault
 
 -- | A list of type proxies
 type TypeList (xs :: [k]) = TypedList Proxy xs
@@ -418,7 +447,69 @@ order (TypedList xs) = unsafeCoerce# (fromIntegral (Prelude.length xs) :: Word)
 {-# INLINE order #-}
 
 
+-- | Generic show function for a @TypedList@.
+typedListShowsPrecC :: forall (k :: Type) (c :: k -> Constraint) (f :: k -> Type) (xs :: [k])
+                     . All c xs
+                    => ( forall (x :: k) . c x => Int -> f x -> ShowS )
+                       -- ^ How to show a single element
+                    -> Int -> TypedList f xs -> ShowS
+typedListShowsPrecC _ _ U = showChar 'U'
+typedListShowsPrecC elShowsPrec p (x :* xs) = showParen (p >= 6) $
+    elShowsPrec 6 x . showString " :* " . typedListShowsPrecC @k @c @f elShowsPrec 5 xs
 
+-- | Generic show function for a @TypedList@.
+typedListShowsPrec :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+                    . ( forall (x :: k) . Int -> f x -> ShowS )
+                      -- ^ How to show a single element
+                   -> Int -> TypedList f xs -> ShowS
+typedListShowsPrec _ _ U = showChar 'U'
+typedListShowsPrec elShowsPrec p (x :* xs) = showParen (p >= 6) $
+    elShowsPrec 6 x . showString " :* " . typedListShowsPrec @k @f elShowsPrec 5 xs
+
+{- NB: Do not forget this default implementations of Read
+
+   GHC.Read.readList = GHC.Read.readListDefault
+   GHC.Read.readListPrec = GHC.Read.readListPrecDefault
+
+ -}
+
+-- | Generic read function for a @TypedList@.
+--   Requires a "template" to enforce the structure of the type list.
+typedListReadPrec :: forall (k :: Type) (c :: k -> Constraint) (f :: k -> Type)
+                            (xs :: [k]) (g :: k -> Type)
+                   . All c xs
+                  => ( forall (x :: k) . c x => P.ReadPrec (f x) )
+                     -- ^ How to read a single element
+                  -> TypedList g xs
+                     -- ^ Enforce the type structure of the result
+                  -> P.ReadPrec (TypedList f xs)
+typedListReadPrec _ U = P.parens $ U <$ P.expectP (P.Ident "U")
+typedListReadPrec elReadPrec (_ :* ts) = P.parens . P.prec 5 $ do
+    x <- P.step elReadPrec
+    P.expectP (P.Symbol ":*")
+    xs <- typedListReadPrec @k @c elReadPrec ts
+    return (x :* xs)
+
+-- | Generic read function for a @TypedList@ of unknown length.
+withTypedListReadPrec :: forall (k :: Type) (f :: k -> Type) (r :: Type)
+                       . (forall (z :: Type) .
+                            ( forall (x :: k) . f x -> z) -> P.ReadPrec z )
+                         -- ^ How to read a single element
+                      -> (forall (xs :: [k]) . TypedList f xs -> r )
+                         -- ^ Consume the result
+                      -> P.ReadPrec r
+withTypedListReadPrec withElReadPrec use = P.parens $
+    (use U <$ P.expectP (P.Ident "U"))
+    P.+++
+    P.prec 5 (do
+      WithAnyTL withX <- P.step $ withElReadPrec (\x -> WithAnyTL $ use . (x :*))
+      P.expectP (P.Symbol ":*")
+      withTypedListReadPrec @k @f @r withElReadPrec withX
+    )
+
+-- Workaround impredicative polymorphism
+newtype WithAnyTL (f :: k -> Type) (r :: Type)
+  = WithAnyTL (forall (xs :: [k]) . TypedList f xs -> r)
 
 --------------------------------------------------------------------------------
 -- internal

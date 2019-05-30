@@ -64,13 +64,15 @@ import           Data.List       (stripPrefix)
 import           Data.Proxy      (Proxy)
 import           GHC.Base        (Type)
 import           GHC.Exts        (Constraint, unsafeCoerce#)
-import qualified Text.Read       as Read
+import qualified GHC.Read        as P
+import qualified Text.Read       as P
 import           Type.Reflection
 
 import Data.Type.List
 import Numeric.Dim
 import Numeric.TypedList (RepresentableList (..), TypeList, TypedList (..),
-                          order, order', types)
+                          order, order', typedListReadPrec, typedListShowsPrec,
+                          types, withTypedListReadPrec)
 
 
 -- | Type-level dimensionality.
@@ -345,31 +347,29 @@ instance Ord (Dims (ds :: [XNat])) where
 instance Ord SomeDims where
     compare = unsafeCoerce# (compare :: [Word] -> [Word] -> Ordering)
 
-instance Show (Dims xs) where
-    show ds = "Dims " ++ show (listDims ds)
-    showsPrec p ds
-      = showParen (p >= 10)
-      $ showString "Dims " . showsPrec p (listDims ds)
+class NoConstraint (a :: k)
+instance NoConstraint (a :: k)
+
+instance Show (Dims (xs :: [k])) where
+    showsPrec = typedListShowsPrec @k @Dim @xs showsPrec
 
 instance Show SomeDims where
-    show (SomeDims ds) = "SomeDims " ++ show (listDims ds)
     showsPrec p (SomeDims ds)
       = showParen (p >= 10)
-      $ showString "SomeDims " . showsPrec p (listDims ds)
+      $ showString "SomeDims " . showsPrec 10 ds
+
+instance (All BoundedDim xs, RepresentableList xs)
+      => Read (Dims (xs :: [k])) where
+    readPrec = typedListReadPrec @k @BoundedDim P.readPrec (tList @k @xs)
+    readList = P.readListDefault
+    readListPrec = P.readListPrecDefault
 
 instance Read SomeDims where
-    readPrec = Read.parens $ Read.prec 10 $ do
-      s <- Read.lexP
-      if s == Read.Ident "SomeDims"
-      then someDimsVal <$> Read.readPrec
-      else Read.pfail
-
-instance Dimensions ds => Bounded (Dims ds) where
-    maxBound = dims
-    {-# INLINE maxBound #-}
-    minBound = dims
-    {-# INLINE minBound #-}
-
+    readPrec = P.parens . P.prec 10 $ do
+      P.expectP (P.Ident "SomeDims")
+      withTypedListReadPrec @Nat @Dim @SomeDims
+        (\g -> (\(Dx d) -> g d) <$> P.readPrec @(Dim (XN 0)))
+        SomeDims
 
 
 -- | Map Dims onto XDims (injective)
