@@ -45,13 +45,12 @@ module Numeric.Dimensions.Dims
   , constrainDims, dimsBound, typeableDims, inferTypeableDims
   , listDims, someDimsVal, totalDim, totalDim'
   , sameDims, sameDims'
-  , compareDims, compareDims'
   , inSpaceOf, asSpaceOf
   , xDims, xDims'
   , stripPrefixDims, stripSuffixDims
     -- * Type-level programming
     --   Provide type families to work with lists of dimensions (`[Nat]` or `[XNat]`)
-  , AsXDims, AsDims, FixedDims, KnownXNatTypes, CmpNats
+  , AsXDims, AsDims, FixedDims, KnownXNatTypes
     -- * Re-export type list
   , RepresentableList (..), TypeList, types
   , order, order'
@@ -311,33 +310,6 @@ sameDims' :: forall (as :: [Nat]) (bs :: [Nat]) (p :: [Nat] -> Type) (q :: [Nat]
 sameDims' _ _ = sameDims (dims @as) (dims @bs)
 {-# INLINE sameDims' #-}
 
--- | Compare dimensions by their size in lexicorgaphic order
---   from the first dimension to the last dimension
---   (the first dimension is the most significant one).
---
---   This is the same @compare@ rule, as for `Idxs` and normal Haskell lists.
---
---   Note: `CmpNats` forces type parameters to kind `Nat`;
---         if you want to compare unknown `XNat`s, use `Ord` instance of `Dims`.
-compareDims :: forall (as :: [Nat]) (bs :: [Nat])
-             . Dims as -> Dims bs -> SOrdering (CmpNats as bs)
-compareDims a b
-  = case unsafeCoerce# (compare :: [Word] -> [Word] -> Ordering) a b of
-    LT -> unsafeCoerce# SLT
-    EQ -> unsafeCoerce# SEQ
-    GT -> unsafeCoerce# SGT
-{-# INLINE compareDims #-}
-
--- | Compare dimensions by their size in lexicorgaphic order
---   from the first dimension to the last dimension
---   (the first dimension is the most significant one).
---
---   This is the same @compare@ rule, as for `Idxs` and normal Haskell lists.
-compareDims' :: forall (as :: [Nat]) (bs :: [Nat]) (p :: [Nat] -> Type) (q :: [Nat] -> Type)
-              . (Dimensions as, Dimensions bs)
-             => p as -> q bs -> SOrdering (CmpNats as bs)
-compareDims' _ _ = compareDims (dims @as) (dims @bs)
-{-# INLINE compareDims' #-}
 
 -- | Similar to `const` or `asProxyTypeOf`;
 --   to be used on such implicit functions as `dim`, `dimMax`, etc.
@@ -417,13 +389,6 @@ type family FixedDims (xns::[XNat]) (ns :: [Nat]) :: Constraint where
       = ( ns ~ (Head ns ': Tail ns)
         , FixedDim xn (Head ns)
         , FixedDims xns (Tail ns))
-
-type family CmpNats (xs :: [Nat]) (ys :: [Nat]) :: Ordering where
-    CmpNats '[] '[] = 'EQ
-    CmpNats '[]  _  = 'LT
-    CmpNats  _  '[] = 'GT
-    CmpNats (x:xs) (y:ys) = Compared
-      (CmpNat x y) 'LT (CmpNats xs ys) 'GT
 
 -- | Know the structure of each dimension
 type KnownXNatTypes xns = All KnownXNatType xns

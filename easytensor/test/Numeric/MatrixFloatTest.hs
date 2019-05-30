@@ -163,6 +163,7 @@ prop_lookAt up cam foc =
     fromHom (toHomVector zb %* m) `approxEq` vec3 0 0 1
   ]
   where
+    apart :: Vector TestElem 3 -> Vector TestElem 3 -> Bool
     apart a b = maxElem (a - b) > 0.01 * (maxElem a `max` maxElem b)
     m = lookAt up cam foc
     zb = normalized $ cam - foc

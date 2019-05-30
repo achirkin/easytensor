@@ -99,9 +99,11 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
                 , ewmap (scalar . withAbs . unScalar) df
                 ]
             where
+              withAbs :: t -> t
               withAbs x
                 | abs x <= 1 = 0
                 | otherwise  = signum x * closest2 (abs x) 1
+              closest2 :: t -> t -> t
               closest2 x b = if x <= b * 2 then b else closest2 x (b*2)
 
 instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
@@ -121,12 +123,12 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
           at   <- arbitrary
           ats' <- arbitrary @(DataFrame ts' ds)
           return (at :*: ats')
-    shrink Z = []
     -- MultiFrame is a newtype wrapper on a TypedList.
     -- Thus, we can always recover RepresentableList ts by using function @types@
     shrink (at :*: ats@(MultiFrame ats'))
       | TypeList <- types ats'
       = (:*:) <$> shrink at <*> shrink ats
+    shrink _ = []
 
 
 instance KnownDim a => Arbitrary (Dim (N a)) where
@@ -165,13 +167,14 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t)
       => Arbitrary (SomeDataFrame t) where
     arbitrary = do
       -- Generate random dimension list
+      SomeDims ds <- arbitrary
       --  and pattern-match against it with Dims pattern.
       --  This gives Dimensions ds evidence immediately.
-      SomeDims (Dims :: Dims ds) <- arbitrary
-      -- We also need to figure out an array implementation...
-      case inferKnownBackend @t @ds of
-        -- ... and generating a random DataFrame becomes a one-liner
-        Dict -> SomeDataFrame <$> arbitrary @(DataFrame t ds)
+      case ds of
+        -- We also need to figure out an array implementation...
+        (Dims :: Dims ds) -> case inferKnownBackend @t @ds of
+          -- ... and generating a random DataFrame becomes a one-liner
+          Dict -> SomeDataFrame <$> arbitrary @(DataFrame t ds)
     shrink (SomeDataFrame df) = SomeDataFrame <$> shrink df
 
 -- All same as above, just change constraints a bit
@@ -179,18 +182,20 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
          , RepresentableList ts)
       => Arbitrary (SomeDataFrame ts) where
     arbitrary = do
-      SomeDims (Dims :: Dims ds) <- arbitrary
-      case inferKnownBackend @ts @ds of
-        Dict -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
+      SomeDims ds <- arbitrary
+      case ds of
+        (Dims :: Dims ds) -> case inferKnownBackend @ts @ds of
+          Dict -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
     shrink (SomeDataFrame df) = SomeDataFrame <$> shrink df
 
 instance ( Arbitrary t, PrimBytes t, Num t, Ord t
          , Arbitrary (Dims xs), All KnownXNatType xs)
       => Arbitrary (DataFrame t (xs :: [XNat])) where
     arbitrary = do
-      XDims (_ :: Dims ds) <- arbitrary @(Dims xs)
-      case inferKnownBackend @t @ds of
-        Dict -> XFrame <$> arbitrary @(DataFrame t ds)
+      ds <- arbitrary @(Dims xs)
+      case ds of
+        XDims (_ :: Dims ds) -> case inferKnownBackend @t @ds of
+          Dict -> XFrame <$> arbitrary @(DataFrame t ds)
     shrink (XFrame df) = XFrame <$> shrink df
 
 instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
@@ -198,9 +203,10 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
          , Arbitrary (Dims xs), All KnownXNatType xs)
       => Arbitrary (DataFrame ts (xs :: [XNat])) where
     arbitrary = do
-      XDims (_ :: Dims ds) <- arbitrary @(Dims xs)
-      case inferKnownBackend @ts @ds of
-        Dict -> XFrame <$> arbitrary @(DataFrame ts ds)
+      ds <- arbitrary @(Dims xs)
+      case ds of
+        XDims (_ :: Dims ds) -> case inferKnownBackend @ts @ds of
+          Dict -> XFrame <$> arbitrary @(DataFrame ts ds)
     shrink (XFrame df) = XFrame <$> shrink df
 
 
@@ -218,9 +224,10 @@ instance Show t => Show (SomeSquareMatrix prop t) where
 instance (Arbitrary t, PrimBytes t, Num t, Ord t)
       => Arbitrary (SomeSquareMatrix AnyMatrix t) where
     arbitrary = do
-      Dx (D :: Dim n) <- arbitrary @(Dim (XN 2))
-      case inferKnownBackend @t @'[n] of
-        Dict -> SSM <$> arbitrary @(DataFrame t '[n,n])
+      dx <- arbitrary @(Dim (XN 2))
+      case dx of
+        Dx (D :: Dim n) -> case inferKnownBackend @t @'[n] of
+          Dict -> SSM <$> arbitrary @(DataFrame t '[n,n])
     shrink (SSM df)= SSM <$> shrink df
 
 instance (Arbitrary t, PrimBytes t, Num t, Ord t)

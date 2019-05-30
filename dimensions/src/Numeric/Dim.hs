@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DeriveDataTypeable    #-}
@@ -21,6 +22,9 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 {-# LANGUAGE ViewPatterns          #-}
+#if __GLASGOW_HASKELL__ >= 806
+{-# LANGUAGE NoStarIsType          #-}
+#endif
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dim
@@ -45,8 +49,7 @@ module Numeric.Dim
         , D15, D16, D17, D18, D19, D20, D21, D22, D23, D24, D25
         )
   , SomeDim
-  , KnownDim (..), BoundedDim (..), KnownXNatType (..)
-  , MinDim, FixedDim, Compared, SOrdering (..)
+  , KnownDim (..), BoundedDim (..), KnownXNatType (..), FixedDim
   , dimVal, dimVal', typeableDim, someDimVal
   , sameDim, sameDim'
   , compareDim, compareDim'
@@ -66,20 +69,18 @@ module Numeric.Dim
     --   The good side is the confidence that they behave exactly as
     --   their @Word@ counterparts.
   , plusDim, minusDim, minusDimM, timesDim, powerDim
-    -- * Re-export part of `GHC.TypeNats` for convenience
-  , TN.Nat, TN.CmpNat, type (TN.+), type (TN.-), type (TN.*), type (TN.^)
+    -- * Re-export part of `Data.Type.Lits` for convenience
+  , Nat, CmpNat, SOrdering (..), type (+), type (-), type (*), type (^), type (<=)
     -- * Inferring kind of type-level dimension
   , KnownDimKind (..), DimKind (..)
   ) where
 
 
 import           Data.Data       hiding (TypeRep, typeRep, typeRepTyCon)
+import           Data.Type.Lits
 import           GHC.Base        (Type)
 import           GHC.Exts        (Constraint, Proxy#, proxy#, unsafeCoerce#)
 import qualified GHC.Generics    as G
-import           GHC.TypeLits    (AppendSymbol, ErrorMessage (..), Symbol,
-                                  TypeError)
-import           GHC.TypeNats    as TN
 import           Numeric.Natural (Natural)
 import           Type.Reflection
 
@@ -137,22 +138,6 @@ instance KnownDim d => G.Generic (Dim (d :: Nat)) where
     from D = G.M1 (G.M1 G.U1)
     to _ = dim @d
 
--- | Convert type-level @Nat@ into a type-level @Symbol@.
-type family ShowNat (n :: Nat) :: Symbol where
-    -- LOL
-    ShowNat 0 = "0"
-    ShowNat 1 = "1"
-    ShowNat 2 = "2"
-    ShowNat 3 = "3"
-    ShowNat 4 = "4"
-    ShowNat 5 = "5"
-    ShowNat 6 = "6"
-    ShowNat 7 = "7"
-    ShowNat 8 = "8"
-    ShowNat 9 = "9"
-    ShowNat d = AppendSymbol (ShowNat (Div d 10)) (ShowNat (Mod d 10))
-
-
 -- | Match against this pattern to bring `KnownDim` instance into scope.
 pattern D :: forall (n :: Nat) . () => KnownDim n => Dim n
 pattern D <- (dimEv -> Dict)
@@ -171,7 +156,7 @@ pattern Dn k <- (dimXNEv (xNatType @xn) -> PatN k)
 --   Hide dimension size inside, but allow specifying its minimum possible value.
 pattern Dx :: forall (xn :: XNat) . KnownXNatType xn
            => forall (n :: Nat) (m :: Nat)
-            . (KnownDim n, MinDim m n, xn ~ 'XN m) => Dim n -> Dim xn
+            . (KnownDim n, m <= n, xn ~ 'XN m) => Dim n -> Dim xn
 pattern Dx k <- (dimXNEv (xNatType @xn) -> PatXN k)
   where
     Dx k = unsafeCoerce# k
@@ -283,49 +268,14 @@ typeableDim :: forall (n :: Nat) . Typeable n => Dim n
 typeableDim = DimSing . read . tyConName . typeRepTyCon $ typeRep @n
 {-# INLINE typeableDim #-}
 
--- | Friendly error message if `m <= n` constraint is not satisfied.
-type family MinDim (m :: Nat) (n :: Nat) :: Constraint where
-  MinDim m n = Compared
-    (CmpNat m n)
-    (() :: Constraint)
-    (() :: Constraint)
-    (TypeError
-      ('Text "Minimum Dim size constraint ("
-          ':<>: 'ShowType m
-          ':<>: 'Text " <= "
-          ':<>: 'ShowType n
-          ':<>: 'Text ") is not satisfied."
-        ':$$: 'Text "Minimum Dim: " ':<>: 'ShowType m
-        ':$$: 'Text " Actual Dim: " ':<>: 'ShowType n
-      )
-    )
-
--- | Act upon the result of some type-level comparison
-type family Compared
-      (c :: Ordering)
-      (lt :: k)
-      (eq :: k)
-      (gt :: k) :: k where
-    Compared 'LT lt _  _  = lt
-    Compared 'EQ _  eq _  = eq
-    Compared 'GT _  _  gt = gt
-
--- | Singleton-style version of `Ordering`.
---   Pattern-match againts its constructor to witness the result of
---   type-level comparison.
-data SOrdering :: Ordering -> Type where
-    SLT :: SOrdering 'LT
-    SEQ :: SOrdering 'EQ
-    SGT :: SOrdering 'GT
-
 -- | Constraints given by an XNat type on possible values of a Nat hidden inside.
 type family FixedDim (x :: XNat) (n :: Nat) :: Constraint where
     FixedDim ('N a)  b = a ~ b
-    FixedDim ('XN m) b = MinDim m b
+    FixedDim ('XN m) b = m <= b
 
 instance {-# OVERLAPPABLE #-} KnownNat n => KnownDim n where
     {-# INLINE dim #-}
-    dim = DimSing (fromIntegral (TN.natVal' (proxy# :: Proxy# n)))
+    dim = DimSing (fromIntegral (natVal' (proxy# :: Proxy# n)))
 
 instance {-# OVERLAPPING #-} KnownDim 0  where
   { {-# INLINE dim #-}; dim = DimSing 0 }
@@ -389,7 +339,7 @@ constrainBy _ = constrain @k @x @l @y
 
 
 -- | Decrease minimum allowed size of a @Dim (XN x)@.
-relax :: forall (m :: Nat) (n :: Nat) . (MinDim m n) => Dim (XN n) -> Dim (XN m)
+relax :: forall (m :: Nat) (n :: Nat) . m <= n => Dim (XN n) -> Dim (XN m)
 relax = unsafeCoerce#
 {-# INLINE relax #-}
 
@@ -472,7 +422,7 @@ plusDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim (n + m)
 plusDim (DimSing a) (DimSing b) = unsafeCoerce# (a + b)
 {-# INLINE plusDim #-}
 
-minusDim :: forall (n :: Nat) (m :: Nat) . MinDim m n => Dim n -> Dim m -> Dim (n - m)
+minusDim :: forall (n :: Nat) (m :: Nat) . m <= n => Dim n -> Dim m -> Dim (n - m)
 minusDim (DimSing a) (DimSing b) = unsafeCoerce# (a - b)
 {-# INLINE minusDim #-}
 
@@ -482,11 +432,11 @@ minusDimM (DimSing a) (DimSing b)
   | otherwise = Nothing
 {-# INLINE minusDimM #-}
 
-timesDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim ((TN.*) n m)
+timesDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim ((*) n m)
 timesDim (DimSing a) (DimSing b) = unsafeCoerce# (a * b)
 {-# INLINE timesDim #-}
 
-powerDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim ((TN.^) n m)
+powerDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim ((^) n m)
 powerDim (DimSing a) (DimSing b) = unsafeCoerce# (a ^ b)
 {-# INLINE powerDim #-}
 
@@ -535,7 +485,7 @@ dimEv d = reifyDim d Dict
 
 data PatXDim (xn :: XNat) where
   PatN :: KnownDim n => Dim n -> PatXDim ('N n)
-  PatXN :: (KnownDim n, MinDim m n) => Dim n -> PatXDim ('XN m)
+  PatXN :: (KnownDim n, m <= n) => Dim n -> PatXDim ('XN m)
 
 dimXNEv :: forall (xn :: XNat) . XNatType xn -> Dim xn -> PatXDim xn
 dimXNEv Nt (DimSing k) = reifyDim dd (PatN dd)
@@ -546,8 +496,8 @@ dimXNEv XNt xn@(DimSing k) = reifyDim dd (f dd xn)
     dd = DimSing @Nat @_ k
     f :: forall (d :: Nat) (m :: Nat)
        . KnownDim d => Dim d -> Dim ('XN m) -> PatXDim ('XN m)
-    f d _ = case ( unsafeCoerce# (Dict @(MinDim m m))
-                :: Dict (MinDim m d)
+    f d _ = case ( unsafeCoerce# (Dict @(m <= m))
+                :: Dict (m <= d)
                ) of
       Dict -> PatXN d
 {-# INLINE dimXNEv #-}
