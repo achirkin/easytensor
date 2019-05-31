@@ -25,15 +25,15 @@ module Numeric.PrimBytes
 
 #include "MachDeps.h"
 
-import           Data.Proxy              (Proxy (..))
-import qualified Data.Type.List          as L
+import           Data.Proxy           (Proxy (..))
+import qualified Data.Type.List       as L
 import           GHC.Exts
 import           GHC.Generics
 import           GHC.Int
 import           GHC.Word
-import           Numeric.Dimensions.Idxs
-import qualified Numeric.Tuple.Lazy      as TL
-import qualified Numeric.Tuple.Strict    as TS
+import           Numeric.Dimensions
+import qualified Numeric.Tuple.Lazy   as TL
+import qualified Numeric.Tuple.Strict as TS
 
 -- | A wrapper on `byteSize`
 bSizeOf :: PrimBytes a => a -> Int

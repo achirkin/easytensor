@@ -10,10 +10,10 @@ module Numeric.Scalar.Internal
     ) where
 
 
+import Data.Type.Lits             (Nat)
 import GHC.Base                   (unsafeCoerce#)
 import Numeric.DataFrame.SubSpace (SubSpace (ewgen))
 import Numeric.DataFrame.Type     (DataFrame)
-import Numeric.Dim                (Nat)
 
 -- | Alias for zero-dimensional DataFrame
 type Scalar t = DataFrame t ('[] :: [Nat])

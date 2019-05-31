@@ -16,15 +16,13 @@
 -----------------------------------------------------------------------------
 
 module Numeric.Dimensions
-  ( module Numeric.Dim
-  , module Numeric.Dimensions.Dims
-  , module Numeric.Dimensions.Idxs
+  ( module Numeric.Dimensions.Dim
+  , module Numeric.Dimensions.Idx
   , module Data.Type.List
   , module Data.Constraint
   ) where
 
-import           Data.Constraint         (Dict (..), (:-)(..), (\\), mapDict)
-import           Data.Type.List
-import           Numeric.Dim
-import           Numeric.Dimensions.Dims
-import           Numeric.Dimensions.Idxs
+import Data.Constraint         ((:-) (..), Dict (..), mapDict, (\\))
+import Data.Type.List
+import Numeric.Dimensions.Dim
+import Numeric.Dimensions.Idx

@@ -66,7 +66,7 @@ module Numeric.TypedList
 import           Control.Arrow                   (first)
 import           Data.Constraint                 hiding ((***))
 import           Data.Data
-import           Data.Functor.Classes
+import           Data.Type.List
 import           Data.Void
 import           GHC.Base                        (Type)
 import           GHC.Exts
@@ -76,9 +76,7 @@ import qualified Text.ParserCombinators.ReadPrec as P
 import qualified Text.Read                       as P
 import qualified Type.Reflection                 as R
 
-import Data.Type.List
-import Numeric.Dim
-
+import {-# SOURCE #-} Numeric.Dimensions.Dim (Dim, Nat, dimVal, minusDimM)
 
 -- | Type-indexed list
 newtype TypedList (f :: (k -> Type)) (xs :: [k]) = TypedList [Any]
@@ -146,29 +144,6 @@ instance Generic (TypedList (f :: (k -> Type)) (xs :: [k])) where
       | Dict <- unsafeEqTypes @[k] @xs @(Head xs ': Tail xs)
       , M1 (M1 (K1 x) :*: M1 (K1 xs)) <- xxs = x :* xs
 
-instance (Eq1 f, All Eq xs)
-      => Eq (TypedList (f :: Type -> Type) (xs :: [Type])) where
-    (==) U U                 = True
-    (==) (x :* tx) (y :* ty) = eq1 x y && tx == ty
-    (/=) U U                 = False
-    (/=) (x :* tx) (y :* ty) = not (eq1 x y) || tx /= ty
-
--- | Lexicorgaphic ordering; same as normal Haskell lists.
-instance (Eq1 f, Ord1 f, All Eq xs, All Ord xs)
-      => Ord (TypedList (f :: Type -> Type) (xs :: [Type])) where
-    compare U U                 = EQ
-    compare (x :* tx) (y :* ty) = compare1 x y <> compare tx ty
-
-instance (Show1 f, All Show xs)
-      => Show (TypedList (f :: Type -> Type) (xs :: [Type])) where
-   showsPrec = typedListShowsPrecC @Type @Show showsPrec1
-
-instance (Read1 f, All Read xs, RepresentableList xs)
-      => Read (TypedList (f :: Type -> Type) (xs :: [Type])) where
-   readPrec = typedListReadPrec @Type @Read readPrec1 (tList @Type @xs)
-   readList = P.readListDefault
-   readListPrec = P.readListPrecDefault
-
 -- | A list of type proxies
 type TypeList (xs :: [k]) = TypedList Proxy xs
 
@@ -223,7 +198,7 @@ pattern U :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
            . () => (xs ~ '[]) => TypedList f xs
 pattern U <- (patTL @k @f @xs -> PatCNil)
   where
-    U = unsafeCoerce# []
+    U = coerce ([] :: [Any])
 
 -- | Zero-length type list; synonym to `U`.
 pattern Empty :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
@@ -268,28 +243,18 @@ pattern Reverse sx <- (unreverseTL @k @f @xs -> PatReverse sx)
 
 cons :: forall (k :: Type) (f :: k -> Type) (x :: k) (xs :: [k])
       . f x -> TypedList f xs -> TypedList f (x :+ xs)
-cons x xs = TypedList (unsafeCoerce# x : unsafeCoerce# xs)
+cons x xs = TypedList (unsafeCoerce# x : coerce xs)
 {-# INLINE cons #-}
 
 snoc :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) (x :: k)
       . TypedList f xs -> f x -> TypedList f (xs +: x)
-snoc xs x = TypedList (unsafeCoerce# xs ++ [unsafeCoerce# x])
+snoc xs x = TypedList (coerce xs ++ [unsafeCoerce# x])
 {-# INLINE snoc #-}
 
 reverse :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
          . TypedList f xs -> TypedList f (Reverse xs)
-reverse (TypedList sx) = unsafeCoerce# (Prelude.reverse sx)
+reverse = coerce (Prelude.reverse :: [Any] -> [Any])
 {-# INLINE reverse #-}
-
-take :: forall (k :: Type) (n :: Nat) (f :: k -> Type) (xs :: [k])
-      . Dim n -> TypedList f xs -> TypedList f (Take n xs)
-take d (TypedList xs) = unsafeCoerce# (Prelude.take (intD d) xs)
-{-# INLINE take #-}
-
-drop :: forall (k :: Type) (n :: Nat) (f :: k -> Type) (xs :: [k])
-      . Dim n -> TypedList f xs -> TypedList f (Drop n xs)
-drop d (TypedList xs) = unsafeCoerce# (Prelude.drop (intD d) xs)
-{-# INLINE drop #-}
 
 head :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
       . TypedList f xs -> f (Head xs)
@@ -298,18 +263,28 @@ head (TypedList xs) = unsafeCoerce# (Prelude.head xs)
 
 tail :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
       . TypedList f xs -> TypedList f (Tail xs)
-tail (TypedList xs) = unsafeCoerce# (Prelude.tail xs)
+tail = coerce (Prelude.tail :: [Any] -> [Any])
 {-# INLINE tail #-}
 
 init :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
       . TypedList f xs -> TypedList f (Init xs)
-init (TypedList xs) = unsafeCoerce# (Prelude.init xs)
+init = coerce (Prelude.init :: [Any] -> [Any])
 {-# INLINE init #-}
 
 last :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
       . TypedList f xs -> f (Last xs)
 last (TypedList xs) = unsafeCoerce# (Prelude.last xs)
 {-# INLINE last #-}
+
+take :: forall (k :: Type) (n :: Nat) (f :: k -> Type) (xs :: [k])
+      . Dim n -> TypedList f xs -> TypedList f (Take n xs)
+take = coerce (Prelude.take . dimValInt :: Dim n -> [Any] -> [Any])
+{-# INLINE take #-}
+
+drop :: forall (k :: Type) (n :: Nat) (f :: k -> Type) (xs :: [k])
+      . Dim n -> TypedList f xs -> TypedList f (Drop n xs)
+drop = coerce (Prelude.drop . dimValInt :: Dim n -> [Any] -> [Any])
+{-# INLINE drop #-}
 
 length :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
        . TypedList f xs -> Dim (Length xs)
@@ -320,14 +295,24 @@ splitAt :: forall (k :: Type) (n :: Nat) (f :: k -> Type) (xs :: [k])
          . Dim n
         -> TypedList f xs
         -> (TypedList f (Take n xs), TypedList f (Drop n xs))
-splitAt d (TypedList xs) = unsafeCoerce# (Prelude.splitAt (intD d) xs)
+splitAt = coerce (Prelude.splitAt . dimValInt :: Dim n -> [Any] -> ([Any], [Any]))
 {-# INLINE splitAt #-}
+
+order' :: forall (k :: Type) (xs :: [k])
+        . RepresentableList xs => Dim (Length xs)
+order' = order (tList @_ @xs)
+{-# INLINE order' #-}
+
+order :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
+       . TypedList f xs -> Dim (Length xs)
+order = unsafeCoerce# (fromIntegral . Prelude.length :: [Any] -> Word)
+{-# INLINE order #-}
 
 concat :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) (ys :: [k])
         . TypedList f xs
        -> TypedList f ys
        -> TypedList f (xs ++ ys)
-concat (TypedList xs) (TypedList ys) = unsafeCoerce# (xs ++ ys)
+concat = coerce ((++) :: [Any] -> [Any] -> [Any])
 {-# INLINE concat #-}
 
 stripPrefix :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) (ys :: [k])
@@ -339,7 +324,7 @@ stripPrefix U ys = Just ys
 stripPrefix _ U  = Nothing
 stripPrefix ((x :: f x) :* xs) ((y :: f y) :* ys)
   | Just Refl <- eqT @x @y
-  , x == y       = unsafeCoerce# (stripPrefix xs ys)
+  , x == y       = coerce (stripPrefix xs ys)
   | otherwise    = Nothing
 {-# INLINE stripPrefix #-}
 
@@ -355,7 +340,7 @@ stripSuffix xs ys
   , (zs, xs') <- Numeric.TypedList.splitAt n ys
   , EvList <- Numeric.TypedList.drop n $ _evList @_ @Typeable ys
   , Just (Refl, True) <- sameList xs xs'
-                 = Just (unsafeCoerce# zs)
+                 = Just (coerce zs)
   | otherwise    = Nothing
 {-# INLINE stripSuffix #-}
 
@@ -380,7 +365,7 @@ map :: forall (k :: Type) (f :: k -> Type) (g :: k -> Type) (xs :: [k])
      . (forall (a :: k) . f a -> g a)
     -> TypedList f xs
     -> TypedList g xs
-map k (TypedList xs) = unsafeCoerce# (Prelude.map k' xs)
+map k = coerce (Prelude.map k')
   where
     k' :: Any -> Any
     k' = unsafeCoerce# . k . unsafeCoerce#
@@ -435,18 +420,6 @@ instance RepresentableList ('[] :: [k]) where
 instance RepresentableList xs => RepresentableList (x ': xs :: [k]) where
   tList = Proxy @x :* tList @k @xs
 
-
-order' :: forall (k :: Type) (xs :: [k])
-        . RepresentableList xs => Dim (Length xs)
-order' = order (tList @_ @xs)
-{-# INLINE order' #-}
-
-order :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
-       . TypedList f xs -> Dim (Length xs)
-order (TypedList xs) = unsafeCoerce# (fromIntegral (Prelude.length xs) :: Word)
-{-# INLINE order #-}
-
-
 -- | Generic show function for a @TypedList@.
 typedListShowsPrecC :: forall (k :: Type) (c :: k -> Constraint) (f :: k -> Type) (xs :: [k])
                      . All c xs
@@ -465,13 +438,6 @@ typedListShowsPrec :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
 typedListShowsPrec _ _ U = showChar 'U'
 typedListShowsPrec elShowsPrec p (x :* xs) = showParen (p >= 6) $
     elShowsPrec 6 x . showString " :* " . typedListShowsPrec @k @f elShowsPrec 5 xs
-
-{- NB: Do not forget this default implementations of Read
-
-   GHC.Read.readList = GHC.Read.readListDefault
-   GHC.Read.readListPrec = GHC.Read.readListPrecDefault
-
- -}
 
 -- | Generic read function for a @TypedList@.
 --   Requires a "template" to enforce the structure of the type list.
@@ -583,10 +549,6 @@ patTL (TypedList (x : xs))
       Dict -> PatCons (unsafeCoerce# x) (unsafeCoerce# xs)
 {-# INLINE patTL #-}
 
-intD :: forall (n :: Nat) . Dim n -> Int
-intD = (fromIntegral :: Word -> Int) . unsafeCoerce#
-
-
 mkEVL :: forall (k :: Type) (c :: k -> Constraint) (xs :: [k])
        . DictList c xs -> Dict (All c xs, RepresentableList xs)
 mkEVL U              = Dict
@@ -600,3 +562,6 @@ _evList (_ :* xs) = case _evList xs of evs -> Dict1 :* evs
 
 unsafeEqTypes :: forall (k :: Type) (a :: k) (b :: k) . Dict (a ~ b)
 unsafeEqTypes = unsafeCoerce# (Dict :: Dict (a ~ a))
+
+dimValInt :: forall (k :: Type) (x :: k) . Dim x -> Int
+dimValInt = fromIntegral . dimVal
