@@ -375,15 +375,15 @@ pprDF u (D :* U) _ x
   . foldr (\i s -> showString ", " . shows (ix (u i) x) . s)
       (showString " }")
       [minBound .. maxBound]
-pprDF u bs@((n@D :: Dim n) :* (m@D :: Dim m) :* U) asbs x
+pprDF u bs@((D :: Dim n) :* (D :: Dim m) :* U) asbs x
   = maybeDimSize
   . showChar '{'
   . drop 2
   . foldr (\i ss -> showChar '\n' .
               foldr (\j s ->
-                       showString ", " . shows (ix (u $ Idx i :* Idx j :* U) x) . s
-                    ) ss [0..dimVal m - 1]
-          ) (showString " }") [0..dimVal n - 1]
+                       showString ", " . shows (ix (u $ i :* j :* U) x) . s
+                    ) ss [minBound..maxBound]
+          ) (showString " }") [minBound..maxBound]
   where
     dropE4 :: String -> String
     dropE4 []        = []

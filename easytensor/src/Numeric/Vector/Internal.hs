@@ -186,7 +186,7 @@ normLPInf = ewfoldr (max . abs) 0
 -- | Minimum of absolute values
 normLNInf :: ( Ord t, Num t , SubSpace t '[n] '[] '[n] )
           => Vector t n -> Scalar t
-normLNInf x = ewfoldr (min . abs) (abs $ x ! Idx 0 :* U) x
+normLNInf x = ewfoldr (min . abs) (scalar . abs $ ixOff 0 x) x
 
 -- | Norm in Lp space
 normLP :: ( Floating t , SubSpace t '[n] '[] '[n] )

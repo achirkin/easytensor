@@ -12,15 +12,14 @@
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeOperators             #-}
 
-
-module Numeric.Dimensions.IdxsTest (runTests) where
+module Numeric.Dimensions.IdxTest (runTests) where
 
 import Control.Arrow
 import Data.List
 import Data.Maybe
 import Test.QuickCheck (quickCheckAll)
 
-import Numeric.Dimensions.Idxs
+import Numeric.Dimensions
 
 minMaxSeq :: [(Word, Word)] -> ([Word], [Word])
 minMaxSeq []          = ([], [])

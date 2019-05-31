@@ -1,19 +1,17 @@
 module Main (tests, main) where
 
-import           Distribution.TestSuite
-import           System.Exit
+import Distribution.TestSuite
+import System.Exit
 
-import qualified Numeric.Dimensions.DimsTest
-import qualified Numeric.Dimensions.IdxsTest
-import qualified Numeric.DimTest
+import qualified Numeric.Dimensions.DimTest
+import qualified Numeric.Dimensions.IdxTest
 
 
 -- | Collection of tests in detailed-0.9 format
 tests :: IO [Test]
 tests = return
-  [ test "Dim"    Numeric.DimTest.runTests
-  , test "Dims"   Numeric.Dimensions.DimsTest.runTests
-  , test "Idxs"   Numeric.Dimensions.IdxsTest.runTests
+  [ test "Dim"   Numeric.Dimensions.DimTest.runTests
+  , test "Idx"   Numeric.Dimensions.IdxTest.runTests
   ]
 
 
@@ -22,6 +20,7 @@ tests = return
 -- | Run tests as exitcode-stdio-1.0
 main :: IO ()
 main = do
+    putStrLn ""
     ts <- tests
     trs <- mapM (\(Test ti) ->(,) (name ti) <$> run ti) ts
     case filter (not . isGood . snd) trs of

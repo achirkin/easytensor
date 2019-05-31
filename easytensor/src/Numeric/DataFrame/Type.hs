@@ -45,7 +45,7 @@ module Numeric.DataFrame.Type
   , KnownBackend (), DFBackend, KnownBackends
   , InferKnownBackend (..), inferPrimElem
     -- * Re-exports
-  , Dim (..), Idx (..), XNat (..), N, XN, Dims, Idxs, TypedList (..)
+  , Dim (..), Idx (), XNat (..), N, XN, Dims, Idxs, TypedList (..)
   , PrimBytes (), bSizeOf, bAlignOf
   , PrimArray (), ixOff, fromFlatList
   ) where

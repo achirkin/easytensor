@@ -38,22 +38,23 @@ module Numeric.Tuple.Lazy
     ) where
 
 
-import Control.Arrow        (first)
-import Control.Monad.Fix
-import Control.Monad.Zip
-import Data.Bits            (Bits, FiniteBits)
-import Data.Coerce
-import Data.Data            (Data)
-import Data.Foldable
-import Data.Functor.Classes
-import Data.Ix              (Ix)
-import Data.Monoid          as Mon (Monoid (..))
-import Data.Semigroup       as Sem (Semigroup (..))
-import Data.String          (IsString)
-import Foreign.Storable     (Storable)
-import GHC.Base             (Type)
-import GHC.Exts
-import GHC.Generics         (Generic, Generic1)
+import           Control.Arrow        (first)
+import           Control.Monad.Fix
+import           Control.Monad.Zip
+import           Data.Bits            (Bits, FiniteBits)
+import           Data.Coerce
+import           Data.Data            (Data)
+import           Data.Foldable
+import           Data.Functor.Classes
+import           Data.Ix              (Ix)
+import           Data.Monoid          as Mon (Monoid (..))
+import           Data.Semigroup       as Sem (Semigroup (..))
+import           Data.String          (IsString)
+import           Foreign.Storable     (Storable)
+import           GHC.Base             (Type)
+import           GHC.Exts
+import           GHC.Generics         (Generic, Generic1)
+import qualified Text.Read            as P
 
 import Data.Type.List
 import Numeric.TypedList
@@ -219,6 +220,25 @@ instance (RepresentableList xs, All Bounded xs) => Bounded (Tuple xs) where
             . All Bounded ys => TypeList ys -> Tuple ys
         go U         = U
         go (_ :* xs) = maxBound *$ go xs
+
+instance All Eq xs => Eq (Tuple xs) where
+    (==) U U                 = True
+    (==) (x :* tx) (y :* ty) = eq1 x y && tx == ty
+    (/=) U U                 = False
+    (/=) (x :* tx) (y :* ty) = not (eq1 x y) || tx /= ty
+
+-- | Lexicorgaphic ordering; same as normal Haskell lists.
+instance (All Eq xs, All Ord xs) => Ord (Tuple xs) where
+    compare U U                 = EQ
+    compare (x :* tx) (y :* ty) = compare1 x y <> compare tx ty
+
+instance All Show xs => Show (Tuple xs) where
+   showsPrec = typedListShowsPrecC @Type @Show showsPrec1
+
+instance (All Read xs, RepresentableList xs) => Read (Tuple xs) where
+   readPrec = typedListReadPrec @Type @Read readPrec1 (tList @Type @xs)
+   readList = P.readListDefault
+   readListPrec = P.readListPrecDefault
 
 --------------------------------------------------------------------------------
 -- internal

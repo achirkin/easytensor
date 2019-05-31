@@ -14,7 +14,7 @@
 
 
 
-module Numeric.Dimensions.DimsTest (runTests) where
+module Numeric.Dimensions.DimTest (runTests) where
 
 import Data.Constraint
 import Data.Typeable
@@ -22,6 +22,54 @@ import Test.QuickCheck
 
 import           Numeric.Dimensions
 import qualified Numeric.TypedList  as TL
+
+
+-- | Try inference of type-level natural values via term-level binary functions.
+testBinaryOp :: forall (a :: Nat) (b :: Nat) (c :: Nat)
+              . (Word -> Word -> Word)
+             -> (Dim a -> Dim b -> Dim c)
+             -> Dim a -> Dim b -> Bool
+testBinaryOp fTerm fType da db
+  | a <- dimVal da
+  , b <- dimVal db
+  , Dx dr <- someDimVal (fTerm a b)
+      -- pattern-match against @SomeDim@ to extract a type-level natural Dim.
+  , True  <- fTerm a b == dimVal (fType da db)
+      -- compare the term-level function and the type-level function results
+      -- as regular word values.
+  , Just Dict <- sameDim dr (fType da db)
+      -- now the type system knows that @c ~ fType a b@ and
+      -- we can use ordinary equality function (which is @const True@).
+  = dr == fType da db
+testBinaryOp _ _ _ _ = False
+
+
+
+prop_plusDim :: Word -> Word -> Bool
+prop_plusDim a b = case (someDimVal a, someDimVal b) of
+  (Dx da, Dx db) -> testBinaryOp (+) plusDim da db
+
+
+prop_timesDim :: Word -> Word -> Bool
+prop_timesDim a b = case (someDimVal a, someDimVal b) of
+  (Dx da, Dx db) -> testBinaryOp (*) timesDim da db
+
+
+prop_powerDim :: Word -> Word -> Bool
+prop_powerDim a b = case ( someDimVal a
+                         , someDimVal b
+                         ) of
+  (Dx da, Dx db) -> testBinaryOp (^) powerDim da db
+
+prop_minusDim :: Word -> Word -> Bool
+prop_minusDim a' b'
+  | a <- max a' b'
+  , b <- min a' b'
+  , xda <- someDimVal a -- this is an unknown (Dim (XN 0))
+  , Dx (db :: Dim b) <- someDimVal b
+  , Just (Dx da) <- constrain @_ @(XN b) xda -- here da >= db
+  = a - b == dimVal (minusDim da db)
+prop_minusDim _ _ = False
 
 
 -- | Matching against @Reverse@ pattern lets GHC know the reversion relation
