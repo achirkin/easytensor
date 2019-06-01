@@ -25,16 +25,6 @@ instance Bounded DoubleX4 where
     minBound = case negate inftyD of D# x -> DoubleX4# x x x x
 
 
-instance Show DoubleX4 where
-    show (DoubleX4# a1 a2 a3 a4)
-      =  "{ " ++ show (D# a1)
-      ++ ", " ++ show (D# a2)
-      ++ ", " ++ show (D# a3)
-      ++ ", " ++ show (D# a4)
-      ++ " }"
-
-
-
 instance Eq DoubleX4 where
 
     DoubleX4# a1 a2 a3 a4 == DoubleX4# b1 b2 b3 b4 =

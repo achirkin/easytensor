@@ -71,9 +71,9 @@ import           Data.Void
 import           GHC.Base                        (Type)
 import           GHC.Exts
 import           GHC.Generics                    hiding (Infix, Prefix)
-import qualified GHC.Read                        as P
-import qualified Text.ParserCombinators.ReadPrec as P
-import qualified Text.Read                       as P
+import qualified Text.ParserCombinators.ReadPrec as Read
+import qualified Text.Read                       as Read
+import qualified Text.Read.Lex                   as Read
 import qualified Type.Reflection                 as R
 
 import {-# SOURCE #-} Numeric.Dimensions.Dim (Dim, Nat, dimVal, minusDimM)
@@ -444,32 +444,32 @@ typedListShowsPrec elShowsPrec p (x :* xs) = showParen (p >= 6) $
 typedListReadPrec :: forall (k :: Type) (c :: k -> Constraint) (f :: k -> Type)
                             (xs :: [k]) (g :: k -> Type)
                    . All c xs
-                  => ( forall (x :: k) . c x => P.ReadPrec (f x) )
+                  => ( forall (x :: k) . c x => Read.ReadPrec (f x) )
                      -- ^ How to read a single element
                   -> TypedList g xs
                      -- ^ Enforce the type structure of the result
-                  -> P.ReadPrec (TypedList f xs)
-typedListReadPrec _ U = P.parens $ U <$ P.expectP (P.Ident "U")
-typedListReadPrec elReadPrec (_ :* ts) = P.parens . P.prec 5 $ do
-    x <- P.step elReadPrec
-    P.expectP (P.Symbol ":*")
+                  -> Read.ReadPrec (TypedList f xs)
+typedListReadPrec _ U = Read.parens $ U <$ Read.lift (Read.expect $ Read.Ident "U")
+typedListReadPrec elReadPrec (_ :* ts) = Read.parens . Read.prec 5 $ do
+    x <- Read.step elReadPrec
+    Read.lift . Read.expect $ Read.Symbol ":*"
     xs <- typedListReadPrec @k @c elReadPrec ts
     return (x :* xs)
 
 -- | Generic read function for a @TypedList@ of unknown length.
 withTypedListReadPrec :: forall (k :: Type) (f :: k -> Type) (r :: Type)
                        . (forall (z :: Type) .
-                            ( forall (x :: k) . f x -> z) -> P.ReadPrec z )
+                            ( forall (x :: k) . f x -> z) -> Read.ReadPrec z )
                          -- ^ How to read a single element
                       -> (forall (xs :: [k]) . TypedList f xs -> r )
                          -- ^ Consume the result
-                      -> P.ReadPrec r
-withTypedListReadPrec withElReadPrec use = P.parens $
-    (use U <$ P.expectP (P.Ident "U"))
-    P.+++
-    P.prec 5 (do
-      WithAnyTL withX <- P.step $ withElReadPrec (\x -> WithAnyTL $ use . (x :*))
-      P.expectP (P.Symbol ":*")
+                      -> Read.ReadPrec r
+withTypedListReadPrec withElReadPrec use = Read.parens $
+    (use U <$ Read.lift (Read.expect $ Read.Ident "U"))
+    Read.+++
+    Read.prec 5 (do
+      WithAnyTL withX <- Read.step $ withElReadPrec (\x -> WithAnyTL $ use . (x :*))
+      Read.lift . Read.expect $ Read.Symbol ":*"
       withTypedListReadPrec @k @f @r withElReadPrec withX
     )
 

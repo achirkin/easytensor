@@ -109,10 +109,10 @@ import           Data.Type.List
 import           Data.Type.Lits
 import           GHC.Exts          (Proxy#, proxy#, unsafeCoerce#)
 import qualified GHC.Generics      as G
-import qualified GHC.Read          as P
 import           Numeric.Natural   (Natural)
 import           Numeric.TypedList
-import qualified Text.Read         as P
+import qualified Text.Read         as Read
+import qualified Text.Read.Lex     as Read
 import           Type.Reflection
 
 
@@ -932,25 +932,25 @@ instance Show SomeDims where
       $ showString "SomeDims " . showsPrec 10 ds
 
 instance BoundedDim x => Read (Dim (x :: k)) where
-    readPrec = P.lexP >>= \case
-      P.Ident ('D':s)
-        | Just d <- P.readMaybe s
+    readPrec = Read.lexP >>= \case
+      Read.Ident ('D':s)
+        | Just d <- Read.readMaybe s
             >>= constrain @k @x @XNat @(XN 0) . DimSing
           -> return d
-      _  -> P.pfail
-    readList = P.readListDefault
-    readListPrec = P.readListPrecDefault
+      _  -> Read.pfail
+    readList = Read.readListDefault
+    readListPrec = Read.readListPrecDefault
 
 instance BoundedDims xs => Read (Dims (xs :: [k])) where
-    readPrec = typedListReadPrec @k @BoundedDim P.readPrec (tList @k @xs)
-    readList = P.readListDefault
-    readListPrec = P.readListPrecDefault
+    readPrec = typedListReadPrec @k @BoundedDim Read.readPrec (tList @k @xs)
+    readList = Read.readListDefault
+    readListPrec = Read.readListPrecDefault
 
 instance Read SomeDims where
-    readPrec = P.parens . P.prec 10 $ do
-      P.expectP (P.Ident "SomeDims")
+    readPrec = Read.parens . Read.prec 10 $ do
+      Read.lift . Read.expect $ Read.Ident "SomeDims"
       withTypedListReadPrec @Nat @Dim @SomeDims
-        (\g -> (\(Dx d) -> g d) <$> P.readPrec @(Dim (XN 0)))
+        (\g -> (\(Dx d) -> g d) <$> Read.readPrec @(Dim (XN 0)))
         SomeDims
 
 

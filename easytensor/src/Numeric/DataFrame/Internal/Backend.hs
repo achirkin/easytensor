@@ -33,7 +33,6 @@ module Numeric.DataFrame.Internal.Backend
   , inferBounded, inferNum
   , inferFractional, inferFloating
   , inferPrimBytes, inferPrimArray
-  , inferShow
 #endif
   ) where
 
@@ -185,14 +184,6 @@ inferFloating
     . mapDict (Sub (Impl.inferBackendInstance @t @ds))
     $ inferDeriveContext @t @ds @b undefined
 
-{-# ANN inferShow (ToInstance Incoherent) #-}
-inferShow :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
-           . (Show t, Dimensions ds, Impl.KnownBackend t ds b)
-          => Dict (Show (Backend t ds b))
-inferShow
-    = mapDict toBackend
-    . mapDict (Sub (Impl.inferBackendInstance @t @ds))
-    $ inferDeriveContext @t @ds @b undefined
 
 {-# ANN inferPrimBytes (ToInstance Incoherent) #-}
 inferPrimBytes :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
@@ -339,13 +330,6 @@ instance {-# INCOHERENT #-}
     acosh = undefined
     atanh = undefined
 
-instance {-# INCOHERENT #-}
-    forall (t :: Type) (ds :: [Nat]) (b :: Type)
-  . (Show t, Dimensions ds, Impl.KnownBackend t ds b)
-  => Show (Backend t ds b) where
-    show = undefined
-    showsPrec = undefined
-    showList = undefined
 
 instance {-# INCOHERENT #-}
     forall (t :: Type) (ds :: [Nat]) (b :: Type)

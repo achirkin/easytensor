@@ -10,6 +10,7 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MagicHash                  #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE PatternSynonyms            #-}
@@ -51,13 +52,16 @@ module Numeric.DataFrame.Type
   ) where
 
 
-import Data.Data
-import Data.Proxy       (Proxy)
-import Foreign.Storable (Storable (..))
-import GHC.Base
-import GHC.Exts
 -- import           GHC.Generics     hiding (Infix, Prefix)
-import GHC.Ptr (Ptr (..))
+import           Data.Data
+import           Data.Proxy                      (Proxy)
+import           Foreign.Storable                (Storable (..))
+import           GHC.Base
+import           GHC.Exts
+import           GHC.Ptr                         (Ptr (..))
+import qualified Text.ParserCombinators.ReadPrec as Read
+import qualified Text.Read                       as Read
+import qualified Text.Read.Lex                   as Read
 
 import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.Dimensions
@@ -65,11 +69,13 @@ import           Numeric.PrimBytes
 import           Numeric.ProductOrd
 import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
 import qualified Numeric.ProductOrd.Partial           as Partial
+import           Numeric.Semigroup                    hiding (All)
 import           Numeric.TypedList                    (typeables)
 
 import {-# SOURCE #-} Numeric.DataFrame.Internal.Backend (DFBackend,
                                                           KnownBackend)
 import {-# SOURCE #-} qualified Numeric.DataFrame.Internal.Backend as Backend
+
 
 -- | Keep data in a primitive data frame
 --    and maintain information about Dimensions in the type system
@@ -248,44 +254,191 @@ eqFrames (a :*: as) (b :*: bs) = a == b && eqFrames as bs
 
 
 instance ( Show t
+         , PrimBytes t
          , Dimensions ds
-         , KnownBackend t ds
          ) => Show (DataFrame (t :: Type) (ds :: [Nat])) where
-    show (SingleFrame df) = unlines
-        [ "DF " ++ drop 5 (show $ dims @ds) ++ ":"
-        , show df
-        ]
+    showsPrec p x = case dims @ds of
+      U       -> showParen (p >= 10)
+        $ showString "S " . showsPrec 10 (unsafeCoerce# x :: t)
+      D0 :* _ -> showString "DF0"
+      d  :* _ -> showParen (p >= 10)
+        $ unpackDF' ( \Dict f ->
+            let g :: Endo (Int -> ShowS)
+                g = Endo $ \k -> f (\o e -> k o . showChar ' ' . showsPrec 11 e)
+                n = dimVal d
+            in  appEndo (stimes n g) (const $ showString "DF" . shows n)
+          ) x
 
 instance ( All Show ts
+         , All PrimBytes ts
          , Dimensions ds
-         , KnownBackends ts ds
          ) => Show (DataFrame (ts :: [Type]) (ds :: [Nat])) where
-    show dfs = unlines $
-        ("DF " ++ show (order dds) ++ " x "  ++ drop 5 (show dds) ++ ":")
-        : showAll 1 dfs
-      where
-        dds = dims @ds
-        showAll :: forall (xs :: [Type]) . (All Show xs, KnownBackends xs ds)
-                => Word -> DataFrame xs ds -> [String]
-        showAll _ Z = []
-        showAll n (SingleFrame arr :*: fs)
-          = ("Var " ++ show n) : show arr : showAll (n+1) fs
+    showsPrec _ Z = showChar 'Z'
+    showsPrec p (x :*: xs) = showParen (p >= 7) $
+        showsPrec 7 x . showString " :*: " . showsPrec 6 xs
 
-instance Show t => Show (DataFrame (t :: Type) (xns :: [XNat])) where
-    show (XFrame df) = 'X': show df
+instance (Show t, PrimBytes t)
+      => Show (DataFrame (t :: Type) (xns :: [XNat])) where
+    showsPrec p (XFrame x)
+      = showParen (p >= 10) $ showString "XFrame " . showsPrec 11 x
 
-instance All Show ts => Show (DataFrame (ts :: [Type]) (xns :: [XNat])) where
-    show (XFrame df) = 'X': show df
+instance (All Show ts, All PrimBytes ts)
+      => Show (DataFrame (ts :: [Type]) (xns :: [XNat])) where
+    showsPrec p (XFrame x)
+      = showParen (p >= 10) $ showString "XFrame " . showsPrec 11 x
 
-instance Show t => Show (SomeDataFrame (t :: Type)) where
-    show (SomeDataFrame df) = "Some" ++ show df
+instance (Show t, PrimBytes t)
+      => Show (SomeDataFrame (t :: Type)) where
+    showsPrec p (SomeDataFrame x)
+      = showParen (p >= 10) $ showString "SomeDataFrame " . showsPrec 11 x
 
-instance All Show ts => Show (SomeDataFrame (ts :: [Type])) where
-    show (SomeDataFrame df) = "Some" ++ show df
+instance (All Show ts, All PrimBytes ts)
+      => Show (SomeDataFrame (ts :: [Type])) where
+    showsPrec p (SomeDataFrame x)
+      = showParen (p >= 10) $ showString "SomeDataFrame " . showsPrec 11 x
 
 
-deriving instance Read (DFBackend t ds)
-               => Read (DataFrame t ds)
+instance (Read t, PrimBytes t, Dimensions ds)
+      => Read (DataFrame (t :: Type) (ds :: [Nat])) where
+    readPrec = readPrecFixedDF (dims @ds)
+    readList = Read.readListDefault
+    readListPrec = Read.readListPrecDefault
+
+instance (Read t, PrimBytes t, BoundedDims ds, All KnownXNatType ds)
+      => Read (DataFrame (t :: Type) (ds :: [XNat])) where
+    readPrec = Read.parens . Read.prec 10 $ do
+      Read.lift . Read.expect $ Read.Ident "XFrame"
+      Just ds <- pure $ constrainDims (dimsBound @XNat @ds)
+      Read.step $ readPrecBoundedDF ds
+    readList = Read.readListDefault
+    readListPrec = Read.readListPrecDefault
+
+instance (Read t, PrimBytes t)
+      => Read (SomeDataFrame (t :: Type)) where
+    readPrec = Read.parens . Read.prec 10 $ do
+      Read.lift . Read.expect $ Read.Ident "SomeDataFrame"
+      Read.step readPrecSomeDF
+    readList = Read.readListDefault
+    readListPrec = Read.readListPrecDefault
+
+
+
+readPrecFixedDF :: forall (t :: Type) (ds :: [Nat])
+                 . (Read t, PrimBytes t)
+                => Dims ds -> Read.ReadPrec (DataFrame t ds)
+readPrecFixedDF U
+  = Read.parens . Read.prec 10 $ do
+    Read.lift . Read.expect $ Read.Ident "S"
+    S <$> Read.step Read.readPrec
+readPrecFixedDF (D0 :* Dims)
+  = Read.parens $ do
+    Read.lift . Read.expect . Read.Ident $ "DF0"
+    return (packDF @t @0)
+readPrecFixedDF (d@D :* ds@Dims)
+  = Read.parens . Read.prec 10 $ do
+    Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal d)
+    packDF' (<*> Read.step (readPrecFixedDF ds)) pure
+
+
+-- The first argument is, in fact, a @dimsBound@, but covered in the same @[XNat]@
+--  form. That is, XN values are lower bounds rather than actual runtime dimensions.
+readPrecBoundedDF :: forall (t :: Type) (ds :: [XNat])
+                   . (Read t, PrimBytes t, KnownXNatTypes ds)
+                  => Dims ds -> Read.ReadPrec (DataFrame t ds)
+readPrecBoundedDF U
+  = Read.parens . Read.prec 10 $ do
+    Read.lift . Read.expect $ Read.Ident "S"
+    case inferKnownBackend @t @'[] of
+      Dict -> XFrame . S <$> Read.step Read.readPrec
+readPrecBoundedDF (Dn D0 :* XDims (Dims :: Dims ns))
+  = Read.parens $ do
+    Read.lift . Read.expect . Read.Ident $ "DF0"
+    return $ case inferKnownBackend @t @(0 ': ns) of
+      Dict -> XFrame @Type @t @ds @(0 ': ns) (packDF @t @0 @ns)
+readPrecBoundedDF (Dn d@(D :: Dim n) :* xns)
+  = Read.parens . Read.prec 10 $ do
+    Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal d)
+    XFrame (x :: DataFrame t ns) <- Read.step $ readPrecBoundedDF @t xns
+    case inferKnownBackend @t @(n ': ns) of
+      Dict -> fmap XFrame . snd . runDelay $ packDF' @t @n @ns
+        (\(Delayed (cprev, cf)) -> Delayed
+            (Read.reset (readPrecFixedDF @t @ns dims), cf <*> cprev)
+        ) (followedBy x)
+readPrecBoundedDF ((Dx (m :: Dim m) :: Dim xm) :* xns)
+  | Dict <- unsafeEqTypes @XNat @('XN m) @xm -- by user contract the argument is dimBound
+  = Read.parens $ lookLex >>= \case
+    Read.Ident ('D':'F':s)
+      | Just (Dx n) <- (Read.readMaybe ('D':s) :: Maybe SomeDim)
+      , dimVal n >= dimVal m
+        -> case n of
+          D0 | D0 <- m -> do
+            XFrame (x :: DataFrame t ns) <- readPrecBoundedDF @t (Dn D0 :* xns)
+            return (XFrame @Type @t @ds @ns x)
+          (D :: Dim n) | Dict <- (unsafeCoerce# (Dict @(m <= m)) :: Dict (m <= n)) -> do
+            Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal n)
+            XFrame (x :: DataFrame t ns) <- Read.prec 10 $ readPrecBoundedDF @t xns
+            case inferKnownBackend @t @(n ': ns) of
+              Dict -> fmap XFrame . snd . runDelay $ packDF' @t @n @ns
+                (\(Delayed (cprev, cf)) -> Delayed
+                    (Read.reset (readPrecFixedDF @t @ns dims), cf <*> cprev)
+                ) (followedBy x)
+
+    _ -> Read.pfail
+
+
+
+
+readPrecSomeDF :: forall (t :: Type) . (Read t, PrimBytes t)
+               => Read.ReadPrec (SomeDataFrame t)
+readPrecSomeDF = Read.parens $
+    (Read.prec 10 $ do
+      Read.lift . Read.expect $ Read.Ident "S"
+      case inferKnownBackend @t @'[] of
+        Dict -> SomeDataFrame . S <$> Read.readPrec
+    )
+    Read.+++
+    (do
+     lookLex >>= \case
+       Read.Ident ('D':'F':s)
+         | Just (Dx (d :: Dim d)) <- (Read.readMaybe ('D':s) :: Maybe SomeDim)
+           -> case d of
+             D0 | Dict <- inferKnownBackend @t @'[0]
+                 -> SomeDataFrame <$> readPrecFixedDF @t (D0 :* U)
+             _ -> do
+               Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal d)
+               SomeDataFrame (x :: DataFrame t ds) <- Read.prec 10 $ readPrecSomeDF @t
+               case inferKnownBackend @t @(d ': ds) of
+                 Dict -> fmap SomeDataFrame . snd . runDelay $ packDF' @t @d @ds
+                   (\(Delayed (cprev, cf)) -> Delayed
+                       (Read.prec 10 (readPrecFixedDF @t @ds dims), cf <*> cprev)
+                   ) (followedBy x)
+
+       _ -> Read.pfail
+    )
+
+-- First element is read separately, enforcing the structure of the rest.
+newtype Delayed t ds c a = Delayed { runDelay :: (c (DataFrame t ds), c a) }
+
+followedBy :: DataFrame t ds -> a -> Delayed t ds c a
+followedBy x = Delayed . (,) (pure x) . pure
+
+
+
+
+lookLex :: Read.ReadPrec Read.Lexeme
+lookLex = Read.look >>=
+  Read.choice . map (pure . fst) . Read.readPrec_to_S Read.lexP 10
+
+
+-- packDF' :: forall (t :: Type) (d :: Nat) (ds :: [Nat]) c
+--          . (PrimBytes t, Dimensions (d ': ds))
+--         => (forall r. c (DataFrame t ds -> r) -> c r)
+--         -> (forall r. r -> c r)
+--         -> c (DataFrame t (d ': ds))
+--
+--
+-- deriving instance Read (DFBackend t ds)
+--                => Read (DataFrame t ds)
 
 -- | Evidence that the elements of the DataFrame are PrimBytes.
 inferPrimElem
@@ -317,7 +470,7 @@ fromFlatList = unsafeFromFlatList
 
 
 -- | A scalar DataFrame is just a newtype wrapper on a value.
-pattern S :: t -> DataFrame t '[]
+pattern S :: forall (t :: Type) . t -> DataFrame t ('[] :: [Nat])
 -- rely on that Scalar is just two times newtype alias to t
 pattern S x <- (unsafeCoerce# -> x)
   where
@@ -510,14 +663,14 @@ unpackDF c
     go :: forall a . (a ~ Dict (Dimensions ds, KnownBackend t ds))
        => Dim d -> a
        -> (forall (zRep :: RuntimeRep) (z :: TYPE zRep)
-                  . (Int# -> DataFrame t ds -> z) -> Int# -> z)
-       -> Int# -> r
+                  . (Int -> DataFrame t ds -> z) -> Int -> z)
+       -> Int -> r
     go d a k = recur d (\_ -> c)
       where
         recur :: forall n
                . Dim n
-              -> (Int# -> PackDF t ds n (a -> r))
-              -> Int# -> r
+              -> (Int -> PackDF t ds n (a -> r))
+              -> Int -> r
         recur n f = case minusDimM n (D :: Dim 1) of
           Nothing -> case unsafeEqTypes @Nat @n @0 of
             Dict -> (`f` a)
@@ -553,8 +706,8 @@ unpackDF' :: forall (rep :: RuntimeRep)
            . (PrimBytes t, Dimensions (d ': ds))
           => ( Dict (Dimensions ds, KnownBackend t ds)
                -> (forall (zRep :: RuntimeRep) (z :: TYPE zRep)
-                          . (Int# -> DataFrame t ds -> z) -> Int# -> z)
-               -> Int# -> r)
+                          . (Int -> DataFrame t ds -> z) -> Int -> z)
+               -> Int -> r)
           -> DataFrame t (d ': ds)
           -> r
 unpackDF' k df
@@ -565,24 +718,24 @@ unpackDF' k df
         (# x | #)
           | e <- broadcast x
             -> let f :: forall (zr :: RuntimeRep) (z :: TYPE zr)
-                      . (Int# -> DataFrame t ds -> z) -> Int# -> z
-                   f consume o = consume o e
-               in k Dict f 0#
+                      . (Int -> DataFrame t ds -> z) -> Int -> z
+                   f consume = (`consume` e)
+               in k Dict f 0
         (# | (# cdims, off, arr #) #)
           | cd <- CumulDims . tail $ unCumulDims cdims
           , td <- cdTotalDim# cd
           , n <- case dimVal d of W# w -> word2Int# w
             -> let f :: forall (zr :: RuntimeRep) (z :: TYPE zr)
-                      . (Int# -> DataFrame t ds -> z) -> Int# -> z
-                   f consume o = consume (o -# td) (fromElems cd o arr)
-               in k Dict f (off +# td *# (n -# 1#))
+                      . (Int -> DataFrame t ds -> z) -> Int -> z
+                   f consume (I# o) = consume (I# (o -# td)) (fromElems cd o arr)
+               in k Dict f (I# (off +# td *# (n -# 1#)))
   | otherwise = error "Numeric.DataFrame.Type.unpackDF: impossible args"
 
 
 
--- Need this for @packDF'@ to make @Int# -> c z@ a proper second-order type
+-- Need this for @packDF'@ to make @Int -> c z@ a proper second-order type
 -- parameterized by the result type.
-newtype Off c z = Off { runOff :: Int# -> c z }
+newtype Off c z = Off { runOff :: Int -> c z }
 
 -- | Term-level structure of a @SingleFrame t ds@ is fully determined by its
 --   type dimensionality @Typeable ds@.
@@ -598,8 +751,8 @@ instance (Data t, PrimBytes t, Typeable ds)
           Dict ->
             -- PLZ don't ask me how does this work
             unpackDF' (\_ f -> runOff $ packDF'
-                           (\g -> Off (f (\o -> k (runOff g o))))
-                           (\r -> Off (\_ -> z r))
+                           (\g -> Off . f $ k . runOff g)
+                           (Off . const . z)
                        ) v
     gunfold k z _ = case typeableDims @ds of
       U      -> k (z S)

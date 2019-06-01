@@ -218,7 +218,7 @@ data SomeSquareMatrix prop t
   . (KnownDim n, KnownBackend t '[n], KnownBackend t '[n, n])
   => SSM (DataFrame t '[n,n])
 
-instance Show t => Show (SomeSquareMatrix prop t) where
+instance (Show t, PrimBytes t) => Show (SomeSquareMatrix prop t) where
   show (SSM df) = show df
 
 instance (Arbitrary t, PrimBytes t, Num t, Ord t)

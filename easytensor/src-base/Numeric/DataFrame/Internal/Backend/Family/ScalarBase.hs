@@ -20,17 +20,13 @@ import qualified Numeric.ProductOrd.Partial                        as Partial
 -- | Specialize ScalarBase type without any arrays
 newtype ScalarBase t = ScalarBase { _unScalarBase :: t }
   deriving ( Enum, Eq, Integral
-           , Num, Fractional, Floating, Ord, Read, Real, RealFrac, RealFloat
+           , Num, Fractional, Floating, Ord, Real, RealFrac, RealFloat
            , PrimBytes)
 
 instance Ord t => ProductOrder (ScalarBase t) where
   cmp a b = fromOrdering (compare (_unScalarBase a) (_unScalarBase b))
 deriving instance Ord t => Ord (NonTransitive.ProductOrd (ScalarBase t))
 deriving instance Ord t => Ord (Partial.ProductOrd (ScalarBase t))
-
-instance Show t => Show (ScalarBase t) where
-  show (ScalarBase t) = "{ " ++ show t ++ " }"
-
 
 instance {-# OVERLAPPING #-} Bounded (ScalarBase Double) where
   maxBound = ScalarBase inftyD
