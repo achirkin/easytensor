@@ -25,14 +25,6 @@ instance Bounded FloatX2 where
     minBound = case negate inftyF of F# x -> FloatX2# x x
 
 
-instance Show FloatX2 where
-    show (FloatX2# a1 a2)
-      =  "{ " ++ show (F# a1)
-      ++ ", " ++ show (F# a2)
-      ++ " }"
-
-
-
 instance Eq FloatX2 where
 
     FloatX2# a1 a2 == FloatX2# b1 b2 =

@@ -87,7 +87,7 @@ data LUFact t n
     -- ^ Sign of permutation @luPermSign == det . luPerm@
   }
 
-deriving instance (Show (Matrix t n n), Show t) => Show (LUFact t n)
+deriving instance (Show t, PrimBytes t, KnownDim n) => Show (LUFact t n)
 deriving instance (Eq (Matrix t n n), Eq t) => Eq (LUFact t n)
 
 class MatrixLU t (n :: Nat) where

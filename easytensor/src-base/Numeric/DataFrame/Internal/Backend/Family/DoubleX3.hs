@@ -25,15 +25,6 @@ instance Bounded DoubleX3 where
     minBound = case negate inftyD of D# x -> DoubleX3# x x x
 
 
-instance Show DoubleX3 where
-    show (DoubleX3# a1 a2 a3)
-      =  "{ " ++ show (D# a1)
-      ++ ", " ++ show (D# a2)
-      ++ ", " ++ show (D# a3)
-      ++ " }"
-
-
-
 instance Eq DoubleX3 where
 
     DoubleX3# a1 a2 a3 == DoubleX3# b1 b2 b3 =

@@ -29,16 +29,6 @@ instance Bounded FloatX4 where
     minBound = case negate inftyF of F# x -> FloatX4# x x x x
 
 
-instance Show FloatX4 where
-    show (FloatX4# a1 a2 a3 a4)
-      =  "{ " ++ show (F# a1)
-      ++ ", " ++ show (F# a2)
-      ++ ", " ++ show (F# a3)
-      ++ ", " ++ show (F# a4)
-      ++ " }"
-
-
-
 instance Eq FloatX4 where
 
     FloatX4# a1 a2 a3 a4 == FloatX4# b1 b2 b3 b4 =

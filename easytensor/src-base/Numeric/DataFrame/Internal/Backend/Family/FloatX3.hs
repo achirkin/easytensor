@@ -25,15 +25,6 @@ instance Bounded FloatX3 where
     minBound = case negate inftyF of F# x -> FloatX3# x x x
 
 
-instance Show FloatX3 where
-    show (FloatX3# a1 a2 a3)
-      =  "{ " ++ show (F# a1)
-      ++ ", " ++ show (F# a2)
-      ++ ", " ++ show (F# a3)
-      ++ " }"
-
-
-
 instance Eq FloatX3 where
 
     FloatX3# a1 a2 a3 == FloatX3# b1 b2 b3 =

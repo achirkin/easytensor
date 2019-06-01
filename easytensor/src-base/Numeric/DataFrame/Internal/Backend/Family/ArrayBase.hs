@@ -359,50 +359,6 @@ instance Ord t => Ord (ArrayBase t ds) where
     {-# INLINE compare #-}
 
 
-instance (Show t, Dimensions ds)
-      => Show (ArrayBase t ds) where
-    showsPrec _ = pprDF id ds ds
-      where
-        ds = dims @ds
-
-pprDF :: forall t (bs :: [Nat]) (asbs :: [Nat])
-       . Show t
-      => (Idxs bs -> Idxs asbs) -> Dims bs -> Dims asbs -> ArrayBase t asbs -> ShowS
-pprDF u U _ x = showString "{ " . shows (ix (u U) x) . showString " }"
-pprDF u (D :* U) _ x
-  = showChar '{'
-  . drop 1
-  . foldr (\i s -> showString ", " . shows (ix (u i) x) . s)
-      (showString " }")
-      [minBound .. maxBound]
-pprDF u bs@((D :: Dim n) :* (D :: Dim m) :* U) asbs x
-  = maybeDimSize
-  . showChar '{'
-  . drop 2
-  . foldr (\i ss -> showChar '\n' .
-              foldr (\j s ->
-                       showString ", " . shows (ix (u $ i :* j :* U) x) . s
-                    ) ss [minBound..maxBound]
-          ) (showString " }") [minBound..maxBound]
-  where
-    dropE4 :: String -> String
-    dropE4 []        = []
-    dropE4 [_]       = []
-    dropE4 [_,_]     = []
-    dropE4 [_,_,_]   = []
-    dropE4 [_,_,_,_] = []
-    dropE4 (c:cs)    = c:dropE4 cs
-    maybeDimSize = case sameDims bs asbs of
-      Just Dict -> id
-      _ -> showChar '('
-         . showString (drop 6 . dropE4 . show . u $ 0 :* 0 :* U)
-         . showString "i,j):\n"
-pprDF u ((D :: Dim n) :* ns@(Dims :: Dims ns)) asbs x
-  | Just Dims <- stripSuffixDims ns asbs
-  = drop 1
-  . foldr (\i s -> showChar '\n' . pprDF (u . (i :*)) ns asbs x . s) id [minBound..maxBound]
-pprDF _ _ _ _ = error "ArrayBase/pprDF: incorrect dimensions!"
-
 instance {-# OVERLAPPING #-} Bounded (ArrayBase Double ds) where
     maxBound = ArrayBase (# inftyD | #)
     minBound = ArrayBase (# negate inftyD | #)
@@ -586,19 +542,6 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
     fromElems steps off ba = ArrayBase (# | (# off, ba, steps, Dict #) #)
     {-# INLINE fromElems #-}
 
-
-
---------------------------------------------------------------------------------
--- * Utility functions
---------------------------------------------------------------------------------
-
-
-ix :: Idxs ds -> ArrayBase t ds -> t
-ix i (ArrayBase a) = case a of
-  (# t | #)  -> t
-  (# | (# oa, ba, steps, Dict #) #)
-     -> case cdIx steps i of I# off -> indexArray ba (oa +# off)
-{-# INLINE ix #-}
 
 undefEl :: ArrayBase t ds -> t
 undefEl = const undefined

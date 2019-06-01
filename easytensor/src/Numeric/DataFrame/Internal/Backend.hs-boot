@@ -105,11 +105,6 @@ instance {-# INCOHERENT #-}
 
 instance {-# INCOHERENT #-}
     forall (t :: Type) (ds :: [Nat]) (b :: Type)
-  . (Show t, Dimensions ds, Impl.KnownBackend t ds b)
-  => Show (Backend t ds b)
-
-instance {-# INCOHERENT #-}
-    forall (t :: Type) (ds :: [Nat]) (b :: Type)
   . ( PrimBytes t
     , Dimensions ds
     , Impl.KnownBackend t ds b
