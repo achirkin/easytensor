@@ -304,12 +304,28 @@ instance (Read t, PrimBytes t, Dimensions ds)
     readList = Read.readListDefault
     readListPrec = Read.readListPrecDefault
 
+instance (All Read ts, All PrimBytes ts, RepresentableList ts, Dimensions ds)
+      => Read (DataFrame (ts :: [Type]) (ds :: [Nat])) where
+    readPrec = readFixedMultiDF (tList @Type @ts) (dims @ds)
+    readList = Read.readListDefault
+    readListPrec = Read.readListPrecDefault
+
 instance (Read t, PrimBytes t, BoundedDims ds, All KnownXNatType ds)
       => Read (DataFrame (t :: Type) (ds :: [XNat])) where
     readPrec = Read.parens . Read.prec 10 $ do
       Read.lift . Read.expect $ Read.Ident "XFrame"
       Just ds <- pure $ constrainDims (dimsBound @XNat @ds)
       Read.step $ readPrecBoundedDF ds
+    readList = Read.readListDefault
+    readListPrec = Read.readListPrecDefault
+
+instance ( All Read ts, All PrimBytes ts, RepresentableList ts
+         , BoundedDims ds, All KnownXNatType ds)
+      => Read (DataFrame (ts :: [Type]) (ds :: [XNat])) where
+    readPrec = Read.parens . Read.prec 10 $ do
+      Read.lift . Read.expect $ Read.Ident "XFrame"
+      Just ds <- pure $ constrainDims (dimsBound @XNat @ds)
+      Read.step $ readBoundedMultiDF (tList @Type @ts) ds
     readList = Read.readListDefault
     readListPrec = Read.readListPrecDefault
 
@@ -321,7 +337,13 @@ instance (Read t, PrimBytes t)
     readList = Read.readListDefault
     readListPrec = Read.readListPrecDefault
 
-
+instance ( All Read ts, All PrimBytes ts, RepresentableList ts )
+      => Read (SomeDataFrame (ts :: [Type])) where
+    readPrec = Read.parens . Read.prec 10 $ do
+      Read.lift . Read.expect $ Read.Ident "SomeDataFrame"
+      Read.step $ readSomeMultiDF (tList @Type @ts)
+    readList = Read.readListDefault
+    readListPrec = Read.readListPrecDefault
 
 readPrecFixedDF :: forall (t :: Type) (ds :: [Nat])
                  . (Read t, PrimBytes t)
@@ -339,55 +361,83 @@ readPrecFixedDF (d@D :* ds@Dims)
     Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal d)
     packDF' (<*> Read.step (readPrecFixedDF ds)) pure
 
+{-
+The first argument is, in fact, a @dimsBound@, but covered in the same @[XNat]@
+  form. That is, XN values are lower bounds rather than actual runtime dimensions.
 
--- The first argument is, in fact, a @dimsBound@, but covered in the same @[XNat]@
---  form. That is, XN values are lower bounds rather than actual runtime dimensions.
+The interesting bit about this function is that it is very particular in specifying
+what is enforced and what is unknown.
+At the very least, the call site must know the order of the Dims (unless DF0 is present)
+  -- and specify all dims as @XN 0@.
+It allows a fine-grained control over the shape of a DataFrame.
+
+For example,
+
+>>> readPrecBoundedDF (Dx @5 DF5 :* Dn DF4 :* Dn DF4 :* U)
+
+  reads an array of 4x4 matrices of length at least 5.
+
+ -}
 readPrecBoundedDF :: forall (t :: Type) (ds :: [XNat])
                    . (Read t, PrimBytes t, KnownXNatTypes ds)
                   => Dims ds -> Read.ReadPrec (DataFrame t ds)
+-- reading scalar
 readPrecBoundedDF U
   = Read.parens . Read.prec 10 $ do
     Read.lift . Read.expect $ Read.Ident "S"
     case inferKnownBackend @t @'[] of
       Dict -> XFrame . S <$> Read.step Read.readPrec
+-- DF0 is funny because it will succesfully parse any dimension to the right of it.
 readPrecBoundedDF (Dn D0 :* XDims (Dims :: Dims ns))
   = Read.parens $ do
     Read.lift . Read.expect . Read.Ident $ "DF0"
     return $ case inferKnownBackend @t @(0 ': ns) of
       Dict -> XFrame @Type @t @ds @(0 ': ns) (packDF @t @0 @ns)
+-- Fixed dimension:
+--  The number of component frames is exactly n
+--  the first component frame fixes the shape of the rest n-1
 readPrecBoundedDF (Dn d@(D :: Dim n) :* xns)
   = Read.parens . Read.prec 10 $ do
     Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal d)
     XFrame (x :: DataFrame t ns) <- Read.step $ readPrecBoundedDF @t xns
     case inferKnownBackend @t @(n ': ns) of
       Dict -> fmap XFrame . snd . runDelay $ packDF' @t @n @ns
-        (\(Delayed (cprev, cf)) -> Delayed
-            (Read.reset (readPrecFixedDF @t @ns dims), cf <*> cprev)
-        ) (followedBy x)
+        (readDelayed $ Read.prec 10 (readPrecFixedDF @t @ns dims))
+        (followedBy x)
+-- Bounded dimension:
+--   The number of component frames is at least m
+--   the first component frame fixes the shape of the rest n-1
 readPrecBoundedDF ((Dx (m :: Dim m) :: Dim xm) :* xns)
   | Dict <- unsafeEqTypes @XNat @('XN m) @xm -- by user contract the argument is dimBound
   = Read.parens $ lookLex >>= \case
     Read.Ident ('D':'F':s)
-      | Just (Dx n) <- (Read.readMaybe ('D':s) :: Maybe SomeDim)
-      , dimVal n >= dimVal m
+      | Just (Dx (n :: Dim n)) <- (Read.readMaybe ('D':s) :: Maybe SomeDim)
+      , Just Dict <- indeedLE m n -- check if the DF dim is not less than m
         -> case n of
-          D0 | D0 <- m -> do
-            XFrame (x :: DataFrame t ns) <- readPrecBoundedDF @t (Dn D0 :* xns)
-            return (XFrame @Type @t @ds @ns x)
-          (D :: Dim n) | Dict <- (unsafeCoerce# (Dict @(m <= m)) :: Dict (m <= n)) -> do
+          D0 -> do -- need to repack it under different constraint dims
+            XFrame x <- readPrecBoundedDF @t (Dn D0 :* xns)
+            return (XFrame x)
+          D  -> do
             Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal n)
             XFrame (x :: DataFrame t ns) <- Read.prec 10 $ readPrecBoundedDF @t xns
             case inferKnownBackend @t @(n ': ns) of
               Dict -> fmap XFrame . snd . runDelay $ packDF' @t @n @ns
-                (\(Delayed (cprev, cf)) -> Delayed
-                    (Read.reset (readPrecFixedDF @t @ns dims), cf <*> cprev)
-                ) (followedBy x)
+                (readDelayed $ Read.prec 10 (readPrecFixedDF @t @ns dims))
+                (followedBy x)
 
     _ -> Read.pfail
+  where
+    indeedLE :: forall (a ::Nat) (b :: Nat) . Dim a -> Dim b -> Maybe (Dict (a <= b))
+    indeedLE a b = case compareDim a b of
+      SLT -> Just Dict
+      SEQ -> Just Dict
+      SGT -> Nothing
 
-
-
-
+{-
+In this case we know Nothing about the dimensionality of a DataFrame.
+The logic is similar to readPrecBoundedDF, but a bit simpler:
+the first dimension is flexible, but fixes the rest dimensions.
+ -}
 readPrecSomeDF :: forall (t :: Type) . (Read t, PrimBytes t)
                => Read.ReadPrec (SomeDataFrame t)
 readPrecSomeDF = Read.parens $
@@ -409,36 +459,75 @@ readPrecSomeDF = Read.parens $
                SomeDataFrame (x :: DataFrame t ds) <- Read.prec 10 $ readPrecSomeDF @t
                case inferKnownBackend @t @(d ': ds) of
                  Dict -> fmap SomeDataFrame . snd . runDelay $ packDF' @t @d @ds
-                   (\(Delayed (cprev, cf)) -> Delayed
-                       (Read.prec 10 (readPrecFixedDF @t @ds dims), cf <*> cprev)
-                   ) (followedBy x)
-
+                   (readDelayed $ Read.prec 10 (readPrecFixedDF @t @ds dims))
+                   (followedBy x)
        _ -> Read.pfail
     )
+
+readFixedMultiDF :: forall (ts :: [Type]) (ds :: [Nat])
+                  . (All Read ts, All PrimBytes ts)
+                 => TypeList ts
+                 -> Dims ds
+                 -> Read.ReadPrec (DataFrame ts ds)
+readFixedMultiDF U _ = Read.parens $
+    Z <$ Read.lift (Read.expect $ Read.Ident "Z")
+readFixedMultiDF (_ :* ts) ds = Read.parens . Read.prec 6 $ do
+    x <- Read.step $ readPrecFixedDF ds
+    Read.lift . Read.expect $ Read.Symbol ":*:"
+    xs <- readFixedMultiDF ts ds
+    return (x :*: xs)
+
+readBoundedMultiDF :: forall (ts :: [Type]) (ds :: [XNat])
+                    . (All Read ts, All PrimBytes ts, KnownXNatTypes ds)
+                   => TypeList ts
+                   -> Dims ds
+                   -> Read.ReadPrec (DataFrame ts ds)
+readBoundedMultiDF U (XDims (Dims :: Dims ns))
+  = Read.parens $
+    XFrame @[Type] @'[] @ds @ns Z <$ Read.lift (Read.expect $ Read.Ident "Z")
+readBoundedMultiDF ((_ :: Proxy t) :* ts@TypeList) ds
+  = Read.parens . Read.prec 6 $ do
+    XFrame (x :: DataFrame t ns) <- Read.step $ readPrecBoundedDF @t ds
+    Read.lift . Read.expect $ Read.Symbol ":*:"
+    xs <- readFixedMultiDF ts (dims @ns)
+    case inferKnownBackend @ts @ns of
+      Dict -> return $ XFrame (x :*: xs)
+
+readSomeMultiDF :: forall (ts :: [Type])
+                 . (All Read ts, All PrimBytes ts)
+                => TypeList ts
+                -> Read.ReadPrec (SomeDataFrame ts)
+readSomeMultiDF U
+  = Read.parens $
+    SomeDataFrame @[Type] @ts @'[] Z <$ Read.lift (Read.expect $ Read.Ident "Z")
+readSomeMultiDF ((_ :: Proxy t) :* ts@TypeList)
+  = Read.parens . Read.prec 6 $ do
+    SomeDataFrame (x :: DataFrame t ns) <- Read.step $ readPrecSomeDF @t
+    Read.lift . Read.expect $ Read.Symbol ":*:"
+    xs <- readFixedMultiDF ts (dims @ns)
+    case inferKnownBackend @ts @ns of
+      Dict -> return $ SomeDataFrame (x :*: xs)
 
 -- First element is read separately, enforcing the structure of the rest.
 newtype Delayed t ds c a = Delayed { runDelay :: (c (DataFrame t ds), c a) }
 
-followedBy :: DataFrame t ds -> a -> Delayed t ds c a
+followedBy :: Applicative c => DataFrame t ds -> a -> Delayed t ds c a
 followedBy x = Delayed . (,) (pure x) . pure
 
+readDelayed :: forall (t :: Type) (ds :: [Nat]) (c :: Type -> Type) (r :: Type)
+             . Applicative c
+            => c (DataFrame t ds)
+            -> Delayed t ds c (DataFrame t ds -> r) -> Delayed t ds c r
+readDelayed readF (Delayed (cprev, cf)) = Delayed (readF, cf <*> cprev)
 
 
-
+-- | Check the next lexeme without consuming it
 lookLex :: Read.ReadPrec Read.Lexeme
 lookLex = Read.look >>=
   Read.choice . map (pure . fst) . Read.readPrec_to_S Read.lexP 10
 
 
--- packDF' :: forall (t :: Type) (d :: Nat) (ds :: [Nat]) c
---          . (PrimBytes t, Dimensions (d ': ds))
---         => (forall r. c (DataFrame t ds -> r) -> c r)
---         -> (forall r. r -> c r)
---         -> c (DataFrame t (d ': ds))
---
---
--- deriving instance Read (DFBackend t ds)
---                => Read (DataFrame t ds)
+
 
 -- | Evidence that the elements of the DataFrame are PrimBytes.
 inferPrimElem
