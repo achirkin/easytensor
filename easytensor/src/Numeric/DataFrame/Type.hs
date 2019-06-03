@@ -315,8 +315,7 @@ instance (Read t, PrimBytes t, BoundedDims ds, All KnownXNatType ds)
       => Read (DataFrame (t :: Type) (ds :: [XNat])) where
     readPrec = Read.parens . Read.prec 10 $ do
       Read.lift . Read.expect $ Read.Ident "XFrame"
-      Just ds <- pure $ constrainDims (dimsBound @XNat @ds)
-      Read.step $ readPrecBoundedDF ds
+      Read.step $ readPrecBoundedDF (minDims @XNat @ds)
     readList = Read.readListDefault
     readListPrec = Read.readListPrecDefault
 
@@ -325,8 +324,7 @@ instance ( All Read ts, All PrimBytes ts, RepresentableList ts
       => Read (DataFrame (ts :: [Type]) (ds :: [XNat])) where
     readPrec = Read.parens . Read.prec 10 $ do
       Read.lift . Read.expect $ Read.Ident "XFrame"
-      Just ds <- pure $ constrainDims (dimsBound @XNat @ds)
-      Read.step $ readBoundedMultiDF (tList @Type @ts) ds
+      Read.step $ readBoundedMultiDF (tList @Type @ts) (minDims @XNat @ds)
     readList = Read.readListDefault
     readListPrec = Read.readListPrecDefault
 
