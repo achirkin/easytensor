@@ -11,10 +11,10 @@ module Numeric.MatrixFloatTest (runTests) where
 
 
 import Data.Fixed
+import Data.Semigroup
 import Numeric.DataFrame
 import Numeric.DataFrame.Arbitraries
 import Numeric.Dimensions
-import Numeric.Semigroup
 import Test.QuickCheck
 
 type TestElem = Float

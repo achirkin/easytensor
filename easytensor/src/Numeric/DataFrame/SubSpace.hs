@@ -29,8 +29,6 @@ module Numeric.DataFrame.SubSpace
   , indexWise_, elementWise_
   ) where
 
-import Numeric.Semigroup (Semigroup (..))
-
 import Data.Kind
 import GHC.Exts
 

@@ -20,10 +20,10 @@ module Numeric.DataFrame.Arbitraries where
 
 import Test.QuickCheck
 
+import Data.Semigroup     hiding (All)
 import Numeric.DataFrame
 import Numeric.Dimensions
 import Numeric.Quaternion
-import Numeric.Semigroup  hiding (All)
 
 
 maxDims :: Word
@@ -88,13 +88,12 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
     shrink df
         | Dict <- inferKnownBackend @t @ds
         , mma <- ewfoldMap @t @ds @'[] @ds
-            ((\x -> if x == 0 then Nothing else Just (minMax x)) . abs) df
+            ((\x -> if x == 0 then Nothing else Just (Max x)) . abs) df
         = case mma of
             Nothing
               -> [] -- all-zero is the most primitive DF possible
-            Just (MinMax mi ma)
-             -> [ ewmap (\x -> if abs x == ma then 0 else x) df | mi /= ma ]
-             <> [ ewmap (\x -> if abs x == mi then 0 else x) df
+            Just (Max ma)
+             -> [ ewmap (\x -> if abs x == ma then 0 else x) df
                 , ewmap (scalar . withAbs . unScalar) df
                 ]
             where
