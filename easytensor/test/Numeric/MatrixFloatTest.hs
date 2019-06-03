@@ -98,9 +98,9 @@ prop_translate4 a b = toHomPoint b %* translate4 a == toHomPoint (dropW a + b)
 prop_translate3 :: Vector TestElem 3 -> Vector TestElem 3 -> Bool
 prop_translate3 a b = toHomPoint b %* translate3 a == toHomPoint (a + b)
 
-prop_rotateX :: Vector TestElem 4 -> Bool
+prop_rotateX :: Vector TestElem 4 -> Property
 prop_rotateX v@(Vec4 x y z w) =
-  and [
+  conjoin [
     v %* rotateX (-2 * pi)   `approxEq` v,
     v %* rotateX (-1.5 * pi) `approxEq` vec4 x (-z) y w,
     v %* rotateX (-pi)       `approxEq` vec4 x (-y) (-z) w,
@@ -112,9 +112,9 @@ prop_rotateX v@(Vec4 x y z w) =
     v %* rotateX (2 * pi)    `approxEq` v
   ]
 
-prop_rotateY :: Vector TestElem 4 -> Bool
+prop_rotateY :: Vector TestElem 4 -> Property
 prop_rotateY v@(Vec4 x y z w) =
-  and [
+  conjoin [
     v %* rotateY (-2 * pi)   `approxEq` v,
     v %* rotateY (-1.5 * pi) `approxEq` vec4 z y (-x) w,
     v %* rotateY (-pi)       `approxEq` vec4 (-x) y (-z) w,
@@ -126,9 +126,9 @@ prop_rotateY v@(Vec4 x y z w) =
     v %* rotateY (2 * pi)    `approxEq` v
   ]
 
-prop_rotateZ :: Vector TestElem 4 -> Bool
+prop_rotateZ :: Vector TestElem 4 -> Property
 prop_rotateZ v@(Vec4 x y z w) =
-  and [
+  conjoin [
     v %* rotateZ (-2 * pi)   `approxEq` v,
     v %* rotateZ (-1.5 * pi) `approxEq` vec4 (-y) x z w,
     v %* rotateZ (-pi)       `approxEq` vec4 (-x) (-y) z w,
@@ -140,9 +140,9 @@ prop_rotateZ v@(Vec4 x y z w) =
     v %* rotateZ (2 * pi)    `approxEq` v
   ]
 
-prop_rotate :: TestElem -> Bool
+prop_rotate :: TestElem -> Property
 prop_rotate a =
-  and [
+  conjoin [
     rotate (vec3 1 0 0) a `approxEq` rotateX a,
     rotate (vec3 0 1 0) a `approxEq` rotateY a,
     rotate (vec3 0 0 1) a `approxEq` rotateZ a
@@ -155,7 +155,7 @@ prop_rotateEuler pitch yaw roll =
 prop_lookAt :: Vector TestElem 3 -> Vector TestElem 3 -> Vector TestElem 3 -> Property
 prop_lookAt up cam foc =
   (apart cam foc && apart up cam) ==>
-  and [
+  conjoin [
     (normalized . fromHom $ toHomPoint foc %* m) `approxEq` vec3 0 0 (-1),
     fromHom (toHomPoint cam %* m) `approxEq` 0,
     fromHom (toHomVector xb %* m) `approxEq` vec3 1 0 0,

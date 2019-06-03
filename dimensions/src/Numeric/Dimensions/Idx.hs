@@ -44,14 +44,15 @@ module Numeric.Dimensions.Idx
 import           Data.Coerce
 import           Data.Data        (Data)
 import           Foreign.Storable (Storable)
-import           GHC.Base         (Int (..), Type, Word (..), int2Word#,
-                                   unsafeCoerce#, word2Int#)
 import           GHC.Enum
 import           GHC.Generics     (Generic)
 import qualified Text.Read        as P
 
-#ifndef UNSAFE_INDICES
-import GHC.Base (maxInt, plusWord2#, timesWord2#)
+#ifdef UNSAFE_INDICES
+import GHC.Base (Int (..), Type, Word (..), int2Word#, unsafeCoerce#, word2Int#)
+#else
+import GHC.Base (Int (..), Type, Word (..), int2Word#, maxInt, plusWord2#,
+                 timesWord2#, unsafeCoerce#, word2Int#)
 #endif
 
 import Numeric.Dimensions.Dim
