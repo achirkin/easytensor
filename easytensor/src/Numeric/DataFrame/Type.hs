@@ -3,13 +3,11 @@
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
-{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MagicHash                  #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
@@ -25,6 +23,7 @@
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE ViewPatterns               #-}
+
 {- |
   The core @easytensor@ types.
  -}
@@ -52,12 +51,14 @@ module Numeric.DataFrame.Type
   ) where
 
 
--- import           GHC.Generics     hiding (Infix, Prefix)
 import           Data.Data
 import           Data.Proxy                      (Proxy)
+import           Data.Type.Lits
+import           Data.Void
 import           Foreign.Storable                (Storable (..))
 import           GHC.Base
 import           GHC.Exts
+import qualified GHC.Generics                    as G
 import           GHC.Ptr                         (Ptr (..))
 import qualified Text.ParserCombinators.ReadPrec as Read
 import qualified Text.Read                       as Read
@@ -441,14 +442,13 @@ the first dimension is flexible, but fixes the rest dimensions.
 readPrecSomeDF :: forall (t :: Type) . (Read t, PrimBytes t)
                => Read.ReadPrec (SomeDataFrame t)
 readPrecSomeDF = Read.parens $
-    (Read.prec 10 $ do
+    Read.prec 10 (do
       Read.lift . Read.expect $ Read.Ident "S"
       case inferKnownBackend @t @'[] of
         Dict -> SomeDataFrame . S <$> Read.readPrec
     )
     Read.+++
-    (do
-     lookLex >>= \case
+    (lookLex >>= \case
        Read.Ident ('D':'F':s)
          | Just (Dx (d :: Dim d)) <- (Read.readMaybe ('D':s) :: Maybe SomeDim)
            -> case d of
@@ -742,7 +742,7 @@ packDF
 unpackDF :: forall (t :: Type) (d :: Nat) (ds :: [Nat])
                    (rep :: RuntimeRep) (r :: TYPE rep)
           . (PrimBytes t, Dimensions (d ': ds))
-         => ( PackDF t ds d (Dict (Dimensions ds, KnownBackend t ds) -> r) )
+         => PackDF t ds d (Dict (Dimensions ds, KnownBackend t ds) -> r)
          -> DataFrame t (d ': ds) -> r
 unpackDF c
   | d :* Dims <- dims @(d ': ds)
@@ -754,7 +754,7 @@ unpackDF c
        -> (forall (zRep :: RuntimeRep) (z :: TYPE zRep)
                   . (Int -> DataFrame t ds -> z) -> Int -> z)
        -> Int -> r
-    go d a k = recur d (\_ -> c)
+    go d a k = recur d (const c)
       where
         recur :: forall n
                . Dim n
@@ -891,6 +891,130 @@ multiFrameConsConstr :: Constr
 multiFrameConsConstr = mkConstr
      (dataFrameDataType [multiFrameZConstr, multiFrameConsConstr])
      ":*:" [] Infix
+
+
+type DFMetaSel = 'G.MetaSel
+  'Nothing 'G.NoSourceUnpackedness 'G.NoSourceStrictness 'G.DecidedLazy
+
+type family DFTree (t :: Type) (ds :: [Nat]) (d :: Nat) where
+  DFTree t ds 0 = G.U1
+  DFTree t ds 1 = G.S1 DFMetaSel (G.Rec0 (DataFrame t ds))
+  DFTree t ds n = DFTree t ds (Div n 2) G.:*: DFTree t ds (Div n 2 + Mod n 2)
+
+type family SingleFrameRep (t :: Type) (ds :: [Nat]) :: (Type -> Type) where
+  SingleFrameRep t '[]
+    = G.C1 ('G.MetaCons "S" 'G.PrefixI 'False) (G.S1 DFMetaSel (G.Rec0 t))
+  SingleFrameRep t (d ': ds)
+    = G.C1 ('G.MetaCons (AppendSymbol "DF" (ShowNat d)) 'G.PrefixI 'False) (DFTree t ds d)
+
+instance (PrimBytes t, Dimensions ds)
+      => G.Generic (DataFrame (t :: Type) (ds :: [Nat])) where
+    type Rep (DataFrame t ds) = G.D1
+          ('G.MetaData "DataFrame" "Numeric.DataFrame.Type" "easytensor" 'False)
+          ( SingleFrameRep t ds )
+    from = G.M1 . fromSingleFrame (dims @ds)
+    to (G.M1 rep) = toSingleFrame (dims @ds) rep
+
+fromSingleFrame :: forall (t :: Type) (ds :: [Nat]) (x :: Type)
+                 . PrimBytes t
+                => Dims ds
+                -> DataFrame t ds
+                -> SingleFrameRep t ds x
+fromSingleFrame U (S x) = G.M1 . G.M1 $ G.K1 x
+fromSingleFrame (dd@D :* (Dims :: Dims ds')) x
+  | Dict <- inferKnownBackend @t @ds
+  , Dict <- inferKnownBackend @t @ds'
+    = G.M1 $ case arrayContent# x of
+      (# e | #) -> fillRep @_ @ds' (const $ broadcast e) 0 dd
+      (# | (# cdims, off, arr #) #)
+       | cd <- CumulDims . tail $ unCumulDims cdims
+       , td <- cdTotalDim# cd
+                -> fillRep @_ @ds'
+                   (\(W# i) -> fromElems cd (off +# td *# word2Int# i) arr) 0 dd
+  where
+    fillRep :: forall (n :: Nat) (ns :: [Nat])
+             . (Word -> DataFrame t ns)
+            -> Word
+            -> Dim n
+            -> DFTree t ns n x
+    fillRep _ _ D0 = G.U1
+    fillRep f i D1 = G.M1 . G.K1 $ f i
+    fillRep f i d
+        | Dict <- unsafeEqTypes @(Type -> Type)
+            @(DFTree t ns n)
+            @(DFTree t ns (Div n 2) G.:*: DFTree t ns (Div n 2 + Mod n 2))
+          = fillRep f i d2 G.:*: fillRep f (i + dimVal d2) d2'
+      where
+        d2  = divDim d D2
+        d2' = d2 `plusDim` modDim d D2
+
+toSingleFrame :: forall (t :: Type) (ds :: [Nat]) (x :: Type)
+               . PrimBytes t
+              => Dims ds
+              -> SingleFrameRep t ds x
+              -> DataFrame t ds
+toSingleFrame U (G.M1 (G.M1 (G.K1 x))) = S x
+toSingleFrame (dd@D :* (Dims :: Dims ds')) (G.M1 rep)
+  | Dict  <- inferKnownBackend @t @ds
+  , Dict  <- inferKnownBackend @t @ds'
+  , els   <- case dimVal dd of W# w -> word2Int# w
+  , asize <- byteSize @(DataFrame t ds') undefined
+    = runRW#
+    ( \s0 -> case newByteArray# (asize *# els) s0 of
+       (# s1, mba #)
+         | s2 <- fillDF @_ @ds'
+                  (\(W# i) df -> writeBytes mba (asize *# word2Int# i) df)
+                  0 dd rep s1
+         , (# _, ba #) <- unsafeFreezeByteArray# mba s2
+           -> fromBytes 0# ba
+    )
+  where
+    fillDF :: forall (n :: Nat) (ns :: [Nat]) s
+            . (Word -> DataFrame t ns -> State# s -> State# s)
+           -> Word
+           -> Dim n
+           -> DFTree t ns n x
+           -> State# s -> State# s
+    fillDF _ _ D0 _ s               = s
+    fillDF f i D1 (G.M1 (G.K1 e)) s = f i e s
+    fillDF f i d    xy             s
+      | Dict <- unsafeEqTypes @(Type -> Type)
+          @(DFTree t ns n)
+          @(DFTree t ns (Div n 2) G.:*: DFTree t ns (Div n 2 + Mod n 2))
+      , x G.:*: y <- xy
+        = fillDF f (i + dimVal d2) d2' y (fillDF f i d2 x s)
+      where
+        d2  = divDim d D2
+        d2' = d2 `plusDim` modDim d D2
+
+
+type family MultiFrameRepNil (ts :: [Type]) :: (Type -> Type) where
+    MultiFrameRepNil '[]      = G.C1 ('G.MetaCons "Z" 'G.PrefixI 'False) G.U1
+    MultiFrameRepNil (_ ': _) = G.Rec0 Void
+
+type family MultiFrameRepCons (ts :: [Type]) (ds :: [Nat]) :: (Type -> Type) where
+    MultiFrameRepCons '[]       _  = G.Rec0 Void
+    MultiFrameRepCons (t ': ts) ds = G.C1
+      ('G.MetaCons ":*:" ('G.InfixI 'G.RightAssociative 6) 'False)
+      ( G.S1 DFMetaSel
+           (G.Rec0 (DataFrame t ds))
+       G.:*:
+        G.S1 DFMetaSel
+           (G.Rec0 (DataFrame ts ds))
+      )
+
+instance G.Generic (DataFrame (ts :: [Type]) (ds :: [Nat])) where
+    type Rep (DataFrame ts ds) = G.D1
+          ('G.MetaData "DataFrame" "Numeric.DataFrame.Type" "easytensor" 'False)
+          ( MultiFrameRepNil ts G.:+: MultiFrameRepCons ts ds )
+    from  Z         = G.M1 (G.L1 (G.M1 G.U1))
+    from (x :*: xs) = G.M1 (G.R1 (G.M1 (G.M1 (G.K1 x) G.:*: G.M1 (G.K1 xs))))
+    to (G.M1 (G.L1 _))
+      | Dict <- unsafeEqTypes @[Type] @ts @'[] = Z
+    to (G.M1 (G.R1 xxs))
+      | Dict <- unsafeEqTypes @[Type] @ts @(Head ts ': Tail ts)
+      , G.M1 (G.M1 (G.K1 x) G.:*: G.M1 (G.K1 xs)) <- xxs = x :*: xs
+
 
 
 unsafeEqTypes :: forall k (a :: k) (b :: k) . Dict (a ~ b)

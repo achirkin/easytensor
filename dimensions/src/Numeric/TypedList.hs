@@ -118,13 +118,13 @@ typedListConstrCons :: Constr
 typedListConstrCons = mkConstr typedListDataType ":*" [] Infix
 
 
-type family TypedListRepLeft (xs :: [k]) :: (Type -> Type) where
-    TypedListRepLeft '[]      = C1 ('MetaCons "U" 'PrefixI 'False) U1
-    TypedListRepLeft (_ ': _) = Rec0 Void
+type family TypedListRepNil (xs :: [k]) :: (Type -> Type) where
+    TypedListRepNil '[]      = C1 ('MetaCons "U" 'PrefixI 'False) U1
+    TypedListRepNil (_ ': _) = Rec0 Void
 
-type family TypedListRepRight (f :: (k -> Type)) (xs :: [k]) :: (Type -> Type) where
-    TypedListRepRight _ '[]       = Rec0 Void
-    TypedListRepRight f (x ': xs) = C1 ('MetaCons ":*" ('InfixI 'RightAssociative 5) 'False)
+type family TypedListRepCons (f :: (k -> Type)) (xs :: [k]) :: (Type -> Type) where
+    TypedListRepCons _ '[]       = Rec0 Void
+    TypedListRepCons f (x ': xs) = C1 ('MetaCons ":*" ('InfixI 'RightAssociative 5) 'False)
       ( S1 ('MetaSel 'Nothing 'NoSourceUnpackedness 'NoSourceStrictness 'DecidedLazy)
            (Rec0 (f x))
        :*:
@@ -135,7 +135,7 @@ type family TypedListRepRight (f :: (k -> Type)) (xs :: [k]) :: (Type -> Type) w
 instance Generic (TypedList (f :: (k -> Type)) (xs :: [k])) where
     type Rep (TypedList f xs) = D1
           ('MetaData "TypedList" "Numeric.TypedList" "dimensions" 'False)
-          ( TypedListRepLeft xs :+: TypedListRepRight f xs  )
+          ( TypedListRepNil xs :+: TypedListRepCons f xs  )
     from U         = M1 (L1 (M1 U1))
     from (x :* xs) = M1 (R1 (M1 (M1 (K1 x) :*: M1 (K1 xs))))
     to (M1 (L1 _))
