@@ -53,6 +53,7 @@ module Numeric.DataFrame.Type
 
 import           Data.Data
 import           Data.Proxy                      (Proxy)
+import           Data.Semigroup                  hiding (All)
 import           Data.Type.Lits
 import           Data.Void
 import           Foreign.Storable                (Storable (..))
@@ -70,7 +71,6 @@ import           Numeric.PrimBytes
 import           Numeric.ProductOrd
 import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
 import qualified Numeric.ProductOrd.Partial           as Partial
-import           Numeric.Semigroup                    hiding (All)
 import           Numeric.TypedList                    (typeables)
 
 import {-# SOURCE #-} Numeric.DataFrame.Internal.Backend (DFBackend,
