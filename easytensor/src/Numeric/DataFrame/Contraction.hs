@@ -72,6 +72,7 @@ instance ( ConcatList as bs asbs
          , Dimensions bs
          , Num t
          ) => Contraction t as bs asbs where
+
     contract :: forall m .
                 ( KnownDim m
                 , PrimArray t (DataFrame t (as +: m))
@@ -102,7 +103,7 @@ instance ( ConcatList as bs asbs
                       -> DataFrame t ns
                       -> Either t CumulDims
                       -> (Int# -> t, CumulDims)
-        getStepsAndIx _  df (Right cds) = (\i -> ix# i df, cds)
+        getStepsAndIx _  df (Right cds) = ((`ix#` df), cds)
         getStepsAndIx ds _  (Left  e)   = (\_ -> e, cumulDims ds)
         conSteps (CumulDims xs) (CumulDims ys) = case conSteps' xs ys of
           (W# n, W# m, W# k, zs)

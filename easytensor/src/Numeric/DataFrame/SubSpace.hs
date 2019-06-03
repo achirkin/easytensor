@@ -4,7 +4,6 @@
 {-# LANGUAGE FlexibleInstances       #-}
 {-# LANGUAGE FunctionalDependencies  #-}
 {-# LANGUAGE InstanceSigs            #-}
-{-# LANGUAGE KindSignatures          #-}
 {-# LANGUAGE MagicHash               #-}
 {-# LANGUAGE MultiParamTypeClasses   #-}
 {-# LANGUAGE ScopedTypeVariables     #-}

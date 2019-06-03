@@ -10,7 +10,6 @@
 {-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE TypeApplications          #-}
-{-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE TypeFamilyDependencies    #-}
 {-# LANGUAGE TypeInType                #-}
 {-# LANGUAGE TypeOperators             #-}

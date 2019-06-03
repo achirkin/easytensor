@@ -3,7 +3,6 @@
 {-# LANGUAGE DeriveDataTypeable   #-}
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE KindSignatures       #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE UndecidableInstances #-}
 -----------------------------------------------------------------------------

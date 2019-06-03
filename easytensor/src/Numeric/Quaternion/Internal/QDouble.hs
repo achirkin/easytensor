@@ -7,7 +7,6 @@
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeInType                 #-}
-{-# LANGUAGE TypeSynonymInstances       #-}
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE ViewPatterns               #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}

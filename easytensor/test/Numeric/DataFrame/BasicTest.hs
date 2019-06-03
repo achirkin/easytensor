@@ -31,6 +31,12 @@ import qualified Numeric.ProductOrd.NonTransitive as NonTransitive
 import qualified Numeric.ProductOrd.Partial       as Partial
 import           Test.QuickCheck
 
+{-# ANN module "HLint: ignore Use <" #-}
+{-# ANN module "HLint: ignore Use >" #-}
+{-# ANN module "HLint: ignore Use >=" #-}
+{-# ANN module "HLint: ignore Use <=" #-}
+{-# ANN module "HLint: ignore Redundant compare" #-}
+
 (===>) :: Bool -> Bool -> Bool
 a ===> b = not a || b
 infix 2 ===>

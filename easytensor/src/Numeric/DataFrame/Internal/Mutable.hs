@@ -2,7 +2,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE FlexibleInstances         #-}
-{-# LANGUAGE KindSignatures            #-}
 {-# LANGUAGE MagicHash                 #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE PolyKinds                 #-}
@@ -94,6 +93,8 @@ copyDataFrame# ei df (MDataFrame# off steps mba) s
     = (# writeBytes mba ((off +# i) *# byteSize @t undefined) df s, () #)
 {-# INLINE copyDataFrame# #-}
 
+
+{-# ANN copyMDataFrame# "HLint: ignore Use camelCase" #-}
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
 --
 --   In contrast to @copyMDataFrame'@, this function allows to copy over a range of contiguous
@@ -119,6 +120,7 @@ copyMDataFrame# ei df =
      (unsafeCoerce# df :: MDataFrame s t (b :+ bs))
 {-# INLINE copyMDataFrame# #-}
 
+{-# ANN copyDataFrame'# "HLint: ignore Use camelCase" #-}
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
 --
 --   This is a simpler version of @copyDataFrame@ that allows to copy over one index at a time.
@@ -134,6 +136,7 @@ copyDataFrame'# ei df (MDataFrame# off steps mba) s
     = (# writeBytes mba ((off +# i) *# byteSize @t undefined) df s, () #)
 {-# INLINE copyDataFrame'# #-}
 
+{-# ANN copyMDataFrame'# "HLint: ignore Use camelCase" #-}
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
 --
 --   This is a simpler version of @copyMDataFrame@ that allows to copy over one index at a time.
