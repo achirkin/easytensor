@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleContexts        #-}
 {-# LANGUAGE FlexibleInstances       #-}
 {-# LANGUAGE FunctionalDependencies  #-}
-{-# LANGUAGE InstanceSigs            #-}
 {-# LANGUAGE MagicHash               #-}
 {-# LANGUAGE MultiParamTypeClasses   #-}
 {-# LANGUAGE ScopedTypeVariables     #-}
@@ -101,6 +100,26 @@ class ( ConcatList as bs asbs
         I# off -> fromElems (dropPref (dims @as) steps) (offsetElems df +# off) (getBytes df)
     {-# INLINE [1] index #-}
 
+    -- | Get a few contiguous elements.
+    --
+    --   In a sense, this is just a more complicated version of `index`.
+    slice :: forall (bi :: Nat) (bd :: Nat) (b' :: Nat) (bs' :: [Nat])
+           . ( b' ~ (bi + bd - 1), bs ~ (b' :+ bs'), KnownDim bd)
+          => Idxs (as +: bi) -> DataFrame t asbs -> DataFrame t (bd :+ bs')
+    slice  i df
+      | _ :* Dims <- dims @bs
+      , Dict <- inferKnownBackend @t @(bd ': bs')
+        = case uniqueOrCumulDims df of
+        Left a      -> broadcast a
+        Right steps -> case cdIx steps i of
+          I# off
+            | bsteps <- repHead (dimVal' @bd) (dropPref (dims @as) steps)
+              -> fromElems bsteps (offsetElems df +# off) (getBytes df)
+      | otherwise = error "SubSpace/slice: impossible arguments"
+      where
+        repHead y (CumulDims (_:x:xs)) = CumulDims (y*x:x:xs)
+        repHead _ steps                = steps
+
     -- | Set a new value to an element
     update :: Idxs as -> DataFrame t bs -> DataFrame t asbs -> DataFrame t asbs
     update i x df
@@ -114,6 +133,27 @@ class ( ConcatList as bs asbs
             )
         ) of (# _, r #) -> fromElems steps 0# r
     {-# INLINE [1] update #-}
+
+    -- | Update a few contiguous elements
+    --
+    --   In a sense, this is just a more complicated version of `update`.
+    updateSlice :: forall (bi :: Nat) (bd :: Nat) (b' :: Nat) (bs' :: [Nat])
+           . ( b' ~ (bi + bd - 1), bs ~ (b' :+ bs'), KnownDim bd)
+          => Idxs (as +: bi) -> DataFrame t (bd :+ bs') -> DataFrame t asbs -> DataFrame t asbs
+    updateSlice i x df
+      | _ :* Dims <- dims @bs
+      , Dict <- inferKnownBackend @t @(bd ': bs')
+      , steps <- getSteps (dims @asbs) df
+      , I# off <- cdIx steps i
+      , elemBS <- byteSize @t undefined = case runRW#
+        ( \s0 -> case newByteArray# (cdTotalDim# steps *# elemBS) s0 of
+          (# s1, mba #) -> unsafeFreezeByteArray# mba
+            ( writeBytes mba (off *# elemBS) x
+              ( writeBytes mba 0# df s1 )
+            )
+        ) of (# _, r #) -> fromElems steps 0# r
+      | otherwise = error "SubSpace/updateSlice: impossible arguments"
+    {-# INLINE [1] updateSlice #-}
 
     -- | Map a function over each element of DataFrame
     ewmap  :: forall s (bs' :: [Nat]) (asbs' :: [Nat])
