@@ -37,7 +37,7 @@ ghc-options:
 dependencies:
   - base >= 4.10 && < 5
   - dimensions >= 2 && < 3
-  - constraints-deriving >= 1.0.3.0 && < 2
+  - constraints-deriving >= 1.0.4.0 && < 2
 
 library:
   source-dirs:
@@ -61,7 +61,6 @@ library:
   - Numeric.DataFrame.Internal.Backend.Family.FloatX3
   - Numeric.DataFrame.Internal.Backend.Family.FloatX4
   - Numeric.DataFrame.Internal.Backend.Family.ScalarBase
-  - Numeric.DataFrame.Internal.Backend.Family.PrimOps
   when:
   - condition: flag(unsafeindices)
     cpp-options: -DUNSAFE_INDICES

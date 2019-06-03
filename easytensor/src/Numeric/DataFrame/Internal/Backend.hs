@@ -153,6 +153,19 @@ inferBounded :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
               . (Bounded t, Impl.KnownBackend t ds b)
              => Dict (Bounded (Backend t ds b))
 inferBounded
+    -- Here is an ugly trick:
+    --  We don't have instance of @Bounded Float@ and @Bounded Double@.
+    --  However, we want to have an instance @Bounded t => Bounded (Backend t ds b)@.
+    --  Some specialized implementations (e.g. FloatX4) require explicit
+    --    constraints @Bounded Float@ or @Bounded Double@.
+    --  To satisfy these, I pull @Bounded t@ convincing the compiler that @t ~ Float@.
+    --  This should work fine even if a user implements instances of Bounded for
+    --    the floating types, because we know that @t ~ Float@ or @t ~ Double@
+    --    automatically whenever this instance is called for these types.
+  | Dict <- (case (unsafeCoerce (Dict @(t ~ t)) :: Dict (t ~ Float)) of
+               Dict -> Dict) :: Dict (Bounded Float)
+  , Dict <- (case (unsafeCoerce (Dict @(t ~ t)) :: Dict (t ~ Double)) of
+               Dict -> Dict) :: Dict (Bounded Double)
     = mapDict toBackend
     . mapDict (Sub (Impl.inferBackendInstance @t @ds))
     $ inferDeriveContext @t @ds @b undefined

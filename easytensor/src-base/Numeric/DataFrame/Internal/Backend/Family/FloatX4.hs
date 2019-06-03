@@ -1,32 +1,35 @@
 {-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE UnboxedSums           #-}
 {-# LANGUAGE UnboxedTuples         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 module Numeric.DataFrame.Internal.Backend.Family.FloatX4 (FloatX4 (..)) where
 
 
 import           GHC.Base
-import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
 import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.DataFrame.SubSpace
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
 import           Numeric.ProductOrd
-import qualified Numeric.ProductOrd.NonTransitive                  as NonTransitive
-import qualified Numeric.ProductOrd.Partial                        as Partial
+import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
+import qualified Numeric.ProductOrd.Partial           as Partial
 
 
 data FloatX4 = FloatX4# Float# Float# Float# Float#
 
-
-instance Bounded FloatX4 where
-    maxBound = case inftyF of F# x -> FloatX4# x x x x
-    minBound = case negate inftyF of F# x -> FloatX4# x x x x
+-- | Since @Bounded@ is not implemented for floating point types, this instance
+--   has an unresolvable constraint.
+--   Nevetheless, it is good to have it here for nicer error messages.
+instance Bounded Float => Bounded FloatX4 where
+    maxBound = case maxBound of F# x -> FloatX4# x x x x
+    minBound = case minBound of F# x -> FloatX4# x x x x
 
 
 instance Eq FloatX4 where

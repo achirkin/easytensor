@@ -1,28 +1,31 @@
 {-# LANGUAGE CPP                   #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE UnboxedSums           #-}
 {-# LANGUAGE UnboxedTuples         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 module Numeric.DataFrame.Internal.Backend.Family.DoubleX2 (DoubleX2 (..)) where
 
 
 import           GHC.Base
-import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
 import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.PrimBytes
 import           Numeric.ProductOrd
-import qualified Numeric.ProductOrd.NonTransitive                  as NonTransitive
-import qualified Numeric.ProductOrd.Partial                        as Partial
+import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
+import qualified Numeric.ProductOrd.Partial           as Partial
 
 
 data DoubleX2 = DoubleX2# Double# Double#
 
-
-instance Bounded DoubleX2 where
-    maxBound = case inftyD of D# x -> DoubleX2# x x
-    minBound = case negate inftyD of D# x -> DoubleX2# x x
+-- | Since @Bounded@ is not implemented for floating point types, this instance
+--   has an unresolvable constraint.
+--   Nevetheless, it is good to have it here for nicer error messages.
+instance Bounded Double => Bounded DoubleX2 where
+    maxBound = case maxBound of D# x -> DoubleX2# x x
+    minBound = case minBound of D# x -> DoubleX2# x x
 
 
 instance Eq DoubleX2 where
