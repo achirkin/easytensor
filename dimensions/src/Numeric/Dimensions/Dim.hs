@@ -75,7 +75,7 @@ module Numeric.Dimensions.Dim
     --   their results are subject to integer overflow.
     --   The good side is the confidence that they behave exactly as
     --   their @Word@ counterparts.
-  , plusDim, minusDim, minusDimM, timesDim, powerDim
+  , plusDim, minusDim, minusDimM, timesDim, powerDim, divDim, modDim, log2Dim
     -- ** Re-export part of `Data.Type.Lits` for convenience
   , Nat, CmpNat, SOrdering (..), type (+), type (-), type (*), type (^), type (<=)
     -- ** Inferring kind of type-level dimension
@@ -99,6 +99,7 @@ module Numeric.Dimensions.Dim
   ) where
 
 
+import           Data.Bits         (countLeadingZeros, finiteBitSize)
 import           Data.Coerce
 import           Data.Constraint
 import           Data.Data         hiding (TypeRep, typeRep, typeRepTyCon)
@@ -426,6 +427,17 @@ timesDim = coerce ((*) :: Word -> Word -> Word)
 powerDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim ((^) n m)
 powerDim = coerce ((^) :: Word -> Word -> Word)
 {-# INLINE powerDim #-}
+
+divDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim (Div n m)
+divDim = coerce (div :: Word -> Word -> Word)
+
+modDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim (Mod n m)
+modDim = coerce (mod :: Word -> Word -> Word)
+
+log2Dim :: forall (n :: Nat) . Dim n -> Dim (Log2 n)
+log2Dim (DimSing 0) = undefined
+log2Dim (DimSing x) = DimSing . fromIntegral $ finiteBitSize x - 1 - countLeadingZeros x
+
 
 -- | GADT to support `KnownDimKind` type class.
 --   Match against its constructors to know if @k@ is @Nat@ or @XNat@

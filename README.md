@@ -57,10 +57,9 @@ Following is the list of what I want to do before v2 becomes the master branch:
   - [x] Use `DeriveAll` for better inference of common type classes.
   - [ ] Maybe split README for easytensor and dimensions (but anyway write a better README).
   - [ ] Better test coverage.
-  - [ ] A more conventional Show and Read instance for DataFrame.
+  - [x] A more conventional Show and Read instance for DataFrame.
   - [ ] Move current show instances into `easytensor-pretty` and improve them.
   - [x] Try `Typeable`, `Data`, `Generic` for data frames
-        (All done except tests and `Generic (DataFrame t ds)`)
   - [x] Refactor module dependency tree (try not to depend on implementation anywhere).
   - [x] Polymorphic vector constructors.
   - [ ] MinMax is too unconventional for haskellers to be accepted.

@@ -1,0 +1,5 @@
+:set -fobject-code
+:set -XDataKinds
+:set -XTypeApplications
+:set -XTypeInType
+:set -XTypeOperators
