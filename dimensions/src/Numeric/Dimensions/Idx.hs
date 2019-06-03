@@ -42,6 +42,7 @@ module Numeric.Dimensions.Idx
 
 
 import           Data.Coerce
+import           Data.Constraint  (Dict (..))
 import           Data.Data        (Data)
 import           Foreign.Storable (Storable)
 import           GHC.Enum
@@ -296,7 +297,8 @@ instance Show (Idxs (xs :: [k])) where
     showsPrec = typedListShowsPrec @k @Idx @xs showsPrec
 
 instance BoundedDims xs => Read (Idxs (xs :: [k])) where
-    readPrec = typedListReadPrec @k @BoundedDim P.readPrec (tList @k @xs)
+    readPrec = case inferAllBoundedDims @k @xs of
+      Dict -> typedListReadPrec @k @BoundedDim P.readPrec (tList @k @xs)
     readList = P.readListDefault
     readListPrec = P.readListPrecDefault
 
@@ -319,15 +321,15 @@ instance BoundedDim n => Num (Idxs '[(n :: k)]) where
     {-# INLINE fromInteger #-}
 
 instance BoundedDims ds => Bounded (Idxs (ds :: [k])) where
-    maxBound = unsafeCoerce# f (dimsBound @k @ds)
+    maxBound = f (minDims @k @ds)
       where
-        f :: forall (ns :: [Nat]) . Dims ns -> Idxs ns
+        f :: forall (ns :: [k]) . Dims ns -> Idxs ns
         f U         = U
         f (d :* ds) = Idx (dimVal d - 1) :* f ds
     {-# INLINE maxBound #-}
-    minBound = unsafeCoerce# f (dimsBound @k @ds)
+    minBound = f (minDims @k @ds)
       where
-        f :: forall (ns :: [Nat]) . Dims ns -> Idxs ns
+        f :: forall (ns :: [k]) . Dims ns -> Idxs ns
         f U         = U
         f (_ :* ds) = Idx 0 :* f ds
     {-# INLINE minBound #-}
@@ -414,16 +416,8 @@ instance Dimensions ds => Enum (Idxs (ds :: [Nat])) where
 
     enumFromThen x0 x1 = case compare x1 x0 of
       EQ -> repeat x0
-      GT -> enumFromThenTo x0 x1 (maB dds)
-      LT -> enumFromThenTo x0 x1 (miB dds)
-      where
-        dds = dims @ds
-        maB :: forall (ns :: [Nat]) . Dims ns -> Idxs ns
-        maB U         = U
-        maB (d :* ds) = Idx (dimVal d - 1) :* maB ds
-        miB :: forall (ns :: [Nat]) . Dims ns -> Idxs ns
-        miB U         = U
-        miB (_ :* ds) = Idx 0 :* miB ds
+      GT -> enumFromThenTo x0 x1 maxBound
+      LT -> enumFromThenTo x0 x1 minBound
     {-# INLINE enumFromThen #-}
 
     enumFromThenTo x0 x1 y = case dir of
