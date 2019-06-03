@@ -1,28 +1,31 @@
 {-# LANGUAGE CPP                   #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE UnboxedSums           #-}
 {-# LANGUAGE UnboxedTuples         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 module Numeric.DataFrame.Internal.Backend.Family.FloatX3 (FloatX3 (..)) where
 
 
 import           GHC.Base
-import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
 import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.PrimBytes
 import           Numeric.ProductOrd
-import qualified Numeric.ProductOrd.NonTransitive                  as NonTransitive
-import qualified Numeric.ProductOrd.Partial                        as Partial
+import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
+import qualified Numeric.ProductOrd.Partial           as Partial
 
 
 data FloatX3 = FloatX3# Float# Float# Float#
 
-
-instance Bounded FloatX3 where
-    maxBound = case inftyF of F# x -> FloatX3# x x x
-    minBound = case negate inftyF of F# x -> FloatX3# x x x
+-- | Since @Bounded@ is not implemented for floating point types, this instance
+--   has an unresolvable constraint.
+--   Nevetheless, it is good to have it here for nicer error messages.
+instance Bounded Float => Bounded FloatX3 where
+    maxBound = case maxBound of F# x -> FloatX3# x x x
+    minBound = case minBound of F# x -> FloatX3# x x x
 
 
 instance Eq FloatX3 where

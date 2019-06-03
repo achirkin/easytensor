@@ -10,16 +10,15 @@ module Numeric.DataFrame.Internal.Backend.Family.ScalarBase (ScalarBase (..)) wh
 
 
 import           GHC.Base
-import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
 import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.PrimBytes
 import           Numeric.ProductOrd
-import qualified Numeric.ProductOrd.NonTransitive                  as NonTransitive
-import qualified Numeric.ProductOrd.Partial                        as Partial
+import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
+import qualified Numeric.ProductOrd.Partial           as Partial
 
 -- | Specialize ScalarBase type without any arrays
 newtype ScalarBase t = ScalarBase { _unScalarBase :: t }
-  deriving ( Enum, Eq, Integral
+  deriving ( Enum, Eq, Bounded, Integral
            , Num, Fractional, Floating, Ord, Real, RealFrac, RealFloat
            , PrimBytes)
 
@@ -27,14 +26,6 @@ instance Ord t => ProductOrder (ScalarBase t) where
   cmp a b = fromOrdering (compare (_unScalarBase a) (_unScalarBase b))
 deriving instance Ord t => Ord (NonTransitive.ProductOrd (ScalarBase t))
 deriving instance Ord t => Ord (Partial.ProductOrd (ScalarBase t))
-
-instance {-# OVERLAPPING #-} Bounded (ScalarBase Double) where
-  maxBound = ScalarBase inftyD
-  minBound = ScalarBase $ negate inftyD
-instance {-# OVERLAPPING #-} Bounded (ScalarBase Float) where
-  maxBound = ScalarBase inftyF
-  minBound = ScalarBase $ negate inftyF
-deriving instance {-# INCOHERENT #-} Bounded t => Bounded (ScalarBase t)
 
 instance PrimBytes t => PrimArray t (ScalarBase t) where
   broadcast = unsafeCoerce#

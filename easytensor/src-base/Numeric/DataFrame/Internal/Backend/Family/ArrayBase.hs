@@ -23,15 +23,13 @@ module Numeric.DataFrame.Internal.Backend.Family.ArrayBase
 import           Data.Coerce
 import           Data.Int
 import           Data.Word
-import           GHC.Base                                          hiding
-                                                                    (foldr)
-import           Numeric.DataFrame.Internal.Backend.Family.PrimOps
+import           GHC.Base                             hiding (foldr)
 import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
 import           Numeric.ProductOrd
-import qualified Numeric.ProductOrd.NonTransitive                  as NonTransitive
-import qualified Numeric.ProductOrd.Partial                        as Partial
+import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
+import qualified Numeric.ProductOrd.Partial           as Partial
 
 -- | Generic Array implementation.
 --   This array can reside in plain `ByteArray#` and can share the @ByteArray#@
@@ -357,16 +355,7 @@ instance Ord t => Ord (ArrayBase t ds) where
     compare = accumV2Idempotent EQ compare (<>)
     {-# INLINE compare #-}
 
-
-instance {-# OVERLAPPING #-} Bounded (ArrayBase Double ds) where
-    maxBound = ArrayBase (# inftyD | #)
-    minBound = ArrayBase (# negate inftyD | #)
-
-instance {-# OVERLAPPING #-} Bounded (ArrayBase Float ds) where
-    maxBound = ArrayBase (# inftyF | #)
-    minBound = ArrayBase (# negate inftyF | #)
-
-instance {-# INCOHERENT #-} Bounded t => Bounded (ArrayBase t ds) where
+instance Bounded t => Bounded (ArrayBase t ds) where
     {-# SPECIALIZE instance Bounded (ArrayBase Int ds)    #-}
     {-# SPECIALIZE instance Bounded (ArrayBase Word ds)   #-}
     {-# SPECIALIZE instance Bounded (ArrayBase Int8 ds)   #-}
@@ -541,6 +530,25 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
     fromElems steps off ba = ArrayBase (# | (# off, ba, steps, Dict #) #)
     {-# INLINE fromElems #-}
 
+
+loop# :: Int# -- ^ initial value
+      -> Int# -- ^ step
+      -> Int# -- ^ final value (LESS THAN condition)
+      -> (Int# -> State# s -> State# s) -> State# s -> State# s
+loop# n0 di n1 f = loop0 n0
+  where
+    loop0 i s | isTrue# (i >=# n1) = s
+              | otherwise = loop0 (i +# di) (f i s)
+{-# INLINE loop# #-}
+
+
+-- | Do something in a loop for int i from 0 to (n-1)
+loop1# :: Int# -> (Int# -> State# s -> State# s) -> State# s -> State# s
+loop1# n f = loop0 0#
+  where
+    loop0 i s | isTrue# (i ==# n) = s
+              | otherwise = loop0 (i +# 1#) (f i s)
+{-# INLINE loop1# #-}
 
 undefEl :: ArrayBase t ds -> t
 undefEl = const undefined
