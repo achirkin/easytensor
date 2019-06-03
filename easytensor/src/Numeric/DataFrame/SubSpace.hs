@@ -152,8 +152,7 @@ class ( ConcatList as bs asbs
            -> DataFrame s asbs' -> DataFrame t asbs
     iwmap f df
       | bsizeT    <- byteSize @t undefined
-      , as@KnownDims <- dims @as
-      , stepsAS   <- cumulDims as
+      , stepsAS   <- cumulDims $ dims @as
       , stepsBS   <- cumulDims $ dims @bs
       , stepsBS'  <- cumulDims $ dims @bs'
       , stepsASBS <- stepsAS <> stepsBS
@@ -170,7 +169,6 @@ class ( ConcatList as bs asbs
           ( \s0 -> case newByteArray# lenASBSB s0 of
             (# s1, mba #) -> unsafeFreezeByteArray# mba ( go mba [minBound..maxBound] 0# 0# s1 )
           ) of (# _, r #) -> fromElems stepsASBS 0# r
-    iwmap _ _ = error "iwmap: impossible args"
     {-# INLINE [1] iwmap #-}
 
     -- | Generate a DataFrame by repeating an element
@@ -198,8 +196,7 @@ class ( ConcatList as bs asbs
     -- | Generate a DataFrame by iterating a function (index -> element)
     iwgen :: (Idxs as -> DataFrame t bs) -> DataFrame t asbs
     iwgen f
-        | as@KnownDims <- dims @as
-        , stepsAS <- cumulDims as
+        | stepsAS <- cumulDims $ dims @as
         , stepsBS <- cumulDims $ dims @bs
         , stepsASBS <- stepsAS <> stepsBS
         , elS       <- byteSize @t undefined
@@ -212,7 +209,6 @@ class ( ConcatList as bs asbs
               ( \s0 -> case newByteArray# lenASBSB s0 of
                 (# s1, mba #) -> unsafeFreezeByteArray# mba ( go mba [minBound..maxBound] 0# s1 )
               ) of (# _, r #) -> fromElems stepsASBS 0# r
-    iwgen _ = error "iwgen: impossible args"
     {-# INLINE [1] iwgen #-}
 
     -- | Left-associative fold of a DataFrame.
@@ -242,21 +238,19 @@ class ( ConcatList as bs asbs
     --   but you'd better make sure that the function is strict enough to not
     --   produce memory leaks deeply inside the result data type.
     iwfoldl :: (Idxs as -> b -> DataFrame t bs -> b) -> b -> DataFrame t asbs -> b
-    iwfoldl f x0 df
-      | as@KnownDims <- dims @as = case uniqueOrCumulDims df of
+    iwfoldl f x0 df = case uniqueOrCumulDims df of
       Left a ->
         let b = broadcast a
             go [] x     = x
             go (i:is) x = go is $! f i x b
         in  go [minBound..maxBound] x0
       Right stepsASBS
-        | stepsBS <- dropPref as stepsASBS
+        | stepsBS <- dropPref (dims @as) stepsASBS
         , lenBS   <- cdTotalDim# stepsBS
           -> let go [] _ x = x
                  go (i:is) sourceOffE x
                     = go is (sourceOffE +# lenBS) $! f i x (indexOffset# sourceOffE df)
              in  go [minBound..maxBound] 0# x0
-    iwfoldl _ _ _ = error "iwfoldl: impossible args"
 
     -- | Right-associative fold of a DataFrame
     --   The fold is strict, so accumulater is evaluated to WHNF;
@@ -285,22 +279,20 @@ class ( ConcatList as bs asbs
     --   but you'd better make sure that the function is strict enough to not
     --   produce memory leaks deeply inside the result data type.
     iwfoldr :: (Idxs as -> DataFrame t bs -> b -> b) -> b -> DataFrame t asbs -> b
-    iwfoldr f x0 df
-      | as@KnownDims <- dims @as = case uniqueOrCumulDims df of
+    iwfoldr f x0 df = case uniqueOrCumulDims df of
       Left a ->
         let b = broadcast a
             go [] x     = x
             go (i:is) x = go is $! f i b x
         in  go [maxBound, pred maxBound .. minBound] x0
       Right stepsASBS
-        | stepsBS <- dropPref as stepsASBS
+        | stepsBS <- dropPref (dims @as) stepsASBS
         , lenBS   <- cdTotalDim# stepsBS
         , lenASBS <- cdTotalDim# stepsASBS
           -> let go [] _ x = x
                  go (i:is) sourceOffE x
                     = go is (sourceOffE -# lenBS) $! f i (indexOffset# sourceOffE df) x
              in  go [maxBound, pred maxBound .. minBound] (lenASBS -# lenBS) x0
-    iwfoldr _ _ _ = error "iwfoldr: impossible args"
 
     -- | Apply an applicative functor on each element (Lens-like traversal)
     elementWise :: forall (s :: Type) (bs' :: [Nat]) (asbs' :: [Nat]) (f :: Type -> Type)

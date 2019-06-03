@@ -56,7 +56,7 @@ module Numeric.Dimensions.Dim
         , D14, D15, D16, D17, D18, D19, D20, D21, D22, D23, D24, D25
         )
   , SomeDim
-  , KnownDim (..), BoundedDim (..), KnownXNatType (..), FixedDim
+  , KnownDim (..), BoundedDim (..), minDim, KnownXNatType (..), FixedDim
   , dimVal, dimVal', typeableDim, someDimVal
   , sameDim, sameDim'
   , compareDim, compareDim'
@@ -81,10 +81,10 @@ module Numeric.Dimensions.Dim
     -- ** Inferring kind of type-level dimension
   , KnownDimKind (..), DimKind (..)
     -- * @Dims@ -- a list of dimensions
-  , Dims, SomeDims (..), Dimensions (..), BoundedDims, DimsBound
+  , Dims, SomeDims (..), Dimensions (..), BoundedDims (..), minDims
   , TypedList ( Dims, XDims, AsXDims, KnownDims
               , U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
-  , constrainDims, dimsBound, typeableDims, inferTypeableDims
+  , typeableDims, inferTypeableDims
   , listDims, someDimsVal, totalDim, totalDim'
   , sameDims, sameDims'
   , inSpaceOf, asSpaceOf
@@ -105,7 +105,6 @@ import           Data.Constraint
 import           Data.Data         hiding (TypeRep, typeRep, typeRepTyCon)
 import           Data.Kind         (Constraint, Type)
 import qualified Data.List         (stripPrefix)
-import           Data.Proxy        (Proxy)
 import           Data.Type.List
 import           Data.Type.Lits
 import           GHC.Exts          (Proxy#, proxy#, unsafeCoerce#)
@@ -241,6 +240,9 @@ instance KnownDim m => BoundedDim ('XN m) where
        | dimVal' @m <= y = Just (DimSing y)
        | otherwise            = Nothing
     {-# INLINE constrain #-}
+
+minDim :: forall (k :: Type) (d :: k) . BoundedDim d => Dim d
+minDim = coerce (dimBound @k @d)
 
 -- | Find out the type of `XNat` constructor
 class KnownXNatType (n :: XNat) where
@@ -675,43 +677,69 @@ instance (KnownDim d, Dimensions ds) => Dimensions (d ': ds) where
     {-# INLINE dims #-}
 
 
--- | Constrain a list of @Dims@.
-type BoundedDims (xds :: [k]) = (RepresentableList xds, All BoundedDim xds)
--- | Plural form of `DimBound`
-type family DimsBound (xds :: [k]) :: [Nat] where
-  DimsBound '[] = '[]
-  DimsBound (n ': ns) = DimBound n ': DimsBound ns
-
-
--- | Given a @Dims ds@, test if its runtime value satisfies constraints imposed by
---   @All BoundedDim xds@, and returns it back coerced to @Dims xds@ on success.
+-- | Get a minimal or exact bound of @Dims@.
 --
---   This function allows to guess safely individual dimension values,
---   as well as the length of the dimension list.
---   It returns @Nothing@ if @ds@ and @xds@ have different length or if any
---   of the values in @ds@ is less than in @xds@.
-constrainDims :: forall (k :: Type) (xds :: [k]) (ds :: [Nat])
-               . BoundedDims xds
-              => Dims ds -> Maybe (Dims xds)
-constrainDims = go (tList @k @xds)
-  where
-    go :: forall (xns :: [k]) (ns :: [Nat])
-        . All BoundedDim xns => TypeList xns -> Dims ns ->  Maybe (Dims xns)
-    go U U = Just U
-    go ((_ :: Proxy xn) :* xns) (d :* ns)
-           = (:*) <$> constrain @k @xn d <*> go xns ns
-    go _ _ = Nothing
+--   This is a plural form of `BoundedDim`.
+--
+--   @BoundedDims@ is a somewhat weaker form of @Dimensions@:
+--
+--    * It is defined for both @[Nat]@ and @[XNat]@;
+--    * Instance of @Dimensions ds@ always implies @BoundedDims ds@.
+class KnownDimKind k => BoundedDims (ds :: [k]) where
+    -- | Minimal or exact bound of @Dims@.
+    --   This is a plural form of `DimBound`.
+    type family DimsBound ds :: [Nat]
+    -- | Plural form for `dimBound`
+    dimsBound :: Dims (DimsBound ds)
+    -- | Plural form for `constrain`.
+    --
+    --   Given a @Dims ys@, test if its runtime value satisfies constraints imposed by
+    --   @BoundedDims ds@, and returns it back coerced to @Dims ds@ on success.
+    --
+    --   This function allows to guess safely individual dimension values,
+    --   as well as the length of the dimension list.
+    --   It returns @Nothing@ if @ds@ and @xds@ have different length or if any
+    --   of the values in @ys@ are less than the corresponding values of @ds@.
+    constrainDims :: forall (l :: Type) (ys :: [l]) . Dims ys -> Maybe (Dims ds)
+    -- | BoundedDims means every element dim is @BoundedDim@ and also
+    --   the length of a dim list is known.
+    --
+    --   Enforcing this as a superclass would complicate instance relations,
+    --   so it is better to provide these dictionaries on-demand.
+    inferAllBoundedDims :: Dict (All BoundedDim ds, RepresentableList ds)
 
--- | Plural form of `dimBound`
-dimsBound :: forall (k :: Type) (xds :: [k])
-           . BoundedDims xds => Dims (DimsBound xds)
-dimsBound = go (tList @k @xds)
-  where
-    go :: forall (xns :: [k])
-        . All BoundedDim xns => TypeList xns -> Dims (DimsBound xds)
-    go U = unsafeCoerce# U
-    go ((_ :: Proxy xn) :* xns)
-         = unsafeCoerce# (dimBound @k @xn :* go xns)
+
+instance Dimensions ns => BoundedDims (ns :: [Nat]) where
+    type DimsBound ns = ns
+    dimsBound = dims @ns
+    {-# INLINE dimsBound #-}
+    constrainDims ys
+      | listDims ys == listDims (dims @ns)
+                  = Just (unsafeCoerce# ys)
+      | otherwise = Nothing
+    {-# INLINE constrainDims #-}
+    inferAllBoundedDims = go (dims @ns)
+      where
+        go :: forall (ds :: [Nat]) . Dims ds
+           -> Dict (All BoundedDim ds, RepresentableList ds)
+        go  U             = Dict
+        go (D :* ds)
+          | Dict <- go ds = Dict
+
+instance (BoundedDim n, BoundedDims ns) => BoundedDims ((n ': ns) :: [XNat]) where
+    type DimsBound (n ': ns) = DimBound n ': DimsBound ns
+    dimsBound = dimBound @XNat @n :* dimsBound @XNat @ns
+    constrainDims U         = Nothing
+    constrainDims (y :* ys) = (:*) <$> constrain y <*> constrainDims ys
+    inferAllBoundedDims = case inferAllBoundedDims @XNat @ns of Dict -> Dict
+
+
+-- | Minimal runtime @Dims ds@ value that satifies the constraints imposed by
+--   the type signature of @Dims ds@.
+minDims :: forall (k :: Type) (ds :: [k])
+         . BoundedDims ds => Dims ds
+minDims = unsafeCoerce# (dimsBound @k @ds)
+
 
 
 
@@ -954,7 +982,8 @@ instance BoundedDim x => Read (Dim (x :: k)) where
     readListPrec = Read.readListPrecDefault
 
 instance BoundedDims xs => Read (Dims (xs :: [k])) where
-    readPrec = typedListReadPrec @k @BoundedDim Read.readPrec (tList @k @xs)
+    readPrec = case inferAllBoundedDims @k @xs of
+        Dict -> typedListReadPrec @k @BoundedDim Read.readPrec (tList @k @xs)
     readList = Read.readListDefault
     readListPrec = Read.readListPrecDefault
 
