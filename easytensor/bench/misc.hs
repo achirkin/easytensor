@@ -39,7 +39,7 @@ main = do
               -- Amazing inference!
               -- m :: KnownNat k => DataFrame '[k,2,4]
             -> print $ m %* vec4 1 2.25 3 0.162
-        Nothing -> print "Failed to construct a DataFrame!"
+        _ -> print "Failed to construct a DataFrame!"
     putStrLn "Constructing larger matrices"
     let x :: DataFrame Double '[4,5,2]
         x =   transpose ( (56707.4   <::> 73558.41  <+:> 47950.074  <+:> 83394.61  <+:> 25611.629 )
@@ -67,7 +67,7 @@ main = do
     -- For example, we can do tensor produt of every sub-tensor.
     putStrLn "\nConversions between element types and frame sizes."
     print $ iwmap @Int @'[7] @'[2,2] @_
-                  (\(Idx i:*U) v -> fromScalar . (scalar (fromIntegral i) +) . round
+                  (\(i:*U) v -> fromScalar . (scalar (fromIntegral i) +) . round
                                      $ vec3 0.02 (-0.01) 0.001 %* v
                   ) y
 
