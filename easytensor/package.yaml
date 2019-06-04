@@ -33,7 +33,6 @@ ghc-options:
   - -Widentities
   - -Wredundant-constraints
 
-
 dependencies:
   - base >= 4.10 && < 5
   - dimensions >= 2 && < 3
@@ -61,6 +60,7 @@ library:
   - Numeric.DataFrame.Internal.Backend.Family.FloatX3
   - Numeric.DataFrame.Internal.Backend.Family.FloatX4
   - Numeric.DataFrame.Internal.Backend.Family.ScalarBase
+  - Numeric.DataFrame.Internal.BackendI
   when:
   - condition: flag(unsafeindices)
     cpp-options: -DUNSAFE_INDICES

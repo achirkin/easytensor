@@ -8,6 +8,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeInType                 #-}
 {-# LANGUAGE UnboxedTuples              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE ViewPatterns               #-}
 {-# OPTIONS_GHC -fno-warn-orphans  #-}
 module Numeric.Quaternion.Internal.QFloat

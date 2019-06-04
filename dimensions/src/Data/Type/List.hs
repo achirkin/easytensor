@@ -29,7 +29,7 @@ module Data.Type.List
   , StripPrefix, StripSuffix
   , Reverse, Take, Drop, Length
     -- * Operations on elements
-  , All, Map
+  , All, Map, Elem
     -- * Concatenation and its evidence
   , ConcatList, evStripSuffix, evStripPrefix, evConcat
     -- * Data.Typeable
@@ -161,13 +161,18 @@ infixr 5 ++
 
 -- | All elements of a type list must satisfy the same constraint.
 type family All (f :: k -> Constraint) (xs :: [k]) :: Constraint where
-    All _ '[] = ()
+    All _ '[]       = ()
     All f (x ': xs) = (f x, All f xs)
 
 -- | Map a functor over the elements of a type list.
 type family Map (f :: a -> b) (xs :: [a]) :: [b] where
-    Map f '[] = '[]
+    Map f '[]       = '[]
     Map f (x ': xs) = f x ': Map f xs
+
+-- | Check if an item is a member of a list.
+type family Elem (x :: k) (xs :: [k]) :: Constraint where
+    Elem x (x ': xs) = ()
+    Elem x (_ ': xs) = Elem x xs
 
 type ListError k t
     = 'Text t ':$$:

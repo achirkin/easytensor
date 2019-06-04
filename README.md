@@ -53,7 +53,7 @@ Following is the list of what I want to do before v2 becomes the master branch:
   - [ ] Subspace: strict and lazy versions of folds (and add tests), maybe add cumuldims
   - [ ] Readable errors via overlappable class instances (Failed partially).
   - [x] Introduce a DataFrame `Backend` class and depend less on `PrimBytes`.
-  - [ ] Add optional field offset functions for `PrimBytes` derivable via Generic.
+  - [x] Add optional field offset functions for `PrimBytes` derivable via Generic.
   - [x] Use `DeriveAll` for better inference of common type classes.
   - [ ] Maybe split README for easytensor and dimensions (but anyway write a better README).
   - [ ] Better test coverage.
