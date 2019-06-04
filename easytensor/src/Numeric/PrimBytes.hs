@@ -67,6 +67,16 @@ class PrimTagged a => PrimBytes a where
     -- | Store content of a data type in a primitive byte array
     --   Should be used together with @byteOffset@ function.
     getBytes :: a -> ByteArray#
+    --   This function returns a not pinned byte array, which is aligned to
+    --   @SIZEOF_HSWORD@.
+    --   Thus, it ignores the alignment of the underlying data type if it is larger.
+    --   However, alignment calculation still makes sense for data types
+    --   that are smaller than @SIZEOF_HSWORD@ bytes: they are packed more densely.
+    getBytes a = case runRW#
+       ( \s0 -> case newByteArray# (byteSize a) s0 of
+           (# s1, marr #) -> unsafeFreezeByteArray# marr (writeBytes marr 0# a s1)
+       ) of (# _, r #) -> r
+    {-# NOINLINE getBytes #-}
     -- | Load content of a data type from a primitive byte array
     fromBytes :: Int# -- ^ offset in bytes
               -> ByteArray#
@@ -104,6 +114,8 @@ class PrimTagged a => PrimBytes a where
     --   Implementation of this function may inspect the argument value;
     --   a caller must not provide @undefined@ in place of the argument.
     byteOffset :: a -> Int#
+    byteOffset _ = 0#
+
     -- | Offset of a data record within the data type in bytes.
     --
     --   Implementation of this function must not inspect the argument value;
@@ -133,58 +145,47 @@ class PrimTagged a => PrimBytes a where
     {-# INLINE writeArray #-}
 
 
-
-    default getBytes :: (Generic a, GPrimBytes (Rep a)) => a -> ByteArray#
-    getBytes a = ggetBytes (from a)
-    {-# INLINE getBytes #-}
-
     default fromBytes :: (Generic a, GPrimBytes (Rep a))
                       => Int# -> ByteArray# -> a
-    fromBytes i arr = to (gfromBytes 0## i arr)
+    fromBytes i arr = to (gfromBytes proxy# 0## 0# i arr)
     {-# INLINE fromBytes #-}
 
     default readBytes :: (Generic a, GPrimBytes (Rep a))
                       => MutableByteArray# s -> Int# -> State# s -> (# State# s, a #)
-    readBytes mba i s = case greadBytes 0## mba i s of
+    readBytes mba i s = case greadBytes proxy# 0## 0# mba i s of
       (# s', x #) -> (# s', to x #)
     {-# INLINE readBytes #-}
 
     default writeBytes :: (Generic a, GPrimBytes (Rep a))
                        => MutableByteArray# s -> Int# -> a -> State# s -> State# s
-    writeBytes mba i = gwriteBytes 0## mba i . from
+    writeBytes mba i = gwriteBytes proxy# 0## 0# mba i . from
     {-# INLINE writeBytes #-}
 
     default readAddr :: (Generic a, GPrimBytes (Rep a))
                       => Addr# -> State# s -> (# State# s, a #)
-    readAddr a s = case greadAddr 0## a s of
+    readAddr a s = case greadAddr proxy# 0## 0# a s of
       (# s', x #) -> (# s', to x #)
     {-# INLINE readAddr #-}
 
     default writeAddr :: (Generic a, GPrimBytes (Rep a))
                        => a -> Addr# -> State# s -> State# s
-    writeAddr = gwriteAddr 0## . from
+    writeAddr = gwriteAddr proxy# 0## 0# . from
     {-# INLINE writeAddr #-}
-
 
     default byteSize :: (Generic a, GPrimBytes (Rep a))
                      => a -> Int#
-    byteSize a = gbyteSize (from a)
+    byteSize a = gbyteSize proxy# 0## 0# (from a)
     {-# INLINE byteSize #-}
 
     default byteAlign :: (Generic a, GPrimBytes (Rep a))
                      => a -> Int#
-    byteAlign a = gbyteAlign (from a)
+    byteAlign a = gbyteAlign proxy# (from a)
     {-# INLINE byteAlign #-}
-
-    default byteOffset :: (Generic a, GPrimBytes (Rep a))
-                     => a -> Int#
-    byteOffset a = gbyteOffset (from a)
-    {-# INLINE byteOffset #-}
 
     default byteFieldOffset :: ( Generic a, GPrimBytes (Rep a)
                                , KnownSymbol name)
                             => Proxy# name -> a -> Int#
-    byteFieldOffset p a = gbyteFieldOffset 0# p (from a)
+    byteFieldOffset p a = gbyteFieldOffset proxy# 0## 0# p (from a)
     {-# INLINE byteFieldOffset #-}
 
 
@@ -195,322 +196,307 @@ type family GPrimFields (rep :: Type -> Type) :: [Symbol] where
     GPrimFields (f :*: g) = Concat (GPrimFields f) (GPrimFields g)
     GPrimFields _ = '[]
 
+
 -- | Deriving `PrimBytes` using generics
 class GPrimBytes f where
-    ggetBytes :: f p -> ByteArray#
-    gfromBytes :: Word# -- ^ Starting value of a constructor tag
+    gfromBytes :: Proxy# p
+               -> Word# -- ^ Constructor tag position (mask)
+               -> Int# -- ^ Left neighbour cumulative size (current offset before alignment)
                -> Int# -> ByteArray# -> f p
-    greadBytes :: Word# -- ^ Starting value of a constructor tag
+    greadBytes :: Proxy# p
+               -> Word# -- ^ Constructor tag position (mask)
+               -> Int# -- ^ Left neighbour cumulative size (current offset before alignment)
                -> MutableByteArray# s -> Int#  -> State# s -> (# State# s, f p #)
-    gwriteBytes :: Word# -- ^ Starting value of a constructor tag
+    gwriteBytes :: Proxy# p
+                -> Word# -- ^ Constructor tag position (mask)
+                -> Int# -- ^ Left neighbour cumulative size (current offset before alignment)
                 -> MutableByteArray# s -> Int# -> f p -> State# s -> State# s
-    greadAddr :: Word# -- ^ Starting value of a constructor tag
+    greadAddr :: Proxy# p
+              -> Word# -- ^ Constructor tag position (mask)
+              -> Int# -- ^ Left neighbour cumulative size (current offset before alignment)
               -> Addr# -> State# s -> (# State# s, f p #)
-    gwriteAddr :: Word# -- ^ Starting value of a constructor tag
+    gwriteAddr :: Proxy# p
+               -> Word# -- ^ Constructor tag position (mask)
+               -> Int# -- ^ Left neighbour cumulative size (current offset before alignment)
                -> f p -> Addr# -> State# s -> State# s
-    gbyteSize :: f p -> Int#
-    gbyteAlign :: f p -> Int#
-    gbyteOffset :: f p -> Int#
+    -- | Cumulative size of a Rep structure
+    gbyteSize :: Proxy# p
+              -> Word# -- ^ Constructor tag position (mask)
+              -> Int# -- ^ Left neighbour cumulative size (current offset before alignment)
+              -> f p -> Int#
+    gbyteAlign :: Proxy# p
+               -> f p -> Int#
+    -- | Gives an offset of the current piece of a Rep structure
     gbyteFieldOffset :: KnownSymbol name
-                     => Int# -- ^ Offset is passed down the representation
+                     => Proxy# p
+                     -> Word# -- ^ Constructor tag position (mask)
+                     -> Int# -- ^ Left neighbour cumulative size (current offset before alignment)
                      -> Proxy# name -> f p -> Int#
-    -- | Number of constructors in the tree of a sum type.
-    --   This is equal to one for all other types.
-    gconTags    :: f p -> Word#
 
 
 instance GPrimBytes V1 where
-    -- Probably, this is illegal due to zero size of the array.
-    -- There is no bottom to put here, but one should not call this anyway.
-    ggetBytes _ = case runRW#
-       ( \s0 -> case newByteArray# 0# s0 of
-           (# s1, marr #) -> unsafeFreezeByteArray# marr s1
-       ) of (# _, a #) -> a
-    {-# NOINLINE ggetBytes #-}
-    gfromBytes _ _ _ = undefined
+    gfromBytes _ _ _ _ _ = undefined
     {-# INLINE gfromBytes #-}
-    greadBytes _ _ _ s = (# s, undefined #)
+    greadBytes _ _ _ _ _ s = (# s, undefined #)
     {-# INLINE greadBytes #-}
-    gwriteBytes _ _ _ _ s = s
+    gwriteBytes _ _ _ _ _ _ s = s
     {-# INLINE gwriteBytes #-}
-    greadAddr _ _ s = (# s, undefined #)
+    greadAddr _ _ _ _ s = (# s, undefined #)
     {-# INLINE greadAddr #-}
-    gwriteAddr _ _ _ s = s
+    gwriteAddr _ _ _ _ _ s = s
     {-# INLINE gwriteAddr #-}
-    gbyteSize _ = 0#
+    gbyteSize _ _ ps _ = ps
     {-# INLINE gbyteSize #-}
-    gbyteAlign _ = 1#
+    gbyteAlign _ _ = 1#
     {-# INLINE gbyteAlign #-}
-    gbyteOffset _ = 0#
-    {-# INLINE gbyteOffset #-}
-    gbyteFieldOffset off _ _ = off
+    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
     {-# INLINE gbyteFieldOffset #-}
-    gconTags _ = 1##
-    {-# INLINE gconTags #-}
 
 instance GPrimBytes U1 where
-    -- Probably, this is illegal due to zero size of the array.
-    -- There is no bottom to put here, but one should not call this anyway.
-    ggetBytes _ = case runRW#
-       ( \s0 -> case newByteArray# 0# s0 of
-           (# s1, marr #) -> unsafeFreezeByteArray# marr s1
-       ) of (# _, a #) -> a
-    {-# NOINLINE ggetBytes #-}
-    gfromBytes _ _ _ = U1
+    gfromBytes _ _ _ _ _ = U1
     {-# INLINE gfromBytes #-}
-    greadBytes _ _ _ s = (# s, U1 #)
+    greadBytes _ _ _ _ _ s = (# s, U1 #)
     {-# INLINE greadBytes #-}
-    gwriteBytes _ _ _ _ s = s
+    gwriteBytes _ _ _ _ _ _ s = s
     {-# INLINE gwriteBytes #-}
-    greadAddr _ _ s = (# s, U1 #)
+    greadAddr _ _ _ _ s = (# s, U1 #)
     {-# INLINE greadAddr #-}
-    gwriteAddr _ _ _ s = s
+    gwriteAddr _ _ _ _ _ s = s
     {-# INLINE gwriteAddr #-}
-    gbyteSize _ = 0#
+    gbyteSize _ _ ps _ = ps
     {-# INLINE gbyteSize #-}
-    gbyteAlign _ = 1#
+    gbyteAlign _ _ = 1#
     {-# INLINE gbyteAlign #-}
-    gbyteOffset _ = 0#
-    {-# INLINE gbyteOffset #-}
-    gbyteFieldOffset off _ _ = off
+    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
     {-# INLINE gbyteFieldOffset #-}
-    gconTags _ = 1##
-    {-# INLINE gconTags #-}
+
+getGOff :: forall a . PrimBytes a
+        => Int# --  parent cumulative size
+        -> Int# --  original offset
+        -> Int# --  new offset
+getGOff ps i = i +# roundUpInt# ps (byteAlign @a undefined)
 
 instance PrimBytes a => GPrimBytes (K1 i a) where
-    ggetBytes ~(K1 a) = getBytes a
-    {-# NOINLINE ggetBytes #-}
-    gfromBytes _ i ba = K1 (fromBytes i ba)
+    gfromBytes _ _ ps i ba = K1 (fromBytes (getGOff @a ps i) ba)
     {-# INLINE gfromBytes #-}
-    greadBytes _ = unsafeCoerce# (readBytes @a)
+    greadBytes _ _ ps mba i = coerce (readBytes @a mba (getGOff @a ps i))
     {-# INLINE greadBytes #-}
-    gwriteBytes _ mba i ~(K1 a) = writeBytes mba i a
+    gwriteBytes _ _ ps mba i = coerce (writeBytes @a mba (getGOff @a ps i))
     {-# INLINE gwriteBytes #-}
-    greadAddr _ = unsafeCoerce# (readAddr @a)
+    greadAddr _ _ ps addr = coerce (readAddr @a (plusAddr# addr (getGOff @a ps 0#)))
     {-# INLINE greadAddr #-}
-    gwriteAddr _ ~(K1 a) = writeAddr a
+    gwriteAddr _ _ ps ka addr = writeAddr (unK1 ka) (plusAddr# addr (getGOff @a ps 0#))
     {-# INLINE gwriteAddr #-}
-    gbyteSize ~(K1 a) = byteSize a
+    gbyteSize _ _ ps ~(K1 a) = roundUpInt# ps (byteAlign a) +# byteSize a
     {-# INLINE gbyteSize #-}
-    gbyteAlign ~(K1 a) = byteAlign a
+    gbyteAlign _ = coerce (byteAlign @a)
     {-# INLINE gbyteAlign #-}
-    gbyteOffset ~(K1 a) = byteOffset a
-    {-# INLINE gbyteOffset #-}
-    gbyteFieldOffset off _ ~_ = off
+    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
     {-# INLINE gbyteFieldOffset #-}
-    gconTags _ = 1##
-    {-# INLINE gconTags #-}
 
 instance {-# OVERLAPPING #-}
          (GPrimBytes f, KnownSymbol sn)
       => GPrimBytes (M1 S ('MetaSel ('Just sn) a b c) f) where
-    ggetBytes ~(M1 a) = ggetBytes a
-    {-# NOINLINE ggetBytes #-}
-    gfromBytes t i ba = M1 (gfromBytes t i ba)
+    gfromBytes p = coerce (gfromBytes @f p)
     {-# INLINE gfromBytes #-}
-    greadBytes = unsafeCoerce# (greadBytes @f)
+    greadBytes p = coerce (greadBytes @f p)
     {-# INLINE greadBytes #-}
-    gwriteBytes t  mba i ~(M1 a) = gwriteBytes t  mba i a
+    gwriteBytes p = coerce (gwriteBytes @f p)
     {-# INLINE gwriteBytes #-}
-    greadAddr = unsafeCoerce# (greadAddr @f)
+    greadAddr p = coerce (greadAddr @f p)
     {-# INLINE greadAddr #-}
-    gwriteAddr t ~(M1 a) = gwriteAddr t a
+    gwriteAddr p = coerce (gwriteAddr @f p)
     {-# INLINE gwriteAddr #-}
-    gbyteSize ~(M1 a) = gbyteSize a
+    gbyteSize p = coerce (gbyteSize @f p)
     {-# INLINE gbyteSize #-}
-    gbyteAlign ~(M1 a) = gbyteAlign a
+    gbyteAlign p = coerce (gbyteAlign @f p)
     {-# INLINE gbyteAlign #-}
-    gbyteOffset ~(M1 a) = gbyteOffset a
-    {-# INLINE gbyteOffset #-}
-    gbyteFieldOffset off (_ :: Proxy# n) ~_
+    gbyteFieldOffset p _ off (_ :: Proxy# n) ma
       | Just Refl <- sameSymbol (undefined :: Proxy n) (undefined :: Proxy sn)
-        = off
+        = off `roundUpInt#` gbyteAlign p ma
       | otherwise
         = negateInt# 1#
     {-# INLINE gbyteFieldOffset #-}
-    gconTags ~(M1 a) = gconTags a
-    {-# INLINE gconTags #-}
 
 instance GPrimBytes f => GPrimBytes (M1 i c f) where
-    ggetBytes ~(M1 a) = ggetBytes a
-    {-# NOINLINE ggetBytes #-}
-    gfromBytes t i ba = M1 (gfromBytes t i ba)
+    gfromBytes p = coerce (gfromBytes @f p)
     {-# INLINE gfromBytes #-}
-    greadBytes = unsafeCoerce# (greadBytes @f)
+    greadBytes p = coerce (greadBytes @f p)
     {-# INLINE greadBytes #-}
-    gwriteBytes t  mba i ~(M1 a) = gwriteBytes t  mba i a
+    gwriteBytes p = coerce (gwriteBytes @f p)
     {-# INLINE gwriteBytes #-}
-    greadAddr = unsafeCoerce# (greadAddr @f)
+    greadAddr p = coerce (greadAddr @f p)
     {-# INLINE greadAddr #-}
-    gwriteAddr t ~(M1 a) = gwriteAddr t a
+    gwriteAddr p = coerce (gwriteAddr @f p)
     {-# INLINE gwriteAddr #-}
-    gbyteSize ~(M1 a) = gbyteSize a
+    gbyteSize p = coerce (gbyteSize @f p)
     {-# INLINE gbyteSize #-}
-    gbyteAlign ~(M1 a) = gbyteAlign a
+    gbyteAlign p = coerce (gbyteAlign @f p)
     {-# INLINE gbyteAlign #-}
-    gbyteOffset ~(M1 a) = gbyteOffset a
-    {-# INLINE gbyteOffset #-}
-    gbyteFieldOffset off p ~(M1 a) = gbyteFieldOffset off p a
+    gbyteFieldOffset p = coerce (gbyteFieldOffset @f p)
     {-# INLINE gbyteFieldOffset #-}
-    gconTags ~(M1 a) = gconTags a
-    {-# INLINE gconTags #-}
 
 
 instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :*: g) where
-    -- | This function returns a not pinned byte array, which is aligned to
-    --   @SIZEOF_HSWORD@.
-    --   Thus, it ignores the alignment of the underlying data type if it is larger.
-    --   However, alignment calculation still makes sense for data types
-    --   that are smaller than @SIZEOF_HSWORD@ bytes: they are packed more densely.
-    ggetBytes xy = case runRW#
-       ( \s0 -> case newByteArray# (gbyteSize xy) s0 of
-           (# s1, marr #) -> unsafeFreezeByteArray# marr
-             (gwriteBytes 0## marr 0# xy s1)
-       ) of (# _, a #) -> a
-    {-# NOINLINE ggetBytes #-}
-    gfromBytes _ i ba = x :*: y
+    gfromBytes p t ps i ba = x :*: y
       where
-        x = gfromBytes 0## i ba
-        y = gfromBytes 0## (i +# roundUpInt# (gbyteSize x) (gbyteAlign y)) ba
+        x = gfromBytes p t ps i ba
+        y = gfromBytes p t (gbyteSize p t ps x) i ba
     {-# INLINE gfromBytes #-}
-    greadBytes _ mba i s0 = case greadBytes 0## mba i s0 of
-      (# s1, x #) -> case greadBytes 0## mba
-                            (i +# roundUpInt# (gbyteSize x)
-                                              (gbyteAlign @g undefined)
-                            ) s1 of
-        (# s2, y #) -> (# s2, x :*: y #)
+    greadBytes p t ps mba i s0
+      | (# s1, x #) <- greadBytes p t ps mba i s0
+      , (# s2, y #) <- greadBytes p t (gbyteSize p t ps x) mba i s1
+        = (# s2, x :*: y #)
     {-# INLINE greadBytes #-}
-    gwriteBytes _ mba off ~(x :*: y) s =
-      gwriteBytes 0## mba (off +# roundUpInt# (gbyteSize x) (gbyteAlign y)) y
-      (gwriteBytes 0## mba off x s)
+    gwriteBytes p t ps mba off (x :*: y) s0
+      | s1 <- gwriteBytes p t ps mba off x s0
+      , s2 <- gwriteBytes p t (gbyteSize p t ps x) mba off y s1
+        = s2
     {-# INLINE gwriteBytes #-}
-    greadAddr _ addr s0 = case greadAddr 0## addr s0 of
-      (# s1, x #) -> case greadAddr 0##
-                            (plusAddr# addr
-                              (roundUpInt# (gbyteSize x)
-                                           (gbyteAlign @g undefined))
-                            ) s1 of
-        (# s2, y #) -> (# s2, x :*: y #)
+    greadAddr p t ps addr s0
+      | (# s1, x #) <- greadAddr p t ps addr s0
+      , (# s2, y #) <- greadAddr p t (gbyteSize p t ps x) addr s1
+        = (# s2, x :*: y #)
     {-# INLINE greadAddr #-}
-    gwriteAddr _ ~(x :*: y) addr s =
-      gwriteAddr 0## y (plusAddr# addr (roundUpInt# (gbyteSize x) (gbyteAlign y)))
-      (gwriteAddr 0## x addr s)
+    gwriteAddr p t ps (x :*: y) addr s0
+      | s1 <- gwriteAddr p t ps x addr s0
+      , s2 <- gwriteAddr p t (gbyteSize p t ps x) y addr s1
+        = s2
     {-# INLINE gwriteAddr #-}
-    gbyteSize ~(x :*: y)
-      = gbyteSize y +# roundUpInt# (gbyteSize x) (gbyteAlign y)
+    gbyteSize p t ps ~(x :*: y) = gbyteSize p t (gbyteSize p t ps x) y
     {-# INLINE gbyteSize #-}
-    gbyteAlign ~(x :*: y) = maxInt# (gbyteAlign x) (gbyteAlign y)
+    gbyteAlign p ~(x :*: y) = commonAlign# (gbyteAlign p x) (gbyteAlign p y)
     {-# INLINE gbyteAlign #-}
-    gbyteOffset _ = 0#
-    {-# INLINE gbyteOffset #-}
-    gbyteFieldOffset off p ~(x :*: y)
-      = case (# gbyteFieldOffset off p x
-              , gbyteFieldOffset (off +# roundUpInt# (gbyteSize x) (gbyteAlign y)) p y
-              #) of
-          (# offX, offY #) -> if isTrue# (offX <# 0#) then offY else offX
+    gbyteFieldOffset p t ps n ~(x :*: y)
+      | offX <- gbyteFieldOffset p t ps n x
+      , bsX  <- gbyteSize p t ps x
+      , offY <- gbyteFieldOffset p t bsX n y
+      = if isTrue# (offX <# 0#) then offY else offX
     {-# INLINE gbyteFieldOffset #-}
-    gconTags _ = 1##
-    {-# INLINE gconTags #-}
 
 
--- | Reserve 4 bytes for tag and try to pack alternatives as good as possible.
+{- | Reserve 4 bytes for the tag and try to pack alternatives as good as possible.
+
+   This implementation relies on two assumptions, which are probably true
+   in GHC implementation of derived generics and not checked here:
+
+   1. @Rep a@ is a sum-of-products.
+         This means the struct offset is always @4@ for the parts of the sum type,
+         and a constructor tag is always at position @0@ in the struct.
+
+   2. The @Rep a@ tree is balanced.
+         Thus, I can implement a simple tag encoding:
+         each bit in a tag corresponds to a nesting level.
+         That is, maximum possible nesting level is 31 and minimum is 0.
+
+ -}
 instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :+: g) where
-    ggetBytes xy = case runRW#
-       ( \s0 -> case newByteArray# (gbyteSize xy) s0 of
-           (# s1, marr #) -> unsafeFreezeByteArray# marr
-             (gwriteBytes 0## marr 0# xy s1)
-       ) of (# _, a #) -> a
-    {-# NOINLINE ggetBytes #-}
-    gfromBytes toff off ba
-      = case (# gconTags (undefined :: f a)
-              , gconTags (undefined :: g a)
-              , indexWord32Array# ba (uncheckedIShiftRL# off 2#)
-                       `minusWord#` toff
-              #) of
-         (# 1##, _  , 0## #) -> L1 (gfromBytes 0## (off +# 4#) ba)
-         (# cl , 1##, t   #)
-           | isTrue# (eqWord# cl t) -> R1 (gfromBytes 0## (off +# 4#) ba)
-         (# cl , _  , t   #)
-           | isTrue# (geWord# cl t) -> L1 (gfromBytes toff off ba)
-           | otherwise -> R1 (gfromBytes (plusWord# toff cl) off ba)
+    gfromBytes p t _ off ba
+      | c <- indexWord32Array# ba (uncheckedIShiftRL# off 2#)
+        = if isTrue# (eqWord# (and# c t1) 0##)
+          then L1 (gfromBytes p t1 4# off ba)
+          else R1 (gfromBytes p t1 4# off ba)
+      where
+        t1 = upTag t
     {-# INLINE gfromBytes #-}
-    greadBytes toff mba off s0
-      = case readWord32Array# mba (uncheckedIShiftRL# off 2#) s0 of
-        (# s1, tval #) -> case (# gconTags (undefined :: f a)
-                                , gconTags (undefined :: g a)
-                                , tval `minusWord#` toff
-                                #) of
-         (# 1##, _  , 0## #) -> case greadBytes 0## mba (off +# 4#) s1 of
-             (# s2, r #) -> (# s2, L1 r #)
-         (# cl , 1##, t   #)
-           | isTrue# (eqWord# cl t) -> case greadBytes 0## mba (off +# 4#) s1 of
-             (# s2, r #) -> (# s2, R1 r #)
-         (# cl , _  , t   #)
-           | isTrue# (geWord# cl t) -> case greadBytes toff mba off s1 of
-             (# s2, r #) -> (# s2, L1 r #)
-           | otherwise -> case greadBytes (plusWord# toff cl) mba off s1 of
-             (# s2, r #) -> (# s2, R1 r #)
+    greadBytes p t _ mba off s0
+      | (# s1, c #) <- readWord32Array# mba (uncheckedIShiftRL# off 2#) s0
+        = if isTrue# (eqWord# (and# c t1) 0##)
+          then case greadBytes p t1 4# mba off s1 of
+            (# s2, x #) -> (# s2, L1 x #)
+          else case greadBytes p t1 4# mba off s1 of
+            (# s2, y #) -> (# s2, R1 y #)
+      where
+        t1 = upTag t
     {-# INLINE greadBytes #-}
-    gwriteBytes t mba off (L1 x) s
-      = case gconTags x of
-          1## -> gwriteBytes 0## mba (off +# 4#) x
-                 (writeWord32Array# mba (uncheckedIShiftRL# off 2#) t s)
-          _   -> gwriteBytes t mba off x s
-    gwriteBytes t mba off xy@(R1 y) s
-      = case (# gconTags y, plusWord# t (gconTags (undef1 @f xy)) #) of
-          (# 1## , t' #) -> gwriteBytes 0## mba (off +# 4#) y
-              (writeWord32Array# mba (uncheckedIShiftRL# off 2#) t' s)
-          (# _   , t' #) -> gwriteBytes t' mba off y s
+    -- if this is the uppermost sum, overwrite the tag.
+    gwriteBytes p 0## _ mba off (L1 x) s0
+      | s1 <- writeWord32Array# mba (uncheckedIShiftRL# off 2#) 0## s0
+      , s2 <- gwriteBytes p 1## 4# mba off x s1 = s2
+    gwriteBytes p 0## _ mba off (R1 y) s0
+      | s1 <- writeWord32Array# mba (uncheckedIShiftRL# off 2#) 1## s0
+      , s2 <- gwriteBytes p 1## 4# mba off y s1 = s2
+    -- here I know that I have written zero to the corresponding bit already
+    gwriteBytes p t _ mba off (L1 x) s0
+      | s1 <- gwriteBytes p (upTag t) 4# mba off x s0 = s1
+    -- otherwise, carefully write a single corresponding bit
+    gwriteBytes p t _ mba off (R1 y) s0
+      | (# s1, c #) <- readWord32Array# mba off s0
+      , s2 <- writeWord32Array# mba (uncheckedIShiftRL# off 2#) (or# c t1) s1
+      , s3 <- gwriteBytes p t1 4# mba off y s2 = s3
+      where
+        t1 = upTag t
     {-# INLINE gwriteBytes #-}
-    greadAddr toff addr s0
-      = case readWord32OffAddr# addr 0# s0 of
-        (# s1, tval #) -> case (# gconTags (undefined :: f a)
-                                , gconTags (undefined :: g a)
-                                , tval `minusWord#` toff
-                                #) of
-         (# 1##, _  , 0## #) -> case greadAddr 0## (plusAddr# addr 4#) s1 of
-             (# s2, r #) -> (# s2, L1 r #)
-         (# cl , 1##, t   #)
-           | isTrue# (eqWord# cl t) -> case greadAddr 0## (plusAddr# addr 4#) s1 of
-             (# s2, r #) -> (# s2, R1 r #)
-         (# cl , _  , t   #)
-           | isTrue# (geWord# cl t) -> case greadAddr toff addr s1 of
-             (# s2, r #) -> (# s2, L1 r #)
-           | otherwise -> case greadAddr (plusWord# toff cl) addr s1 of
-             (# s2, r #) -> (# s2, R1 r #)
+    greadAddr p t _ addr s0
+      | (# s1, c #) <- readWord32OffAddr# addr 0# s0
+        = if isTrue# (eqWord# (and# c t1) 0##)
+          then case greadAddr p t1 4# addr s1 of
+            (# s2, x #) -> (# s2, L1 x #)
+          else case greadAddr p t1 4# addr s1 of
+            (# s2, y #) -> (# s2, R1 y #)
+      where
+        t1 = upTag t
     {-# INLINE greadAddr #-}
-    gwriteAddr t (L1 x) addr s
-      = case gconTags x of
-          1## -> gwriteAddr 0## x (plusAddr# addr 4#)
-                 (writeWord32OffAddr# addr 0# t s)
-          _   -> gwriteAddr t x addr s
-    gwriteAddr t xy@(R1 y) addr s
-      = case (# gconTags y, plusWord# t (gconTags (undef1 @f xy)) #) of
-          (# 1## , t' #) -> gwriteAddr 0## y (plusAddr# addr 4#)
-                              (writeWord32OffAddr# addr 0# t' s)
-          (# _   , t' #) -> gwriteAddr t' y addr s
+    -- if this is the uppermost sum, overwrite the tag.
+    gwriteAddr p 0## _ (L1 x) addr s0
+      | s1 <- writeWord32OffAddr# addr 0# 0## s0
+      , s2 <- gwriteAddr p 1## 4# x addr s1 = s2
+    gwriteAddr p 0## _ (R1 y) addr s0
+      | s1 <- writeWord32OffAddr# addr 0# 1## s0
+      , s2 <- gwriteAddr p 1## 4# y addr s1 = s2
+    -- here I know that I have written zero to the corresponding bit already
+    gwriteAddr p t _ (L1 x) addr s0
+      | s1 <- gwriteAddr p (upTag t) 4# x addr s0 = s1
+    -- otherwise, carefully write a single corresponding bit
+    gwriteAddr p t _ (R1 y) addr s0
+      | (# s1, c #) <- readWord32OffAddr# addr 0# s0
+      , s2 <- writeWord32OffAddr# addr 0# (or# c t1) s1
+      , s3 <- gwriteAddr p t1 4# y addr s2 = s3
+      where
+        t1 = upTag t
     {-# INLINE gwriteAddr #-}
-    gbyteSize xy = maxInt#
-        (roundUpInt# 4# (gbyteAlign x) +# gbyteSize x)
-        (roundUpInt# 4# (gbyteAlign y) +# gbyteSize y)
+    gbyteSize p 0## ps xy
+      = maxInt#
+        (roundUpInt# 4# (gbyteAlign p x) +# gbyteSize p 1## ps x)
+        (roundUpInt# 4# (gbyteAlign p y) +# gbyteSize p 1## ps y)
       where
         x = undef1 @f xy
         y = undef1 @g xy
+    gbyteSize p t ps xy
+      = maxInt#
+        (gbyteSize p (upTag t) ps (undef1 @f xy))
+        (gbyteSize p (upTag t) ps (undef1 @g xy))
     {-# INLINE gbyteSize #-}
-    gbyteAlign xy = maxInt# 4# ( maxInt# (gbyteAlign (undef1 @f xy))
-                                         (gbyteAlign (undef1 @g xy))
-                               )
+    gbyteAlign p xy = 4# `commonAlign#`
+      ( maxInt# (gbyteAlign p (undef1 @f xy))
+                (gbyteAlign p (undef1 @g xy)) )
     {-# INLINE gbyteAlign #-}
-    gbyteOffset _ = 0#
-    {-# INLINE gbyteOffset #-}
-    gbyteFieldOffset _ _ _ = negateInt# 1#
+    -- check both branches if any of them contain the field.
+    -- If there are more than one branches containing the field, the left one
+    -- is preferred.
+    gbyteFieldOffset p t ps n xy
+      | offX <- gbyteFieldOffset p (upTag t) ps n (undef1 @f xy)
+      , offY <- gbyteFieldOffset p (upTag t) ps n (undef1 @g xy)
+      = if isTrue# (offX <# 0#) then offY else offX
     {-# INLINE gbyteFieldOffset #-}
-    gconTags xy = gconTags (undef1 @f xy) `plusWord#` gconTags (undef1 @g xy)
-    {-# INLINE gconTags #-}
+
+upTag :: Word# -> Word#
+upTag 0## = 1##
+upTag t   = uncheckedShiftL# t 1#
+
 
 maxInt# :: Int# -> Int# -> Int#
 maxInt# a b | isTrue# (a ># b) = a
             | otherwise        = b
+
+-- I assume alignment is always a power of two in a sane world
+-- And also the alignment fits into 16 bits
+commonAlign# :: Int# -> Int# -> Int#
+commonAlign# a b
+  | c <- maxInt# a b
+    = if isTrue# (eqWord# (popCnt# (int2Word# c)) 1##)
+      then c
+      else uncheckedIShiftRL# 0x10000# (word2Int# (clz16# (int2Word# c)))
 
 roundUpInt# :: Int# -> Int# -> Int#
 roundUpInt# a b = case remInt# a b of
@@ -531,38 +517,28 @@ undef1 = const undefined
 #endif
 
 instance GPrimBytes (URec Word) where
-    ggetBytes x = case runRW#
-      ( \s0 -> case newByteArray# SIZEOF_HSWORD# s0 of
-         (# s1, marr #) -> case writeWordArray# marr 0# (uWord# x) s1 of
-             s2 -> unsafeFreezeByteArray# marr s2
-      ) of (# _, a #) -> a
-    {-# NOINLINE ggetBytes #-}
-    gfromBytes _ off ba
-      = UWord (indexWordArray# ba (uncheckedIShiftRL# off OFFSHIFT_W#))
+    gfromBytes _ _ ps off ba
+      = UWord (indexWordArray# ba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSWORD#) OFFSHIFT_W#))
     {-# INLINE gfromBytes #-}
-    greadBytes _ mba off s
-      = case readWordArray# mba (uncheckedIShiftRL# off OFFSHIFT_W#) s of
+    greadBytes _ _ ps mba off s
+      = case readWordArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSWORD#) OFFSHIFT_W#) s of
           (# s1, r #) -> (# s1, UWord r #)
     {-# INLINE greadBytes #-}
-    gwriteBytes _ mba off x
-      = writeWordArray# mba (uncheckedIShiftRL# off OFFSHIFT_W#) (uWord# x)
+    gwriteBytes _ _ ps mba off x
+      = writeWordArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSWORD#) OFFSHIFT_W#) (uWord# x)
     {-# INLINE gwriteBytes #-}
-    greadAddr _ a s
-      = case readWordOffAddr# a 0# s of (# s', x #) -> (# s', UWord x #)
+    greadAddr _ _ ps a s
+      = case readWordOffAddr# a (roundUpInt# ps ALIGNMENT_HSWORD#) s of (# s', x #) -> (# s', UWord x #)
     {-# INLINE greadAddr #-}
-    gwriteAddr _ x a
-      = writeWordOffAddr# a 0# (uWord# x)
+    gwriteAddr _ _ ps x a
+      = writeWordOffAddr# a (roundUpInt# ps ALIGNMENT_HSWORD#) (uWord# x)
     {-# INLINE gwriteAddr #-}
-    gbyteSize _ = SIZEOF_HSWORD#
+    gbyteSize _ _ ps _ = roundUpInt# ps ALIGNMENT_HSWORD# +# SIZEOF_HSWORD#
     {-# INLINE gbyteSize #-}
-    gbyteAlign _ = ALIGNMENT_HSWORD#
+    gbyteAlign _ _ = ALIGNMENT_HSWORD#
     {-# INLINE gbyteAlign #-}
-    gbyteOffset _ = 0#
-    {-# INLINE gbyteOffset #-}
-    gbyteFieldOffset _ _ _ = negateInt# 1#
+    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
     {-# INLINE gbyteFieldOffset #-}
-    gconTags _ = 0##
-    {-# INLINE gconTags #-}
 
 #if SIZEOF_HSINT == 4
 #define OFFSHIFT_I 2
@@ -571,39 +547,28 @@ instance GPrimBytes (URec Word) where
 #endif
 
 instance GPrimBytes (URec Int) where
-    ggetBytes x = case runRW#
-      ( \s0 -> case newByteArray# SIZEOF_HSINT# s0 of
-         (# s1, marr #) -> case writeIntArray# marr 0# (uInt# x) s1 of
-             s2 -> unsafeFreezeByteArray# marr s2
-      ) of (# _, a #) -> a
-    {-# NOINLINE ggetBytes #-}
-    gfromBytes _ off ba
-      = UInt (indexIntArray# ba (uncheckedIShiftRL# off OFFSHIFT_I#))
+    gfromBytes _ _ ps off ba
+      = UInt (indexIntArray# ba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSINT#) OFFSHIFT_I#))
     {-# INLINE gfromBytes #-}
-    greadBytes _ mba off s
-      = case readIntArray# mba (uncheckedIShiftRL# off OFFSHIFT_I#) s of
+    greadBytes _ _ ps mba off s
+      = case readIntArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSINT#) OFFSHIFT_I#) s of
           (# s1, r #) -> (# s1, UInt r #)
     {-# INLINE greadBytes #-}
-    gwriteBytes _ mba off x
-      = writeIntArray# mba (uncheckedIShiftRL# off OFFSHIFT_I#) (uInt# x)
+    gwriteBytes _ _ ps mba off x
+      = writeIntArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSINT#) OFFSHIFT_I#) (uInt# x)
     {-# INLINE gwriteBytes #-}
-    greadAddr _ a s
-      = case readIntOffAddr# a 0# s of (# s', x #) -> (# s', UInt x #)
+    greadAddr _ _ ps a s
+      = case readIntOffAddr# a (roundUpInt# ps ALIGNMENT_HSINT#) s of (# s', x #) -> (# s', UInt x #)
     {-# INLINE greadAddr #-}
-    gwriteAddr _ x a
-      = writeIntOffAddr# a 0# (uInt# x)
+    gwriteAddr _ _ ps x a
+      = writeIntOffAddr# a (roundUpInt# ps ALIGNMENT_HSINT#) (uInt# x)
     {-# INLINE gwriteAddr #-}
-    gbyteSize _ = SIZEOF_HSINT#
+    gbyteSize _ _ ps _ = roundUpInt# ps ALIGNMENT_HSINT# +# SIZEOF_HSINT#
     {-# INLINE gbyteSize #-}
-    gbyteAlign _ = ALIGNMENT_HSINT#
+    gbyteAlign _ _ = ALIGNMENT_HSINT#
     {-# INLINE gbyteAlign #-}
-    gbyteOffset _ = 0#
-    {-# INLINE gbyteOffset #-}
-    gbyteFieldOffset _ _ _ = negateInt# 1#
+    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
     {-# INLINE gbyteFieldOffset #-}
-    gconTags _ = 0##
-    {-# INLINE gconTags #-}
-
 
 #if SIZEOF_HSFLOAT == 4
 #define OFFSHIFT_F 2
@@ -612,38 +577,28 @@ instance GPrimBytes (URec Int) where
 #endif
 
 instance GPrimBytes (URec Float) where
-    ggetBytes x = case runRW#
-      ( \s0 -> case newByteArray# SIZEOF_HSFLOAT# s0 of
-         (# s1, marr #) -> case writeFloatArray# marr 0# (uFloat# x) s1 of
-             s2 -> unsafeFreezeByteArray# marr s2
-      ) of (# _, a #) -> a
-    {-# NOINLINE ggetBytes #-}
-    gfromBytes _ off ba
-      = UFloat (indexFloatArray# ba (uncheckedIShiftRL# off OFFSHIFT_F#))
+    gfromBytes _ _ ps off ba
+      = UFloat (indexFloatArray# ba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSFLOAT#) OFFSHIFT_F#))
     {-# INLINE gfromBytes #-}
-    greadBytes _ mba off s
-      = case readFloatArray# mba (uncheckedIShiftRL# off OFFSHIFT_F#) s of
+    greadBytes _ _ ps mba off s
+      = case readFloatArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSFLOAT#) OFFSHIFT_F#) s of
           (# s1, r #) -> (# s1, UFloat r #)
     {-# INLINE greadBytes #-}
-    gwriteBytes _ mba off x
-      = writeFloatArray# mba (uncheckedIShiftRL# off OFFSHIFT_F#) (uFloat# x)
+    gwriteBytes _ _ ps mba off x
+      = writeFloatArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSFLOAT#) OFFSHIFT_F#) (uFloat# x)
     {-# INLINE gwriteBytes #-}
-    greadAddr _ a s
-      = case readFloatOffAddr# a 0# s of (# s', x #) -> (# s', UFloat x #)
+    greadAddr _ _ ps a s
+      = case readFloatOffAddr# a (roundUpInt# ps ALIGNMENT_HSFLOAT#) s of (# s', x #) -> (# s', UFloat x #)
     {-# INLINE greadAddr #-}
-    gwriteAddr _ x a
-      = writeFloatOffAddr# a 0# (uFloat# x)
+    gwriteAddr _ _ ps x a
+      = writeFloatOffAddr# a (roundUpInt# ps ALIGNMENT_HSFLOAT#) (uFloat# x)
     {-# INLINE gwriteAddr #-}
-    gbyteSize _ = SIZEOF_HSFLOAT#
+    gbyteSize _ _ ps _ = roundUpInt# ps ALIGNMENT_HSFLOAT# +# SIZEOF_HSFLOAT#
     {-# INLINE gbyteSize #-}
-    gbyteAlign _ = ALIGNMENT_HSFLOAT#
+    gbyteAlign _ _ = ALIGNMENT_HSFLOAT#
     {-# INLINE gbyteAlign #-}
-    gbyteOffset _ = 0#
-    {-# INLINE gbyteOffset #-}
-    gbyteFieldOffset _ _ _ = negateInt# 1#
+    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
     {-# INLINE gbyteFieldOffset #-}
-    gconTags _ = 0##
-    {-# INLINE gconTags #-}
 
 #if SIZEOF_HSDOUBLE == 4
 #define OFFSHIFT_D 2
@@ -652,39 +607,30 @@ instance GPrimBytes (URec Float) where
 #endif
 
 instance GPrimBytes (URec Double) where
-    ggetBytes x = case runRW#
-      ( \s0 -> case newByteArray# SIZEOF_HSDOUBLE# s0 of
-         (# s1, marr #) -> case writeDoubleArray# marr 0# (uDouble# x) s1 of
-             s2 -> unsafeFreezeByteArray# marr s2
-      ) of (# _, a #) -> a
-    {-# NOINLINE ggetBytes #-}
-    gfromBytes _ off ba
-      = UDouble (indexDoubleArray# ba (uncheckedIShiftRL# off OFFSHIFT_D#))
+    gfromBytes _ _ ps off ba
+      = UDouble (indexDoubleArray# ba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSDOUBLE#) OFFSHIFT_D#))
     {-# INLINE gfromBytes #-}
-    greadBytes _ mba off s
-      = case readDoubleArray# mba (uncheckedIShiftRL# off OFFSHIFT_D#) s of
+    greadBytes _ _ ps mba off s
+      = case readDoubleArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSDOUBLE#) OFFSHIFT_D#) s of
           (# s1, r #) -> (# s1, UDouble r #)
     {-# INLINE greadBytes #-}
-    gwriteBytes _ mba off x
-      = writeDoubleArray# mba (uncheckedIShiftRL# off OFFSHIFT_D#) (uDouble# x)
+    gwriteBytes _ _ ps mba off x
+      = writeDoubleArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSDOUBLE#) OFFSHIFT_D#) (uDouble# x)
     {-# INLINE gwriteBytes #-}
-    greadAddr _ a s
-      = case readDoubleOffAddr# a 0# s of (# s', x #) -> (# s', UDouble x #)
+    greadAddr _ _ ps a s
+      = case readDoubleOffAddr# a (roundUpInt# ps ALIGNMENT_HSDOUBLE#) s of (# s', x #) -> (# s', UDouble x #)
     {-# INLINE greadAddr #-}
-    gwriteAddr _ x a
-      = writeDoubleOffAddr# a 0# (uDouble# x)
+    gwriteAddr _ _ ps x a
+      = writeDoubleOffAddr# a (roundUpInt# ps ALIGNMENT_HSDOUBLE#) (uDouble# x)
     {-# INLINE gwriteAddr #-}
-    gbyteSize _ = SIZEOF_HSDOUBLE#
+    gbyteSize _ _ ps _ = roundUpInt# ps ALIGNMENT_HSDOUBLE# +# SIZEOF_HSDOUBLE#
     {-# INLINE gbyteSize #-}
-    gbyteAlign _ = ALIGNMENT_HSDOUBLE#
+    gbyteAlign _ _ = ALIGNMENT_HSDOUBLE#
     {-# INLINE gbyteAlign #-}
-    gbyteOffset _ = 0#
-    {-# INLINE gbyteOffset #-}
-    gbyteFieldOffset _ _ _ = negateInt# 1#
+    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
     {-# INLINE gbyteFieldOffset #-}
-    gconTags _ = 0##
-    {-# INLINE gconTags #-}
 
+-- I believe Char is always 31 bit, but checking this does not hurt
 #if SIZEOF_HSCHAR == 2
 #define OFFSHIFT_C 1
 #elif SIZEOF_HSCHAR == 4
@@ -694,38 +640,28 @@ instance GPrimBytes (URec Double) where
 #endif
 
 instance GPrimBytes (URec Char) where
-    ggetBytes x = case runRW#
-      ( \s0 -> case newByteArray# SIZEOF_HSCHAR# s0 of
-         (# s1, marr #) -> case writeCharArray# marr 0# (uChar# x) s1 of
-             s2 -> unsafeFreezeByteArray# marr s2
-      ) of (# _, a #) -> a
-    {-# NOINLINE ggetBytes #-}
-    gfromBytes _ off ba
-      = UChar (indexCharArray# ba (uncheckedIShiftRL# off OFFSHIFT_C#))
+    gfromBytes _ _ ps off ba
+      = UChar (indexWideCharArray# ba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSCHAR#) OFFSHIFT_C#))
     {-# INLINE gfromBytes #-}
-    greadBytes _ mba off s
-      = case readCharArray# mba (uncheckedIShiftRL# off OFFSHIFT_C#) s of
+    greadBytes _ _ ps mba off s
+      = case readWideCharArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSCHAR#) OFFSHIFT_C#) s of
           (# s1, r #) -> (# s1, UChar r #)
     {-# INLINE greadBytes #-}
-    gwriteBytes _ mba off x
-      = writeCharArray# mba (uncheckedIShiftRL# off OFFSHIFT_C#) (uChar# x)
+    gwriteBytes _ _ ps mba off x
+      = writeWideCharArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSCHAR#) OFFSHIFT_C#) (uChar# x)
     {-# INLINE gwriteBytes #-}
-    greadAddr _ a s
-      = case readCharOffAddr# a 0# s of (# s', x #) -> (# s', UChar x #)
+    greadAddr _ _ ps a s
+      = case readCharOffAddr# a (roundUpInt# ps ALIGNMENT_HSCHAR#) s of (# s', x #) -> (# s', UChar x #)
     {-# INLINE greadAddr #-}
-    gwriteAddr _ x a
-      = writeCharOffAddr# a 0# (uChar# x)
+    gwriteAddr _ _ ps x a
+      = writeWideCharOffAddr# a (roundUpInt# ps ALIGNMENT_HSCHAR#) (uChar# x)
     {-# INLINE gwriteAddr #-}
-    gbyteSize _ = SIZEOF_HSCHAR#
+    gbyteSize _ _ ps _ = roundUpInt# ps ALIGNMENT_HSCHAR# +# SIZEOF_HSCHAR#
     {-# INLINE gbyteSize #-}
-    gbyteAlign _ = ALIGNMENT_HSCHAR#
+    gbyteAlign _ _ = ALIGNMENT_HSCHAR#
     {-# INLINE gbyteAlign #-}
-    gbyteOffset _ = 0#
-    {-# INLINE gbyteOffset #-}
-    gbyteFieldOffset _ _ _ = negateInt# 1#
+    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
     {-# INLINE gbyteFieldOffset #-}
-    gconTags _ = 0##
-    {-# INLINE gconTags #-}
 
 #if SIZEOF_HSPTR == 4
 #define OFFSHIFT_P 2
@@ -734,38 +670,28 @@ instance GPrimBytes (URec Char) where
 #endif
 
 instance GPrimBytes (URec (Ptr ())) where
-    ggetBytes x = case runRW#
-      ( \s0 -> case newByteArray# SIZEOF_HSPTR# s0 of
-         (# s1, marr #) -> case writeAddrArray# marr 0# (uAddr# x) s1 of
-             s2 -> unsafeFreezeByteArray# marr s2
-      ) of (# _, a #) -> a
-    {-# NOINLINE ggetBytes #-}
-    gfromBytes _ off ba
-      = UAddr (indexAddrArray# ba (uncheckedIShiftRL# off OFFSHIFT_P#))
+    gfromBytes _ _ ps off ba
+      = UAddr (indexAddrArray# ba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSPTR#) OFFSHIFT_P#))
     {-# INLINE gfromBytes #-}
-    greadBytes _ mba off s
-      = case readAddrArray# mba (uncheckedIShiftRL# off OFFSHIFT_P#) s of
+    greadBytes _ _ ps mba off s
+      = case readAddrArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSPTR#) OFFSHIFT_P#) s of
           (# s1, r #) -> (# s1, UAddr r #)
     {-# INLINE greadBytes #-}
-    gwriteBytes _ mba off x
-      = writeAddrArray# mba (uncheckedIShiftRL# off OFFSHIFT_P#) (uAddr# x)
+    gwriteBytes _ _ ps mba off x
+      = writeAddrArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSPTR#) OFFSHIFT_P#) (uAddr# x)
     {-# INLINE gwriteBytes #-}
-    greadAddr _ a s
-      = case readAddrOffAddr# a 0# s of (# s', x #) -> (# s', UAddr x #)
+    greadAddr _ _ ps a s
+      = case readAddrOffAddr# a (roundUpInt# ps ALIGNMENT_HSPTR#) s of (# s', x #) -> (# s', UAddr x #)
     {-# INLINE greadAddr #-}
-    gwriteAddr _ x a
-      = writeAddrOffAddr# a 0# (uAddr# x)
+    gwriteAddr _ _ ps x a
+      = writeAddrOffAddr# a (roundUpInt# ps ALIGNMENT_HSPTR#) (uAddr# x)
     {-# INLINE gwriteAddr #-}
-    gbyteSize _ = SIZEOF_HSPTR#
+    gbyteSize _ _ ps _ = roundUpInt# ps ALIGNMENT_HSPTR# +# SIZEOF_HSPTR#
     {-# INLINE gbyteSize #-}
-    gbyteAlign _ = ALIGNMENT_HSPTR#
+    gbyteAlign _ _ = ALIGNMENT_HSPTR#
     {-# INLINE gbyteAlign #-}
-    gbyteOffset _ = 0#
-    {-# INLINE gbyteOffset #-}
-    gbyteFieldOffset _ _ _ = negateInt# 1#
+    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
     {-# INLINE gbyteFieldOffset #-}
-    gconTags _ = 0##
-    {-# INLINE gconTags #-}
 
 
 
@@ -1279,6 +1205,45 @@ instance PrimBytes Word64 where
     writeArray mba i (W64# x) = writeWord64Array# mba i x
     {-# INLINE writeArray #-}
 
+instance PrimBytes Char where
+    type PrimFields Char = '[]
+    getBytes (C# x) = case runRW#
+      ( \s0 -> case newByteArray# SIZEOF_HSCHAR# s0 of
+         (# s1, marr #) -> case writeWideCharArray# marr 0# x s1 of
+             s2 -> unsafeFreezeByteArray# marr s2
+      ) of (# _, a #) -> a
+    {-# NOINLINE getBytes #-}
+    fromBytes off ba
+      = C# (indexWideCharArray# ba (uncheckedIShiftRL# off OFFSHIFT_C#))
+    {-# INLINE fromBytes #-}
+    readBytes mba off
+      = readArray mba (uncheckedIShiftRL# off OFFSHIFT_C#)
+    {-# INLINE readBytes #-}
+    writeBytes mba off
+      = writeArray mba (uncheckedIShiftRL# off OFFSHIFT_C#)
+    {-# INLINE writeBytes #-}
+    readAddr a s
+      = case readWideCharOffAddr# a 0# s of (# s', x #) -> (# s', C# x #)
+    {-# INLINE readAddr #-}
+    writeAddr (C# x) a
+      = writeWideCharOffAddr# a 0# x
+    {-# INLINE writeAddr #-}
+    byteSize _ = SIZEOF_HSCHAR#
+    {-# INLINE byteSize #-}
+    byteAlign _ = ALIGNMENT_HSCHAR#
+    {-# INLINE byteAlign #-}
+    byteOffset _ = 0#
+    {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
+    indexArray ba i = C# (indexWideCharArray# ba i)
+    {-# INLINE indexArray #-}
+    readArray mba i s
+      = case readWideCharArray# mba i s of (# s', x #) -> (# s', C# x #)
+    {-# INLINE readArray #-}
+    writeArray mba i (C# x) = writeWideCharArray# mba i x
+    {-# INLINE writeArray #-}
+
 instance PrimBytes (Idx x) where
     type PrimFields (Idx x) = '[]
     getBytes :: Idx x -> ByteArray#
@@ -1536,8 +1501,21 @@ undefP = const undefined
 
 
 instance PrimBytes a => PrimBytes (Maybe a)
-instance (PrimBytes a, PrimBytes b) => PrimBytes (Either a b)
--- instance PrimBytes a => PrimBytes [a] -- ??? likely to give inf byteSize
+instance ( PrimBytes a, PrimBytes b ) => PrimBytes (Either a b)
+instance ( PrimBytes a, PrimBytes b )
+      => PrimBytes (a, b)
+instance ( PrimBytes a, PrimBytes b, PrimBytes c )
+      => PrimBytes (a, b, c)
+instance ( PrimBytes a, PrimBytes b, PrimBytes c, PrimBytes d )
+      => PrimBytes (a, b, c, d)
+instance ( PrimBytes a, PrimBytes b, PrimBytes c, PrimBytes d, PrimBytes e )
+      => PrimBytes (a, b, c, d, e)
+instance ( PrimBytes a, PrimBytes b, PrimBytes c, PrimBytes d, PrimBytes e
+         , PrimBytes f )
+      => PrimBytes (a, b, c, d, e, f)
+instance ( PrimBytes a, PrimBytes b, PrimBytes c, PrimBytes d, PrimBytes e
+         , PrimBytes f, PrimBytes g )
+      => PrimBytes (a, b, c, d, e, f, g)
 
 
 data PrimTag a where
@@ -1553,6 +1531,7 @@ data PrimTag a where
     PTagWord16 :: PrimTag Word16
     PTagWord32 :: PrimTag Word32
     PTagWord64 :: PrimTag Word64
+    PTagChar   :: PrimTag Char
     PTagPtr    :: PrimTag (Ptr a)
     PTagOther  :: PrimTag a
 
@@ -1618,6 +1597,10 @@ instance {-# OVERLAPPING #-} PrimTagged Word32 where
 
 instance {-# OVERLAPPING #-} PrimTagged Word64 where
     primTag' = const PTagWord64
+    {-# INLINE primTag' #-}
+
+instance {-# OVERLAPPING #-} PrimTagged Char where
+    primTag' = const PTagChar
     {-# INLINE primTag' #-}
 
 instance {-# OVERLAPPING #-} PrimTagged (Ptr a) where
