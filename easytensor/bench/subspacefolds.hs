@@ -5,11 +5,11 @@
 
 module Main (main) where
 
-import           Data.Maybe         (fromMaybe)
-import           Data.Time.Clock
+import Data.Maybe      (fromMaybe)
+import Data.Time.Clock
 
-import           Numeric.DataFrame
-import           Numeric.Dimensions
+import Numeric.DataFrame
+import Numeric.Dimensions
 
 
 type DList = [6,14,10,7,2,8,5]
