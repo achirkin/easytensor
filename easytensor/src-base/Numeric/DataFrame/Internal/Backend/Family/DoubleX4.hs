@@ -394,6 +394,9 @@ instance PrimBytes DoubleX4 where
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
 
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
+
     indexArray ba off
       | i <- off *# ELEM_N#
       = DoubleX4#

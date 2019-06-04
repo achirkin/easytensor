@@ -166,6 +166,9 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
       (# | (# off, _, _, _ #) #) -> off *# byteSize (undefined :: t)
     {-# INLINE byteOffset #-}
 
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
+
     indexArray ba off
       | steps <- cumulDims $ dims @ds
       , n <- cdTotalDim# steps

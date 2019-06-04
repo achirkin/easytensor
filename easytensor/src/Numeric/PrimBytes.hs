@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DefaultSignatures     #-}
@@ -16,17 +17,18 @@
 {-# LANGUAGE UndecidableInstances  #-}
 
 module Numeric.PrimBytes
-  ( bSizeOf, bAlignOf
-  , PrimBytes
-    ( getBytes, fromBytes, readBytes, writeBytes, byteSize, byteAlign, byteOffset
-    , indexArray, readArray, writeArray, readAddr, writeAddr)
+  ( bSizeOf, bAlignOf, bFieldOffsetOf
+  , PrimBytes (..)
   , PrimTag (..), primTag
   ) where
 
 #include "MachDeps.h"
 
+import           Data.Kind            (Type)
 import           Data.Proxy           (Proxy (..))
+import           Data.Type.Equality   ((:~:) (..))
 import qualified Data.Type.List       as L
+import           Data.Type.Lits
 import           GHC.Exts
 import           GHC.Generics
 import           GHC.Int
@@ -35,16 +37,33 @@ import           Numeric.Dimensions
 import qualified Numeric.Tuple.Lazy   as TL
 import qualified Numeric.Tuple.Strict as TS
 
+
 -- | A wrapper on `byteSize`
-bSizeOf :: PrimBytes a => a -> Int
-bSizeOf a = I# (byteSize a)
+bSizeOf :: (PrimBytes a, Num b) => a -> b
+bSizeOf a = fromIntegral (I# (byteSize a))
 
 -- | A wrapper on `byteAlign`
-bAlignOf :: PrimBytes a => a -> Int
-bAlignOf a = I# (byteAlign a)
+bAlignOf :: (PrimBytes a, Num b) => a -> b
+bAlignOf a = fromIntegral (I# (byteAlign a))
+
+-- | A wrapper on `byteFieldOffset`.
+bFieldOffsetOf :: forall (name :: Symbol) (a :: Type) (b :: Type)
+                . ( PrimBytes a, Elem name (PrimFields a)
+                  , KnownSymbol name, Num b)
+               => a -> b
+bFieldOffsetOf a = fromIntegral (I# (byteFieldOffset (proxy# @Symbol @name) a))
 
 -- | Facilities to convert to and from raw byte array.
 class PrimTagged a => PrimBytes a where
+    -- | List of field names.
+    --
+    --   Used to get field offsets using `byteFieldOffset` function.
+    --   Which makes a lot of sense when the data type has only one constructor
+    --   and uses record syntax to define fields.
+    --   A Generic-derived instance has this list non-empty only
+    --     if these two conditions are met.
+    type PrimFields a :: [Symbol]
+    type PrimFields a = GPrimFields (Rep a)
     -- | Store content of a data type in a primitive byte array
     --   Should be used together with @byteOffset@ function.
     getBytes :: a -> ByteArray#
@@ -85,6 +104,12 @@ class PrimTagged a => PrimBytes a where
     --   Implementation of this function may inspect the argument value;
     --   a caller must not provide @undefined@ in place of the argument.
     byteOffset :: a -> Int#
+    -- | Offset of a data record within the data type in bytes.
+    --
+    --   Implementation of this function must not inspect the argument value;
+    --   a caller may provide @undefined@ in place of the argument.
+    byteFieldOffset :: (Elem name (PrimFields a), KnownSymbol name)
+                    => Proxy# name -> a -> Int#
 
     -- | Index array given an element offset.
     --
@@ -156,6 +181,19 @@ class PrimTagged a => PrimBytes a where
     byteOffset a = gbyteOffset (from a)
     {-# INLINE byteOffset #-}
 
+    default byteFieldOffset :: ( Generic a, GPrimBytes (Rep a)
+                               , KnownSymbol name)
+                            => Proxy# name -> a -> Int#
+    byteFieldOffset p a = gbyteFieldOffset 0# p (from a)
+    {-# INLINE byteFieldOffset #-}
+
+
+type family GPrimFields (rep :: Type -> Type) :: [Symbol] where
+    GPrimFields (M1 D _ f) = GPrimFields f
+    GPrimFields (M1 C _ f) = GPrimFields f
+    GPrimFields (M1 S ('MetaSel ('Just n) _ _ _) _) = '[n]
+    GPrimFields (f :*: g) = Concat (GPrimFields f) (GPrimFields g)
+    GPrimFields _ = '[]
 
 -- | Deriving `PrimBytes` using generics
 class GPrimBytes f where
@@ -173,6 +211,9 @@ class GPrimBytes f where
     gbyteSize :: f p -> Int#
     gbyteAlign :: f p -> Int#
     gbyteOffset :: f p -> Int#
+    gbyteFieldOffset :: KnownSymbol name
+                     => Int# -- ^ Offset is passed down the representation
+                     -> Proxy# name -> f p -> Int#
     -- | Number of constructors in the tree of a sum type.
     --   This is equal to one for all other types.
     gconTags    :: f p -> Word#
@@ -202,6 +243,8 @@ instance GPrimBytes V1 where
     {-# INLINE gbyteAlign #-}
     gbyteOffset _ = 0#
     {-# INLINE gbyteOffset #-}
+    gbyteFieldOffset off _ _ = off
+    {-# INLINE gbyteFieldOffset #-}
     gconTags _ = 1##
     {-# INLINE gconTags #-}
 
@@ -229,6 +272,8 @@ instance GPrimBytes U1 where
     {-# INLINE gbyteAlign #-}
     gbyteOffset _ = 0#
     {-# INLINE gbyteOffset #-}
+    gbyteFieldOffset off _ _ = off
+    {-# INLINE gbyteFieldOffset #-}
     gconTags _ = 1##
     {-# INLINE gconTags #-}
 
@@ -251,7 +296,39 @@ instance PrimBytes a => GPrimBytes (K1 i a) where
     {-# INLINE gbyteAlign #-}
     gbyteOffset ~(K1 a) = byteOffset a
     {-# INLINE gbyteOffset #-}
+    gbyteFieldOffset off _ ~_ = off
+    {-# INLINE gbyteFieldOffset #-}
     gconTags _ = 1##
+    {-# INLINE gconTags #-}
+
+instance {-# OVERLAPPING #-}
+         (GPrimBytes f, KnownSymbol sn)
+      => GPrimBytes (M1 S ('MetaSel ('Just sn) a b c) f) where
+    ggetBytes ~(M1 a) = ggetBytes a
+    {-# NOINLINE ggetBytes #-}
+    gfromBytes t i ba = M1 (gfromBytes t i ba)
+    {-# INLINE gfromBytes #-}
+    greadBytes = unsafeCoerce# (greadBytes @f)
+    {-# INLINE greadBytes #-}
+    gwriteBytes t  mba i ~(M1 a) = gwriteBytes t  mba i a
+    {-# INLINE gwriteBytes #-}
+    greadAddr = unsafeCoerce# (greadAddr @f)
+    {-# INLINE greadAddr #-}
+    gwriteAddr t ~(M1 a) = gwriteAddr t a
+    {-# INLINE gwriteAddr #-}
+    gbyteSize ~(M1 a) = gbyteSize a
+    {-# INLINE gbyteSize #-}
+    gbyteAlign ~(M1 a) = gbyteAlign a
+    {-# INLINE gbyteAlign #-}
+    gbyteOffset ~(M1 a) = gbyteOffset a
+    {-# INLINE gbyteOffset #-}
+    gbyteFieldOffset off (_ :: Proxy# n) ~_
+      | Just Refl <- sameSymbol (undefined :: Proxy n) (undefined :: Proxy sn)
+        = off
+      | otherwise
+        = negateInt# 1#
+    {-# INLINE gbyteFieldOffset #-}
+    gconTags ~(M1 a) = gconTags a
     {-# INLINE gconTags #-}
 
 instance GPrimBytes f => GPrimBytes (M1 i c f) where
@@ -273,14 +350,16 @@ instance GPrimBytes f => GPrimBytes (M1 i c f) where
     {-# INLINE gbyteAlign #-}
     gbyteOffset ~(M1 a) = gbyteOffset a
     {-# INLINE gbyteOffset #-}
+    gbyteFieldOffset off p ~(M1 a) = gbyteFieldOffset off p a
+    {-# INLINE gbyteFieldOffset #-}
     gconTags ~(M1 a) = gconTags a
     {-# INLINE gconTags #-}
 
 
 instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :*: g) where
-    -- | This function return not pinned byte array, which is aligned to
+    -- | This function returns a not pinned byte array, which is aligned to
     --   @SIZEOF_HSWORD@.
-    --   Thus, it ignores alignment of the underlying data type if it is larger.
+    --   Thus, it ignores the alignment of the underlying data type if it is larger.
     --   However, alignment calculation still makes sense for data types
     --   that are smaller than @SIZEOF_HSWORD@ bytes: they are packed more densely.
     ggetBytes xy = case runRW#
@@ -324,6 +403,12 @@ instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :*: g) where
     {-# INLINE gbyteAlign #-}
     gbyteOffset _ = 0#
     {-# INLINE gbyteOffset #-}
+    gbyteFieldOffset off p ~(x :*: y)
+      = case (# gbyteFieldOffset off p x
+              , gbyteFieldOffset (off +# roundUpInt# (gbyteSize x) (gbyteAlign y)) p y
+              #) of
+          (# offX, offY #) -> if isTrue# (offX <# 0#) then offY else offX
+    {-# INLINE gbyteFieldOffset #-}
     gconTags _ = 1##
     {-# INLINE gconTags #-}
 
@@ -418,6 +503,8 @@ instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :+: g) where
     {-# INLINE gbyteAlign #-}
     gbyteOffset _ = 0#
     {-# INLINE gbyteOffset #-}
+    gbyteFieldOffset _ _ _ = negateInt# 1#
+    {-# INLINE gbyteFieldOffset #-}
     gconTags xy = gconTags (undef1 @f xy) `plusWord#` gconTags (undef1 @g xy)
     {-# INLINE gconTags #-}
 
@@ -472,6 +559,8 @@ instance GPrimBytes (URec Word) where
     {-# INLINE gbyteAlign #-}
     gbyteOffset _ = 0#
     {-# INLINE gbyteOffset #-}
+    gbyteFieldOffset _ _ _ = negateInt# 1#
+    {-# INLINE gbyteFieldOffset #-}
     gconTags _ = 0##
     {-# INLINE gconTags #-}
 
@@ -510,6 +599,8 @@ instance GPrimBytes (URec Int) where
     {-# INLINE gbyteAlign #-}
     gbyteOffset _ = 0#
     {-# INLINE gbyteOffset #-}
+    gbyteFieldOffset _ _ _ = negateInt# 1#
+    {-# INLINE gbyteFieldOffset #-}
     gconTags _ = 0##
     {-# INLINE gconTags #-}
 
@@ -549,6 +640,8 @@ instance GPrimBytes (URec Float) where
     {-# INLINE gbyteAlign #-}
     gbyteOffset _ = 0#
     {-# INLINE gbyteOffset #-}
+    gbyteFieldOffset _ _ _ = negateInt# 1#
+    {-# INLINE gbyteFieldOffset #-}
     gconTags _ = 0##
     {-# INLINE gconTags #-}
 
@@ -587,6 +680,8 @@ instance GPrimBytes (URec Double) where
     {-# INLINE gbyteAlign #-}
     gbyteOffset _ = 0#
     {-# INLINE gbyteOffset #-}
+    gbyteFieldOffset _ _ _ = negateInt# 1#
+    {-# INLINE gbyteFieldOffset #-}
     gconTags _ = 0##
     {-# INLINE gconTags #-}
 
@@ -627,6 +722,8 @@ instance GPrimBytes (URec Char) where
     {-# INLINE gbyteAlign #-}
     gbyteOffset _ = 0#
     {-# INLINE gbyteOffset #-}
+    gbyteFieldOffset _ _ _ = negateInt# 1#
+    {-# INLINE gbyteFieldOffset #-}
     gconTags _ = 0##
     {-# INLINE gconTags #-}
 
@@ -665,6 +762,8 @@ instance GPrimBytes (URec (Ptr ())) where
     {-# INLINE gbyteAlign #-}
     gbyteOffset _ = 0#
     {-# INLINE gbyteOffset #-}
+    gbyteFieldOffset _ _ _ = negateInt# 1#
+    {-# INLINE gbyteFieldOffset #-}
     gconTags _ = 0##
     {-# INLINE gconTags #-}
 
@@ -677,6 +776,7 @@ instance GPrimBytes (URec (Ptr ())) where
 
 
 instance PrimBytes Word where
+    type PrimFields Word = '[]
     getBytes (W# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_HSWORD# s0 of
          (# s1, marr #) -> case writeWordArray# marr 0# x s1 of
@@ -704,6 +804,8 @@ instance PrimBytes Word where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba i = W# (indexWordArray# ba i)
     {-# INLINE indexArray #-}
     readArray mba i s
@@ -714,6 +816,7 @@ instance PrimBytes Word where
 
 
 instance PrimBytes Int where
+    type PrimFields Int = '[]
     getBytes (I# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_HSINT# s0 of
          (# s1, marr #) -> case writeIntArray# marr 0# x s1 of
@@ -741,6 +844,8 @@ instance PrimBytes Int where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba i = I# (indexIntArray# ba i)
     {-# INLINE indexArray #-}
     readArray mba i s
@@ -750,6 +855,7 @@ instance PrimBytes Int where
     {-# INLINE writeArray #-}
 
 instance PrimBytes Float where
+    type PrimFields Float = '[]
     getBytes (F# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_HSFLOAT# s0 of
          (# s1, marr #) -> case writeFloatArray# marr 0# x s1 of
@@ -777,6 +883,8 @@ instance PrimBytes Float where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba i = F# (indexFloatArray# ba i)
     {-# INLINE indexArray #-}
     readArray mba i s
@@ -786,6 +894,7 @@ instance PrimBytes Float where
     {-# INLINE writeArray #-}
 
 instance PrimBytes Double where
+    type PrimFields Double = '[]
     getBytes (D# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_HSDOUBLE# s0 of
          (# s1, marr #) -> case writeDoubleArray# marr 0# x s1 of
@@ -813,6 +922,8 @@ instance PrimBytes Double where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba i = D# (indexDoubleArray# ba i)
     {-# INLINE indexArray #-}
     readArray mba i s
@@ -823,6 +934,7 @@ instance PrimBytes Double where
 
 
 instance PrimBytes (Ptr a) where
+    type PrimFields (Ptr a) = '[]
     getBytes (Ptr x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_HSPTR# s0 of
          (# s1, marr #) -> case writeAddrArray# marr 0# x s1 of
@@ -850,6 +962,8 @@ instance PrimBytes (Ptr a) where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba i = Ptr (indexAddrArray# ba i)
     {-# INLINE indexArray #-}
     readArray mba i s
@@ -860,6 +974,7 @@ instance PrimBytes (Ptr a) where
 
 
 instance PrimBytes Int8 where
+    type PrimFields Int8 = '[]
     getBytes (I8# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_INT8# s0 of
          (# s1, marr #) -> case writeInt8Array# marr 0# x s1 of
@@ -884,6 +999,8 @@ instance PrimBytes Int8 where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba i = I8# (indexInt8Array# ba i)
     {-# INLINE indexArray #-}
     readArray mba i s
@@ -893,6 +1010,7 @@ instance PrimBytes Int8 where
     {-# INLINE writeArray #-}
 
 instance PrimBytes Int16 where
+    type PrimFields Int16 = '[]
     getBytes (I16# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_INT16# s0 of
          (# s1, marr #) -> case writeInt16Array# marr 0# x s1 of
@@ -920,6 +1038,8 @@ instance PrimBytes Int16 where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba i = I16# (indexInt16Array# ba i)
     {-# INLINE indexArray #-}
     readArray mba i s
@@ -929,6 +1049,7 @@ instance PrimBytes Int16 where
     {-# INLINE writeArray #-}
 
 instance PrimBytes Int32 where
+    type PrimFields Int32 = '[]
     getBytes (I32# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_INT32# s0 of
          (# s1, marr #) -> case writeInt32Array# marr 0# x s1 of
@@ -956,6 +1077,8 @@ instance PrimBytes Int32 where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba i = I32# (indexInt32Array# ba i)
     {-# INLINE indexArray #-}
     readArray mba i s
@@ -965,6 +1088,7 @@ instance PrimBytes Int32 where
     {-# INLINE writeArray #-}
 
 instance PrimBytes Int64 where
+    type PrimFields Int64 = '[]
     getBytes (I64# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_INT64# s0 of
          (# s1, marr #) -> case writeInt64Array# marr 0# x s1 of
@@ -992,6 +1116,8 @@ instance PrimBytes Int64 where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba i = I64# (indexInt64Array# ba i)
     {-# INLINE indexArray #-}
     readArray mba i s
@@ -1001,6 +1127,7 @@ instance PrimBytes Int64 where
     {-# INLINE writeArray #-}
 
 instance PrimBytes Word8 where
+    type PrimFields Word8 = '[]
     getBytes (W8# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_WORD8# s0 of
          (# s1, marr #) -> case writeWord8Array# marr 0# x s1 of
@@ -1025,6 +1152,8 @@ instance PrimBytes Word8 where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba i = W8# (indexWord8Array# ba i)
     {-# INLINE indexArray #-}
     readArray mba i s
@@ -1034,6 +1163,7 @@ instance PrimBytes Word8 where
     {-# INLINE writeArray #-}
 
 instance PrimBytes Word16 where
+    type PrimFields Word16 = '[]
     getBytes (W16# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_WORD16# s0 of
          (# s1, marr #) -> case writeWord16Array# marr 0# x s1 of
@@ -1061,6 +1191,8 @@ instance PrimBytes Word16 where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba i = W16# (indexWord16Array# ba i)
     {-# INLINE indexArray #-}
     readArray mba i s
@@ -1070,6 +1202,7 @@ instance PrimBytes Word16 where
     {-# INLINE writeArray #-}
 
 instance PrimBytes Word32 where
+    type PrimFields Word32 = '[]
     getBytes (W32# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_WORD32# s0 of
          (# s1, marr #) -> case writeWord32Array# marr 0# x s1 of
@@ -1097,6 +1230,8 @@ instance PrimBytes Word32 where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba i = W32# (indexWord32Array# ba i)
     {-# INLINE indexArray #-}
     readArray mba i s
@@ -1106,6 +1241,7 @@ instance PrimBytes Word32 where
     {-# INLINE writeArray #-}
 
 instance PrimBytes Word64 where
+    type PrimFields Word64 = '[]
     getBytes (W64# x) = case runRW#
       ( \s0 -> case newByteArray# SIZEOF_WORD64# s0 of
          (# s1, marr #) -> case writeWord64Array# marr 0# x s1 of
@@ -1133,6 +1269,8 @@ instance PrimBytes Word64 where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba i = W64# (indexWord64Array# ba i)
     {-# INLINE indexArray #-}
     readArray mba i s
@@ -1142,6 +1280,7 @@ instance PrimBytes Word64 where
     {-# INLINE writeArray #-}
 
 instance PrimBytes (Idx x) where
+    type PrimFields (Idx x) = '[]
     getBytes :: Idx x -> ByteArray#
     getBytes = unsafeCoerce#
       (getBytes :: Word -> ByteArray#)
@@ -1178,6 +1317,8 @@ instance PrimBytes (Idx x) where
     byteOffset = unsafeCoerce#
       (byteOffset :: Word -> Int#)
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray :: ByteArray# -> Int# -> Idx x
     indexArray = unsafeCoerce#
       (indexArray :: ByteArray# -> Int# -> Word)
@@ -1192,6 +1333,7 @@ instance PrimBytes (Idx x) where
     {-# INLINE writeArray #-}
 
 instance RepresentableList xs => PrimBytes (Idxs xs) where
+    type PrimFields (Idxs xs) = '[]
     getBytes is = case runRW#
        ( \s0 -> case newByteArray# (byteSize is) s0 of
            (# s1, marr #) -> unsafeFreezeByteArray# marr
@@ -1242,6 +1384,8 @@ instance RepresentableList xs => PrimBytes (Idxs xs) where
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray ba off
       | n@(W# n#) <- dimVal (order' @_ @xs)
         = unsafeCoerce# (go (off *# word2Int# n#) n)
@@ -1269,6 +1413,7 @@ instance RepresentableList xs => PrimBytes (Idxs xs) where
 instance ( RepresentableList xs
          , L.All PrimBytes xs
          ) => PrimBytes (TL.Tuple xs) where
+    type PrimFields (TL.Tuple xs) = '[]
     getBytes   = unsafeCoerce# (getBytes @(TS.Tuple xs))
     {-# INLINE getBytes #-}
     fromBytes  = unsafeCoerce# (fromBytes @(TS.Tuple xs))
@@ -1287,6 +1432,8 @@ instance ( RepresentableList xs
     {-# INLINE byteAlign #-}
     byteOffset = unsafeCoerce# (byteOffset @(TS.Tuple xs))
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
     indexArray = unsafeCoerce# (indexArray @(TS.Tuple xs))
     {-# INLINE indexArray #-}
     readArray  = unsafeCoerce# (readArray @(TS.Tuple xs))
@@ -1297,6 +1444,7 @@ instance ( RepresentableList xs
 instance ( RepresentableList xs
          , L.All PrimBytes xs
          ) => PrimBytes (TS.Tuple xs) where
+    type PrimFields (TS.Tuple xs) = '[]
     getBytes tup = case runRW#
         ( \s0 -> case newByteArray# (byteSize tup) s0 of
            (# s1, marr #) -> unsafeFreezeByteArray# marr
@@ -1378,6 +1526,8 @@ instance ( RepresentableList xs
     {-# INLINE byteAlign #-}
     byteOffset _ = 0#
     {-# INLINE byteOffset #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
 
 
 undefP :: Proxy p -> p

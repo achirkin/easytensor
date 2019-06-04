@@ -12,7 +12,6 @@
 {-# LANGUAGE MagicHash                  #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE PatternSynonyms            #-}
-{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
@@ -46,7 +45,7 @@ module Numeric.DataFrame.Type
   , InferKnownBackend (..), inferPrimElem
     -- * Re-exports
   , Dim (..), Idx (), XNat (..), N, XN, Dims, Idxs, TypedList (..)
-  , PrimBytes (), bSizeOf, bAlignOf
+  , PrimBytes (), bSizeOf, bAlignOf, bFieldOffsetOf
   , PrimArray (), ixOff, fromFlatList
   ) where
 
@@ -73,9 +72,10 @@ import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
 import qualified Numeric.ProductOrd.Partial           as Partial
 import           Numeric.TypedList                    (typeables)
 
-import {-# SOURCE #-} Numeric.DataFrame.Internal.Backend (DFBackend,
-                                                          KnownBackend)
-import {-# SOURCE #-} qualified Numeric.DataFrame.Internal.Backend as Backend
+import {-# SOURCE #-} Numeric.DataFrame.Internal.Backend  (DFBackend,
+                                                           KnownBackend)
+import {-# SOURCE #-} qualified Numeric.DataFrame.Internal.Backend  as Backend
+import           Numeric.DataFrame.Internal.BackendI ()
 
 
 -- | Keep data in a primitive data frame
