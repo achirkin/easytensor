@@ -20,10 +20,13 @@ module Numeric.DataFrame.Arbitraries where
 
 import Test.QuickCheck
 
-import Data.Semigroup     hiding (All)
-import Numeric.DataFrame
-import Numeric.Dimensions
-import Numeric.Quaternion
+import           Data.Kind            (Type)
+import           Data.Semigroup       hiding (All)
+import           Numeric.DataFrame
+import           Numeric.Dimensions
+import           Numeric.Quaternion
+import qualified Numeric.Tuple.Lazy   as LT
+import qualified Numeric.Tuple.Strict as ST
 
 
 maxDims :: Word
@@ -207,6 +210,34 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
           Dict -> XFrame <$> arbitrary @(DataFrame ts ds)
     shrink (XFrame df) = XFrame <$> shrink df
 
+
+instance KnownDim n => Arbitrary (Idx n) where
+    arbitrary = elements [0..]
+
+instance Dimensions ns => Arbitrary (Idxs ns) where
+    arbitrary = go (Dims @ns)
+      where
+        go :: forall (bs :: [Nat]) . Dims bs -> Gen (Idxs bs)
+        go U         = pure U
+        go (D :* bs) = (:*) <$> arbitrary <*> go bs
+
+instance (RepresentableList xs, All Arbitrary xs) => Arbitrary (ST.Tuple xs) where
+    arbitrary = go (tList @Type @xs)
+      where
+        go :: forall (bs :: [Type])
+            . All Arbitrary bs
+           => TypeList bs -> Gen (ST.Tuple bs)
+        go U         = pure U
+        go (_ :* bs) = (ST.:$) <$> arbitrary <*> go bs
+
+instance (RepresentableList xs, All Arbitrary xs) => Arbitrary (LT.Tuple xs) where
+    arbitrary = go (tList @Type @xs)
+      where
+        go :: forall (bs :: [Type])
+            . All Arbitrary bs
+           => TypeList bs -> Gen (LT.Tuple bs)
+        go U         = pure U
+        go (_ :* bs) = (LT.:$) <$> arbitrary <*> go bs
 
 data AnyMatrix
 data NonSingular
