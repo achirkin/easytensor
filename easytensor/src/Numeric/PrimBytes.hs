@@ -27,6 +27,25 @@ module Numeric.PrimBytes
   ( -- * PrimBytes API
     PrimBytes (..)
   , bSizeOf, bAlignOf, bFieldOffsetOf
+    -- * Storable API
+    --
+    -- |
+    -- `Foreign.Storable.Storable` can be defined in terms of `PrimBytes`
+    -- by doing something like the following for your data type:
+    --
+    -- @
+    --   instance PrimBytes a => Storable a where
+    --       sizeOf = bSizeOf
+    --       alignment = bAlignOf
+    --       peekElemOff = bPeekElemOff
+    --       pokeElemOff = bPokeElemOff
+    --       peekByteOff = bPeekByteOff
+    --       pokeByteOff = bPokeByteOff
+    --       peek = bPeek
+    --       poke = bPoke
+    -- @
+  , bPeekElemOff, bPokeElemOff, bPeekByteOff, bPokeByteOff, bPeek, bPoke
+    -- * Specialization tools
   , PrimTag (..), primTag
   ) where
 
@@ -40,6 +59,8 @@ import           Data.Type.Lits
 import           GHC.Exts
 import           GHC.Generics
 import           GHC.Int
+import           GHC.IO               (IO (..))
+import           GHC.Ptr              (Ptr (..))
 import           GHC.Word
 import           Numeric.Dimensions
 import qualified Numeric.Tuple.Lazy   as TL
@@ -223,8 +244,6 @@ class PrimTagged a => PrimBytes a where
     byteFieldOffset p a = gbyteFieldOffset proxy# 0## 0# p (from a)
     {-# INLINE byteFieldOffset #-}
 
-
-
 -- | A wrapper on `byteSize`
 bSizeOf :: (PrimBytes a, Num b) => a -> b
 bSizeOf a = fromIntegral (I# (byteSize a))
@@ -240,7 +259,55 @@ bFieldOffsetOf :: forall (name :: Symbol) (a :: Type) (b :: Type)
                => a -> b
 bFieldOffsetOf a = fromIntegral (I# (byteFieldOffset (proxy# @Symbol @name) a))
 
+-- | Same as `Foreign.Storable.peekElemOff`: peek an element @a@ by the offset
+--   measured in @byteSize a@.
+--
+--   Note: the size of the element must be a multiple of its alignment for
+--         a correct operation of this function.
+bPeekElemOff :: forall (a :: Type) . PrimBytes a => Ptr a -> Int -> IO a
+bPeekElemOff (Ptr addr) (I# i)
+  = IO (readAddr (plusAddr# addr (i *# byteSize @a undefined)))
 
+-- | Same as `Foreign.Storable.pokeElemOff`: poke an element @a@ by the offset
+--   measured in @byteSize a@.
+--
+--   Note: the size of the element must be a multiple of its alignment for
+--         a correct operation of this function.
+bPokeElemOff :: forall (a :: Type) . PrimBytes a => Ptr a -> Int -> a -> IO ()
+bPokeElemOff (Ptr addr) (I# i) a
+  = IO (\s -> (# writeAddr a (plusAddr# addr (i *# byteSize a)) s, () #))
+
+-- | Same as `Foreign.Storable.peekByteOff`: peek an element @a@ by the offset
+--   measured in bytes.
+--
+--   Note: you'd better be sure the address is a multiple of
+--         the data alignment (`Foreign.Storable.peek`).
+bPeekByteOff :: forall (a :: Type) (b :: Type) . PrimBytes a => Ptr b -> Int -> IO a
+bPeekByteOff (Ptr addr) (I# i)
+  = IO (readAddr (plusAddr# addr i))
+
+-- | Same as `Foreign.Storable.pokeByteOff`: poke an element @a@ by the offset
+--   measured in bytes.
+--
+--   Note: you'd better be sure the address is a multiple of
+--         the data alignment (`Foreign.Storable.peek`).
+bPokeByteOff :: forall (a :: Type) (b :: Type) . PrimBytes a => Ptr b -> Int -> a -> IO ()
+bPokeByteOff (Ptr addr) (I# i) a
+  = IO (\s -> (# writeAddr a (plusAddr# addr i) s, () #))
+
+-- | Same as `Foreign.Storable.peek`: read a data from a pointer.
+--
+--   Note: you'd better be sure the address is a multiple of
+--         the data alignment (`Foreign.Storable.peek`).
+bPeek :: forall (a :: Type) . PrimBytes a => Ptr a -> IO a
+bPeek (Ptr addr) = IO (readAddr addr)
+
+-- | Same as `Foreign.Storable.poke`: write a data to a pointer.
+--
+--   Note: you'd better be sure the address is a multiple of
+--         the data alignment (`Foreign.Storable.peek`).
+bPoke :: forall (a :: Type) . PrimBytes a => Ptr a -> a -> IO ()
+bPoke (Ptr addr) a = IO (\s -> (# writeAddr a addr s, () #))
 
 -- | Derive a list of data selectors from the data representation @Rep a@.
 type family GPrimFields (rep :: Type -> Type) :: [Symbol] where
@@ -249,7 +316,6 @@ type family GPrimFields (rep :: Type -> Type) :: [Symbol] where
     GPrimFields (M1 S ('MetaSel ('Just n) _ _ _) _) = '[n]
     GPrimFields (f :*: g) = Concat (GPrimFields f) (GPrimFields g)
     GPrimFields _ = '[]
-
 
 {- | Deriving `PrimBytes` using generics
 

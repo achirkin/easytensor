@@ -21,6 +21,7 @@ module Numeric.PrimBytesTest (runTests) where
 import Data.Int
 import Data.Type.Lits
 import Data.Word
+import Foreign.Storable
 import GHC.Exts
 import GHC.Generics
 import Numeric.PrimBytes
@@ -57,6 +58,15 @@ instance (PrimBytes a, PrimBytes b, PrimBytes c)
       => PrimBytes (Vertex a b c)
 instance (PrimBytes a, PrimBytes b, PrimBytes c)
       => PrimBytes (ManyAlternatives a b c)
+instance (PrimBytes a, PrimBytes b, PrimBytes c) => Storable (Vertex a b c) where
+    sizeOf = bSizeOf
+    alignment = bAlignOf
+    peekElemOff = bPeekElemOff
+    pokeElemOff = bPokeElemOff
+    peekByteOff = bPeekByteOff
+    pokeByteOff = bPokeByteOff
+    peek = bPeek
+    poke = bPoke
 
 instance (Arbitrary a, Arbitrary b, Arbitrary c) => Arbitrary (Vertex a b c) where
     arbitrary = Vertex <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
