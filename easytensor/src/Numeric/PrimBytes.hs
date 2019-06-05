@@ -15,10 +15,18 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE UndecidableInstances  #-}
+{- |
+Module      :  Numeric.PrimBytes
+Copyright   :  (c) Artem Chirkin
+License     :  BSD3
 
+Facilities for converting Haskell data to and from raw bytes.
+
+ -}
 module Numeric.PrimBytes
-  ( bSizeOf, bAlignOf, bFieldOffsetOf
-  , PrimBytes (..)
+  ( -- * PrimBytes API
+    PrimBytes (..)
+  , bSizeOf, bAlignOf, bFieldOffsetOf
   , PrimTag (..), primTag
   ) where
 
@@ -37,64 +45,89 @@ import           Numeric.Dimensions
 import qualified Numeric.Tuple.Lazy   as TL
 import qualified Numeric.Tuple.Strict as TS
 
+{- |
 
--- | A wrapper on `byteSize`
-bSizeOf :: (PrimBytes a, Num b) => a -> b
-bSizeOf a = fromIntegral (I# (byteSize a))
+Defines how to read and write your data to and from Haskell unboxed byte arrays
+and plain pointers.
 
--- | A wrapper on `byteAlign`
-bAlignOf :: (PrimBytes a, Num b) => a -> b
-bAlignOf a = fromIntegral (I# (byteAlign a))
+Similarly to `Foreign.Storable.Storable`, this class provides functions to get
+the size and alignment of a data via phantom arguments.
+Thus, the size and alignment of the data must not depend on the data content
+(they depend only on the type of the data).
+In particular, this means that dynamically sized structures like Haskell lists
+or maps are not allowed.
 
--- | A wrapper on `byteFieldOffset`.
-bFieldOffsetOf :: forall (name :: Symbol) (a :: Type) (b :: Type)
-                . ( PrimBytes a, Elem name (PrimFields a)
-                  , KnownSymbol name, Num b)
-               => a -> b
-bFieldOffsetOf a = fromIntegral (I# (byteFieldOffset (proxy# @Symbol @name) a))
+This module provides default implementations for all methods of this class via
+`GHC.Generics.Generic`. Hence, to make your data an instance of @PrimBytes@,
+it is sufficient to write the instance head:
 
--- | Facilities to convert to and from raw byte array.
+@
+data MyData a b = ...
+  deriving Generic
+
+instance (PrimBytes a, PrimBytes b) => PrimBytes (MyData a b)
+@
+
+.. or use the @DeriveAnyClass@ extension to make it even shorter:
+
+@
+data MyData a b = ...
+  deriving (Generic, PrimBytes)
+@
+
+The derived instance tries to pack the data as dense as possible, but sometimes
+it is better to write the instance by hand.
+If a derived type has more than one constructor, the derived instance puts
+a @Word32@ tag at the beginning of the byte representation.
+All fields of a constructor are packed in a C-like fashion next to each other,
+while respecting their alignments.
+
+ -}
 class PrimTagged a => PrimBytes a where
-    -- | List of field names.
-    --
-    --   Used to get field offsets using `byteFieldOffset` function.
-    --   Which makes a lot of sense when the data type has only one constructor
-    --   and uses record syntax to define fields.
-    --   A Generic-derived instance has this list non-empty only
-    --     if these two conditions are met.
+    {- | List of field names.
+
+       It is used to get field offsets using `byteFieldOffset` function.
+
+       A Generic-derived instance has this list non-empty only if two
+       obvious conditions are met:
+
+       1. The data has only one constructor.
+       2. The data uses record syntax to define its fields.
+     -}
     type PrimFields a :: [Symbol]
     type PrimFields a = GPrimFields (Rep a)
     -- | Store content of a data type in a primitive byte array
-    --   Should be used together with @byteOffset@ function.
-    getBytes :: a -> ByteArray#
-    --   This function returns a not pinned byte array, which is aligned to
-    --   @SIZEOF_HSWORD@.
+    --   (should be used together with @byteOffset@ function).
+    --
+    --   Note, the default implementation of this function returns a not pinned
+    --   array, which is aligned to @SIZEOF_HSWORD@.
     --   Thus, it ignores the alignment of the underlying data type if it is larger.
     --   However, alignment calculation still makes sense for data types
     --   that are smaller than @SIZEOF_HSWORD@ bytes: they are packed more densely.
+    getBytes :: a -> ByteArray#
     getBytes a = case runRW#
        ( \s0 -> case newByteArray# (byteSize a) s0 of
            (# s1, marr #) -> unsafeFreezeByteArray# marr (writeBytes marr 0# a s1)
        ) of (# _, r #) -> r
     {-# NOINLINE getBytes #-}
-    -- | Load content of a data type from a primitive byte array
-    fromBytes :: Int# -- ^ offset in bytes
-              -> ByteArray#
+    -- | Load content of a data type from a primitive byte array given an offset in bytes.
+    fromBytes :: Int# -- ^ Offset in bytes
+              -> ByteArray# -- ^ Source array
               -> a
-    -- | Read data from a mutable byte array given an offset in bytes
-    readBytes :: MutableByteArray# s -- ^ source array
-              -> Int# -- ^ byte offset of the source array
+    -- | Read data from a mutable byte array given an offset in bytes.
+    readBytes :: MutableByteArray# s -- ^ Source array
+              -> Int# -- ^ Byte offset in the source array
               -> State# s -> (# State# s, a #)
-    -- | Write data into a mutable byte array at a given position (offset in bytes)
-    writeBytes :: MutableByteArray# s -- ^ destination array
-               -> Int# -- ^ byte offset of the destination array
-               -> a -- ^ data to write into array
+    -- | Write data into a mutable byte array at a given position (offset in bytes).
+    writeBytes :: MutableByteArray# s -- ^ Destination array
+               -> Int# -- ^ Byte offset in the destination array
+               -> a -- ^ Data to write into the array
                -> State# s -> State# s
-    -- | Read data from a specified address
+    -- | Read data from a specified address.
     readAddr :: Addr# -> State# s -> (# State# s, a #)
-    -- | Write data to a specified address
+    -- | Write data to a specified address.
     writeAddr :: a -> Addr# -> State# s -> State# s
-    -- | Size of a data type in bytes
+    -- | Size of a data type in bytes.
     --
     --   Implementation of this function must not inspect the argument value;
     --   a caller may provide @undefined@ in place of the argument.
@@ -120,28 +153,30 @@ class PrimTagged a => PrimBytes a where
     --
     --   Implementation of this function must not inspect the argument value;
     --   a caller may provide @undefined@ in place of the argument.
+    --
+    --   The default (generic) implementation of this fucntion looks for the
+    --   leftmost occurrence of a given field name (in case of multiple constructors).
+    --   If a field with the given name is not found, it returns @-1@,
+    --   but this is not possible thanks to @Elem name (PrimFields a)@ constraint.
     byteFieldOffset :: (Elem name (PrimFields a), KnownSymbol name)
                     => Proxy# name -> a -> Int#
 
-    -- | Index array given an element offset.
-    --
-    --   > indexArray arr i = fromBytes ( i *# byteSize t) arr
+    -- | Index array given an element offset
+    --   (which is the @byteSize t@ rounded up to multiple of @byteAlign t@).
     indexArray :: ByteArray# -> Int# -> a
-    indexArray ba i = fromBytes (i *# byteSize @a undefined) ba
+    indexArray ba i = fromBytes (i *# roundedUpBS# @a undefined) ba
     {-# INLINE indexArray #-}
 
-    -- | Read a mutable array given an element offset.
-    --
-    --   > readArray arr i = readBytes arr ( i *# byteSize t)
+    -- | Read a mutable array given an element offset
+    --   (which is the @byteSize t@ rounded up to multiple of @byteAlign t@).
     readArray  :: MutableByteArray# s -> Int# -> State# s -> (# State# s, a #)
-    readArray ba i = readBytes ba (i *# byteSize @a undefined)
+    readArray ba i = readBytes ba (i *# roundedUpBS# @a undefined)
     {-# INLINE readArray #-}
 
-    -- | Write a mutable array given an element offset.
-    --
-    --   > writeArray arr i = writeBytes arr ( i *# byteSize t)
+    -- | Write a mutable array given an element offset
+    --   (which is the @byteSize t@ rounded up to multiple of @byteAlign t@).
     writeArray :: MutableByteArray# s -> Int# -> a -> State# s -> State# s
-    writeArray ba i = writeBytes ba (i *# byteSize @a undefined)
+    writeArray ba i = writeBytes ba (i *# roundedUpBS# @a undefined)
     {-# INLINE writeArray #-}
 
 
@@ -189,6 +224,25 @@ class PrimTagged a => PrimBytes a where
     {-# INLINE byteFieldOffset #-}
 
 
+
+-- | A wrapper on `byteSize`
+bSizeOf :: (PrimBytes a, Num b) => a -> b
+bSizeOf a = fromIntegral (I# (byteSize a))
+
+-- | A wrapper on `byteAlign`
+bAlignOf :: (PrimBytes a, Num b) => a -> b
+bAlignOf a = fromIntegral (I# (byteAlign a))
+
+-- | A wrapper on `byteFieldOffset`.
+bFieldOffsetOf :: forall (name :: Symbol) (a :: Type) (b :: Type)
+                . ( PrimBytes a, Elem name (PrimFields a)
+                  , KnownSymbol name, Num b)
+               => a -> b
+bFieldOffsetOf a = fromIntegral (I# (byteFieldOffset (proxy# @Symbol @name) a))
+
+
+
+-- | Derive a list of data selectors from the data representation @Rep a@.
 type family GPrimFields (rep :: Type -> Type) :: [Symbol] where
     GPrimFields (M1 D _ f) = GPrimFields f
     GPrimFields (M1 C _ f) = GPrimFields f
@@ -197,7 +251,42 @@ type family GPrimFields (rep :: Type -> Type) :: [Symbol] where
     GPrimFields _ = '[]
 
 
--- | Deriving `PrimBytes` using generics
+{- | Deriving `PrimBytes` using generics
+
+This implementation relies on two assumptions, which are probably true
+in the GHC implementation of derived generics and __is not checked here__:
+
+1. @Rep a@ is a sum-of-products.
+     This means the struct offset is always @4@ for the parts of the sum type,
+     and a constructor tag is always at position @0@ in the struct.
+
+2. The @Rep a@ tree is balanced.
+     Thus, I can implement a simple tag encoding:
+     each bit in a tag corresponds to a nesting level.
+     That is, maximum possible nesting level is 31 and minimum is 0.
+
+Therefore, the general logic for the sum type is summarized as follows:
+   reserve 4 bytes for the tag and try to pack alternatives as good as possible.
+
+If a data type has only one constructor (@Rep a@ contains no @:+:@),
+then the tag is not added.
+
+
+Every function in @GPrimBytes@ has the first Proxy# argument;
+it is simply used to enforce type parameter and allows easy @coerce@ implementations
+for @Meta@ wrapper types.
+
+All functions except @gbyteAlign@ have the second and third arguments:
+tag mask (@Word#@) and current struct size (@Int#@);
+both start with zero at the top of the @Rep a@ hierarchy.
+
+  The tag mask is used by the sum constructors to find out where to write a bit value
+  to encode left or right branch.
+
+  The current struct size is the size (in bytes) of all elements to the left of
+  the current one (before alignment).
+
+ -}
 class GPrimBytes f where
     gfromBytes :: Proxy# p
                -> Word# -- ^ Constructor tag position (mask)
@@ -336,7 +425,6 @@ instance GPrimBytes f => GPrimBytes (M1 i c f) where
     gbyteFieldOffset p = coerce (gbyteFieldOffset @f p)
     {-# INLINE gbyteFieldOffset #-}
 
-
 instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :*: g) where
     gfromBytes p t ps i ba = x :*: y
       where
@@ -374,22 +462,6 @@ instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :*: g) where
       = if isTrue# (offX <# 0#) then offY else offX
     {-# INLINE gbyteFieldOffset #-}
 
-
-{- | Reserve 4 bytes for the tag and try to pack alternatives as good as possible.
-
-   This implementation relies on two assumptions, which are probably true
-   in GHC implementation of derived generics and not checked here:
-
-   1. @Rep a@ is a sum-of-products.
-         This means the struct offset is always @4@ for the parts of the sum type,
-         and a constructor tag is always at position @0@ in the struct.
-
-   2. The @Rep a@ tree is balanced.
-         Thus, I can implement a simple tag encoding:
-         each bit in a tag corresponds to a nesting level.
-         That is, maximum possible nesting level is 31 and minimum is 0.
-
- -}
 instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :+: g) where
     gfromBytes p t _ off ba
       | c <- indexWord32Array# ba (uncheckedIShiftRL# off 2#)
@@ -468,8 +540,8 @@ instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :+: g) where
         (gbyteSize p (upTag t) ps (undef1 @g xy))
     {-# INLINE gbyteSize #-}
     gbyteAlign p xy = 4# `commonAlign#`
-      ( maxInt# (gbyteAlign p (undef1 @f xy))
-                (gbyteAlign p (undef1 @g xy)) )
+        maxInt# (gbyteAlign p (undef1 @f xy))
+                (gbyteAlign p (undef1 @g xy))
     {-# INLINE gbyteAlign #-}
     -- check both branches if any of them contain the field.
     -- If there are more than one branches containing the field, the left one
@@ -503,6 +575,9 @@ roundUpInt# a b = case remInt# a b of
   0# -> a
   q  -> a +# b -# q
 {-# INLINE roundUpInt# #-}
+
+roundedUpBS# :: PrimBytes a => a -> Int#
+roundedUpBS# a = byteSize a `roundUpInt#` byteAlign a
 
 undef1 :: forall p q a . q a -> p a
 undef1 = const undefined
@@ -1518,6 +1593,12 @@ instance ( PrimBytes a, PrimBytes b, PrimBytes c, PrimBytes d, PrimBytes e
       => PrimBytes (a, b, c, d, e, f, g)
 
 
+-- | Find out which basic GHC type it is at runtime.
+--   It is used for @DataFrame@ backend specialization:
+--   by matching a @PrimTag a@ against its constructors, you can figure out
+--   a specific implementation of @Backend a ds@
+--     (e.g. whether this is a specialized float array, or a generic polymorphic array).
+--   For non-basic types it defaults to `PTagOther`.
 data PrimTag a where
     PTagFloat  :: PrimTag Float
     PTagDouble :: PrimTag Double
@@ -1537,12 +1618,15 @@ data PrimTag a where
 
 deriving instance Show (PrimTag a)
 
+
+-- | Find out which basic GHC type it is at runtime.
 class PrimTagged a where
+    -- | This function allows to find out a type by comparing its tag
     primTag' :: a -> PrimTag a
 
 -- | This function allows to find out a type by comparing its tag.
---   This is needed for array overloading, to infer array instances.
---   For non-basic types it defaults to `PTagOther`
+--   This is needed for backend specialization, to infer array instances.
+--   For non-basic types it defaults to `PTagOther`.
 primTag :: PrimBytes a => a -> PrimTag a
 primTag = primTag'
 {-# INLINE primTag #-}
