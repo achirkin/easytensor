@@ -19,7 +19,9 @@
 module Numeric.PrimBytesTest (runTests) where
 
 import Data.Int
+import Data.Type.Lits
 import Data.Word
+import GHC.Exts
 import GHC.Generics
 import Numeric.PrimBytes
 import Test.QuickCheck
@@ -70,9 +72,30 @@ instance (Arbitrary a, Arbitrary b, Arbitrary c) => Arbitrary (ManyAlternatives 
       _ -> SomeWeirdChoice <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
                                          <*> arbitrary <*> arbitrary <*> arbitrary
 
-
+-- The most basic property
 fromToBytesId :: (PrimBytes a, Eq a, Show a) => a -> Property
 fromToBytesId v = v === fromBytes (byteOffset v) (getBytes v)
+
+-- Check whether @byteFieldOffset@ calculates correct field offsets
+vertexFields :: ( PrimBytes a, Eq a, Show a
+                , PrimBytes b, Eq b, Show b
+                , PrimBytes c, Eq c, Show c)
+             => Vertex a b c -> Property
+vertexFields v
+  | ba <- getBytes v
+  , off <- byteOffset v
+    = conjoin
+    [ counterexample "pos" $ pos v === fromBytes
+        (off +# byteFieldOffset (proxy# @Symbol @"pos") v) ba
+    , counterexample "norm" $ norm v === fromBytes
+       (off +# byteFieldOffset (proxy# @Symbol @"norm") v) ba
+    , counterexample "tex" $ tex v === fromBytes
+       (off +# byteFieldOffset (proxy# @Symbol @"tex") v) ba
+    , counterexample "extraFloats" $ extraFloats v === fromBytes
+       (off +# byteFieldOffset (proxy# @Symbol @"extraFloats") v) ba
+    ]
+
+
 
 prop_fromToBytesIdMaybe :: Maybe Int -> Property
 prop_fromToBytesIdMaybe = fromToBytesId
@@ -90,7 +113,14 @@ prop_fromToBytesIdMA1 :: MA1 -> Property
 prop_fromToBytesIdMA1 = fromToBytesId
 prop_fromToBytesIdMA2 :: MA2 -> Property
 prop_fromToBytesIdMA2 = fromToBytesId
-
+prop_vertexFieldsVer1 :: Ver1 -> Property
+prop_vertexFieldsVer1 = vertexFields
+prop_vertexFieldsVer2 :: Ver2 -> Property
+prop_vertexFieldsVer2 = vertexFields
+prop_vertexFieldsVer3 :: Ver3 -> Property
+prop_vertexFieldsVer3 = vertexFields
+prop_vertexFieldsVer4 :: Ver4 -> Property
+prop_vertexFieldsVer4 = vertexFields
 
 return []
 runTests :: Int -> IO Bool
