@@ -8,6 +8,7 @@
 {-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -149,6 +150,8 @@ class PrimTagged a => PrimBytes a where
     -- | Write data to a specified address.
     writeAddr :: a -> Addr# -> State# s -> State# s
     -- | Size of a data type in bytes.
+    --   It should be a multiple of @byteAlign@ for indexing functions to operate
+    --   correctly.
     --
     --   Implementation of this function must not inspect the argument value;
     --   a caller may provide @undefined@ in place of the argument.
@@ -183,21 +186,21 @@ class PrimTagged a => PrimBytes a where
                     => Proxy# name -> a -> Int#
 
     -- | Index array given an element offset
-    --   (which is the @byteSize t@ rounded up to multiple of @byteAlign t@).
+    --   (which is @byteSize a@ and should be a multiple of @byteAlign a@).
     indexArray :: ByteArray# -> Int# -> a
-    indexArray ba i = fromBytes (i *# roundedUpBS# @a undefined) ba
+    indexArray ba i = fromBytes (i *# byteSize @a undefined) ba
     {-# INLINE indexArray #-}
 
     -- | Read a mutable array given an element offset
-    --   (which is the @byteSize t@ rounded up to multiple of @byteAlign t@).
+    --   (which is @byteSize a@ and should be a multiple of @byteAlign a@).
     readArray  :: MutableByteArray# s -> Int# -> State# s -> (# State# s, a #)
-    readArray ba i = readBytes ba (i *# roundedUpBS# @a undefined)
+    readArray ba i = readBytes ba (i *# byteSize @a undefined)
     {-# INLINE readArray #-}
 
     -- | Write a mutable array given an element offset
-    --   (which is the @byteSize t@ rounded up to multiple of @byteAlign t@).
+    --   (which is @byteSize a@ and should be a multiple of @byteAlign a@).
     writeArray :: MutableByteArray# s -> Int# -> a -> State# s -> State# s
-    writeArray ba i = writeBytes ba (i *# roundedUpBS# @a undefined)
+    writeArray ba i = writeBytes ba (i *# byteSize @a undefined)
     {-# INLINE writeArray #-}
 
 
@@ -230,7 +233,7 @@ class PrimTagged a => PrimBytes a where
 
     default byteSize :: (Generic a, GPrimBytes (Rep a))
                      => a -> Int#
-    byteSize a = gbyteSize proxy# 0## 0# (from a)
+    byteSize a = gbyteSize proxy# 0## 0# (from a) `roundUpInt#` byteAlign a
     {-# INLINE byteSize #-}
 
     default byteAlign :: (Generic a, GPrimBytes (Rep a))
@@ -559,7 +562,7 @@ instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :+: g) where
       | s1 <- gwriteBytes p (upTag t) 4# mba off x s0 = s1
     -- otherwise, carefully write a single corresponding bit
     gwriteBytes p t _ mba off (R1 y) s0
-      | (# s1, c #) <- readWord32Array# mba off s0
+      | (# s1, c #) <- readWord32Array# mba (uncheckedIShiftRL# off 2#) s0
       , s2 <- writeWord32Array# mba (uncheckedIShiftRL# off 2#) (or# c t1) s1
       , s3 <- gwriteBytes p t1 4# mba off y s2 = s3
       where
@@ -642,9 +645,6 @@ roundUpInt# a b = case remInt# a b of
   q  -> a +# b -# q
 {-# INLINE roundUpInt# #-}
 
-roundedUpBS# :: PrimBytes a => a -> Int#
-roundedUpBS# a = byteSize a `roundUpInt#` byteAlign a
-
 undef1 :: forall p q a . q a -> p a
 undef1 = const undefined
 {-# INLINE undef1 #-}
@@ -669,10 +669,10 @@ instance GPrimBytes (URec Word) where
       = writeWordArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSWORD#) OFFSHIFT_W#) (uWord# x)
     {-# INLINE gwriteBytes #-}
     greadAddr _ _ ps a s
-      = case readWordOffAddr# a (roundUpInt# ps ALIGNMENT_HSWORD#) s of (# s', x #) -> (# s', UWord x #)
+      = case readWordOffAddr# a (uncheckedIShiftRL# (roundUpInt# ps ALIGNMENT_HSWORD#) OFFSHIFT_W#) s of (# s', x #) -> (# s', UWord x #)
     {-# INLINE greadAddr #-}
     gwriteAddr _ _ ps x a
-      = writeWordOffAddr# a (roundUpInt# ps ALIGNMENT_HSWORD#) (uWord# x)
+      = writeWordOffAddr# a (uncheckedIShiftRL# (roundUpInt# ps ALIGNMENT_HSWORD#) OFFSHIFT_W#) (uWord# x)
     {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = roundUpInt# ps ALIGNMENT_HSWORD# +# SIZEOF_HSWORD#
     {-# INLINE gbyteSize #-}
@@ -699,10 +699,10 @@ instance GPrimBytes (URec Int) where
       = writeIntArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSINT#) OFFSHIFT_I#) (uInt# x)
     {-# INLINE gwriteBytes #-}
     greadAddr _ _ ps a s
-      = case readIntOffAddr# a (roundUpInt# ps ALIGNMENT_HSINT#) s of (# s', x #) -> (# s', UInt x #)
+      = case readIntOffAddr# a (uncheckedIShiftRL# (roundUpInt# ps ALIGNMENT_HSINT#) OFFSHIFT_I#) s of (# s', x #) -> (# s', UInt x #)
     {-# INLINE greadAddr #-}
     gwriteAddr _ _ ps x a
-      = writeIntOffAddr# a (roundUpInt# ps ALIGNMENT_HSINT#) (uInt# x)
+      = writeIntOffAddr# a (uncheckedIShiftRL# (roundUpInt# ps ALIGNMENT_HSINT#) OFFSHIFT_I#) (uInt# x)
     {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = roundUpInt# ps ALIGNMENT_HSINT# +# SIZEOF_HSINT#
     {-# INLINE gbyteSize #-}
@@ -729,10 +729,10 @@ instance GPrimBytes (URec Float) where
       = writeFloatArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSFLOAT#) OFFSHIFT_F#) (uFloat# x)
     {-# INLINE gwriteBytes #-}
     greadAddr _ _ ps a s
-      = case readFloatOffAddr# a (roundUpInt# ps ALIGNMENT_HSFLOAT#) s of (# s', x #) -> (# s', UFloat x #)
+      = case readFloatOffAddr# a (uncheckedIShiftRL# (roundUpInt# ps ALIGNMENT_HSFLOAT#) OFFSHIFT_F#) s of (# s', x #) -> (# s', UFloat x #)
     {-# INLINE greadAddr #-}
     gwriteAddr _ _ ps x a
-      = writeFloatOffAddr# a (roundUpInt# ps ALIGNMENT_HSFLOAT#) (uFloat# x)
+      = writeFloatOffAddr# a (uncheckedIShiftRL# (roundUpInt# ps ALIGNMENT_HSFLOAT#) OFFSHIFT_F#) (uFloat# x)
     {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = roundUpInt# ps ALIGNMENT_HSFLOAT# +# SIZEOF_HSFLOAT#
     {-# INLINE gbyteSize #-}
@@ -759,10 +759,10 @@ instance GPrimBytes (URec Double) where
       = writeDoubleArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSDOUBLE#) OFFSHIFT_D#) (uDouble# x)
     {-# INLINE gwriteBytes #-}
     greadAddr _ _ ps a s
-      = case readDoubleOffAddr# a (roundUpInt# ps ALIGNMENT_HSDOUBLE#) s of (# s', x #) -> (# s', UDouble x #)
+      = case readDoubleOffAddr# a (uncheckedIShiftRL# (roundUpInt# ps ALIGNMENT_HSDOUBLE#) OFFSHIFT_D#) s of (# s', x #) -> (# s', UDouble x #)
     {-# INLINE greadAddr #-}
     gwriteAddr _ _ ps x a
-      = writeDoubleOffAddr# a (roundUpInt# ps ALIGNMENT_HSDOUBLE#) (uDouble# x)
+      = writeDoubleOffAddr# a (uncheckedIShiftRL# (roundUpInt# ps ALIGNMENT_HSDOUBLE#) OFFSHIFT_D#) (uDouble# x)
     {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = roundUpInt# ps ALIGNMENT_HSDOUBLE# +# SIZEOF_HSDOUBLE#
     {-# INLINE gbyteSize #-}
@@ -792,10 +792,10 @@ instance GPrimBytes (URec Char) where
       = writeWideCharArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSCHAR#) OFFSHIFT_C#) (uChar# x)
     {-# INLINE gwriteBytes #-}
     greadAddr _ _ ps a s
-      = case readCharOffAddr# a (roundUpInt# ps ALIGNMENT_HSCHAR#) s of (# s', x #) -> (# s', UChar x #)
+      = case readWideCharOffAddr# a (uncheckedIShiftRL# (roundUpInt# ps ALIGNMENT_HSCHAR#) OFFSHIFT_C#) s of (# s', x #) -> (# s', UChar x #)
     {-# INLINE greadAddr #-}
     gwriteAddr _ _ ps x a
-      = writeWideCharOffAddr# a (roundUpInt# ps ALIGNMENT_HSCHAR#) (uChar# x)
+      = writeWideCharOffAddr# a (uncheckedIShiftRL# (roundUpInt# ps ALIGNMENT_HSCHAR#) OFFSHIFT_C#) (uChar# x)
     {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = roundUpInt# ps ALIGNMENT_HSCHAR# +# SIZEOF_HSCHAR#
     {-# INLINE gbyteSize #-}
@@ -822,10 +822,10 @@ instance GPrimBytes (URec (Ptr ())) where
       = writeAddrArray# mba (uncheckedIShiftRL# (off +# roundUpInt# ps ALIGNMENT_HSPTR#) OFFSHIFT_P#) (uAddr# x)
     {-# INLINE gwriteBytes #-}
     greadAddr _ _ ps a s
-      = case readAddrOffAddr# a (roundUpInt# ps ALIGNMENT_HSPTR#) s of (# s', x #) -> (# s', UAddr x #)
+      = case readAddrOffAddr# a (uncheckedIShiftRL# (roundUpInt# ps ALIGNMENT_HSPTR#) OFFSHIFT_P#) s of (# s', x #) -> (# s', UAddr x #)
     {-# INLINE greadAddr #-}
     gwriteAddr _ _ ps x a
-      = writeAddrOffAddr# a (roundUpInt# ps ALIGNMENT_HSPTR#) (uAddr# x)
+      = writeAddrOffAddr# a (uncheckedIShiftRL# (roundUpInt# ps ALIGNMENT_HSPTR#) OFFSHIFT_P#) (uAddr# x)
     {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = roundUpInt# ps ALIGNMENT_HSPTR# +# SIZEOF_HSPTR#
     {-# INLINE gbyteSize #-}
@@ -1385,7 +1385,7 @@ instance PrimBytes Char where
     writeArray mba i (C# x) = writeWideCharArray# mba i x
     {-# INLINE writeArray #-}
 
-instance PrimBytes (Idx x) where
+instance PrimBytes (Idx (x :: k)) where
     type PrimFields (Idx x) = '[]
     getBytes :: Idx x -> ByteArray#
     getBytes = unsafeCoerce#
@@ -1438,7 +1438,7 @@ instance PrimBytes (Idx x) where
       (writeArray :: MutableByteArray# s -> Int# -> Word -> State# s -> State# s)
     {-# INLINE writeArray #-}
 
-instance RepresentableList xs => PrimBytes (Idxs xs) where
+instance RepresentableList xs => PrimBytes (Idxs (xs :: [k])) where
     type PrimFields (Idxs xs) = '[]
     getBytes is = case runRW#
        ( \s0 -> case newByteArray# (byteSize is) s0 of
@@ -1452,13 +1452,14 @@ instance RepresentableList xs => PrimBytes (Idxs xs) where
         go _ []       = []
         go i (_ : ls) = W# (indexWordArray# ba i) : go (i +# 1#) ls
     {-# INLINE fromBytes #-}
-    readBytes mba off s = unsafeCoerce#
-        (go (uncheckedIShiftRL# off OFFSHIFT_W#) (unsafeCoerce# (tList @_ @xs)) s)
+    readBytes mba off = unsafeCoerce#
+        (go (uncheckedIShiftRL# off OFFSHIFT_W#) (unsafeCoerce# (tList @_ @xs)))
       where
         go _ [] s0 = (# s0, [] #)
-        go i (_ : ls) s0 = case readWordArray# mba off s0 of
-          (# s1, w #) -> case go (i +# 1#) ls s1 of
-             (# s2, xs #) -> (# s2, W# w : xs #)
+        go i (_ : ls) s0
+          | (# s1, w  #) <- readWordArray# mba i s0
+          , (# s2, ws #) <- go (i +# 1#) ls s1
+            = (# s2, W# w : ws #)
     {-# INLINE readBytes #-}
     writeBytes mba off is
         = go (uncheckedIShiftRL# off OFFSHIFT_W#) (listIdxs is)
@@ -1504,7 +1505,7 @@ instance RepresentableList xs => PrimBytes (Idxs xs) where
         = unsafeCoerce# (go (off *# word2Int# n#) n s)
       where
         go _ 0 s0 = (# s0, [] #)
-        go i n s0 = case readWordArray# mba off s0 of
+        go i n s0 = case readWordArray# mba i s0 of
           (# s1, w #) -> case go (i +# 1#) (n-1) s1 of
              (# s2, xs #) -> (# s2, W# w : xs #)
     {-# INLINE readArray #-}
@@ -1641,6 +1642,7 @@ undefP = const undefined
 {-# INLINE undefP #-}
 
 
+instance PrimBytes ()
 instance PrimBytes a => PrimBytes (Maybe a)
 instance ( PrimBytes a, PrimBytes b ) => PrimBytes (Either a b)
 instance ( PrimBytes a, PrimBytes b )
