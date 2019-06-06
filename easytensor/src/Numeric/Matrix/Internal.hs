@@ -38,7 +38,6 @@ import Data.List                            (delete)
 import GHC.Base
 import Numeric.DataFrame.Contraction        ((%*))
 import Numeric.DataFrame.Internal.PrimArray
-import Numeric.DataFrame.Shape
 import Numeric.DataFrame.ST
 import Numeric.DataFrame.SubSpace
 import Numeric.DataFrame.Type
@@ -191,47 +190,27 @@ type Mat34d = Matrix Double 3 4
 type Mat44d = Matrix Double 4 4
 
 
-
-
 -- | Compose a 2x2D matrix
-mat22 :: ( PrimBytes (Vector (t :: Type) 2)
-         , PrimBytes (Matrix t 2 2)
-         )
+mat22 :: PrimBytes (t :: Type)
       => Vector t 2 -> Vector t 2 -> Matrix t 2 2
-mat22 = (<::>)
-
--- | enforce type of indices for too-generic functions copyDataFrame
-zI :: Idxs '[1]
-zI = 0
+mat22 = packDF @_ @2 @'[2]
+{-# INLINE mat22 #-}
 
 -- | Compose a 3x3D matrix
-mat33 :: ( PrimBytes (t :: Type)
-         , PrimBytes (Vector t 3)
-         )
+mat33 :: PrimBytes (t :: Type)
       => Vector t 3 -> Vector t 3 -> Vector t 3 -> Matrix t 3 3
-mat33 a b c = runST $ do
-  mmat <- newDataFrame
-  copyDataFrame (0:*zI) a mmat
-  copyDataFrame (1:*zI) b mmat
-  copyDataFrame (2:*zI) c mmat
-  unsafeFreezeDataFrame mmat
+mat33 = packDF @_ @3 @'[3]
+{-# INLINE mat33 #-}
 
 -- | Compose a 4x4D matrix
-mat44 :: ( PrimBytes (t :: Type)
-         , PrimBytes (Vector t 4)
-         )
+mat44 :: PrimBytes (t :: Type)
       => Vector t 4
       -> Vector t 4
       -> Vector t 4
       -> Vector t 4
       -> Matrix t 4 4
-mat44 a b c d = runST $ do
-  mmat <- newDataFrame
-  copyDataFrame (0:*zI) a mmat
-  copyDataFrame (1:*zI) b mmat
-  copyDataFrame (2:*zI) c mmat
-  copyDataFrame (3:*zI) d mmat
-  unsafeFreezeDataFrame mmat
+mat44 = packDF @_ @4 @'[4]
+{-# INLINE mat44 #-}
 
 
 
