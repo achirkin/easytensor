@@ -421,12 +421,16 @@ instance RepresentableList xs => RepresentableList (x ': xs :: [k]) where
 -- | Generic show function for a @TypedList@.
 typedListShowsPrecC :: forall (k :: Type) (c :: k -> Constraint) (f :: k -> Type) (xs :: [k])
                      . All c xs
-                    => ( forall (x :: k) . c x => Int -> f x -> ShowS )
+                    => String
+                       -- ^ Override cons symbol
+                    -> ( forall (x :: k) . c x => Int -> f x -> ShowS )
                        -- ^ How to show a single element
                     -> Int -> TypedList f xs -> ShowS
-typedListShowsPrecC _ _ U = showChar 'U'
-typedListShowsPrecC elShowsPrec p (x :* xs) = showParen (p >= 6) $
-    elShowsPrec 6 x . showString " :* " . typedListShowsPrecC @k @c @f elShowsPrec 5 xs
+typedListShowsPrecC _ _ _ U = showChar 'U'
+typedListShowsPrecC consS elShowsPrec p (x :* xs) = showParen (p >= 6)
+    $ elShowsPrec 6 x
+    . showChar ' ' . showString consS . showChar ' '
+    . typedListShowsPrecC @k @c @f consS elShowsPrec 5 xs
 
 -- | Generic show function for a @TypedList@.
 typedListShowsPrec :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
@@ -442,16 +446,18 @@ typedListShowsPrec elShowsPrec p (x :* xs) = showParen (p >= 6) $
 typedListReadPrec :: forall (k :: Type) (c :: k -> Constraint) (f :: k -> Type)
                             (xs :: [k]) (g :: k -> Type)
                    . All c xs
-                  => ( forall (x :: k) . c x => Read.ReadPrec (f x) )
+                  => String
+                     -- ^ Override cons symbol
+                  -> ( forall (x :: k) . c x => Read.ReadPrec (f x) )
                      -- ^ How to read a single element
                   -> TypedList g xs
                      -- ^ Enforce the type structure of the result
                   -> Read.ReadPrec (TypedList f xs)
-typedListReadPrec _ U = Read.parens $ U <$ Read.lift (Read.expect $ Read.Ident "U")
-typedListReadPrec elReadPrec (_ :* ts) = Read.parens . Read.prec 5 $ do
+typedListReadPrec _ _ U = Read.parens $ U <$ Read.lift (Read.expect $ Read.Ident "U")
+typedListReadPrec consS elReadPrec (_ :* ts) = Read.parens . Read.prec 5 $ do
     x <- Read.step elReadPrec
-    Read.lift . Read.expect $ Read.Symbol ":*"
-    xs <- typedListReadPrec @k @c elReadPrec ts
+    Read.lift . Read.expect $ Read.Symbol consS
+    xs <- typedListReadPrec @k @c consS elReadPrec ts
     return (x :* xs)
 
 -- | Generic read function for a @TypedList@ of unknown length.

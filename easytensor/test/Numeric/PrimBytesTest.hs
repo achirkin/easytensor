@@ -160,7 +160,7 @@ showMutableByteArray size mba = go 0#
                   = (# s2, W8# w : ws #)
       | otherwise = (# s0, [] #)
 
--- The most basic property
+-- | The most basic property
 fromToBytesId :: (PrimBytes a, Eq a, Show a) => a -> Property
 fromToBytesId v = counterexample msg $
     v === fromBytes (byteOffset v) bytes
@@ -174,12 +174,14 @@ fromToBytesId v = counterexample msg $
       , "Array content: " ++ show byteList
       ]
 
+-- | Pointers
 fromToPtrId :: (PrimBytes a, Eq a, Show a) => a -> Property
 fromToPtrId v = ioProperty . allocaBytes (bSizeOf v) $ \ptr -> do
   bPoke ptr v
   v1 <- bPeek ptr
   return (v === v1)
 
+-- | Byte offsets
 readWriteBytesId :: (PrimBytes a, Eq a, Show a) => Int -> a -> Property
 readWriteBytesId off' v = case runRW# go of (# _, r #) -> r
   where
@@ -189,8 +191,7 @@ readWriteBytesId off' v = case runRW# go of (# _, r #) -> r
     go :: forall s . State# s -> (# State# s, Property #)
     go s0
       | (# s1, mba #) <- newByteArray# (byteSize v +# off) s0
-      , s1'           <- setByteArray# mba 0# (byteSize v +# off) 0# s1
-      , s2            <- writeBytes mba off v s1'
+      , s2            <- writeBytes mba off v s1
       , (# s3, w #)   <- readBytes mba off s2
       , (# s4, byteList #) <- showMutableByteArray (byteSize v +# off) mba s3
       , (# s5, ba #)  <- unsafeFreezeByteArray# mba s4
@@ -204,6 +205,7 @@ readWriteBytesId off' v = case runRW# go of (# _, r #) -> r
               ]
          = (# s5, counterexample msg (v === w .&&. v == u) #)
 
+-- | Elem offsets
 readWriteArrayId :: (PrimBytes a, Eq a, Show a) => Int -> Int -> a -> Property
 readWriteArrayId n' i' v = case runRW# go of (# _, r #) -> r
   where
@@ -214,8 +216,7 @@ readWriteArrayId n' i' v = case runRW# go of (# _, r #) -> r
     go :: forall s . State# s -> (# State# s, Property #)
     go s0
       | (# s1, mba #) <- newByteArray# (n *# byteSize v) s0
-      , s1'           <- setByteArray# mba 0# (n *# byteSize v) 0# s1
-      , s2            <- writeArray mba i v s1'
+      , s2            <- writeArray mba i v s1
       , (# s3, w #)   <- readArray mba i s2
       , (# s4, byteList #) <- showMutableByteArray (n *# byteSize v) mba s3
       , (# s5, ba #)  <- unsafeFreezeByteArray# mba s4
@@ -231,6 +232,63 @@ readWriteArrayId n' i' v = case runRW# go of (# _, r #) -> r
          = (# s5, counterexample msg (v === w .&&. v == u) #)
 
 
+-- | Working this elem offsets and byte offsets together
+mixedTransformsId :: (PrimBytes a, Eq a, Show a) => Int -> Int -> a -> Property
+mixedTransformsId n' i' v = case runRW# go of (# _, r #) -> r
+  where
+    -- allocate reasonably small number of elements
+    n = case abs n' `mod` 30 of I# x -> x +# 2#
+    i = case abs i' `mod` (I# n - 1) of I# x -> x -- i+1 is always a valid index
+    i1 = i +# 1#
+    -- write and read the value from an array by a specified offset
+    go :: forall s . State# s -> (# State# s, Property #)
+    go s0
+      | (# s1, mba #) <- newByteArray# (n *# byteSize v) s0
+      , s2            <- writeArray mba i1 v s1
+      , s3            <- writeBytes mba (i *# byteSize v) v s2
+      , (# s4, w #)   <- readArray mba i s3
+      , (# s5, u #)   <- readBytes mba (i1 *# byteSize v) s4
+      , (# s6, byteList #) <- showMutableByteArray (n *# byteSize v) mba s5
+      , msg <- unlines
+              [ "Array size:    " ++ show (I# n)
+              , "Array index:   " ++ show (I# i)
+              , "byteOffset:    " ++ show (I# (byteOffset v))
+              , "byteAlign:     " ++ show (I# (byteAlign v))
+              , "byteSize:      " ++ show (I# (byteSize v))
+              , "Array content: " ++ show byteList
+              ]
+         = (# s6, counterexample msg (v === w .&&. v == u) #)
+
+
+class SamePrimRep a b where
+  convert :: a -> b
+
+-- | Some times should have the same PrimBytes representation
+samePrimRepId :: forall a b
+               . ( PrimBytes a, PrimBytes b, Eq b, Show b, SamePrimRep a b)
+              => Int -> a -> b -> Property
+samePrimRepId off' a b = case runRW# go of (# _, r #) -> r
+  where
+    f = convert @a @b -- monomorphise it to avoid type errors
+    -- reasonably small offset aligned to a multiple of @byteAlign a@
+    off = case abs off' `mod` 100 of I# i -> i *# byteAlign a
+    -- write and read the value from an array by a specified offset
+    go :: forall s . State# s -> (# State# s, Property #)
+    go s0
+      | (# s1, mba #) <- newByteArray# (off +# byteSize a +# byteSize b) s0
+      , s2            <- writeBytes mba off a s1
+      , s3            <- writeBytes mba (off +# byteSize a) b s2
+      , (# s4, a' #)  <- readBytes mba off s3
+      , (# s5, b' #)  <- readBytes mba (off +# byteSize b) s4
+      , (# s6, bl #)  <- showMutableByteArray (off +# byteSize a +# byteSize b) mba s5
+      , msg <- unlines
+              [ "Offset 'off':  " ++ show (I# off)
+              , "byteOffset:    " ++ show (I# (byteOffset a), I# (byteOffset b))
+              , "byteAlign:     " ++ show (I# (byteAlign a), I# (byteAlign b))
+              , "byteSize:      " ++ show (I# (byteSize a), I# (byteSize b))
+              , "Array content: " ++ show bl
+              ]
+         = (# s6, counterexample msg (f a === a' .&&. b === f b') #)
 
 -- Check whether @byteFieldOffset@ calculates correct field offsets
 vertexFields :: ( PrimBytes a, Eq a, Show a
@@ -287,6 +345,42 @@ type TypeTriples =
    , '(Float, Char, Char)
    ]
 
+instance SamePrimRep a (ST.Tuple '[a]) where
+  convert a = a ST.:$ U
+instance SamePrimRep (a,b) (ST.Tuple '[a,b]) where
+  convert (a, b) = a ST.:$ b ST.:$ U
+instance SamePrimRep (a,b,c) (ST.Tuple '[a,b,c]) where
+  convert (a, b, c) = a ST.:$ b ST.:$ c ST.:$ U
+instance SamePrimRep (a,b,c,d) (ST.Tuple '[a,b,c,d]) where
+  convert (a, b, c, d) = a ST.:$ b ST.:$ c ST.:$ d ST.:$ U
+instance SamePrimRep (a,b,c,d,e) (ST.Tuple '[a,b,c,d,e]) where
+  convert (a, b, c, d, e) = a ST.:$ b ST.:$ c ST.:$ d ST.:$ e ST.:$ U
+
+instance SamePrimRep a (LT.Tuple '[a]) where
+  convert a = a LT.:$ U
+instance SamePrimRep (a,b) (LT.Tuple '[a,b]) where
+  convert (a, b) = a LT.:$ b LT.:$ U
+instance SamePrimRep (a,b,c) (LT.Tuple '[a,b,c]) where
+  convert (a, b, c) = a LT.:$ b LT.:$ c LT.:$ U
+instance SamePrimRep (a,b,c,d) (LT.Tuple '[a,b,c,d]) where
+  convert (a, b, c, d) = a LT.:$ b LT.:$ c LT.:$ d LT.:$ U
+instance SamePrimRep (a,b,c,d,e) (LT.Tuple '[a,b,c,d,e]) where
+  convert (a, b, c, d, e) = a LT.:$ b LT.:$ c LT.:$ d LT.:$ e LT.:$ U
+
+instance SamePrimRep (Maybe a) (Either () a) where
+  convert (Just a) = Right a
+  convert Nothing  = Left ()
+
+type SamePrimRepTypes =
+  '[ '( (Word, Double), ST.Tuple '[Word, Double] )
+   , '( (Double, Word8, Word8, Word8, Maybe Float)
+      , ST.Tuple '[Double, Word8, Word8, Word8, Maybe Float] )
+   , '( (Word8, Int16, Word32, Either (Either Double Float) Int)
+      , LT.Tuple '[Word8, Int16, Word32, Either (Either Double Float) Int] )
+   , '( Maybe Float, Either () Float)
+   , '( Maybe Double, Either () Double)
+   ]
+
 return [] -- this is for $testWithTypes
 
 prop_fromToBytesId :: Property
@@ -300,6 +394,12 @@ prop_readWriteBytesId = $(testWithTypes 'readWriteBytesId ''SingleVarTypes)
 
 prop_readWriteArrayId :: Property
 prop_readWriteArrayId = $(testWithTypes 'readWriteArrayId ''SingleVarTypes)
+
+prop_mixedTransformsId :: Property
+prop_mixedTransformsId = $(testWithTypes 'mixedTransformsId ''SingleVarTypes)
+
+prop_samePrimRepId :: Property
+prop_samePrimRepId = $(testWithTypes 'samePrimRepId ''SamePrimRepTypes)
 
 prop_vertexFields :: Property
 prop_vertexFields = $(testWithTypes 'vertexFields ''TypeTriples)
