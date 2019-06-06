@@ -172,6 +172,7 @@ class PrimTagged a => PrimBytes a where
     --   a caller must not provide @undefined@ in place of the argument.
     byteOffset :: a -> Int#
     byteOffset _ = 0#
+    {-# INLINE byteOffset #-}
 
     -- | Offset of a data record within the data type in bytes.
     --
@@ -390,43 +391,26 @@ class GPrimBytes f where
                      -> Word# -- ^ Constructor tag position (mask)
                      -> Int# -- ^ Left neighbour cumulative size (current offset before alignment)
                      -> Proxy# name -> f p -> Int#
-
+    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
+    {-# INLINE gbyteFieldOffset #-}
 
 instance GPrimBytes V1 where
     gfromBytes _ _ _ _ _ = undefined
-    {-# INLINE gfromBytes #-}
     greadBytes _ _ _ _ _ s = (# s, undefined #)
-    {-# INLINE greadBytes #-}
     gwriteBytes _ _ _ _ _ _ s = s
-    {-# INLINE gwriteBytes #-}
     greadAddr _ _ _ _ s = (# s, undefined #)
-    {-# INLINE greadAddr #-}
     gwriteAddr _ _ _ _ _ s = s
-    {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = ps
-    {-# INLINE gbyteSize #-}
     gbyteAlign _ _ = 1#
-    {-# INLINE gbyteAlign #-}
-    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
-    {-# INLINE gbyteFieldOffset #-}
 
 instance GPrimBytes U1 where
     gfromBytes _ _ _ _ _ = U1
-    {-# INLINE gfromBytes #-}
     greadBytes _ _ _ _ _ s = (# s, U1 #)
-    {-# INLINE greadBytes #-}
     gwriteBytes _ _ _ _ _ _ s = s
-    {-# INLINE gwriteBytes #-}
     greadAddr _ _ _ _ s = (# s, U1 #)
-    {-# INLINE greadAddr #-}
     gwriteAddr _ _ _ _ _ s = s
-    {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = ps
-    {-# INLINE gbyteSize #-}
     gbyteAlign _ _ = 1#
-    {-# INLINE gbyteAlign #-}
-    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
-    {-# INLINE gbyteFieldOffset #-}
 
 getGOff :: forall a . PrimBytes a
         => Int# --  parent cumulative size
@@ -436,100 +420,67 @@ getGOff ps i = i +# roundUpInt ps (byteAlign @a undefined)
 
 instance PrimBytes a => GPrimBytes (K1 i a) where
     gfromBytes _ _ ps i ba = K1 (fromBytes (getGOff @a ps i) ba)
-    {-# INLINE gfromBytes #-}
     greadBytes _ _ ps mba i = coerce (readBytes @a mba (getGOff @a ps i))
-    {-# INLINE greadBytes #-}
     gwriteBytes _ _ ps mba i = coerce (writeBytes @a mba (getGOff @a ps i))
-    {-# INLINE gwriteBytes #-}
     greadAddr _ _ ps addr = coerce (readAddr @a (plusAddr# addr (getGOff @a ps 0#)))
-    {-# INLINE greadAddr #-}
     gwriteAddr _ _ ps ka addr = writeAddr (unK1 ka) (plusAddr# addr (getGOff @a ps 0#))
-    {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps ~(K1 a) = roundUpInt ps (byteAlign a) +# byteSize a
-    {-# INLINE gbyteSize #-}
     gbyteAlign _ = coerce (byteAlign @a)
-    {-# INLINE gbyteAlign #-}
-    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
-    {-# INLINE gbyteFieldOffset #-}
 
 instance {-# OVERLAPPING #-}
          (GPrimBytes f, KnownSymbol sn)
       => GPrimBytes (M1 S ('MetaSel ('Just sn) a b c) f) where
     gfromBytes p = coerce (gfromBytes @f p)
-    {-# INLINE gfromBytes #-}
     greadBytes p = coerce (greadBytes @f p)
-    {-# INLINE greadBytes #-}
     gwriteBytes p = coerce (gwriteBytes @f p)
-    {-# INLINE gwriteBytes #-}
     greadAddr p = coerce (greadAddr @f p)
-    {-# INLINE greadAddr #-}
     gwriteAddr p = coerce (gwriteAddr @f p)
-    {-# INLINE gwriteAddr #-}
     gbyteSize p = coerce (gbyteSize @f p)
-    {-# INLINE gbyteSize #-}
     gbyteAlign p = coerce (gbyteAlign @f p)
-    {-# INLINE gbyteAlign #-}
     gbyteFieldOffset p _ off (_ :: Proxy# n) ma
       | Just Refl <- sameSymbol (undefined :: Proxy n) (undefined :: Proxy sn)
         = off `roundUpInt` gbyteAlign p ma
       | otherwise
         = negateInt# 1#
-    {-# INLINE gbyteFieldOffset #-}
 
 instance GPrimBytes f => GPrimBytes (M1 i c f) where
     gfromBytes p = coerce (gfromBytes @f p)
-    {-# INLINE gfromBytes #-}
     greadBytes p = coerce (greadBytes @f p)
-    {-# INLINE greadBytes #-}
     gwriteBytes p = coerce (gwriteBytes @f p)
-    {-# INLINE gwriteBytes #-}
     greadAddr p = coerce (greadAddr @f p)
-    {-# INLINE greadAddr #-}
     gwriteAddr p = coerce (gwriteAddr @f p)
-    {-# INLINE gwriteAddr #-}
     gbyteSize p = coerce (gbyteSize @f p)
-    {-# INLINE gbyteSize #-}
     gbyteAlign p = coerce (gbyteAlign @f p)
-    {-# INLINE gbyteAlign #-}
     gbyteFieldOffset p = coerce (gbyteFieldOffset @f p)
-    {-# INLINE gbyteFieldOffset #-}
 
 instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :*: g) where
     gfromBytes p t ps i ba = x :*: y
       where
         x = gfromBytes p t ps i ba
         y = gfromBytes p t (gbyteSize p t ps x) i ba
-    {-# INLINE gfromBytes #-}
     greadBytes p t ps mba i s0
       | (# s1, x #) <- greadBytes p t ps mba i s0
       , (# s2, y #) <- greadBytes p t (gbyteSize p t ps x) mba i s1
         = (# s2, x :*: y #)
-    {-# INLINE greadBytes #-}
     gwriteBytes p t ps mba off (x :*: y) s0
       | s1 <- gwriteBytes p t ps mba off x s0
       , s2 <- gwriteBytes p t (gbyteSize p t ps x) mba off y s1
         = s2
-    {-# INLINE gwriteBytes #-}
     greadAddr p t ps addr s0
       | (# s1, x #) <- greadAddr p t ps addr s0
       , (# s2, y #) <- greadAddr p t (gbyteSize p t ps x) addr s1
         = (# s2, x :*: y #)
-    {-# INLINE greadAddr #-}
     gwriteAddr p t ps (x :*: y) addr s0
       | s1 <- gwriteAddr p t ps x addr s0
       , s2 <- gwriteAddr p t (gbyteSize p t ps x) y addr s1
         = s2
-    {-# INLINE gwriteAddr #-}
     gbyteSize p t ps ~(x :*: y) = gbyteSize p t (gbyteSize p t ps x) y
-    {-# INLINE gbyteSize #-}
     gbyteAlign p ~(x :*: y) = gbyteAlign p x `maxInt` gbyteAlign p y
-    {-# INLINE gbyteAlign #-}
     gbyteFieldOffset p t ps n ~(x :*: y)
       | offX <- gbyteFieldOffset p t ps n x
       , bsX  <- gbyteSize p t ps x
       , offY <- gbyteFieldOffset p t bsX n y
       = if isTrue# (offX <# 0#) then offY else offX
-    {-# INLINE gbyteFieldOffset #-}
 
 instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :+: g) where
     gfromBytes p t _ off ba
@@ -539,7 +490,6 @@ instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :+: g) where
           else R1 (gfromBytes p t1 4# off ba)
       where
         t1 = upTag t
-    {-# INLINE gfromBytes #-}
     greadBytes p t _ mba off s0
       | (# s1, c #) <- readWord8ArrayAsWord32# mba off s0
         = if isTrue# (eqWord# (and# c t1) 0##)
@@ -549,7 +499,6 @@ instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :+: g) where
             (# s2, y #) -> (# s2, R1 y #)
       where
         t1 = upTag t
-    {-# INLINE greadBytes #-}
     -- if this is the uppermost sum, overwrite the tag.
     gwriteBytes p 0## _ mba off (L1 x) s0
       | s1 <- writeWord8ArrayAsWord32# mba off 0## s0
@@ -567,7 +516,6 @@ instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :+: g) where
       , s3 <- gwriteBytes p t1 4# mba off y s2 = s3
       where
         t1 = upTag t
-    {-# INLINE gwriteBytes #-}
     greadAddr p t _ addr s0
       | (# s1, c #) <- readWord32OffAddr# addr 0# s0
         = if isTrue# (eqWord# (and# c t1) 0##)
@@ -577,7 +525,6 @@ instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :+: g) where
             (# s2, y #) -> (# s2, R1 y #)
       where
         t1 = upTag t
-    {-# INLINE greadAddr #-}
     -- if this is the uppermost sum, overwrite the tag.
     gwriteAddr p 0## _ (L1 x) addr s0
       | s1 <- writeWord32OffAddr# addr 0# 0## s0
@@ -595,7 +542,6 @@ instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :+: g) where
       , s3 <- gwriteAddr p t1 4# y addr s2 = s3
       where
         t1 = upTag t
-    {-# INLINE gwriteAddr #-}
     gbyteSize p 0## ps xy
       = maxInt
         (roundUpInt 4# (gbyteAlign p x) +# gbyteSize p 1## ps x)
@@ -607,11 +553,9 @@ instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :+: g) where
       = maxInt
         (gbyteSize p (upTag t) ps (undef1 @f xy))
         (gbyteSize p (upTag t) ps (undef1 @g xy))
-    {-# INLINE gbyteSize #-}
     gbyteAlign p xy = 4# `maxInt`
         maxInt (gbyteAlign p (undef1 @f xy))
                (gbyteAlign p (undef1 @g xy))
-    {-# INLINE gbyteAlign #-}
     -- check both branches if any of them contain the field.
     -- If there are more than one branches containing the field, the left one
     -- is preferred.
@@ -619,7 +563,6 @@ instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :+: g) where
       | offX <- gbyteFieldOffset p (upTag t) ps n (undef1 @f xy)
       , offY <- gbyteFieldOffset p (upTag t) ps n (undef1 @g xy)
       = if isTrue# (offX <# 0#) then offY else offX
-    {-# INLINE gbyteFieldOffset #-}
 
 upTag :: Word# -> Word#
 upTag 0## = 1##
@@ -663,27 +606,18 @@ undef1 = const undefined
 instance GPrimBytes (URec Word) where
     gfromBytes _ _ ps off ba
       = UWord (indexWord8ArrayAsWord# ba (off +# roundUpInt ps ALIGNMENT_HSWORD#))
-    {-# INLINE gfromBytes #-}
     greadBytes _ _ ps mba off s
       = case readWord8ArrayAsWord# mba (off +# roundUpInt ps ALIGNMENT_HSWORD#) s of
           (# s1, r #) -> (# s1, UWord r #)
-    {-# INLINE greadBytes #-}
     gwriteBytes _ _ ps mba off x
       = writeWord8ArrayAsWord# mba (off +# roundUpInt ps ALIGNMENT_HSWORD#) (uWord# x)
-    {-# INLINE gwriteBytes #-}
     greadAddr _ _ ps a s
       = case readWordOffAddr# (plusAddr# a (roundUpInt ps ALIGNMENT_HSWORD#)) 0# s of
           (# s', x #) -> (# s', UWord x #)
-    {-# INLINE greadAddr #-}
     gwriteAddr _ _ ps x a
       = writeWordOffAddr# (plusAddr# a (roundUpInt ps ALIGNMENT_HSWORD#)) 0# (uWord# x)
-    {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = roundUpInt ps ALIGNMENT_HSWORD# +# SIZEOF_HSWORD#
-    {-# INLINE gbyteSize #-}
     gbyteAlign _ _ = ALIGNMENT_HSWORD#
-    {-# INLINE gbyteAlign #-}
-    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
-    {-# INLINE gbyteFieldOffset #-}
 
 #if SIZEOF_HSINT == 4
 #define OFFSHIFT_I 2
@@ -694,27 +628,18 @@ instance GPrimBytes (URec Word) where
 instance GPrimBytes (URec Int) where
     gfromBytes _ _ ps off ba
       = UInt (indexWord8ArrayAsInt# ba (off +# roundUpInt ps ALIGNMENT_HSINT#))
-    {-# INLINE gfromBytes #-}
     greadBytes _ _ ps mba off s
       = case readWord8ArrayAsInt# mba (off +# roundUpInt ps ALIGNMENT_HSINT#) s of
           (# s1, r #) -> (# s1, UInt r #)
-    {-# INLINE greadBytes #-}
     gwriteBytes _ _ ps mba off x
       = writeWord8ArrayAsInt# mba (off +# roundUpInt ps ALIGNMENT_HSINT#) (uInt# x)
-    {-# INLINE gwriteBytes #-}
     greadAddr _ _ ps a s
       = case readIntOffAddr# (plusAddr# a (roundUpInt ps ALIGNMENT_HSINT#)) 0# s of
           (# s', x #) -> (# s', UInt x #)
-    {-# INLINE greadAddr #-}
     gwriteAddr _ _ ps x a
       = writeIntOffAddr# (plusAddr# a (roundUpInt ps ALIGNMENT_HSINT#)) 0# (uInt# x)
-    {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = roundUpInt ps ALIGNMENT_HSINT# +# SIZEOF_HSINT#
-    {-# INLINE gbyteSize #-}
     gbyteAlign _ _ = ALIGNMENT_HSINT#
-    {-# INLINE gbyteAlign #-}
-    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
-    {-# INLINE gbyteFieldOffset #-}
 
 #if SIZEOF_HSFLOAT == 4
 #define OFFSHIFT_F 2
@@ -725,27 +650,18 @@ instance GPrimBytes (URec Int) where
 instance GPrimBytes (URec Float) where
     gfromBytes _ _ ps off ba
       = UFloat (indexWord8ArrayAsFloat# ba (off +# roundUpInt ps ALIGNMENT_HSFLOAT#))
-    {-# INLINE gfromBytes #-}
     greadBytes _ _ ps mba off s
       = case readWord8ArrayAsFloat# mba (off +# roundUpInt ps ALIGNMENT_HSFLOAT#) s of
           (# s1, r #) -> (# s1, UFloat r #)
-    {-# INLINE greadBytes #-}
     gwriteBytes _ _ ps mba off x
       = writeWord8ArrayAsFloat# mba (off +# roundUpInt ps ALIGNMENT_HSFLOAT#) (uFloat# x)
-    {-# INLINE gwriteBytes #-}
     greadAddr _ _ ps a s
       = case readFloatOffAddr# (plusAddr# a (roundUpInt ps ALIGNMENT_HSFLOAT#)) 0# s of
           (# s', x #) -> (# s', UFloat x #)
-    {-# INLINE greadAddr #-}
     gwriteAddr _ _ ps x a
       = writeFloatOffAddr# (plusAddr# a (roundUpInt ps ALIGNMENT_HSFLOAT#)) 0# (uFloat# x)
-    {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = roundUpInt ps ALIGNMENT_HSFLOAT# +# SIZEOF_HSFLOAT#
-    {-# INLINE gbyteSize #-}
     gbyteAlign _ _ = ALIGNMENT_HSFLOAT#
-    {-# INLINE gbyteAlign #-}
-    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
-    {-# INLINE gbyteFieldOffset #-}
 
 #if SIZEOF_HSDOUBLE == 4
 #define OFFSHIFT_D 2
@@ -756,27 +672,18 @@ instance GPrimBytes (URec Float) where
 instance GPrimBytes (URec Double) where
     gfromBytes _ _ ps off ba
       = UDouble (indexWord8ArrayAsDouble# ba (off +# roundUpInt ps ALIGNMENT_HSDOUBLE#))
-    {-# INLINE gfromBytes #-}
     greadBytes _ _ ps mba off s
       = case readWord8ArrayAsDouble# mba (off +# roundUpInt ps ALIGNMENT_HSDOUBLE#) s of
           (# s1, r #) -> (# s1, UDouble r #)
-    {-# INLINE greadBytes #-}
     gwriteBytes _ _ ps mba off x
       = writeWord8ArrayAsDouble# mba (off +# roundUpInt ps ALIGNMENT_HSDOUBLE#) (uDouble# x)
-    {-# INLINE gwriteBytes #-}
     greadAddr _ _ ps a s
       = case readDoubleOffAddr# (plusAddr# a (roundUpInt ps ALIGNMENT_HSDOUBLE#)) 0# s of
           (# s', x #) -> (# s', UDouble x #)
-    {-# INLINE greadAddr #-}
     gwriteAddr _ _ ps x a
       = writeDoubleOffAddr# (plusAddr# a (roundUpInt ps ALIGNMENT_HSDOUBLE#)) 0# (uDouble# x)
-    {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = roundUpInt ps ALIGNMENT_HSDOUBLE# +# SIZEOF_HSDOUBLE#
-    {-# INLINE gbyteSize #-}
     gbyteAlign _ _ = ALIGNMENT_HSDOUBLE#
-    {-# INLINE gbyteAlign #-}
-    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
-    {-# INLINE gbyteFieldOffset #-}
 
 -- I believe Char is always 31 bit, but checking this does not hurt
 #if SIZEOF_HSCHAR == 2
@@ -790,27 +697,18 @@ instance GPrimBytes (URec Double) where
 instance GPrimBytes (URec Char) where
     gfromBytes _ _ ps off ba
       = UChar (indexWord8ArrayAsWideChar# ba (off +# roundUpInt ps ALIGNMENT_HSCHAR#))
-    {-# INLINE gfromBytes #-}
     greadBytes _ _ ps mba off s
       = case readWord8ArrayAsWideChar# mba (off +# roundUpInt ps ALIGNMENT_HSCHAR#) s of
           (# s1, r #) -> (# s1, UChar r #)
-    {-# INLINE greadBytes #-}
     gwriteBytes _ _ ps mba off x
       = writeWord8ArrayAsWideChar# mba (off +# roundUpInt ps ALIGNMENT_HSCHAR#) (uChar# x)
-    {-# INLINE gwriteBytes #-}
     greadAddr _ _ ps a s
       = case readWideCharOffAddr# (plusAddr# a (roundUpInt ps ALIGNMENT_HSCHAR#)) 0# s of
           (# s', x #) -> (# s', UChar x #)
-    {-# INLINE greadAddr #-}
     gwriteAddr _ _ ps x a
       = writeWideCharOffAddr# (plusAddr# a (roundUpInt ps ALIGNMENT_HSCHAR#)) 0# (uChar# x)
-    {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = roundUpInt ps ALIGNMENT_HSCHAR# +# SIZEOF_HSCHAR#
-    {-# INLINE gbyteSize #-}
     gbyteAlign _ _ = ALIGNMENT_HSCHAR#
-    {-# INLINE gbyteAlign #-}
-    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
-    {-# INLINE gbyteFieldOffset #-}
 
 #if SIZEOF_HSPTR == 4
 #define OFFSHIFT_P 2
@@ -821,27 +719,18 @@ instance GPrimBytes (URec Char) where
 instance GPrimBytes (URec (Ptr ())) where
     gfromBytes _ _ ps off ba
       = UAddr (indexWord8ArrayAsAddr# ba (off +# roundUpInt ps ALIGNMENT_HSPTR#))
-    {-# INLINE gfromBytes #-}
     greadBytes _ _ ps mba off s
       = case readWord8ArrayAsAddr# mba (off +# roundUpInt ps ALIGNMENT_HSPTR#) s of
           (# s1, r #) -> (# s1, UAddr r #)
-    {-# INLINE greadBytes #-}
     gwriteBytes _ _ ps mba off x
       = writeWord8ArrayAsAddr# mba (off +# roundUpInt ps ALIGNMENT_HSPTR#) (uAddr# x)
-    {-# INLINE gwriteBytes #-}
     greadAddr _ _ ps a s
       = case readAddrOffAddr# (plusAddr# a (roundUpInt ps ALIGNMENT_HSPTR#)) 0# s of
           (# s', x #) -> (# s', UAddr x #)
-    {-# INLINE greadAddr #-}
     gwriteAddr _ _ ps x a
       = writeAddrOffAddr# (plusAddr# a (roundUpInt ps ALIGNMENT_HSPTR#)) 0# (uAddr# x)
-    {-# INLINE gwriteAddr #-}
     gbyteSize _ _ ps _ = roundUpInt ps ALIGNMENT_HSPTR# +# SIZEOF_HSPTR#
-    {-# INLINE gbyteSize #-}
     gbyteAlign _ _ = ALIGNMENT_HSPTR#
-    {-# INLINE gbyteAlign #-}
-    gbyteFieldOffset _ _ _ _ _ = negateInt# 1#
-    {-# INLINE gbyteFieldOffset #-}
 
 
 
@@ -878,8 +767,6 @@ instance PrimBytes Word where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_HSWORD#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = W# (indexWordArray# ba i)
@@ -918,8 +805,6 @@ instance PrimBytes Int where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_HSINT#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = I# (indexIntArray# ba i)
@@ -957,8 +842,6 @@ instance PrimBytes Float where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_HSFLOAT#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = F# (indexFloatArray# ba i)
@@ -996,8 +879,6 @@ instance PrimBytes Double where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_HSDOUBLE#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = D# (indexDoubleArray# ba i)
@@ -1036,8 +917,6 @@ instance PrimBytes (Ptr a) where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_HSPTR#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = Ptr (indexAddrArray# ba i)
@@ -1073,8 +952,6 @@ instance PrimBytes Int8 where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_INT8#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = I8# (indexInt8Array# ba i)
@@ -1112,8 +989,6 @@ instance PrimBytes Int16 where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_INT16#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = I16# (indexInt16Array# ba i)
@@ -1151,8 +1026,6 @@ instance PrimBytes Int32 where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_INT32#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = I32# (indexInt32Array# ba i)
@@ -1190,8 +1063,6 @@ instance PrimBytes Int64 where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_INT64#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = I64# (indexInt64Array# ba i)
@@ -1226,8 +1097,6 @@ instance PrimBytes Word8 where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_WORD8#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = W8# (indexWord8Array# ba i)
@@ -1265,8 +1134,6 @@ instance PrimBytes Word16 where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_WORD16#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = W16# (indexWord16Array# ba i)
@@ -1304,8 +1171,6 @@ instance PrimBytes Word32 where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_WORD32#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = W32# (indexWord32Array# ba i)
@@ -1343,8 +1208,6 @@ instance PrimBytes Word64 where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_WORD64#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = W64# (indexWord64Array# ba i)
@@ -1382,8 +1245,6 @@ instance PrimBytes Char where
     {-# INLINE byteSize #-}
     byteAlign _ = ALIGNMENT_HSCHAR#
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba i = C# (indexWideCharArray# ba i)
@@ -1412,9 +1273,7 @@ instance PrimBytes (Idx (x :: k)) where
     {-# INLINE byteSize #-}
     byteAlign = unsafeCoerce# (byteAlign @Word)
     {-# INLINE byteAlign #-}
-    byteOffset = unsafeCoerce# (byteOffset @Word)
-    {-# INLINE byteOffset #-}
-    byteFieldOffset _ _ = negateInt# 1#
+    byteFieldOffset b = unsafeCoerce# (byteFieldOffset @Word b)
     {-# INLINE byteFieldOffset #-}
     indexArray = unsafeCoerce# (indexArray @Word)
     {-# INLINE indexArray #-}
@@ -1470,8 +1329,6 @@ instance RepresentableList xs => PrimBytes (Idxs (xs :: [k])) where
     {-# INLINE byteSize #-}
     byteAlign _ = byteAlign (undefined :: Idx x)
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba off
@@ -1523,8 +1380,6 @@ instance ( RepresentableList xs
     {-# INLINE byteSize #-}
     byteAlign  = unsafeCoerce# (byteAlign @(TS.Tuple xs))
     {-# INLINE byteAlign #-}
-    byteOffset = unsafeCoerce# (byteOffset @(TS.Tuple xs))
-    {-# INLINE byteOffset #-}
     byteFieldOffset p = unsafeCoerce# (byteFieldOffset @(TS.Tuple xs) p)
     {-# INLINE byteFieldOffset #-}
     indexArray = unsafeCoerce# (indexArray @(TS.Tuple xs))
@@ -1606,8 +1461,6 @@ instance ( RepresentableList xs
         go Empty     = 0#
         go (p :* ps) = maxInt (byteAlign (undefP p)) (go ps)
     {-# INLINE byteAlign #-}
-    byteOffset _ = 0#
-    {-# INLINE byteOffset #-}
     byteFieldOffset name _
       | Just n <- readMaybe $ symbolVal' name
         = go (n-1) 0# (tList @_ @xs)
