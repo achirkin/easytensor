@@ -22,6 +22,36 @@ License     :  BSD3
 
 Facilities for converting Haskell data to and from raw bytes.
 
+The main purpose of this module is to support the implementation of the @DataFrame@
+`Numeric.DataFrame.Internal.Backend.Backend`. However, it also comes very useful for
+writing FFI. To that end, the `PrimBytes` class is similar to
+the `Foreign.Storable.Storable` class: it provides means to write
+your data to and read from a raw memory area. Though, it is more flexible in that
+it can work with both, foreign pointers and primitive byte arrays,
+and it provides means to get data field offsets by their selector names.
+On top of that, a `PrimBytes` instance can be derived via
+the `GHC.Generics.Generic` machinery.
+
+A derived `PrimBytes` instance tries to pack the data as dense as possible,
+while respecting the alignment requirements. In all cases known to me,
+the resulting data layout coincides with a corresponding C struct, allowing
+to marshal the data without any boilerplate. However, this is not guaranteed,
+but you can write a `PrimBytes` instance manually if necessary
+(and report an issue plz).
+
+
+__Note about alignment, size, and padding of the data.__
+There are two basic sanity assumptions about these, which are not checked
+in this module at all:
+
+  * the alignment is always a power of 2;
+  * the size is always rounded up to a multiple of the alignment.
+
+Generated instances of `PrimBytes` meet these assumptions if all components of
+a data meet these assumptions too.
+You are strongly advised to provide all byte offset arguments to the `PrimBytes`
+functions respecting the alignment of the data;
+otherwise, the data may be written or read incorrectly.
  -}
 module Numeric.PrimBytes
   ( -- * PrimBytes API
