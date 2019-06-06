@@ -40,13 +40,15 @@ module Numeric.DataFrame.Type
   , SomeDataFrame (..), DataFrame'
     -- * Flexible assembling and disassembling
   , PackDF, packDF, unpackDF
+  , appendDF, consDF, snocDF
+  , fromFlatList, fromListWithDefault, fromList
     -- * Infer type class instances
   , KnownBackend (), DFBackend, KnownBackends
   , InferKnownBackend (..), inferPrimElem
     -- * Re-exports
   , Dim (..), Idx (), XNat (..), N, XN, Dims, Idxs, TypedList (..)
   , PrimBytes (), bSizeOf, bAlignOf, bFieldOffsetOf
-  , PrimArray (), ixOff, fromFlatList
+  , PrimArray (), ixOff
   ) where
 
 
@@ -57,7 +59,7 @@ import           Data.Type.Lits
 import           Data.Void
 import           Foreign.Storable                (Storable (..))
 import           GHC.Base
-import           GHC.Exts
+import           GHC.Exts                        (TYPE)
 import qualified GHC.Generics                    as G
 import           GHC.Ptr                         (Ptr (..))
 import qualified Text.ParserCombinators.ReadPrec as Read
@@ -817,6 +819,109 @@ unpackDF' k df
                    f consume (I# o) = consume (I# (o -# td)) (fromElems cd o arr)
                in k Dict f (I# (off +# td *# (n -# 1#)))
   | otherwise = error "Numeric.DataFrame.Type.unpackDF: impossible args"
+
+
+-- | Append one DataFrame to another, sum up the first dimension.
+--
+--   If you want to deconstruct a DataFrame, use
+--       `Numeric.DataFrame.SubSpace.index`
+--    or `Numeric.DataFrame.SubSpace.slice` instead.
+appendDF :: forall (n :: Nat) (m :: Nat) (ds :: [Nat]) (t :: Type)
+       . ( PrimBytes t, Dimensions ds, KnownDim n, KnownDim m )
+        => DataFrame t (n :+ ds)
+        -> DataFrame t (m :+ ds)
+        -> DataFrame t ((n + m) :+ ds)
+appendDF
+  | D <- D @n `plusDim` D @m
+  , Dict <- inferKnownBackend @t @(n :+ ds)
+  , Dict <- inferKnownBackend @t @(m :+ ds)
+  , Dict <- inferKnownBackend @t @((n + m) :+ ds)
+              = unsafeAppendPB
+  | otherwise = error "Numeri.DataFrame.Type/appendDF: impossible arguments"
+
+-- | Append a small DataFrame to a big DataFrame on the left.
+--
+--   If you want to deconstruct a DataFrame, use
+--       `Numeric.DataFrame.SubSpace.index`
+--    or `Numeric.DataFrame.SubSpace.slice` instead.
+consDF :: forall (n :: Nat) (ds :: [Nat]) (t :: Type)
+       . ( PrimBytes t, Dimensions ds, KnownDim n )
+        => DataFrame t ds
+        -> DataFrame t (n :+ ds)
+        -> DataFrame t ((n + 1) :+ ds)
+consDF
+  | D <- D @n `plusDim` D1
+  , Dict <- inferKnownBackend @t @(n :+ ds)
+  , Dict <- inferKnownBackend @t @ds
+  , Dict <- inferKnownBackend @t @((n + 1) :+ ds)
+              = unsafeAppendPB
+  | otherwise = error "Numeri.DataFrame.Type/consDF: impossible arguments"
+
+-- | Append a small DataFrame to a big DataFrame on the right.
+--
+--   If you want to deconstruct a DataFrame, use
+--       `Numeric.DataFrame.SubSpace.index`
+--    or `Numeric.DataFrame.SubSpace.slice` instead.
+snocDF :: forall (n :: Nat) (ds :: [Nat]) (t :: Type)
+       . ( PrimBytes t, Dimensions ds, KnownDim n )
+        => DataFrame t (n :+ ds)
+        -> DataFrame t ds
+        -> DataFrame t ((n + 1) :+ ds)
+snocDF
+  | D <- D @n `plusDim` D1
+  , Dict <- inferKnownBackend @t @(n :+ ds)
+  , Dict <- inferKnownBackend @t @ds
+  , Dict <- inferKnownBackend @t @((n + 1) :+ ds)
+              = unsafeAppendPB
+  | otherwise = error "Numeri.DataFrame.Type/snocDF: impossible arguments"
+
+
+-- | Unsafely copy two PrimBytes values into a third one.
+unsafeAppendPB :: (PrimBytes x, PrimBytes y, PrimBytes z)
+               => x -> y -> z
+unsafeAppendPB x y
+  | sx <- byteSize x
+  = case runRW#
+    ( \s0 -> case newByteArray# (sx +# byteSize y) s0 of
+        (# s1, mba #) -> unsafeFreezeByteArray# mba
+            ( writeBytes mba sx y
+            ( writeBytes mba 0# x s1))
+    ) of (# _, r #) -> fromBytes 0# r
+
+
+-- | Construct a DataFrame from a list of smaller DataFrames.
+--
+--
+--   If the argument list is shorter than @d@, then the rest of the frame
+--   is padded with a default value (first argument).
+--
+--   If the argument list is longer than @d@, then unused values are dropped.
+--   If you want, you can pass an infinite list as an argument.
+fromListWithDefault :: forall (t :: Type) (d :: Nat) (ds :: [Nat])
+                     . (PrimBytes t, Dimensions (d ': ds))
+                    => DataFrame t ds -> [DataFrame t ds] -> DataFrame t (d ': ds)
+fromListWithDefault d ds = snd $ packDF' f ((,) ds)
+  where
+    f :: forall r . ([DataFrame t ds], DataFrame t ds -> r) -> ([DataFrame t ds], r)
+    f ([] ,  k) = ([], k d)
+    f (x:xs, k) = (xs, k x)
+
+-- | Construct a dynamic DataFrame from a list of smaller DataFrames.
+--   Pattern-match against the resulting @XFrame@ to find out its dimensionality.
+--
+--   You must not provide an infinite list as an argument.
+fromList :: forall (t :: Type) (ds :: [Nat])
+          . (PrimBytes t, Dimensions ds)
+         => [DataFrame t ds] -> DataFrame t (XN 0 ': AsXDims ds)
+fromList xs
+    | Dx (D :: Dim n) <- someDimVal . fromIntegral $ length xs
+    , Dict <- inferKnownBackend @t @(n ': ds)
+    , ds@(AsXDims (XDims ds')) <- dims @ds
+    , Just Dict <- sameDims ds ds'
+      = XFrame (fromListWithDefault @t @n @ds undefined xs)
+    | otherwise
+      = error "Numeri.DataFrame.Type/fromList: impossible arguments"
+
 
 
 

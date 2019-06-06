@@ -46,10 +46,10 @@ main = do
     seq t5 putStrLn $ "Done; elapsed time = " ++ show (diffUTCTime t5 t4)
     print rezIwf3
 
-    putStrLn "\nRunning a ewfoldl on vector5 elements..."
+    putStrLn "\nRunning a ewfoldl on vector4 elements..."
     let rezEwv1 = ewfoldl @Float @(Init DList) @'[Last DList]
                           (\a x -> return $! fromMaybe 2 a + fromMaybe 0 a / (1 + iwgen @_ @_ @'[] (\(Idx i:*U) -> x ! Idx (i+1) :* U )) )
-                          (Just (3 :: DataFrame Float '[5])) df
+                          (Just (3 :: DataFrame Float '[4])) df
     t6 <- rezEwv1 `seq` getCurrentTime
     seq t6 putStrLn $ "Done; elapsed time = " ++ show (diffUTCTime t6 t5)
     print rezEwv1
@@ -64,7 +64,7 @@ main = do
 
     putStrLn "\nRunning a ewfoldr with matrix products..."
     let rezEwm = ewfoldr @Float @(Take 3 DList) @(Drop 3 DList)
-                          (\x a ->  a + x %* (1 <::> 0.5 <:> 0.1)  )
+                          (\x a ->  a + x %* (DF5 1 0.5 0.1 0.01 0.001)  )
                           (1 :: DataFrame Float (Init (Drop 3 DList) +: 3)) df
     t8 <- rezEwm `seq` getCurrentTime
     seq t8 putStrLn $ "Done; elapsed time = " ++ show (diffUTCTime t8 t7)

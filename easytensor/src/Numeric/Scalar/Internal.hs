@@ -3,17 +3,19 @@
 {-# LANGUAGE KindSignatures   #-}
 {-# LANGUAGE MagicHash        #-}
 {-# LANGUAGE MonoLocalBinds   #-}
+{-# LANGUAGE PatternSynonyms  #-}
 -- | Scalar is an alias to zero-dimensional DataFrame
 module Numeric.Scalar.Internal
     ( Scalar, unScalar, scalar, fromScalar
     , Scf, Scd, Sci, Scw
+    , pattern S
     ) where
 
 
 import Data.Type.Lits             (Nat)
 import GHC.Base                   (unsafeCoerce#)
 import Numeric.DataFrame.SubSpace (SubSpace (ewgen))
-import Numeric.DataFrame.Type     (DataFrame)
+import Numeric.DataFrame.Type     (DataFrame, pattern S)
 
 -- | Alias for zero-dimensional DataFrame
 type Scalar t = DataFrame t ('[] :: [Nat])

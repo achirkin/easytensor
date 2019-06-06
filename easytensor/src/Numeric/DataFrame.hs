@@ -7,13 +7,11 @@ module Numeric.DataFrame
     -- * Functionality
   , module Numeric.DataFrame.SubSpace
   , module Numeric.DataFrame.Contraction
-  , module Numeric.DataFrame.Shape
   ) where
 
 import Numeric.DataFrame.Internal.Backend ()
 
 import Numeric.DataFrame.Contraction
-import Numeric.DataFrame.Shape
 import Numeric.DataFrame.SubSpace
 import Numeric.DataFrame.Type
 
