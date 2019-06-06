@@ -311,7 +311,7 @@ instance Show (Idxs (xs :: [k])) where
 
 instance BoundedDims xs => Read (Idxs (xs :: [k])) where
     readPrec = case inferAllBoundedDims @k @xs of
-      Dict -> typedListReadPrec @k @BoundedDim P.readPrec (tList @k @xs)
+      Dict -> typedListReadPrec @k @BoundedDim ":*" P.readPrec (tList @k @xs)
     readList = P.readListDefault
     readListPrec = P.readListPrecDefault
 

@@ -231,10 +231,10 @@ instance (All Eq xs, All Ord xs) => Ord (Tuple xs) where
     compare (x :* tx) (y :* ty) = compare1 x y <> compare tx ty
 
 instance All Show xs => Show (Tuple xs) where
-   showsPrec = typedListShowsPrecC @Type @Show showsPrec1
+   showsPrec = typedListShowsPrecC @Type @Show ":!" showsPrec1
 
 instance (All Read xs, RepresentableList xs) => Read (Tuple xs) where
-   readPrec = typedListReadPrec @Type @Read readPrec1 (tList @Type @xs)
+   readPrec = typedListReadPrec @Type @Read ":!" readPrec1 (tList @Type @xs)
    readList = P.readListDefault
    readListPrec = P.readListPrecDefault
 

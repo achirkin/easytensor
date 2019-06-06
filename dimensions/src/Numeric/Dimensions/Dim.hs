@@ -853,15 +853,15 @@ sameDims' = const . const $ sameDims (dims @as) (dims @bs)
 
 -- | Similar to `const` or `asProxyTypeOf`;
 --   to be used on such implicit functions as `dim`, `dimMax`, etc.
-inSpaceOf :: forall (ds :: [Nat]) (p :: [Nat] -> Type) (q :: [Nat] -> Type)
+inSpaceOf :: forall (k :: Type) (ds :: [k]) (p :: [k] -> Type) (q :: [k] -> Type)
            . p ds -> q ds -> p ds
 inSpaceOf = const
 {-# INLINE inSpaceOf #-}
 
 -- | Similar to `asProxyTypeOf`,
 --   Give a hint to type checker to fix the type of a function argument.
-asSpaceOf :: forall (ds :: [Nat])
-                    (p :: [Nat] -> Type) (q :: [Nat] -> Type) (r :: Type)
+asSpaceOf :: forall (k :: Type) (ds :: [k])
+                    (p :: [k] -> Type) (q :: [k] -> Type) (r :: Type)
            . p ds -> (q ds -> r) -> (q ds -> r)
 asSpaceOf = const id
 {-# INLINE asSpaceOf #-}
@@ -983,7 +983,7 @@ instance BoundedDim x => Read (Dim (x :: k)) where
 
 instance BoundedDims xs => Read (Dims (xs :: [k])) where
     readPrec = case inferAllBoundedDims @k @xs of
-        Dict -> typedListReadPrec @k @BoundedDim Read.readPrec (tList @k @xs)
+        Dict -> typedListReadPrec @k @BoundedDim ":*" Read.readPrec (tList @k @xs)
     readList = Read.readListDefault
     readListPrec = Read.readListPrecDefault
 
