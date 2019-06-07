@@ -6,4 +6,4 @@ packages:
   - constraints-deriving-1.0.4.0
   - inline-c-cpp-0.3.0.1
   - opencv-0.0.2.1
-  - vulkan-api-1.1.4.0
+  - vulkan-api-1.2.0.0

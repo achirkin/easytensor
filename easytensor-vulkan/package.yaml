@@ -28,7 +28,7 @@ dependencies:
   - base >= 4.11 && < 5
   - dimensions >= 2 && < 3
   - easytensor >= 2 && < 3
-  - vulkan-api >= 1.1.4.0 && < 2
+  - vulkan-api >= 1.2.0.0 && < 2
 
 library:
   source-dirs: src

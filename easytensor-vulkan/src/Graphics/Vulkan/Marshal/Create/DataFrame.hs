@@ -11,7 +11,7 @@
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
--- {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 -- | This module provides an orphan instance of `PrimBytes` for `VulkanMarshalPrim`
 --   structures.
 --   This enables them to be stored in @DataFrames@ from @easytensor@ package.
@@ -26,9 +26,7 @@ module Graphics.Vulkan.Marshal.Create.DataFrame
   ( setVec, getVec
   , fillDataFrame, withDFPtr, setDFRef
     -- * Helpers
-  , VulkanDataFrame (..), VkDataFrame (..), VkPrimBytes (..)
-  , inferVkPrimBytes
-  , Dict (..)
+  , VulkanDataFrame (..), VkDataFrame
   ) where
 
 
@@ -59,12 +57,12 @@ setVec v
 
 -- | Get an array of values, possibly without copying
 --   (if vector implementation allows).
-getVec :: forall fname x t
+getVec :: forall fname x t a
         . ( FieldType fname x ~ t
           , PrimBytes t
           , KnownDim (FieldArrayLength fname x)
           , CanReadFieldArray fname x
-          , VulkanMarshalPrim x
+          , x ~ VulkanStruct a
           )
        => x -> Vector t (FieldArrayLength fname x)
 getVec x
@@ -75,39 +73,30 @@ getVec x
   , Dict <- inferKnownBackend @t @'[FieldArrayLength fname x]
   = fromBytes (minusAddr# xaddr baddr +# off) ba
 
--- | Let Vulkan struct behave like PrimBytes!
-newtype VkPrimBytes a =  VkPrimBytes { unVkPrimBytes :: a }
-  deriving (Eq, Ord, Show, Read)
-
-inferVkPrimBytes :: forall (a :: Type)
-                  . (VulkanMarshalPrim a, Storable a)
-                 => Dict (PrimBytes a)
-inferVkPrimBytes = unsafeCoerce# (Dict @(PrimBytes (VkPrimBytes a)))
-
-instance (VulkanMarshalPrim a, Storable a) => PrimBytes (VkPrimBytes a) where
-    type PrimFields (VkPrimBytes a) = '[]
-    byteSize   (VkPrimBytes a) = case sizeOf a of (I# s) -> s
+instance Storable (VulkanStruct a)=> PrimBytes (VulkanStruct a) where
+    type PrimFields (VulkanStruct a) = '[]
+    byteSize   a = case sizeOf a of (I# s) -> s
     {-# INLINE byteSize #-}
-    byteAlign  (VkPrimBytes a) = case alignment a of (I# n) -> n
+    byteAlign  a = case alignment a of (I# n) -> n
     {-# INLINE byteAlign #-}
-    byteOffset (VkPrimBytes a) = minusAddr# (unsafeAddr a)
+    byteOffset a = minusAddr# (unsafeAddr a)
                                   (byteArrayContents# (unsafeByteArray a))
     {-# INLINE byteOffset #-}
-    getBytes = coerce (unsafeByteArray @a)
+    getBytes = unsafeByteArray
     {-# INLINE getBytes #-}
-    fromBytes = coerce (unsafeFromByteArrayOffset @a)
+    fromBytes = unsafeFromByteArrayOffset
     {-# INLINE fromBytes #-}
-    readBytes mba off = unsafeCoerce# (newVkData# f)
+    readBytes mba off = unsafeCoerce# (newVkData# @a f)
       where
-        f :: Ptr a -> IO ()
+        f :: Ptr (VulkanStruct a) -> IO ()
         f (Ptr addr) = IO $ \s ->
           (# copyMutableByteArrayToAddr# (unsafeCoerce# mba)
-                 off addr (byteSize @(VkPrimBytes a) undefined) s
+                 off addr (byteSize @(VulkanStruct a) undefined) s
            , () #)
-    writeBytes mba off (VkPrimBytes a)
-      = copyAddrToByteArray# (unsafeAddr a) mba off (byteSize @(VkPrimBytes a) undefined)
-    readAddr addr = unsafeCoerce# (peekVkData# (Ptr addr) :: IO a)
-    writeAddr (VkPrimBytes a) addr s
+    writeBytes mba off a
+      = copyAddrToByteArray# (unsafeAddr a) mba off (byteSize @(VulkanStruct a) undefined)
+    readAddr addr = unsafeCoerce# (peekVkData# (Ptr addr) :: IO (VulkanStruct a))
+    writeAddr a addr s
       = case unsafeCoerce# (pokeVkData# (Ptr addr) a :: IO ()) s of
          (# s', () #) -> s'
     byteFieldOffset _ _ = negateInt# 1#
@@ -183,7 +172,7 @@ fillDataFrame _ _ = error "fillDataFrame: impossible combination of arguments."
 
 -- | Special data type used to provide @VulkanMarshal@ instance for DataFrames.
 --   It is guaranteed to be pinned.
-data VkDataFrame (t :: l) (ds :: [k]) = VkDataFrame# Addr# ByteArray#
+type VkDataFrame (t :: l) (ds :: [k]) = VulkanStruct (DataFrame t ds)
 
 instance PrimBytes (DataFrame t ds) => Storable (VkDataFrame t ds) where
     sizeOf _ = I# (byteSize @(DataFrame t ds) undefined)
@@ -194,15 +183,6 @@ instance PrimBytes (DataFrame t ds) => Storable (VkDataFrame t ds) where
     {-# INLINE peek #-}
     poke = pokeVkData#
     {-# INLINE poke #-}
-
-instance VulkanMarshalPrim (VkDataFrame t ds) where
-    unsafeAddr (VkDataFrame# a _) = a
-    {-# INLINE unsafeAddr #-}
-    unsafeByteArray (VkDataFrame# _ b) = b
-    {-# INLINE unsafeByteArray #-}
-    unsafeFromByteArrayOffset off b
-      = VkDataFrame# (plusAddr# (byteArrayContents# b) off) b
-    {-# INLINE unsafeFromByteArrayOffset #-}
 
 instance PrimBytes (DataFrame t ds) => VulkanMarshal (VkDataFrame t ds) where
     type StructFields (VkDataFrame t ds) = '[]
@@ -228,7 +208,7 @@ instance (PrimBytes a, Dimensions ds)
     frameToVkData x
       | Dict <- inferKnownBackend @a @ds
         = unsafeFromByteArrayOffset (byteOffset x) (getBytesPinned x)
-    vkDataToFrame _ (VkDataFrame# addr ba)
+    vkDataToFrame _ (VulkanStruct addr ba)
       | Dict <- inferKnownBackend @a @ds
         = fromBytes (addr `minusAddr#` byteArrayContents# ba) ba
 
