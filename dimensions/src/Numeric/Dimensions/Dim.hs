@@ -726,6 +726,12 @@ instance Dimensions ns => BoundedDims (ns :: [Nat]) where
         go (D :* ds)
           | Dict <- go ds = Dict
 
+instance BoundedDims ('[] :: [XNat]) where
+    type DimsBound '[] = '[]
+    dimsBound = U
+    constrainDims = const $ Just U
+    inferAllBoundedDims = Dict
+
 instance (BoundedDim n, BoundedDims ns) => BoundedDims ((n ': ns) :: [XNat]) where
     type DimsBound (n ': ns) = DimBound n ': DimsBound ns
     dimsBound = dimBound @XNat @n :* dimsBound @XNat @ns
