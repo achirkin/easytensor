@@ -139,7 +139,7 @@ instance KnownDim a => Arbitrary (Dim (N a)) where
 instance KnownDim m => Arbitrary (Dim (XN m)) where
     arbitrary = do
       dimN <- choose (dimVal' @m, maxDims)
-      case constrain @XNat @(XN m) (someDimVal dimN) of
+      case constrainDim @XNat @(XN m) (someDimVal dimN) of
         Nothing -> error "impossible argument"
         Just d  -> return d
     shrink _ = []
