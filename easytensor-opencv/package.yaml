@@ -11,6 +11,17 @@ description:
     Instances and functions for conversion between easytensor DataFrame
     and opencv Mat types.
 
+flags:
+
+  examples:
+    description:
+      Whether to build examples
+    default: false
+    manual: true
+
+data-files:
+  - example/example.png
+
 ghc-options:
   - -Wall
   - -Wcompat
@@ -35,3 +46,14 @@ pkg-config-dependencies:
 library:
   source-dirs: src
   other-modules: []
+
+executables:
+  easytensor-opencv-example:
+    when:
+      - condition: (!flag(examples))
+        buildable: false
+    main:                Main.hs
+    source-dirs:         example
+    dependencies:
+    - easytensor-opencv
+    - bytestring
