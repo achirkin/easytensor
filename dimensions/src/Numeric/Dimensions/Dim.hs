@@ -211,35 +211,35 @@ class KnownDimKind k => BoundedDim (n :: k) where
     --   then coerce to @Dim x@. Otherwise, return @Nothing@.
     --
     --   To satisfy the @dimBound@ means to be equal to @N n@ or be not less than @XN m@.
-    constrain :: forall (l :: Type) (y :: l) . Dim y -> Maybe (Dim n)
+    constrainDim :: forall (l :: Type) (y :: l) . Dim y -> Maybe (Dim n)
 
 
 instance KnownDim n => BoundedDim (n :: Nat) where
     type DimBound n = n
     dimBound = dim @n
     {-# INLINE dimBound #-}
-    constrain (DimSing y)
+    constrainDim (DimSing y)
        | dimVal' @n == y = Just (DimSing y)
-       | otherwise            = Nothing
-    {-# INLINE constrain #-}
+       | otherwise       = Nothing
+    {-# INLINE constrainDim #-}
 
 instance KnownDim n => BoundedDim ('N n) where
     type DimBound ('N n) = n
     dimBound = dim @n
     {-# INLINE dimBound #-}
-    constrain (DimSing y)
+    constrainDim (DimSing y)
        | dimVal' @n == y = Just (DimSing y)
-       | otherwise            = Nothing
-    {-# INLINE constrain #-}
+       | otherwise       = Nothing
+    {-# INLINE constrainDim #-}
 
 instance KnownDim m => BoundedDim ('XN m) where
     type DimBound ('XN m) = m
     dimBound = dim @m
     {-# INLINE dimBound #-}
-    constrain (DimSing y)
+    constrainDim (DimSing y)
        | dimVal' @m <= y = Just (DimSing y)
-       | otherwise            = Nothing
-    {-# INLINE constrain #-}
+       | otherwise       = Nothing
+    {-# INLINE constrainDim #-}
 
 minDim :: forall (k :: Type) (d :: k) . BoundedDim d => Dim d
 minDim = coerce (dimBound @k @d)
@@ -353,11 +353,11 @@ someDimVal :: Word -> SomeDim
 someDimVal = coerce
 {-# INLINE someDimVal #-}
 
--- | `constrain` with explicitly-passed constraining @Dim@
+-- | `constrainDim` with explicitly-passed constraining @Dim@
 --   to avoid @AllowAmbiguousTypes@.
 constrainBy :: forall (k :: Type) (x :: k) (p :: k -> Type) (l :: Type) (y :: l)
              . BoundedDim x => p x -> Dim y -> Maybe (Dim x)
-constrainBy = const (constrain @k @x @l @y)
+constrainBy = const (constrainDim @k @x @l @y)
 {-# INLINE constrainBy #-}
 
 -- | Decrease minimum allowed size of a @Dim (XN x)@.
@@ -691,7 +691,7 @@ class KnownDimKind k => BoundedDims (ds :: [k]) where
     type family DimsBound ds :: [Nat]
     -- | Plural form for `dimBound`
     dimsBound :: Dims (DimsBound ds)
-    -- | Plural form for `constrain`.
+    -- | Plural form for `constrainDim`.
     --
     --   Given a @Dims ys@, test if its runtime value satisfies constraints imposed by
     --   @BoundedDims ds@, and returns it back coerced to @Dims ds@ on success.
@@ -736,7 +736,7 @@ instance (BoundedDim n, BoundedDims ns) => BoundedDims ((n ': ns) :: [XNat]) whe
     type DimsBound (n ': ns) = DimBound n ': DimsBound ns
     dimsBound = dimBound @XNat @n :* dimsBound @XNat @ns
     constrainDims U         = Nothing
-    constrainDims (y :* ys) = (:*) <$> constrain y <*> constrainDims ys
+    constrainDims (y :* ys) = (:*) <$> constrainDim y <*> constrainDims ys
     inferAllBoundedDims = case inferAllBoundedDims @XNat @ns of Dict -> Dict
 
 
@@ -981,7 +981,7 @@ instance BoundedDim x => Read (Dim (x :: k)) where
     readPrec = Read.lexP >>= \case
       Read.Ident ('D':s)
         | Just d <- Read.readMaybe s
-            >>= constrain @k @x @XNat @(XN 0) . DimSing
+            >>= constrainDim @k @x @XNat @(XN 0) . DimSing
           -> return d
       _  -> Read.pfail
     readList = Read.readListDefault

@@ -28,20 +28,21 @@
  -}
 module Numeric.DataFrame.Type
   ( -- * Data types
--- #if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
---     DataFrame (SingleFrame, MultiFrame, XFrame)
---   , pattern Z, pattern (:*:)
---   , pattern S, pattern DF2, pattern DF3, pattern DF4, pattern DF5
---   , pattern DF6, pattern DF7, pattern DF8, pattern DF9
--- #else
-    DataFrame ( SingleFrame, MultiFrame, XFrame, (:*:), Z
+    SomeDataFrame (..), DataFrame'
+#if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
+  , DataFrame (SingleFrame, MultiFrame, XFrame)
+  , pattern Z, pattern (:*:)
+  , pattern S, pattern DF2, pattern DF3, pattern DF4, pattern DF5
+  , pattern DF6, pattern DF7, pattern DF8, pattern DF9
+#else
+  , DataFrame ( SingleFrame, MultiFrame, XFrame, (:*:), Z
               , S, DF2, DF3, DF4, DF5, DF6, DF7, DF8, DF9)
--- #endif
-  , SomeDataFrame (..), DataFrame'
+#endif
     -- * Flexible assembling and disassembling
   , PackDF, packDF, unpackDF
   , appendDF, consDF, snocDF
   , fromFlatList, fromListWithDefault, fromList
+  , constrainDF
     -- * Infer type class instances
   , KnownBackend (), DFBackend, KnownBackends
   , InferKnownBackend (..), inferPrimElem
@@ -922,6 +923,21 @@ fromList xs
     | otherwise
       = error "Numeri.DataFrame.Type/fromList: impossible arguments"
 
+
+-- | Try to convert between @XNat@-indexed DataFrames.
+--
+--   This is useful for imposing restrictions on unknown DataFrames,
+--   e.g. increasing the minimum number of elements.
+constrainDF :: forall (ds :: [XNat]) (ys :: [XNat]) (l :: Type) (ts :: l)
+             . (BoundedDims ds, All KnownXNatType ds)
+            => DataFrame ts ys -> Maybe (DataFrame ts ds)
+constrainDF (XFrame (df :: DataFrame ts ns))
+  | ns <- dims @ns
+  = case constrainDims @XNat @ds ns of
+      Just (XDims (Dims :: Dims ms))
+        | Dict <- unsafeEqTypes @[Nat] @ns @ms
+          -> Just $ XFrame df
+      _   -> Nothing
 
 
 

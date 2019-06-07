@@ -92,6 +92,36 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
         {-# NOINLINE go #-}
     {-# INLINE getBytes #-}
 
+    getBytesPinned (ArrayBase a) = case a of
+        (# t | #)
+          | W# nw <- totalDim' @ds
+          , n <- word2Int# nw
+          , tbs <- byteSize t -> go tbs (tbs *# n) t
+        (# | (# off, arr, steps, _ #) #) ->
+          if isTrue# (isByteArrayPinned# arr)
+          then case runRW# (\s -> (# touch# arr s, arr #)) of (# _, ba #) -> ba
+          else case runRW#
+           ( \s0 -> case (# cdTotalDim# steps
+                          , byteSize @t undefined
+                          , byteAlign @t undefined
+                          #) of
+               (# n, tbs, tba #)
+                 | bsize <- tbs *# n
+                 , (# s1, mba #) <- newAlignedPinnedByteArray# bsize tba s0
+                 , s2 <- copyByteArray# arr off mba 0# bsize s1
+                   -> unsafeFreezeByteArray# mba s2
+           ) of (# _, ba #) -> ba
+      where
+        go :: Int# -> Int# -> t -> ByteArray#
+        go tbs bsize t = case runRW#
+         ( \s0 -> case newAlignedPinnedByteArray# bsize (byteAlign t) s0 of
+             (# s1, mba #) -> unsafeFreezeByteArray# mba
+               ( loop# 0# tbs bsize (\i -> writeBytes mba i t) s1 )
+         ) of (# _, ba #) -> ba
+        {-# NOINLINE go #-}
+    {-# INLINE getBytesPinned #-}
+
+
     fromBytes bOff ba
       | tbs <- byteSize (undefined :: t)
       , (# offN, offRem #) <- quotRemInt# bOff tbs

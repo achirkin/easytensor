@@ -162,6 +162,20 @@ class PrimTagged a => PrimBytes a where
            (# s1, marr #) -> unsafeFreezeByteArray# marr (writeBytes marr 0# a s1)
        ) of (# _, r #) -> r
     {-# NOINLINE getBytes #-}
+    -- | Store content of a data type in a primitive byte array
+    --   (should be used together with @byteOffset@ function).
+    --
+    --   In contrast to `getBytes`, this function returns a pinned byte array,
+    --   aligned to the @byteAlign@ bytes of this data.
+    --
+    --   Note, GC guarantees not to move the created array.
+    --   While this is very useful sometimes, it incurs a certain performance penalty.
+    getBytesPinned :: a -> ByteArray#
+    getBytesPinned a = case runRW#
+       ( \s0 -> case newAlignedPinnedByteArray# (byteSize a) (byteAlign a) s0 of
+           (# s1, marr #) -> unsafeFreezeByteArray# marr (writeBytes marr 0# a s1)
+       ) of (# _, r #) -> r
+    {-# NOINLINE getBytesPinned #-}
     -- | Load content of a data type from a primitive byte array given an offset in bytes.
     fromBytes :: Int# -- ^ Offset in bytes
               -> ByteArray# -- ^ Source array
