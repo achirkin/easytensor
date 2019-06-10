@@ -59,9 +59,10 @@ Support of `easytensor` on GHC 8.2 was dropped due to:
 Everything! In general, v2 of `easytensor` is meant to show an *expectable* behavior:
 
   * All `Show` and `Read` instances look like automatically-generated instances for algebraic data types.
-  * Order of dimensions in `Dims` list is reversed (the first dimension is "the most significant"), thus making `Ord` instances of `Dims` and `Idxs` coincide with conventional Haskell lexicographic ordering.
   * 0-based indexing instead of 1-based indexing makes conversion between offsets, indices, and `Enum` more intuitive.
+  * Order of dimensions in `Dims` list is reversed (the first dimension is "the most significant"), thus making `Ord` instances of `Dims` and `Idxs` coincide with conventional Haskell lexicographic ordering. The implication of this is the next two points.
   * `DataFrame` `Ord` instances are now proper total lexicographic ordering.
+  * `DataFrame` layout now is row-first instead of column-first. Therefore, to keep low-level SIMD optimizations of 3D geometry possible, I've had to transpose all matrices in `HomTransform4` class.
   * `Nat`-indexed `Dims`, `Idxs`, and `DataFrame` now have `Generic` and `Data` instances that make these datatypes look like ordinary algebraic data types.
   * More obvious ways to construct `DataFrame`s from pieces.
   * Removed all declarations and modules that may look controversial or do not belong here.
