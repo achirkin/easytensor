@@ -97,18 +97,16 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
           | W# nw <- totalDim' @ds
           , n <- word2Int# nw
           , tbs <- byteSize t -> go tbs (tbs *# n) t
-        (# | (# off, arr, steps, _ #) #) ->
+        (# | (# off, arr, _, _ #) #) ->
           if isTrue# (isByteArrayPinned# arr)
           then case runRW# (\s -> (# touch# arr s, arr #)) of (# _, ba #) -> ba
           else case runRW#
-           ( \s0 -> case (# cdTotalDim# steps
-                          , byteSize @t undefined
+           ( \s0 -> case (# sizeofByteArray# arr
                           , byteAlign @t undefined
                           #) of
-               (# n, tbs, tba #)
-                 | bsize <- tbs *# n
-                 , (# s1, mba #) <- newAlignedPinnedByteArray# bsize tba s0
-                 , s2 <- copyByteArray# arr off mba 0# bsize s1
+               (# bsize, tba #)
+                 | (# s1, mba #) <- newAlignedPinnedByteArray# bsize tba s0
+                 , s2 <- copyByteArray# arr off mba off bsize s1
                    -> unsafeFreezeByteArray# mba s2
            ) of (# _, ba #) -> ba
       where
