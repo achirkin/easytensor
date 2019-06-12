@@ -288,7 +288,8 @@ type family FixedDim (x :: XNat) (n :: Nat) :: Constraint where
     FixedDim ('N a)  b = a ~ b
     FixedDim ('XN m) b = m <= b
 
-instance {-# OVERLAPPABLE #-} KnownNat n => KnownDim n where
+
+instance KnownNat n => KnownDim n where
     {-# INLINE dim #-}
     dim = DimSing (fromIntegral (natVal' (proxy# :: Proxy# n)))
 

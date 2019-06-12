@@ -25,8 +25,6 @@
 module Graphics.Vulkan.Marshal.Create.DataFrame
   ( setVec, getVec
   , fillDataFrame, withDFPtr, setDFRef
-    -- * Helpers
-  , VulkanDataFrame (..), VkDataFrame
   ) where
 
 
@@ -57,12 +55,11 @@ setVec v
 
 -- | Get an array of values, possibly without copying
 --   (if vector implementation allows).
-getVec :: forall fname x t a
+getVec :: forall fname x t
         . ( FieldType fname x ~ t
           , PrimBytes t
           , KnownDim (FieldArrayLength fname x)
           , CanReadFieldArray fname x
-          , x ~ VulkanStruct a
           )
        => x -> Vector t (FieldArrayLength fname x)
 getVec x
@@ -73,8 +70,8 @@ getVec x
   , Dict <- inferKnownBackend @t @'[FieldArrayLength fname x]
   = fromBytes (minusAddr# xaddr baddr +# off) ba
 
-instance Storable (VulkanStruct a)=> PrimBytes (VulkanStruct a) where
-    type PrimFields (VulkanStruct a) = '[]
+instance VulkanMarshal (VkStruct a) => PrimBytes (VkStruct a) where
+    type PrimFields (VkStruct a) = '[]
     byteSize   a = case sizeOf a of (I# s) -> s
     {-# INLINE byteSize #-}
     byteAlign  a = case alignment a of (I# n) -> n
@@ -86,18 +83,18 @@ instance Storable (VulkanStruct a)=> PrimBytes (VulkanStruct a) where
     {-# INLINE getBytes #-}
     fromBytes = unsafeFromByteArrayOffset
     {-# INLINE fromBytes #-}
-    readBytes mba off = unsafeCoerce# (newVkData# @a f)
+    readBytes mba off = unsafeCoerce# (newVkData @(VkStruct a) f)
       where
-        f :: Ptr (VulkanStruct a) -> IO ()
+        f :: Ptr (VkStruct a) -> IO ()
         f (Ptr addr) = IO $ \s ->
           (# copyMutableByteArrayToAddr# (unsafeCoerce# mba)
-                 off addr (byteSize @(VulkanStruct a) undefined) s
+                 off addr (byteSize @(VkStruct a) undefined) s
            , () #)
     writeBytes mba off a
-      = copyAddrToByteArray# (unsafeAddr a) mba off (byteSize @(VulkanStruct a) undefined)
-    readAddr addr = unsafeCoerce# (peekVkData# (Ptr addr) :: IO (VulkanStruct a))
+      = copyAddrToByteArray# (unsafeAddr a) mba off (byteSize @(VkStruct a) undefined)
+    readAddr addr = unsafeCoerce# (peek (Ptr addr) :: IO (VkStruct a))
     writeAddr a addr s
-      = case unsafeCoerce# (pokeVkData# (Ptr addr) a :: IO ()) s of
+      = case unsafeCoerce# (poke (Ptr addr) a :: IO ()) s of
          (# s', () #) -> s'
     byteFieldOffset _ _ = negateInt# 1#
 
@@ -115,13 +112,15 @@ instance Storable (VulkanStruct a)=> PrimBytes (VulkanStruct a) where
 --     * If the original DF is based on unpinned `ByteArray#`, using this
 --       performs a copy anyway.
 --
-withDFPtr :: VulkanDataFrame a ds
+withDFPtr :: forall (a :: Type) (ds :: [Nat]) (b :: Type)
+           . (PrimBytes a, Dimensions ds)
           => DataFrame a ds -> (Ptr a -> IO b) -> IO b
 withDFPtr x k
-  | d <- frameToVkData x = do
-  b <- k (Ptr (unsafeAddr d))
-  touchVkData# d
-  return b
+  | Dict <- inferKnownBackend @a @ds
+  , ba <- getBytesPinned x = do
+    b <- k (Ptr (byteArrayContents# ba `plusAddr#` byteOffset x))
+    IO $ \s -> (# touch# ba s, () #)
+    return b
 
 -- | A variant of `setVkRef` that writes a pointer to a contiguous array of
 --   structures.
@@ -135,16 +134,17 @@ withDFPtr x k
 setDFRef :: forall fname x a ds
           . ( CanWriteField fname x
             , FieldType fname x ~ Ptr a
-            , VulkanDataFrame a ds
+            , PrimBytes a, Dimensions ds
             )
          => DataFrame a ds -> CreateVkStruct x '[fname] ()
-setDFRef v = unsafeCoerce# f -- workaround for the hidden CreateVkStruct constr.
-  where
-    d = frameToVkData v
-    f :: Ptr x -> IO ( ([Ptr ()],[IO ()]) , ())
-    f p = (,) ([],[touchVkData# d])
-       <$> writeField @fname @x p (Ptr (unsafeAddr d))
-
+setDFRef v
+    | Dict <- inferKnownBackend @a @ds
+    , ba <- getBytesPinned v
+    , addr <- byteArrayContents# ba `plusAddr#` byteOffset v
+     = let f :: Ptr x -> IO ( ([Ptr ()],[IO ()]) , ())
+           f p = (,) ([],[IO $ \s -> (# touch# ba s, () #)])
+             <$> writeField @fname @x p (Ptr addr)
+       in  unsafeCoerce# f -- workaround for the hidden CreateVkStruct constr.
 
 
 -- | Given the number of elements, create a new pinned DataFrame and initialize
@@ -166,55 +166,3 @@ fillDataFrame n k
      withDataFramePtr mdf k
      XFrame <$> unsafeFreezeDataFrame @a @'[n] mdf
 fillDataFrame _ _ = error "fillDataFrame: impossible combination of arguments."
-
-
-
-
--- | Special data type used to provide @VulkanMarshal@ instance for DataFrames.
---   It is guaranteed to be pinned.
-type VkDataFrame (t :: l) (ds :: [k]) = VulkanStruct (DataFrame t ds)
-
-instance PrimBytes (DataFrame t ds) => Storable (VkDataFrame t ds) where
-    sizeOf _ = I# (byteSize @(DataFrame t ds) undefined)
-    {-# INLINE sizeOf #-}
-    alignment _ = I# (byteAlign @(DataFrame t ds) undefined)
-    {-# INLINE alignment #-}
-    peek = peekVkData#
-    {-# INLINE peek #-}
-    poke = pokeVkData#
-    {-# INLINE poke #-}
-
-instance PrimBytes (DataFrame t ds) => VulkanMarshal (VkDataFrame t ds) where
-    type StructFields (VkDataFrame t ds) = '[]
-    type CUnionType (VkDataFrame t ds) = 'False
-    type ReturnedOnly (VkDataFrame t ds) = 'False
-    type StructExtends (VkDataFrame t ds) = '[]
-
-
-class VulkanDataFrame a (ds :: [k]) where
-    -- | Construct a new @VkDataFrame@ possibly without copying.
-    --   It performs no copy if the @DataFrame@ implementation is a pinned @ByteArray#@.
-    frameToVkData :: DataFrame a ds -> VkDataFrame a ds
-    -- | Construct a new (pinned if implementation allows) DataFrame from VK data,
-    --   possibly without copying.
-    --
-    --   Note, this is a user responsibility to check if the real size of @VkDataFrame@
-    --   and the dimensionality @ds@ agree.
-    vkDataToFrame :: Dims ds -> VkDataFrame a ds -> DataFrame a ds
-
-
-instance (PrimBytes a, Dimensions ds)
-      => VulkanDataFrame a (ds :: [Nat]) where
-    frameToVkData x
-      | Dict <- inferKnownBackend @a @ds
-        = unsafeFromByteArrayOffset (byteOffset x) (getBytesPinned x)
-    vkDataToFrame _ (VulkanStruct addr ba)
-      | Dict <- inferKnownBackend @a @ds
-        = fromBytes (addr `minusAddr#` byteArrayContents# ba) ba
-
-instance (PrimBytes a, All KnownXNatType ds)
-      => VulkanDataFrame a (ds :: [XNat]) where
-    frameToVkData (XFrame x) = unsafeCoerce# (frameToVkData x)
-    vkDataToFrame (XDims (ds :: Dims ns)) d
-      | Dict <- inferKnownBackend @a @ns
-        = XFrame (vkDataToFrame ds (unsafeCoerce# d))

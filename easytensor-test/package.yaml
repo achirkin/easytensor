@@ -1,0 +1,33 @@
+name:                easytensor-test
+version:             2.0.0.0
+github:              "achirkin/easytensor/easytensor-test"
+license:             BSD3
+author:              "Artem Chirkin"
+maintainer:          "achirkin@users.noreply.github.com"
+copyright:           "Copyright: (c) 2019 Artem Chirkin"
+
+ghc-options:
+  - -Wall
+  - -Wcompat
+  - -Wtabs
+  - -Wmonomorphism-restriction
+  - -Wmissing-local-signatures
+  - -Wmissing-home-modules
+  - -Widentities
+  - -Wredundant-constraints
+  - -fobject-code
+
+default-extensions:
+  - DataKinds
+  - ScopedTypeVariables
+  - TypeApplications
+
+dependencies:
+  - base >= 4.10 && < 5
+  - dimensions >= 2 && < 3
+  - easytensor >= 2 && < 3
+
+executables:
+
+  et-test:
+    main: main.hs
