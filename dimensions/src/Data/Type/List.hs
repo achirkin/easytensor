@@ -24,8 +24,18 @@
 module Data.Type.List
   ( -- * Basic operations
     type (++), type (+:), type (:+)
-  , Empty, Cons, Snoc, Head
-  , Tail, Last, Init, Concat
+  , Empty, Cons, Head, Tail
+  , -- | A moderately magical class for infering @Snoc@-@Last@-@Init@ relations.
+    --   It has an universal instance, so don't be afraid to put it into your
+    --   function's constraints.
+    SnocList ()
+  , -- | Appending a list on the other side.
+    Snoc
+  , -- | Extract the last element of a list, which must be non-empty.
+    Last
+  , -- | Extract all but last elements of a list, which must be non-empty.
+    Init
+  , Concat
   , StripPrefix, StripSuffix
   , Reverse, Take, Drop, Length
     -- * Operations on elements
@@ -37,11 +47,12 @@ module Data.Type.List
   ) where
 
 import Data.Constraint         ((:-) (..), Constraint, Dict (..))
-import Data.Type.List.Internal (Snoc)
+import Data.Type.List.Internal
 import Data.Type.Lits
 import GHC.Base                (Type)
 import Type.Reflection
 import Unsafe.Coerce           (unsafeCoerce)
+
 
 -- | Empty list, same as @'[]@.
 type Empty = '[]
@@ -59,18 +70,6 @@ type family Head (xs :: [k]) :: k where
 type family Tail (xs :: [k]) :: [k] where
     Tail ('[] :: [k]) = TypeError ( ListError k "Tail: empty type-level list." )
     Tail (_ ': xs)    = xs
-
--- | Extract the last element of a list, which must be non-empty.
-type family Last (xs :: [k]) :: k where
-    Last ('[] :: [k]) = TypeError ( ListError k "Last: empty type-level list." )
-    Last '[x]         = x
-    Last (_ ': xs)    = Last xs
-
--- | Extract all but last elements of a list, which must be non-empty.
-type family Init (xs :: [k]) :: [k] where
-    Init ('[] :: [k]) = TypeError ( ListError k "Init: empty type-level list." )
-    Init '[x]         = '[]
-    Init (x ': xs)    = x ': Init xs
 
 -- | @Take n xs@ returns the prefix of a list of length @max n (length xs)@.
 type family Take (n :: Nat) (xs :: [k]) :: [k] where
