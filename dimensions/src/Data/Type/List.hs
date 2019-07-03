@@ -37,7 +37,7 @@ module Data.Type.List
     Init
   , Concat
   , StripPrefix, StripSuffix
-  , Reverse, Take, Drop, Length
+  , ReverseList (..), Take, Drop, Length
     -- * Operations on elements
   , All, Map, Elem
     -- * Concatenation and its evidence
@@ -132,7 +132,8 @@ type family StripSuffix (bs :: [k]) (asbs :: [k]) :: [k] where
         )
     StripSuffix  bs       (a ': asbs) = a ': StripSuffix bs asbs
 
--- | Returns the elements of a list in reverse order.
+{-
+--  Returns the elements of a list in reverse order.
 type family Reverse (xs :: [k]) :: [k] where
     -- Note: the goal is not to write a fast implementation,
     --       but make it easier for the type checker to simplify things.
@@ -140,6 +141,7 @@ type family Reverse (xs :: [k]) :: [k] where
     --       so there is no real performance impact.
     Reverse '[] = '[]
     Reverse (x ': xs) = Snoc (Reverse xs) x
+ -}
 
 -- | Number of elements in a list.
 type family Length (xs :: [k]) :: Nat where

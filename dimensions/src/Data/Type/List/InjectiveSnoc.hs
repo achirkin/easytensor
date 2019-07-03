@@ -30,6 +30,7 @@ import qualified OccName        as OccName
 import           TcMType        (freshenTyVarBndrs)
 import           TcRnTypes      (Env (..), TcRnIf)
 import           TysPrim
+import           TcRnMonad (getTopEnv, initTcInteractive)
 
 -- | A small core plugin to make GHC think that @Snoc@ is injective
 plugin :: Plugin
@@ -40,46 +41,37 @@ plugin = defaultPlugin
 
 injectiveSnocPass :: ModGuts -> CoreM ModGuts
 injectiveSnocPass guts = do
-    snocList <- mkClassSnocList
-    (iSnocList, eSnocList) <- mkInstSnocList snocList
-    let [ATI snocTf _, ATI initTf _, ATI lastTf _] = classATItems snocList
-        snocClsTyCon = classTyCon snocList
-        guts' = guts
-          { mg_tcs = snocClsTyCon : snocTf : initTf : lastTf : mg_tcs guts
-          , mg_exports =  AvailTC (getName snocList)
-              [getName snocList, getName snocTf, getName initTf, getName lastTf] []
-              : mg_exports guts
-          , mg_insts = iSnocList : mg_insts guts
-          , mg_binds = eSnocList : mg_binds guts
-          }
-    -- mapM_ pprFam $ mg_tcs guts'
-    -- TODO: write corresponding core expressions.
-    --       Check out thr CoreProgram output:
-    -- mapM_ (pprTraceM "bind: " . ppr) $ mg_binds guts'
-    return guts'
+    cSnocList <- mkClassSnocList
+    (iSnocList, eSnocList) <- mkInstSnocList cSnocList
+    let [ATI tcSnoc _, ATI tcInit _, ATI tcLast _] = classATItems cSnocList
+        snocClsTyCon = classTyCon cSnocList
 
--- pprFam :: TyCon -> CoreM ()
--- pprFam tc
---   | Just (ClosedSynFamilyTyCon (Just ax)) <- famTyConFlav_maybe tc
---   , bs <- fromBranches $ coAxiomBranches ax
---     = pprTraceM "Closed FamilyTyCon: " $
---         (let n = getName tc
---              ocn = getOccName n
---              axn = getName ax
---              axocn = getOccName axn
---          in  ppr
---               ( ax
---               , tyConBinders tc, tyConRoles tc
---               , (n, axn)
---               , (ocn, axocn)
---               )
---              <+> pprNameSpace (occNameSpace ocn)
---              <+> pprNameSpace (occNameSpace axocn)
---         )
---         $+$
---         (hang (text "branches") 2 $ vcat (map ppr bs))
---   | otherwise
---     = pprTraceM "Some TyCon: " $ ppr tc
+    cReverseList <- mkClassReverseList
+    (iReverseList, eReverseList) <- mkInstReverseList cReverseList
+    let [ATI tcReverse _, ATI tcReverse' _] = classATItems cReverseList
+        tcReverseList = classTyCon cReverseList
+    
+    return guts
+          { mg_tcs
+              = snocClsTyCon : tcSnoc : tcInit : tcLast
+              : tcReverseList : tcReverse : tcReverse'
+              : mg_tcs guts
+          , mg_exports
+              = AvailTC (getName cSnocList)
+                [getName cSnocList, getName tcSnoc, getName tcInit, getName tcLast] []
+              : AvailTC (getName cReverseList)
+                [getName cReverseList, getName tcReverse] []
+              : mg_exports guts
+          , mg_insts
+              = iSnocList
+              : iReverseList
+              : mg_insts guts
+          , mg_binds
+              = eSnocList
+              : eReverseList
+              : mg_binds guts
+          }
+
 
 
 mkClassSnocList :: CoreM Class
@@ -109,18 +101,18 @@ mkClassSnocList = liftThinCoreM $ do
               kKind kKind xT (mkTyConApp tcLast [kKind, ysT])
           ]
         tyVarBndrs =
-          [ TvBndr k (NamedTCB Specified)
-          , TvBndr xs AnonTCB
-          , TvBndr x  AnonTCB
-          , TvBndr ys AnonTCB]
+          [ Bndr k (NamedTCB Specified)
+          , Bndr xs AnonTCB
+          , Bndr x  AnonTCB
+          , Bndr ys AnonTCB]
     makeClassAndFamilies "SnocList"
       tyVarBndrs funDeps constraints $ WithTypeFamilies $ \(~[tcSnoc, tcInit, tcLast]) ->
       [ ( "Snoc"
         , ksKind
         , Just (getName ys)
-        , [ TvBndr k  (NamedTCB Specified)
-          , TvBndr xs AnonTCB
-          , TvBndr x  AnonTCB]
+        , [ Bndr k  (NamedTCB Specified)
+          , Bndr xs AnonTCB
+          , Bndr x  AnonTCB]
         , Injective [True,True,True]
         , [ do ki <- new "k" liftedTypeKind
                a  <- new "a" ki
@@ -135,8 +127,8 @@ mkClassSnocList = liftThinCoreM $ do
       , ( "Init"
         , ksKind
         , Just (getName xs)
-        , [ TvBndr k  (NamedTCB Specified)
-          , TvBndr ys AnonTCB]
+        , [ Bndr k  (NamedTCB Specified)
+          , Bndr ys AnonTCB]
         , Injective [True,False]
         , [ do ki <- new "k" liftedTypeKind
                a  <- new "a" ki
@@ -150,8 +142,8 @@ mkClassSnocList = liftThinCoreM $ do
       , ( "Last"
         , kKind
         , Just (getName x)
-        , [ TvBndr k  (NamedTCB Specified)
-          , TvBndr ys AnonTCB]
+        , [ Bndr k  (NamedTCB Specified)
+          , Bndr ys AnonTCB]
         , Injective [True,False]
         , [ do ki <- new "k" liftedTypeKind
                a  <- new "a" ki
@@ -195,6 +187,98 @@ mkInstSnocList snocListClass
         constraints genConstraints snocListClass [kKind, xsT, xT, ysT]
   | otherwise
     = error "mkInstSnocList: Unexpected class"
+
+
+mkClassReverseList :: CoreM Class
+mkClassReverseList = liftThinCoreM $ do
+    k  <- genTyVar "k" liftedTypeKind
+    let kKind = mkTyVarTy k
+        ksKind = mkListTy kKind
+    xs <- genTyVar "xs" ksKind
+    ts <- genTyVar "ts" ksKind
+    ys <- genTyVar "ys" ksKind
+
+    let xsT = mkTyVarTy xs
+        ysT = mkTyVarTy ys
+        funDeps = -- [FunDep TyVar]
+          [ ([xs], [ys]), ([ys], [xs])
+          , ([xs],[k]), ([ys],[k])]
+        constraints = WithTypeFamilies $ \(~[tcReverse,_tcReverse']) ->
+          [ -- ys ~ Reverse xs :: [PredType]
+            mkHeqType
+              ksKind ksKind ysT (mkTyConApp tcReverse [kKind, xsT])
+            -- xs ~ Reverse ys
+          , mkHeqType
+              ksKind ksKind xsT (mkTyConApp tcReverse [kKind, ysT])
+          ]
+        tyVarBndrs =
+          [ Bndr k (NamedTCB Specified)
+          , Bndr xs AnonTCB
+          , Bndr ys AnonTCB]
+    makeClassAndFamilies "ReverseList"
+      tyVarBndrs funDeps constraints $ WithTypeFamilies $ \(~[_tcReverse, tcReverse']) ->
+      [ ( "Reverse"
+        , ksKind
+        , Just (getName ys)
+        , [ Bndr k (NamedTCB Specified)
+          , Bndr xs AnonTCB
+          ]
+        , Injective [True, True]
+        , [ do ki <- new "k" liftedTypeKind
+               as <- new "as" $ mkListTy ki
+               [ki, as] ~> mkTyConApp tcReverse' [ki, as, nil ki]
+          ]
+        )
+      , ( "Reverse'"
+        , ksKind
+        , Just (getName ys)
+        , [ Bndr k  (NamedTCB Specified)
+          , Bndr xs AnonTCB
+          , Bndr ts AnonTCB
+          ]
+        , Injective [True, True, False]
+        , [ do ki <- new "k" liftedTypeKind
+               a  <- new "a" ki
+               as <- new "as" $ mkListTy ki
+               bs <- new "bs" $ mkListTy ki
+               [ki, cons ki a as, bs] ~> mkTyConApp tcReverse' [ki, as, cons ki a bs]
+          , do ki <- new "k" liftedTypeKind
+               as <- new "as" $ mkListTy ki
+               [ki, nil ki, as] ~> as
+          ]
+        )
+      ]
+
+mkInstReverseList :: Class -> CoreM (ClsInst, CoreBind)
+mkInstReverseList reverseListClass
+  | [ATI tcReverse _, ATI _tcReverse' _] <- classATItems reverseListClass
+    = liftThinCoreM $ do
+      k  <- genTyVar "k" liftedTypeKind
+      let kKind = mkTyVarTy k
+          ksKind = mkListTy kKind
+      xs <- genTyVar "xs" ksKind
+      ys <- genTyVar "ys" ksKind
+
+      dfunName <- genExternalName OccName.varName "inst$ReverseList"
+
+      let xsT = mkTyVarTy xs
+          ysT = mkTyVarTy ys
+          constraints =
+            [ -- ys ~ Reverse xs :: [PredType]
+              mkHeqType
+               ksKind ksKind ysT (mkTyConApp tcReverse [kKind, xsT])
+            ]
+          genConstraints = \[reverseEq] ->
+            [ Var reverseEq
+            , mkHeqExpr ksKind ksKind xsT (mkTyConApp tcReverse [kKind, ysT])
+            ]
+
+      makeClsInst dfunName [k, xs, ys]
+        constraints genConstraints reverseListClass [kKind, xsT, ysT]
+  | otherwise
+    = error "mkInstReverseList: Unexpected class"
+
+
 
 cons :: Kind -> Type -> Type -> Type
 cons k t ts = mkTyConApp promotedConsDataCon [k, t, ts]
@@ -350,7 +434,7 @@ new n k = WithVars $ \tvsRef -> do
 (~>) lhs rhs = WithVars $ \tvsRef -> do
   loc <- getLocM
   tvs <- reverse <$> readMutVar tvsRef
-  return $ mkCoAxBranch tvs [] lhs rhs (map (const Nominal) tvs) loc
+  return $ mkCoAxBranch tvs [] [] lhs rhs (map (const Nominal) tvs) loc
 infix 4 ~>
 
 
@@ -382,7 +466,8 @@ makeClsInst :: Name
                -- ^ derived constraints (how to provide class constraints)
             -> Class -> [Type] -> ThinCoreM (ClsInst, CoreBind)
 makeClsInst dFunName tvs theta genConstraints clas tys = do
-  (subst, tvs') <- freshenTyVarBndrs tvs
+  hscEnv <- getTopEnv
+  (_ , Just (subst, tvs')) <- liftIO $ initTcInteractive hscEnv $ freshenTyVarBndrs tvs
   thetaVars <- traverse genLocalVar theta
   let tys' = substTys subst tys
       dfun = mkDictFunId dFunName tvs theta clas tys
