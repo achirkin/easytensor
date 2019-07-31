@@ -29,15 +29,12 @@ ghc-options:
 
 dependencies:
   - base >= 4.10 && < 5
-  - constraints-deriving >= 1 && < 2
+  - constraints-deriving >= 1.1 && < 2
 
 library:
   source-dirs: src
   other-modules:
-  - Data.Type.List.InjectiveSnoc
   - Data.Type.List.Internal
-  dependencies:
-  - ghc
   when:
   - condition: flag(unsafeindices)
     cpp-options: -DUNSAFE_INDICES
