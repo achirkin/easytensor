@@ -38,7 +38,7 @@ module Numeric.TypedList
     ( TypedList (U, (:*), Empty, TypeList, EvList, Cons, Snoc, Reverse)
     , RepresentableList (..)
     , Dict1 (..), DictList
-    , TypeList, types, typeables,inferTypeableList
+    , TypeList, types, typeables, inferTypeableList
     , order, order'
     , cons, snoc
     , Numeric.TypedList.reverse

@@ -486,13 +486,12 @@ instance PrimArray Float FloatX4 where
 
 getIdxOffset :: Idxs '[4] -> Int#
 getIdxOffset is = case unsafeCoerce# is of
-  [W# i] -> word2Int# i
-  _      -> 0#
+  ~[w] -> case w of W# i -> word2Int# i
 {-# INLINE getIdxOffset #-}
 
 
 {-# RULES
-"index/FloatX4" forall i . index @Float @'[4] i
+"index/FloatX4" forall i . index @Float @'[4] @'[] @'[4] i
   = unsafeCoerce# (ix# @Float @FloatX4 (getIdxOffset i))
 
   #-}
