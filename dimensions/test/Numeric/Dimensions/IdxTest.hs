@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeOperators             #-}
 
-module Numeric.Dimensions.IdxTest (runTests) where
+module Numeric.Dimensions.IdxTest where
 
 import Control.Arrow
 import Data.List
@@ -82,7 +82,7 @@ multLimit = floor $ sqrt (fromIntegral (maxBound :: Int) :: Double)
 -- check for Word overflow
 wouldNotOverflow :: [Word] -> Bool
 wouldNotOverflow
-  = and . snd . mapAccumR (\a e -> (a*e, a*e >= a && multLimit > a)) 1
+  = and . snd . mapAccumR (\a e -> (a*e, a*e >= a && multLimit > a && multLimit > e)) 1
 
 prop_idxsFromEnum :: [(Word, Word)] -> Bool
 prop_idxsFromEnum ins
