@@ -3,6 +3,7 @@ module Main (tests, main) where
 import Distribution.TestSuite
 import System.Exit
 
+import qualified Data.Type.ListTest
 import qualified Numeric.Dimensions.DimTest
 import qualified Numeric.Dimensions.IdxTest
 
@@ -10,7 +11,8 @@ import qualified Numeric.Dimensions.IdxTest
 -- | Collection of tests in detailed-0.9 format
 tests :: IO [Test]
 tests = return
-  [ test "Dim"   Numeric.Dimensions.DimTest.runTests
+  [ test "List"  Data.Type.ListTest.runTests
+  , test "Dim"   Numeric.Dimensions.DimTest.runTests
   , test "Idx"   Numeric.Dimensions.IdxTest.runTests
   ]
 

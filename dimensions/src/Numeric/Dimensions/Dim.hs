@@ -198,7 +198,7 @@ class KnownDim (n :: Nat) where
 -- | Get a minimal or exact bound of a @Dim@.
 --
 --   To satisfy the @BoundedDim@ means to be equal to @N n@ or be not less than @XN m@.
-class KnownDimKind k => BoundedDim (n :: k) where
+class (KnownDimKind k, KnownDim (DimBound n)) => BoundedDim (n :: k) where
     -- | Minimal or exact bound of a @Dim@.
     --   Useful for indexing: it is safe to index something by an index less than
     --   @DimBound n@ (for both @Nat@ and @Xnat@ indexed dims).

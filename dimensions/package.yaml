@@ -34,6 +34,8 @@ dependencies:
 library:
   source-dirs: src
   other-modules:
+  - Data.Type.List.Families
+  - Data.Type.List.Classes
   - Data.Type.List.Internal
   when:
   - condition: flag(unsafeindices)

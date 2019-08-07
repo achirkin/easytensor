@@ -38,9 +38,10 @@ module Data.Type.List
   ) where
 
 import Data.Constraint         (Constraint, Dict (..))
-import Data.Type.List.Internal
+import Data.Kind               (Type)
+import Data.Type.List.Classes
+import Data.Type.List.Families
 import Data.Type.Lits
-import GHC.Base                (Type)
 import Type.Reflection
 
 -- | Empty list, same as @'[]@.
@@ -49,14 +50,6 @@ type Empty = '[]
 -- | Appending a list, represents an @Op@ counterpart of @(':)@.
 type Cons (a :: k) (as :: [k])
     = a ': as
-
--- | Extract the first element of a list, which must be non-empty.
-type family Head (xs :: [k]) :: k where
-    Head (x ': _)     = x
-
--- | Extract the elements after the head of a list, which must be non-empty.
-type family Tail (xs :: [k]) :: [k] where
-    Tail (_ ': xs)    = xs
 
 -- | @Take n xs@ returns the prefix of a list of length @max n (length xs)@.
 type family Take (n :: Nat) (xs :: [k]) :: [k] where
