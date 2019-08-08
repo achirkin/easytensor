@@ -17,7 +17,6 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
-
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.Idx
@@ -119,10 +118,13 @@ idxToWord = coerce
   fromIntegral = idxToWord
   #-}
 
+-- | /O(1)/ Convert @Idxs xs@ to a plain list of words.
 listIdxs :: forall (k :: Type) (xs :: [k]) . Idxs xs -> [Word]
 listIdxs = unsafeCoerce#
 {-# INLINE listIdxs #-}
 
+-- | /O(n)/ Convert a plain list of words into an @Idxs@, while checking
+--   the index bounds.
 idxsFromWords :: forall (k :: Type) (xs :: [k])
                . BoundedDims xs => [Word] -> Maybe (Idxs xs)
 idxsFromWords = unsafeCoerce# . go (listDims (dimsBound @k @xs))

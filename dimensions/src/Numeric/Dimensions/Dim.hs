@@ -26,12 +26,7 @@
 #if __GLASGOW_HASKELL__ >= 806
 {-# LANGUAGE NoStarIsType              #-}
 #endif
-#if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
-{-# OPTIONS_GHC -fdefer-type-errors #-}
-{-# OPTIONS_GHC -fno-warn-deferred-type-errors #-}
-#else
 {-# OPTIONS_GHC -fplugin Data.Constraint.Deriving #-}
-#endif
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.Dimensions.Dim
@@ -54,7 +49,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.Dimensions.Dim
-  ( -- * @Dim@ -- a @Nat@-indexed dimension
+  ( -- * @Dim@: a @Nat@-indexed dimension
     -- ** Type level numbers that can be unknown.
     XNat (..), XN, N, XNatType (..)
     -- ** Term level dimension
@@ -87,7 +82,7 @@ module Numeric.Dimensions.Dim
   , Nat, CmpNat, SOrdering (..), type (+), type (-), type (*), type (^), type (<=)
     -- ** Inferring kind of type-level dimension
   , KnownDimKind (..), DimKind (..)
-    -- * @Dims@ -- a list of dimensions
+    -- * @Dims@: a list of dimensions
   , Dims, SomeDims (..), Dimensions (..), BoundedDims (..), DimsBound, minDims
   , TypedList ( Dims, XDims, AsXDims, KnownDims
               , U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
@@ -227,7 +222,7 @@ class (KnownDimKind k, KnownDim (DimBound n)) => BoundedDim (n :: k) where
     type family DimBound n :: Nat
     -- | Get such a minimal @Dim (DimBound n)@, that @Dim n@ is guaranteed
     --   to be not less than @dimBound@ if @n ~ XN a@,
-  --     otherwise, the return @Dim@ is the same as @n@.
+    --     otherwise, the return @Dim@ is the same as @n@.
     dimBound :: Dim (DimBound n)
     -- | If the runtime value of @Dim y@ satisfies @dimBound @k @x@,
     --   then coerce to @Dim x@. Otherwise, return @Nothing@.
@@ -263,6 +258,8 @@ instance KnownDim m => BoundedDim ('XN m) where
        | otherwise       = Nothing
     {-# INLINE constrainDim #-}
 
+-- | Returns the minimal @Dim@ that satisfies the @BoundedDim@ constraint
+--   (this is the exact @dim@ for @Nat@s and the minimal bound for @XNat@s).
 minDim :: forall (k :: Type) (d :: k) . BoundedDim d => Dim d
 minDim = coerce (dimBound @k @d)
 
@@ -431,34 +428,58 @@ compareDim' :: forall (a :: Nat) (b :: Nat) (p :: Nat -> Type) (q :: Nat -> Type
 compareDim' = const . const $ compareDim (dim @a)  (dim @b)
 {-# INLINE compareDim' #-}
 
+-- | Same as `Prelude.(+)`.
+--   Pattern-matching against the result would produce the evindence
+--    @KnownDim (n + m)@.
 plusDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim (n + m)
 plusDim = coerce ((+) :: Word -> Word -> Word)
 {-# INLINE plusDim #-}
 
+-- | Same as `Prelude.(-)`.
+--   Pattern-matching against the result would produce the evindence
+--    @KnownDim (n - m)@.
 minusDim :: forall (n :: Nat) (m :: Nat) . (<=) m n => Dim n -> Dim m -> Dim (n - m)
 minusDim = coerce ((-) :: Word -> Word -> Word)
 {-# INLINE minusDim #-}
 
+-- | Similar to `minusDim`, but returns @Nothing@ if the result would be negative.
+--   Pattern-matching against the result would produce the evindence
+--    @KnownDim (n - m)@.
 minusDimM :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Maybe (Dim (n - m))
 minusDimM (DimSing a) (DimSing b)
   | a >= b    = Just (coerce (a - b))
   | otherwise = Nothing
 {-# INLINE minusDimM #-}
 
+-- | Same as `Prelude.(*)`.
+--   Pattern-matching against the result would produce the evindence
+--    @KnownDim (n * m)@.
 timesDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim ((*) n m)
 timesDim = coerce ((*) :: Word -> Word -> Word)
 {-# INLINE timesDim #-}
 
+-- | Same as `Prelude.(^)`.
+--   Pattern-matching against the result would produce the evindence
+--    @KnownDim (n ^ m)@.
 powerDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim ((^) n m)
 powerDim = coerce ((^) :: Word -> Word -> Word)
 {-# INLINE powerDim #-}
 
+-- | Same as `Prelude.div`.
+--   Pattern-matching against the result would produce the evindence
+--    @KnownDim (Div n m)@.
 divDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim (Div n m)
 divDim = coerce (div :: Word -> Word -> Word)
 
+-- | Same as `Prelude.mod`.
+--   Pattern-matching against the result would produce the evindence
+--    @KnownDim (Mod n m)@.
 modDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim (Mod n m)
 modDim = coerce (mod :: Word -> Word -> Word)
 
+-- | Returns log base 2 (round down).
+--   Pattern-matching against the result would produce the evindence
+--    @KnownDim (Log2 n)@.
 log2Dim :: forall (n :: Nat) . Dim n -> Dim (Log2 n)
 log2Dim (DimSing 0) = undefined
 log2Dim (DimSing x) = DimSing . fromIntegral $ finiteBitSize x - 1 - countLeadingZeros x
@@ -805,7 +826,8 @@ instance (BoundedDim n, BoundedDims ns) => BoundedDims ((n ': ns) :: [XNat]) whe
 
 
 -- | Minimal runtime @Dims ds@ value that satifies the constraints imposed by
---   the type signature of @Dims ds@.
+--   the type signature of @Dims ds@
+--   (this is the exact @dims@ for @Nat@s and the minimal bound for @XNat@s).
 minDims :: forall (k :: Type) (ds :: [k])
          . BoundedDims ds => Dims ds
 minDims = unsafeCoerce# (dimsBound @k @ds)

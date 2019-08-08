@@ -221,74 +221,87 @@ pattern Cons x xs <- (patTL @k @f @xs -> PatCons x xs)
     Cons = Numeric.TypedList.cons
 
 -- | Constructing a type-indexed list from the other end
-pattern Snoc :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
-              . ()
-             => forall (sy :: [k]) (y :: k)
-              . (xs ~ (sy +: y)) => TypedList f sy -> f y -> TypedList f xs
+pattern Snoc :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) . ()
+             => forall (sy :: [k]) (y :: k) . SnocList sy y xs
+             => TypedList f sy -> f y -> TypedList f xs
 pattern Snoc sx x <- (unsnocTL @k @f @xs -> PatSnoc sx x)
   where
     Snoc = Numeric.TypedList.snoc
 
 -- | Reverse a typed list
-pattern Reverse :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
-                 . ()
-                => forall (sx :: [k])
-                 . (xs ~ Reverse sx, sx ~ Reverse xs)
+pattern Reverse :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) . ()
+                => forall (sx :: [k]) . ReverseList xs sx
                 => TypedList f sx -> TypedList f xs
 pattern Reverse sx <- (unreverseTL @k @f @xs -> PatReverse sx)
   where
     Reverse = Numeric.TypedList.reverse
 
+-- | /O(1)/ append an element in front of a @TypedList@ (same as `(:)` for lists).
 cons :: forall (k :: Type) (f :: k -> Type) (x :: k) (xs :: [k])
       . f x -> TypedList f xs -> TypedList f (x :+ xs)
 cons x xs = TypedList (unsafeCoerce# x : coerce xs)
 {-# INLINE cons #-}
 
+-- | /O(n)/ append an element to the end of a @TypedList@.
 snoc :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) (x :: k)
       . TypedList f xs -> f x -> TypedList f (xs +: x)
 snoc xs x = TypedList (coerce xs ++ [unsafeCoerce# x])
 {-# INLINE snoc #-}
 
+-- | /O(n)/ return elements of a @TypedList@ in reverse order.
 reverse :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
          . TypedList f xs -> TypedList f (Reverse xs)
 reverse = coerce (Prelude.reverse :: [Any] -> [Any])
 {-# INLINE reverse #-}
 
+-- | /O(1)/ Extract the first element of a @TypedList@, which must be non-empty.
 head :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
       . TypedList f xs -> f (Head xs)
 head (TypedList xs) = unsafeCoerce# (Prelude.head xs)
 {-# INLINE head #-}
 
+-- | /O(1)/ Extract the elements after the head of a @TypedList@, which must be non-empty.
 tail :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
       . TypedList f xs -> TypedList f (Tail xs)
 tail = coerce (Prelude.tail :: [Any] -> [Any])
 {-# INLINE tail #-}
 
+-- | /O(n)/ Return all the elements of a @TypedList@ except the last one
+--   (the list must be non-empty).
 init :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
       . TypedList f xs -> TypedList f (Init xs)
 init = coerce (Prelude.init :: [Any] -> [Any])
 {-# INLINE init #-}
 
+-- | /O(n)/ Extract the last element of a @TypedList@, which must be non-empty.
 last :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
       . TypedList f xs -> f (Last xs)
 last (TypedList xs) = unsafeCoerce# (Prelude.last xs)
 {-# INLINE last #-}
 
+-- | /O(min(n,k))/ @take k xs@ returns a prefix of @xs@ of length @min(length xs, k)@.
+--   It calls `Prelude.take` under the hood, so expect the same behavior.
 take :: forall (k :: Type) (n :: Nat) (f :: k -> Type) (xs :: [k])
       . Dim n -> TypedList f xs -> TypedList f (Take n xs)
 take = coerce (Prelude.take . dimValInt :: Dim n -> [Any] -> [Any])
 {-# INLINE take #-}
 
+-- | /O(min(n,k))/ @drop k xs@ returns a suffix of @xs@ of length @max(0, length xs - k)@.
+--   It calls `Prelude.drop` under the hood, so expect the same behavior.
 drop :: forall (k :: Type) (n :: Nat) (f :: k -> Type) (xs :: [k])
       . Dim n -> TypedList f xs -> TypedList f (Drop n xs)
 drop = coerce (Prelude.drop . dimValInt :: Dim n -> [Any] -> [Any])
 {-# INLINE drop #-}
 
+-- | Return the number of elements in a @TypedList@ (same as `order`).
 length :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
        . TypedList f xs -> Dim (Length xs)
 length = order
 {-# INLINE length #-}
 
+
+-- | /O(min(n,k))/ @splitAt k xs@ has the same effect as @('take' k xs, 'drop' k xs)@.
+--   It calls `Prelude.splitAt` under the hood, so expect the same behavior.
 splitAt :: forall (k :: Type) (n :: Nat) (f :: k -> Type) (xs :: [k])
          . Dim n
         -> TypedList f xs
@@ -296,16 +309,22 @@ splitAt :: forall (k :: Type) (n :: Nat) (f :: k -> Type) (xs :: [k])
 splitAt = coerce (Prelude.splitAt . dimValInt :: Dim n -> [Any] -> ([Any], [Any]))
 {-# INLINE splitAt #-}
 
+
+-- | Return the number of elements in a type list @xs@ bound by a constraint
+--   @RepresentableList xs@ (same as `order`, but takes no value arguments).
 order' :: forall (k :: Type) (xs :: [k])
         . RepresentableList xs => Dim (Length xs)
 order' = order (tList @_ @xs)
 {-# INLINE order' #-}
 
+-- | Return the number of elements in a @TypedList@ (same as `length`).
 order :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
        . TypedList f xs -> Dim (Length xs)
 order = unsafeCoerce# (fromIntegral . Prelude.length :: [Any] -> Word)
 {-# INLINE order #-}
 
+-- | Concat two @TypedList@s.
+--   It calls `Prelude.(++)` under the hood, so expect the same behavior.
 concat :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) (ys :: [k])
         . TypedList f xs
        -> TypedList f ys
@@ -313,6 +332,13 @@ concat :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) (ys :: [k])
 concat = coerce ((++) :: [Any] -> [Any] -> [Any])
 {-# INLINE concat #-}
 
+-- | Drops the given prefix from a @TypedList@.
+--   It returns 'Nothing' if the @TypedList@ does not start with the prefix
+--   given, or 'Just' the @TypedList@ after the prefix, if it does.
+--   It calls `Prelude.stripPrefix` under the hood, so expect the same behavior.
+--
+--   This function can be used to find the type-level evidence that one type-level
+--   list is indeed a prefix of another.
 stripPrefix :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) (ys :: [k])
              . ( All Typeable xs, All Typeable ys, All Eq (Map f xs))
             => TypedList f xs
@@ -326,6 +352,12 @@ stripPrefix ((x :: f x) :* xs) ((y :: f y) :* ys)
   | otherwise    = Nothing
 {-# INLINE stripPrefix #-}
 
+-- | Drops the given suffix from a @TypedList@.
+--   It returns 'Nothing' if the @TypedList@ does not end with the suffix
+--   given, or 'Just' the @TypedList@ before the suffix, if it does.
+--
+--   This function can be used to find the type-level evidence that one type-level
+--   list is indeed a suffix of another.
 stripSuffix :: forall (k :: Type) (f :: k -> Type) (xs :: [k]) (ys :: [k])
              . ( All Typeable xs, All Typeable ys, All Eq (Map f xs))
             => TypedList f xs
@@ -499,14 +531,13 @@ reifyRepList tl k = unsafeCoerce# (MagicRepList k :: MagicRepList xs r) tl
 newtype MagicRepList xs r = MagicRepList (RepresentableList xs => r)
 
 data PatReverse (f :: k -> Type) (xs :: [k])
-  = forall (sx :: [k]) . (xs ~ Reverse sx, sx ~ Reverse xs)
-  => PatReverse (TypedList f sx)
+  = forall (sx :: [k]) . ReverseList xs sx => PatReverse (TypedList f sx)
 
 unreverseTL :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
              . TypedList f xs -> PatReverse f xs
 unreverseTL (TypedList xs)
-  = case (unsafeCoerce# (Dict @(xs ~ xs, xs ~ xs))
-           :: Dict (xs ~ Reverse sx, sx ~ Reverse xs)
+  = case (unsafeCoerce# (Dict @(xs ~ xs))
+           :: Dict (xs ~ Reverse sx)
          ) of
       Dict -> PatReverse (unsafeCoerce# (Prelude.reverse xs))
 {-# INLINE unreverseTL #-}
@@ -521,7 +552,7 @@ mkRTL xs = reifyRepList xs Dict
 
 data PatSnoc (f :: k -> Type) (xs :: [k]) where
   PatSNil :: PatSnoc f '[]
-  PatSnoc :: TypedList f ys -> f y -> PatSnoc f (ys +: y)
+  PatSnoc :: SnocList xs s xss => TypedList f xs -> f s -> PatSnoc f xss
 
 unsnocTL :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
           . TypedList f xs -> PatSnoc f xs
