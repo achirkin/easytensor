@@ -1,5 +1,5 @@
 name:                easytensor
-version:             2.0.1.0
+version:             2.1.0.0
 github:              "achirkin/easytensor/easytensor"
 license:             BSD3
 author:              "Artem Chirkin"
@@ -44,8 +44,8 @@ library:
   - src-base
   other-modules:
   - Numeric.Matrix.Internal
-  - Numeric.Matrix.Internal.Mat44d
-  - Numeric.Matrix.Internal.Mat44f
+  - Numeric.Matrix.Internal.Double
+  - Numeric.Matrix.Internal.Float
   - Numeric.Scalar.Internal
   - Numeric.Vector.Internal
   - Numeric.Quaternion.Internal

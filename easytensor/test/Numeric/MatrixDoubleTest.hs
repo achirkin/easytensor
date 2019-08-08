@@ -15,6 +15,7 @@ import Data.Semigroup
 import Numeric.DataFrame
 import Numeric.DataFrame.Arbitraries
 import Numeric.Dimensions
+import Numeric.Matrix.LU
 import Test.QuickCheck
 
 type TestElem = Double

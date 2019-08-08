@@ -35,6 +35,7 @@ module Data.Type.Lits
     -- * Functions on type literals
   , type (+), type (*), type (^), type (-)
   , type TN.Div, type TN.Mod, type TN.Log2
+  , type Min, type Max
   , TL.AppendSymbol, ShowNat
   , TN.CmpNat, TL.CmpSymbol, type (<=)
   , SOrdering (..), cmpNat, cmpSymbol
@@ -100,6 +101,22 @@ cmpSymbol a b
     EQ -> unsafeCoerce SEQ
     GT -> unsafeCoerce SGT
 {-# INLINE cmpSymbol #-}
+
+-- | Miminum among two type-level naturals.
+type Min (a :: TN.Nat) (b :: TN.Nat) = Min' a b (TN.CmpNat a b)
+
+-- | Maximum among two type-level naturals.
+type Max (a :: TN.Nat) (b :: TN.Nat) = Min' a b (TN.CmpNat a b)
+
+type family Min' (a :: TN.Nat) (b :: TN.Nat) (r :: Ordering) :: TN.Nat where
+    Min' a _ 'LT = a
+    Min' a _ 'EQ = a
+    Min' _ b 'GT = b
+
+type family Max' (a :: TN.Nat) (b :: TN.Nat) (r :: Ordering) :: TN.Nat where
+    Max' _ b 'LT = b
+    Max' _ b 'EQ = b
+    Max' a _ 'GT = a
 
 -- | Comparison of type-level naturals, as a constraint.
 type (<=) (a :: TN.Nat) (b :: TN.Nat) = LE a b (TN.CmpNat a b)
