@@ -21,7 +21,6 @@
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# OPTIONS_GHC -fno-warn-overlapping-patterns #-}
 
 module Numeric.DataFrame.BasicTest (runTests) where
 
