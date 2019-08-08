@@ -43,7 +43,6 @@ module Numeric.Dimensions.Idx
 
 
 import           Data.Coerce
-import           Data.Constraint  (Dict (..))
 import           Data.Data        (Data)
 import           Foreign.Storable (Storable)
 import           GHC.Enum
@@ -310,8 +309,7 @@ instance Show (Idxs (xs :: [k])) where
     showsPrec = typedListShowsPrec @k @Idx @xs showsPrec
 
 instance BoundedDims xs => Read (Idxs (xs :: [k])) where
-    readPrec = case inferAllBoundedDims @k @xs of
-      Dict -> typedListReadPrec @k @BoundedDim ":*" P.readPrec (tList @k @xs)
+    readPrec = typedListReadPrec @k @BoundedDim ":*" P.readPrec (tList @k @xs)
     readList = P.readListDefault
     readListPrec = P.readListPrecDefault
 
