@@ -1,23 +1,31 @@
-{-# LANGUAGE MagicHash     #-}
-{-# LANGUAGE UnboxedTuples #-}
-{-# LANGUAGE ViewPatterns  #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MagicHash             #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE UnboxedTuples         #-}
+{-# LANGUAGE ViewPatterns          #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Numeric.Matrix.Internal.Mat44f () where
+module Numeric.Matrix.Internal.Double () where
 
 import qualified Control.Monad.ST        as ST
 import qualified Numeric.DataFrame.ST    as ST
+import           Numeric.DataFrame.Type  (inferKnownBackend)
+import           Numeric.Dimensions      (Dict (..), KnownDim)
 import           Numeric.Matrix.Internal
+import           Numeric.Matrix.LU
 import           Numeric.Scalar.Internal
 import           Numeric.Vector.Internal
 
 {-# INLINE mkMat #-}
 mkMat ::
-  Float -> Float -> Float -> Float ->
-  Float -> Float -> Float -> Float ->
-  Float -> Float -> Float -> Float ->
-  Float -> Float -> Float -> Float ->
-  Mat44f
+  Double -> Double -> Double -> Double ->
+  Double -> Double -> Double -> Double ->
+  Double -> Double -> Double -> Double ->
+  Double -> Double -> Double -> Double ->
+  Mat44d
 mkMat
   _11 _12 _13 _14
   _21 _22 _23 _24
@@ -43,7 +51,7 @@ mkMat
     ST.writeDataFrameOff df 15 $ scalar _44
     ST.unsafeFreezeDataFrame df
 
-instance HomTransform4 Float where
+instance HomTransform4 Double where
   {-# INLINE translate4 #-}
   translate4 (unpackV4# -> (# x, y, z, _ #)) = mkMat
     1 0 0 0
@@ -184,3 +192,11 @@ instance HomTransform4 Float where
   fromHom (unpackV4# -> (# x, y, z, w #))
     | w == 0    = vec3 x y z
     | otherwise = vec3 (x/w) (y/w) (z/w)
+
+instance KnownDim n => MatrixInverse Double n where
+    inverse
+      | Dict <- inferKnownBackend @Double @'[n]
+      = inverseViaLU
+
+instance KnownDim n => MatrixDeterminant Double n where
+    det = detViaLU

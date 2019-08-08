@@ -334,13 +334,13 @@ instance BoundedDim n => Num (Idxs '[(n :: k)]) where
     {-# INLINE fromInteger #-}
 
 instance BoundedDims ds => Bounded (Idxs (ds :: [k])) where
-    maxBound = f (minDims @k @ds)
+    maxBound = f (minimalDims @k @ds)
       where
         f :: forall (ns :: [k]) . Dims ns -> Idxs ns
         f U         = U
         f (d :* ds) = coerce (dimVal d - 1) :* f ds
     {-# INLINE maxBound #-}
-    minBound = f (minDims @k @ds)
+    minBound = f (minimalDims @k @ds)
       where
         f :: forall (ns :: [k]) . Dims ns -> Idxs ns
         f U         = U

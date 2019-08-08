@@ -58,7 +58,7 @@ module Numeric.Dimensions.Dim
         , D14, D15, D16, D17, D18, D19, D20, D21, D22, D23, D24, D25
         )
   , SomeDim
-  , KnownDim (..), BoundedDim (..), minDim, KnownXNatType (..), FixedDim
+  , KnownDim (..), BoundedDim (..), minimalDim, KnownXNatType (..), FixedDim
   , dimVal, dimVal', typeableDim, someDimVal
   , sameDim, sameDim'
   , compareDim, compareDim'
@@ -78,12 +78,14 @@ module Numeric.Dimensions.Dim
     --   The good side is the confidence that they behave exactly as
     --   their @Word@ counterparts.
   , plusDim, minusDim, minusDimM, timesDim, powerDim, divDim, modDim, log2Dim
+  , minDim, maxDim
     -- ** Re-export part of `Data.Type.Lits` for convenience
   , Nat, CmpNat, SOrdering (..), type (+), type (-), type (*), type (^), type (<=)
+  , Min, Max
     -- ** Inferring kind of type-level dimension
   , KnownDimKind (..), DimKind (..)
     -- * @Dims@: a list of dimensions
-  , Dims, SomeDims (..), Dimensions (..), BoundedDims (..), DimsBound, minDims
+  , Dims, SomeDims (..), Dimensions (..), BoundedDims (..), DimsBound, minimalDims
   , TypedList ( Dims, XDims, AsXDims, KnownDims
               , U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
   , typeableDims, inferTypeableDims
@@ -260,8 +262,8 @@ instance KnownDim m => BoundedDim ('XN m) where
 
 -- | Returns the minimal @Dim@ that satisfies the @BoundedDim@ constraint
 --   (this is the exact @dim@ for @Nat@s and the minimal bound for @XNat@s).
-minDim :: forall (k :: Type) (d :: k) . BoundedDim d => Dim d
-minDim = coerce (dimBound @k @d)
+minimalDim :: forall (k :: Type) (d :: k) . BoundedDim d => Dim d
+minimalDim = coerce (dimBound @k @d)
 
 -- | Find out the type of `XNat` constructor
 class KnownXNatType (n :: XNat) where
@@ -484,6 +486,17 @@ log2Dim :: forall (n :: Nat) . Dim n -> Dim (Log2 n)
 log2Dim (DimSing 0) = undefined
 log2Dim (DimSing x) = DimSing . fromIntegral $ finiteBitSize x - 1 - countLeadingZeros x
 
+-- | Same as `Prelude.min`.
+--   Pattern-matching against the result would produce the evindence
+--    @KnownDim (Min n m)@.
+minDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim (Min n m)
+minDim = coerce (min :: Word -> Word -> Word)
+
+-- | Same as `Prelude.max`.
+--   Pattern-matching against the result would produce the evindence
+--    @KnownDim (Max n m)@.
+maxDim :: forall (n :: Nat) (m :: Nat) . Dim n -> Dim m -> Dim (Max n m)
+maxDim = coerce (max :: Word -> Word -> Word)
 
 -- | GADT to support `KnownDimKind` type class.
 --   Match against its constructors to know if @k@ is @Nat@ or @XNat@
@@ -828,9 +841,9 @@ instance (BoundedDim n, BoundedDims ns) => BoundedDims ((n ': ns) :: [XNat]) whe
 -- | Minimal runtime @Dims ds@ value that satifies the constraints imposed by
 --   the type signature of @Dims ds@
 --   (this is the exact @dims@ for @Nat@s and the minimal bound for @XNat@s).
-minDims :: forall (k :: Type) (ds :: [k])
-         . BoundedDims ds => Dims ds
-minDims = unsafeCoerce# (dimsBound @k @ds)
+minimalDims :: forall (k :: Type) (ds :: [k])
+             . BoundedDims ds => Dims ds
+minimalDims = unsafeCoerce# (dimsBound @k @ds)
 
 
 

@@ -3,7 +3,6 @@ module Numeric.Matrix
   , SquareMatrix (..)
   , MatrixDeterminant (..)
   , MatrixInverse (..)
-  , MatrixLU (..), LUFact (..)
   , Matrix
   , HomTransform4 (..)
   , Mat22f, Mat23f, Mat24f
@@ -14,10 +13,9 @@ module Numeric.Matrix
   , Mat42d, Mat43d, Mat44d
   , mat22, mat33, mat44
   , (%*)
-  , pivotMat, luSolve
   ) where
 
 import Numeric.DataFrame.Internal.Backend ()
 import Numeric.Matrix.Internal
-import Numeric.Matrix.Internal.Mat44d     ()
-import Numeric.Matrix.Internal.Mat44f     ()
+import Numeric.Matrix.Internal.Double     ()
+import Numeric.Matrix.Internal.Float      ()
