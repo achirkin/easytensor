@@ -18,7 +18,6 @@ flags:
     default: false
     manual: true
 
-
 ghc-options:
   - -Wall
   - -Wcompat
@@ -26,6 +25,11 @@ ghc-options:
   - -Wmissing-local-signatures
   - -Wmissing-home-modules
   - -Widentities
+
+custom-setup:
+  dependencies:
+  - base
+  - Cabal
 
 dependencies:
   - base >= 4.10 && < 5
