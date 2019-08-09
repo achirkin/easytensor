@@ -195,7 +195,7 @@ instance HomTransform4 Float where
 
 instance KnownDim n => MatrixInverse Float n where
     inverse
-      | Dict <- inferKnownBackend @Float @'[n]
+      | Dict <- inferKnownBackend @_ @Float @'[n]
       = inverseViaLU
 
 instance KnownDim n => MatrixDeterminant Float n where

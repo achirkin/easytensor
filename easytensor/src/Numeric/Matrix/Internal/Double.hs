@@ -195,7 +195,7 @@ instance HomTransform4 Double where
 
 instance KnownDim n => MatrixInverse Double n where
     inverse
-      | Dict <- inferKnownBackend @Double @'[n]
+      | Dict <- inferKnownBackend @_ @Double @'[n]
       = inverseViaLU
 
 instance KnownDim n => MatrixDeterminant Double n where

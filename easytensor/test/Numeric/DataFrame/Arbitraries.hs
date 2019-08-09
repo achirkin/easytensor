@@ -73,7 +73,7 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
         | -- First, we need to find out exact array implementation to use
           -- inside this DataFrame.
           -- We need to do that whenever exact value of ds is not known
-          Dict <- inferKnownBackend @t @ds
+          Dict <- inferKnownBackend @_ @t @ds
           -- After that, GHC can infer all necessary fancy things like SubSpace
           -- to do complex operations on sub-dimensions of a DataFrame.
           --
@@ -89,7 +89,7 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
         f :: Arbitrary a => Scalar a -> Gen (Scalar a)
         f _ = scalar <$> arbitrary
     shrink df
-        | Dict <- inferKnownBackend @t @ds
+        | Dict <- inferKnownBackend @_ @t @ds
         , mma <- ewfoldMap @t @ds @'[] @ds
             ((\x -> if x == 0 then Nothing else Just (Max x)) . abs) df
         = case mma of
@@ -173,7 +173,7 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t)
       --  This gives Dimensions ds evidence immediately.
       case ds of
         -- We also need to figure out an array implementation...
-        (Dims :: Dims ds) -> case inferKnownBackend @t @ds of
+        (Dims :: Dims ds) -> case inferKnownBackend @_ @t @ds of
           -- ... and generating a random DataFrame becomes a one-liner
           Dict -> SomeDataFrame <$> arbitrary @(DataFrame t ds)
     shrink (SomeDataFrame df) = SomeDataFrame <$> shrink df
@@ -185,7 +185,7 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
     arbitrary = do
       SomeDims ds <- arbitrary
       case ds of
-        (Dims :: Dims ds) -> case inferKnownBackend @ts @ds of
+        (Dims :: Dims ds) -> case inferKnownBackend @_ @ts @ds of
           Dict -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
     shrink (SomeDataFrame df) = SomeDataFrame <$> shrink df
 
@@ -195,7 +195,7 @@ instance ( Arbitrary t, PrimBytes t, Num t, Ord t
     arbitrary = do
       ds <- arbitrary @(Dims xs)
       case ds of
-        XDims (_ :: Dims ds) -> case inferKnownBackend @t @ds of
+        XDims (_ :: Dims ds) -> case inferKnownBackend @_ @t @ds of
           Dict -> XFrame <$> arbitrary @(DataFrame t ds)
     shrink (XFrame df) = XFrame <$> shrink df
 
@@ -206,7 +206,7 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
     arbitrary = do
       ds <- arbitrary @(Dims xs)
       case ds of
-        XDims (_ :: Dims ds) -> case inferKnownBackend @ts @ds of
+        XDims (_ :: Dims ds) -> case inferKnownBackend @_ @ts @ds of
           Dict -> XFrame <$> arbitrary @(DataFrame ts ds)
     shrink (XFrame df) = XFrame <$> shrink df
 
@@ -255,7 +255,7 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t)
     arbitrary = do
       dx <- arbitrary @(Dim (XN 2))
       case dx of
-        Dx (D :: Dim n) -> case inferKnownBackend @t @'[n] of
+        Dx (D :: Dim n) -> case inferKnownBackend @_ @t @'[n] of
           Dict -> SSM <$> arbitrary @(DataFrame t '[n,n])
     shrink (SSM df)= SSM <$> shrink df
 

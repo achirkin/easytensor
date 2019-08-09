@@ -12,6 +12,7 @@
 {-# LANGUAGE MagicHash                  #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE PatternSynonyms            #-}
+{-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
@@ -22,7 +23,6 @@
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE ViewPatterns               #-}
-
 {- |
   The core @easytensor@ types.
  -}
@@ -42,7 +42,7 @@ module Numeric.DataFrame.Type
   , PackDF, packDF, unpackDF
   , appendDF, consDF, snocDF
   , fromFlatList, fromListWithDefault, fromList
-  , constrainDF
+  , constrainDF, asDiag
     -- * Infer type class instances
   , KnownBackend (), DFBackend, KnownBackends
   , InferKnownBackend (..), inferPrimElem
@@ -55,7 +55,7 @@ module Numeric.DataFrame.Type
 
 import           Data.Data
 import           Data.Proxy                      (Proxy)
-import           Data.Semigroup                  hiding (All)
+import           Data.Semigroup                  hiding (All, Min)
 import           Data.Type.Lits
 import           Data.Void
 import           Foreign.Storable                (Storable (..))
@@ -113,15 +113,18 @@ newtype DataFrame' (xs :: [k]) (t :: l) = DataFrame' (DataFrame t xs)
 
 {-# COMPLETE Z, (:*:) #-}
 
+#define PLEASE_STYLISH_HASKELL \
+  forall (xs :: [Type]) (ns :: [Nat])  . () => \
+  forall (y :: Type)    (ys :: [Type]) . (xs ~ (y ': ys)) => \
+  DataFrame y ns -> DataFrame ys ns -> DataFrame xs ns
 
 -- | Constructing a @MultiFrame@ using DataFrame columns
-pattern (:*:) :: forall (xs :: [Type]) (ns :: [Nat])  . ()
-              => forall (y :: Type)    (ys :: [Type]) . (xs ~ (y ': ys))
-              => DataFrame y ns -> DataFrame ys ns -> DataFrame xs ns
+pattern (:*:) :: PLEASE_STYLISH_HASKELL
 pattern (:*:) x xs <- (MultiFrame (DataFrame' x :* (MultiFrame -> xs)))
   where
     (:*:) x (MultiFrame xs) = MultiFrame (DataFrame' x :* xs)
 infixr 6 :*:
+#undef PLEASE_STYLISH_HASKELL
 
 -- | Empty MultiFrame
 pattern Z :: forall (xs :: [Type]) (ns :: [Nat])
@@ -137,7 +140,7 @@ type family KnownBackends (ts :: l) (ns :: [Nat]) :: Constraint where
       (KnownBackend t ns, KnownBackends ts ns)
 
 -- | Allow inferring @KnownBackends@ if you know the dimensions and the element types.
-class InferKnownBackend (t :: k) ds where
+class InferKnownBackend (t :: k) (ds :: [Nat]) where
     -- Infer @KnownBackends@ if you know the dimensions and the element types.
     inferKnownBackend :: Dict (KnownBackends t ds)
 
@@ -387,13 +390,13 @@ readPrecBoundedDF :: forall (t :: Type) (ds :: [XNat])
 readPrecBoundedDF U
   = Read.parens . Read.prec 10 $ do
     Read.lift . Read.expect $ Read.Ident "S"
-    case inferKnownBackend @t @'[] of
+    case inferKnownBackend @Type @t @'[] of
       Dict -> XFrame . S <$> Read.step Read.readPrec
 -- DF0 is funny because it will succesfully parse any dimension to the right of it.
 readPrecBoundedDF (Dn D0 :* XDims (Dims :: Dims ns))
   = Read.parens $ do
     Read.lift . Read.expect . Read.Ident $ "DF0"
-    return $ case inferKnownBackend @t @(0 ': ns) of
+    return $ case inferKnownBackend @Type @t @(0 ': ns) of
       Dict -> XFrame @Type @t @ds @(0 ': ns) (packDF @t @0 @ns)
 -- Fixed dimension:
 --  The number of component frames is exactly n
@@ -402,7 +405,7 @@ readPrecBoundedDF (Dn d@(D :: Dim n) :* xns)
   = Read.parens . Read.prec 10 $ do
     Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal d)
     XFrame (x :: DataFrame t ns) <- Read.step $ readPrecBoundedDF @t xns
-    case inferKnownBackend @t @(n ': ns) of
+    case inferKnownBackend @Type @t @(n ': ns) of
       Dict -> fmap XFrame . snd . runDelay $ packDF' @t @n @ns
         (readDelayed $ Read.prec 10 (readPrecFixedDF @t @ns dims))
         (followedBy x)
@@ -422,7 +425,7 @@ readPrecBoundedDF ((Dx (m :: Dim m) :: Dim xm) :* xns)
           D  -> do
             Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal n)
             XFrame (x :: DataFrame t ns) <- Read.prec 10 $ readPrecBoundedDF @t xns
-            case inferKnownBackend @t @(n ': ns) of
+            case inferKnownBackend @Type @t @(n ': ns) of
               Dict -> fmap XFrame . snd . runDelay $ packDF' @t @n @ns
                 (readDelayed $ Read.prec 10 (readPrecFixedDF @t @ns dims))
                 (followedBy x)
@@ -445,7 +448,7 @@ readPrecSomeDF :: forall (t :: Type) . (Read t, PrimBytes t)
 readPrecSomeDF = Read.parens $
     Read.prec 10 (do
       Read.lift . Read.expect $ Read.Ident "S"
-      case inferKnownBackend @t @'[] of
+      case inferKnownBackend @Type @t @'[] of
         Dict -> SomeDataFrame . S <$> Read.readPrec
     )
     Read.+++
@@ -453,12 +456,12 @@ readPrecSomeDF = Read.parens $
        Read.Ident ('D':'F':s)
          | Just (Dx (d :: Dim d)) <- (Read.readMaybe ('D':s) :: Maybe SomeDim)
            -> case d of
-             D0 | Dict <- inferKnownBackend @t @'[0]
+             D0 | Dict <- inferKnownBackend @Type @t @'[0]
                  -> SomeDataFrame <$> readPrecFixedDF @t (D0 :* U)
              _ -> do
                Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal d)
                SomeDataFrame (x :: DataFrame t ds) <- Read.prec 10 $ readPrecSomeDF @t
-               case inferKnownBackend @t @(d ': ds) of
+               case inferKnownBackend @Type @t @(d ': ds) of
                  Dict -> fmap SomeDataFrame . snd . runDelay $ packDF' @t @d @ds
                    (readDelayed $ Read.prec 10 (readPrecFixedDF @t @ds dims))
                    (followedBy x)
@@ -491,7 +494,7 @@ readBoundedMultiDF ((_ :: Proxy t) :* ts@TypeList) ds
     XFrame (x :: DataFrame t ns) <- Read.step $ readPrecBoundedDF @t ds
     Read.lift . Read.expect $ Read.Symbol ":*:"
     xs <- readFixedMultiDF ts (dims @ns)
-    case inferKnownBackend @ts @ns of
+    case inferKnownBackend @[Type] @ts @ns of
       Dict -> return $ XFrame (x :*: xs)
 
 readSomeMultiDF :: forall (ts :: [Type])
@@ -506,7 +509,7 @@ readSomeMultiDF ((_ :: Proxy t) :* ts@TypeList)
     SomeDataFrame (x :: DataFrame t ns) <- Read.step $ readPrecSomeDF @t
     Read.lift . Read.expect $ Read.Symbol ":*:"
     xs <- readFixedMultiDF ts (dims @ns)
-    case inferKnownBackend @ts @ns of
+    case inferKnownBackend @[Type] @ts @ns of
       Dict -> return $ SomeDataFrame (x :*: xs)
 
 -- First element is read separately, enforcing the structure of the rest.
@@ -680,8 +683,8 @@ packDF :: forall (t :: Type) (d :: Nat) (ds :: [Nat])
        => PackDF t ds d (DataFrame t (d ': ds))
 packDF
   | d :* Dims <- dims @(d ': ds)
-  , Dict <- inferKnownBackend @t @(d ': ds)
-  , Dict <- inferKnownBackend @t @ds
+  , Dict <- inferKnownBackend @Type @t @(d ': ds)
+  , Dict <- inferKnownBackend @Type @t @ds
     = go d
   | otherwise = error "Numeric.DataFrame.Type.packDF: impossible args"
   where
@@ -802,8 +805,8 @@ unpackDF' :: forall (rep :: RuntimeRep)
           -> r
 unpackDF' k df
   | d :* Dims <- dims @(d ': ds)
-  , Dict <- inferKnownBackend @t @(d ': ds)
-  , Dict <- inferKnownBackend @t @ds
+  , Dict <- inferKnownBackend @Type @t @(d ': ds)
+  , Dict <- inferKnownBackend @Type @t @ds
     = case arrayContent# df of
         (# x | #)
           | e <- broadcast x
@@ -834,9 +837,9 @@ appendDF :: forall (n :: Nat) (m :: Nat) (ds :: [Nat]) (t :: Type)
         -> DataFrame t ((n + m) :+ ds)
 appendDF
   | D <- D @n `plusDim` D @m
-  , Dict <- inferKnownBackend @t @(n :+ ds)
-  , Dict <- inferKnownBackend @t @(m :+ ds)
-  , Dict <- inferKnownBackend @t @((n + m) :+ ds)
+  , Dict <- inferKnownBackend @Type @t @(n :+ ds)
+  , Dict <- inferKnownBackend @Type @t @(m :+ ds)
+  , Dict <- inferKnownBackend @Type @t @((n + m) :+ ds)
               = unsafeAppendPB
   | otherwise = error "Numeri.DataFrame.Type/appendDF: impossible arguments"
 
@@ -852,9 +855,9 @@ consDF :: forall (n :: Nat) (ds :: [Nat]) (t :: Type)
         -> DataFrame t ((n + 1) :+ ds)
 consDF
   | D <- D @n `plusDim` D1
-  , Dict <- inferKnownBackend @t @(n :+ ds)
-  , Dict <- inferKnownBackend @t @ds
-  , Dict <- inferKnownBackend @t @((n + 1) :+ ds)
+  , Dict <- inferKnownBackend @Type @t @(n :+ ds)
+  , Dict <- inferKnownBackend @Type @t @ds
+  , Dict <- inferKnownBackend @Type @t @((n + 1) :+ ds)
               = unsafeAppendPB
   | otherwise = error "Numeri.DataFrame.Type/consDF: impossible arguments"
 
@@ -870,9 +873,9 @@ snocDF :: forall (n :: Nat) (ds :: [Nat]) (t :: Type)
         -> DataFrame t ((n + 1) :+ ds)
 snocDF
   | D <- D @n `plusDim` D1
-  , Dict <- inferKnownBackend @t @(n :+ ds)
-  , Dict <- inferKnownBackend @t @ds
-  , Dict <- inferKnownBackend @t @((n + 1) :+ ds)
+  , Dict <- inferKnownBackend @Type @t @(n :+ ds)
+  , Dict <- inferKnownBackend @Type @t @ds
+  , Dict <- inferKnownBackend @Type @t @((n + 1) :+ ds)
               = unsafeAppendPB
   | otherwise = error "Numeri.DataFrame.Type/snocDF: impossible arguments"
 
@@ -916,7 +919,7 @@ fromList :: forall (t :: Type) (ds :: [Nat])
          => [DataFrame t ds] -> DataFrame t (XN 0 ': AsXDims ds)
 fromList xs
     | Dx (D :: Dim n) <- someDimVal . fromIntegral $ length xs
-    , Dict <- inferKnownBackend @t @(n ': ds)
+    , Dict <- inferKnownBackend @_ @t @(n ': ds)
     , ds@(AsXDims (XDims ds')) <- dims @ds
     , Just Dict <- sameDims ds ds'
       = XFrame (fromListWithDefault @t @n @ds undefined xs)
@@ -939,7 +942,45 @@ constrainDF (XFrame (df :: DataFrame ts ns))
           -> Just $ XFrame df
       _   -> Nothing
 
+-- | Place elements of a vector on the main diagonal of a matrix;
+--   fill the rest of the matrix with zeroes.
+--
+--   Note, this function is naturally generalized onto higher dimensions
+--    (which can be seen from the type signature).
+--
+--   Note, the argument of this function does not fully determine its result type.
+--   This may cause some obscure type errors.
+--   Specify type parameters @n@ and @m@ explicitly or make sure the result type is fixed.
+asDiag :: forall (n :: Nat) (m :: Nat) (ds :: [Nat]) (t :: Type)
+        . (Dimensions ds, KnownDim n, KnownDim m, PrimBytes t)
+       => DataFrame t (Min n m :+ ds)
+       -> DataFrame t (n :+ m :+ ds)
+asDiag x
+  | elemSize <- byteSize @t undefined
+  , dMinNM@D <- minDim (D @n) (D @m)
+  , Dict <- inferKnownBackend @_ @t @(Min n m ': ds)
+  , Dict <- inferKnownBackend @_ @t @(n :+ m :+ ds)
+  , xba <- getBytes x
+  , ds <- dims @ds
+  , steps@(CumulDims (elemsNR:_:elemsNE:_)) <- cumulDims (D @n :* D @m :* ds)
+  , m <- dimVal' @m
+  , bsE <- case elemsNE of W# w -> word2Int# w *# elemSize
+  , bsR <- case elemsNR of W# w -> word2Int# w *# elemSize
+  , bsShift <- case m + 1 of W# w -> word2Int# w *# bsE
+  , bsLim <- case m * dimVal dMinNM of W# w -> word2Int# w *# bsE
+    = case runRW#
+      ( \s0 -> case newByteArray# bsR s0 of
+          (# s1, mba #) ->
+            let go offSrc offDst s
+                  | isTrue# (offDst >=# bsLim) = s
+                  | otherwise = go (offSrc +# bsE) (offDst +# bsShift)
+                      (copyByteArray# xba offSrc mba offDst bsE s)
+            in  unsafeFreezeByteArray# mba
+                  (go (byteOffset x) 0# (setByteArray# mba 0# bsR 0# s1))
 
+      ) of (# _, r #) -> fromElems steps 0# r
+  | otherwise
+    = error "Numeri.DataFrame.Type/asDiag: impossible arguments"
 
 -- Need this for @packDF'@ to make @Int -> c z@ a proper second-order type
 -- parameterized by the result type.
@@ -1041,8 +1082,8 @@ fromSingleFrame :: forall (t :: Type) (ds :: [Nat]) (x :: Type)
                 -> SingleFrameRep t ds x
 fromSingleFrame U (S x) = G.M1 . G.M1 $ G.K1 x
 fromSingleFrame (dd@D :* (Dims :: Dims ds')) x
-  | Dict <- inferKnownBackend @t @ds
-  , Dict <- inferKnownBackend @t @ds'
+  | Dict <- inferKnownBackend @Type @t @ds
+  , Dict <- inferKnownBackend @Type @t @ds'
     = G.M1 $ case arrayContent# x of
       (# e | #) -> fillRep @_ @ds' (const $ broadcast e) 0 dd
       (# | (# cdims, off, arr #) #)
@@ -1074,8 +1115,8 @@ toSingleFrame :: forall (t :: Type) (ds :: [Nat]) (x :: Type)
               -> DataFrame t ds
 toSingleFrame U (G.M1 (G.M1 (G.K1 x))) = S x
 toSingleFrame (dd@D :* (Dims :: Dims ds')) (G.M1 rep)
-  | Dict  <- inferKnownBackend @t @ds
-  , Dict  <- inferKnownBackend @t @ds'
+  | Dict  <- inferKnownBackend @Type @t @ds
+  , Dict  <- inferKnownBackend @Type @t @ds'
   , els   <- case dimVal dd of W# w -> word2Int# w
   , asize <- byteSize @(DataFrame t ds') undefined
     = runRW#

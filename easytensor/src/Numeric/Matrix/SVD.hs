@@ -29,7 +29,7 @@ import Numeric.Matrix.Internal
 import Numeric.Vector.Internal
 
 -- | Result of SVD factorization
---   @ M = svdU %* svdSigma %* svdV @.
+--   @ M = svdU %* asDiag svdS %* svdV @.
 --
 --   NB: <https://en.wikipedia.org/wiki/Singular_value_decomposition SVD on wiki>
 data SVD t n m
