@@ -108,7 +108,7 @@ class ( ConcatList as bs asbs
           => Idxs (as +: bi) -> DataFrame t asbs -> DataFrame t (bd :+ bs')
     slice  i df
       | _ :* Dims <- dims @bs
-      , Dict <- inferKnownBackend @t @(bd ': bs')
+      , Dict <- inferKnownBackend @Type @t @(bd ': bs')
         = case uniqueOrCumulDims df of
         Left a      -> broadcast a
         Right steps -> case cdIx steps i of
@@ -142,7 +142,7 @@ class ( ConcatList as bs asbs
           => Idxs (as +: bi) -> DataFrame t (bd :+ bs') -> DataFrame t asbs -> DataFrame t asbs
     updateSlice i x df
       | _ :* Dims <- dims @bs
-      , Dict <- inferKnownBackend @t @(bd ': bs')
+      , Dict <- inferKnownBackend @Type @t @(bd ': bs')
       , steps <- getSteps (dims @asbs) df
       , I# off <- cdIx steps i
       , elemBS <- byteSize @t undefined = case runRW#
