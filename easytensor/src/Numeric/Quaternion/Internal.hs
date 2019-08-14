@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE MagicHash           #-}
 {-# LANGUAGE PatternSynonyms     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -9,7 +10,9 @@ module Numeric.Quaternion.Internal
     ( Quaternion (..), Quater(Quater)
     ) where
 
+import Numeric.DataFrame.Type  (KnownBackend)
 import Numeric.Matrix.Internal (Matrix)
+import Numeric.PrimBytes       (PrimBytes)
 import Numeric.Vector.Internal (Vector)
 import Text.Read
 
@@ -21,7 +24,10 @@ pattern Quater a b c d <- (unpackQ# -> (# a, b, c, d #))
 {-# COMPLETE Quater #-}
 
 -- | Quaternion operations
-class Quaternion t where
+class ( Floating (Quater t), Floating t, Ord t, PrimBytes t
+      , KnownBackend t '[3], KnownBackend t '[4]
+      , KnownBackend t '[3,3], KnownBackend t '[4, 4]
+      ) => Quaternion t where
     -- | Quaternion data type. The ordering of coordinates is @(x,y,z,w)@,
     --   where @w@ is the argument, and @x y z@ are the components of a 3D vector
     data Quater t

@@ -56,13 +56,13 @@ data LU t n
 deriving instance (Show t, PrimBytes t, KnownDim n) => Show (LU t n)
 deriving instance (Eq (Matrix t n n), Eq t) => Eq (LU t n)
 
-class MatrixLU t (n :: Nat) where
+class (KnownDim n, Ord t, Fractional t, PrimBytes t, KnownBackend t '[n,n])
+      => MatrixLU t (n :: Nat) where
     -- | Compute LU factorization with Partial Pivoting
     lu :: Matrix t n n -> LU t n
 
 
-instance ( KnownDim n, Ord t, Fractional t
-         , PrimBytes t, PrimArray t (Matrix t n n))
+instance (KnownDim n, Ord t, Fractional t, PrimBytes t, KnownBackend t '[n,n])
          => MatrixLU t n where
     lu m' = case runRW# go of
         (# _, (# bu, bl #) #) -> LU
