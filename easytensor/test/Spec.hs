@@ -5,6 +5,7 @@ import System.Exit
 
 import qualified Numeric.DataFrame.BasicTest
 import qualified Numeric.DataFrame.SubSpaceTest
+import qualified Numeric.Matrix.SVDTest
 import qualified Numeric.MatrixDoubleTest
 import qualified Numeric.MatrixFloatTest
 import qualified Numeric.PrimBytesTest
@@ -22,6 +23,7 @@ tests = return
   , test "QuaterDouble"       $ Numeric.QuaterDoubleTest.runTests n
   , test "QuaterFloat"        $ Numeric.QuaterFloatTest.runTests n
   , test "PrimBytes"          $ Numeric.PrimBytesTest.runTests n
+  , test "Matrix.SVD"         $ Numeric.Matrix.SVDTest.runTests n
   ]
   where
     n = 1000 :: Int
