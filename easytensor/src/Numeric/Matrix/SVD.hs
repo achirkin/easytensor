@@ -22,7 +22,7 @@ import Control.Monad.ST
 -- import Numeric.DataFrame.Contraction
 import Numeric.DataFrame.Internal.PrimArray
 import Numeric.DataFrame.ST
--- import Numeric.DataFrame.SubSpace
+import Numeric.DataFrame.SubSpace
 import Numeric.DataFrame.Type
 import Numeric.Dimensions
 import Numeric.Matrix.Internal
@@ -32,8 +32,21 @@ import Numeric.Scalar.Internal
 import Numeric.Vector.Internal
 
 
+-- | Precision for rounding
+eps :: Fractional t => t
+eps = 10e-12
+
+sqrt05 :: Fractional t => t
+sqrt05 = 0.7071067811865476
+
 -- | Result of SVD factorization
 --   @ M = svdU %* asDiag svdS %* transpose svdV @.
+--
+--   Invariants:
+--
+--   * Singular values `svdS` are in non-increasing order and are non-negative.
+--   * svdU and svdV are orthogonal matrices
+--   * det svdU == 1
 --
 --   NB: <https://en.wikipedia.org/wiki/Singular_value_decomposition SVD on wiki>
 data SVD t n m
@@ -61,9 +74,9 @@ class MatrixSVD t (n :: Nat) (m :: Nat) where
 -- | Obvious dummy implementation of SVD for 1x1 matrices
 svd1 :: (PrimBytes t, Num t, Eq t) => Matrix t 1 1 -> SVD t 1 1
 svd1 m = SVD
-    { svdU = broadcast $ if x == 0 then 1 else signum x
+    { svdU = 1
     , svdS = broadcast $ abs x
-    , svdV = 1
+    , svdV = broadcast $ if x == 0 then 1 else signum x
     }
   where
     x = ixOff 0 m
@@ -124,18 +137,50 @@ svd2 (DF2 (DF2 m00 m01) (DF2 m10 m11)) =
     mneg a b = if a then b else negate b
 
 
--- | Get SVD decomposition of a 3x3 matrix using `svd3q` function
-svd3 :: Quaternion t => Matrix t 3 3 -> SVD t 3 3
-svd3 m = SVD
-    { svdU = toMatrix33 u
-    , svdS = s
-    , svdV = toMatrix33 v
-    }
+-- | Get SVD decomposition of a 3x3 matrix using `svd3q` function.
+--
+--   This function reorders the singular components under the hood to make sure
+--   @s1 >= s2 >= s3 >= 0@.
+--   Thus, it has some overhead on top of `svd3q`.
+svd3 :: forall t . Quaternion t => Matrix t 3 3 -> SVD t 3 3
+svd3 m
+    | s3' > s1 = SVD
+        { svdU = toMatrix33 (q1 * u)
+        , svdS = DF3 s3' s1 s2
+        , svdV = mapIf (s3 < 0) neg1 $ toMatrix33 (q1 * v)
+        }
+    | s3' > s2 = SVD
+        { svdU = toMatrix33 (q2 * u)
+        , svdS = DF3 s1 s3' s2
+        , svdV = mapIf (s3 < 0) neg2 $ toMatrix33 (q2 * v)
+        }
+    | otherwise = SVD
+        { svdU = toMatrix33 u
+        , svdS = DF3 s1 s2 s3'
+        , svdV = mapIf (s3 < 0) neg3 $ toMatrix33 v
+        }
   where
-    (u, s, v) = svd3q m
+    (u, (DF3 s1 s20 s30), v) = svd3q m
+    s2 = if s1 * eps > s20 then 0 else s20
+    s3 = if s1 * eps > abs s30 then 0 else s30
+    s3' = abs s3
+    -- put s3 in front of s1 and s2 if it is big negative
+    q1 = Quater 0.5 0.5 0.5 0.5 :: Quater t
+    -- put s3 in front of s2 if it is big negative
+    q2 = Quater sqrt05 0 0 sqrt05 :: Quater t
+    mapIf :: Bool -> (Vector t 3 -> Vector t 3) -> Matrix t 3 3 -> Matrix t 3 3
+    mapIf False _ = id
+    mapIf True  f = ewmap @t @'[3] f
+    neg1, neg2, neg3 :: Vector t 3 -> Vector t 3
+    neg1 (DF3 a b c) = DF3 (negate a) b c
+    neg2 (DF3 a b c) = DF3 a (negate b) c
+    neg3 (DF3 a b c) = DF3 a b (negate c)
+
 
 -- | Get SVD decomposition of a 3x3 matrix, which orthogonal matrices U and V
 --   represented as quaternions.
+--   Important: U and V are bound to be rotations at the expense of the last
+--              singular value being possible negative.
 --
 --   This is an adoptation of a specialized 3x3 SVD algorithm described in
 --     "Computing the Singular Value Decomposition of 3x3 matrices
@@ -174,10 +219,10 @@ jacobiGivensQ aii aij ajj
     w = recip . sqrt $ ch * ch + sh * sh -- TODO: consider something like a hypot
     g  = 5.82842712474619 :: t  -- 3 + sqrt 8
     c' = if sh' == 0
-         then if ch' >= 0 then 1 else 0.7071067811865476 -- sqrt 0.5
+         then if ch' >= 0 then 1 else sqrt05
          else if ch' >= 0 then 0.9238795325112867 else 0.3826834323650898 -- sin (pi/8)
     s' = if sh' == 0
-         then if ch' >= 0 then 0 else 0.7071067811865476 -- sqrt 0.5
+         then if ch' >= 0 then 0 else sqrt05
          else if ch' >= 0 then 0.3826834323650898 else 0.9238795325112867 -- cos (pi/8)
 
 -- | A quaternion for a QR Givens iteration
@@ -186,11 +231,10 @@ qrGivensQ a1 a2
     | a1 < 0    = (sh * w, ch * w)
     | otherwise = (ch * w, sh * w)
   where
-    rho = sqrt $ a1*a1 + a2*a2
-    sh = if rho > eps then a2 else 0
-    ch = abs a1 + max rho eps
+    rho2 = a1*a1 + a2*a2
+    sh = if rho2 > eps then a2 else 0
+    ch = abs a1 + sqrt (max rho2 eps)
     w = recip . sqrt $ ch * ch + sh * sh -- TODO: consider something like a hypot
-    eps = 1e-6 :: t -- round small numbers
 
 
 -- | One iteration of the Jacobi algorithm on a symmetric 3x3 matrix
@@ -243,9 +287,9 @@ jacobiEigen3Iteration i j k sPtr = do
 
 -- | Total number of the Givens rotations during the Jacobi eigendecomposition
 --   part of the 3x3 SVD equals eigenItersX3*3.
---   Value `eigenItersX3 = 5` corresponds to 15 iterations and gives a good precision.
+--   Value `eigenItersX3 = 6` corresponds to 18 iterations and gives a good precision.
 eigenItersX3 :: Int
-eigenItersX3 = 5
+eigenItersX3 = 12
 
 -- | Run a few iterations of the Jacobi algorithm on a real-valued 3x3 symmetric matrix.
 --   The eigenvectors basis of such matrix is orthogonal, and can be represented as
@@ -257,11 +301,48 @@ jacobiEigenQ m = runST $ do
   where
     go :: Int -> STDataFrame s t '[3,3] -> Quater t -> ST s (Quater t)
     go 0 _ q = pure q
+
+    -- -- primitive cyclic iteration;
+    -- --   fast, but the convergence is not perfect
+    --
+    --  set eigenItersX3 = 6 for good precision
+    -- go n p q = do
+    --   q1 <- jacobiEigen3Iteration 0 1 2 p
+    --   q2 <- jacobiEigen3Iteration 1 2 0 p
+    --   q3 <- jacobiEigen3Iteration 0 2 1 p
+    --   go (n - 1) p (q3 * q2 * q1 * q)
+
+    -- Pick the largest element on lower triangle;
+    --   slow because of branching, but has a better convergence
+    --
+    --  set eigenItersX3 = 12 for good precision
+    --    (slightly faster than the cyclic version with -O0)
     go n p q = do
-      q1 <- jacobiEigen3Iteration 0 1 2 p
-      q2 <- jacobiEigen3Iteration 1 2 0 p
-      q3 <- jacobiEigen3Iteration 0 2 1 p
-      go (n - 1) p (q3 * q2 * q1 * q)
+      a10 <- abs <$> readDataFrameOff p 1
+      a20 <- abs <$> readDataFrameOff p 2
+      a21 <- abs <$> readDataFrameOff p 5
+      q' <- jiter n p a10 a20 a21
+      go (n - 1) p (q' * q)
+    jiter :: Int -> STDataFrame s t '[3,3]
+          -> Scalar t -> Scalar t -> Scalar t -> ST s (Quater t)
+    jiter n p a10 a20 a21
+      | gt2 a10 a20 a21
+        = jacobiEigen3Iteration 0 1 2 p
+      | gt2 a20 a10 a21
+        = jacobiEigen3Iteration 0 2 1 p
+      | gt2 a21 a10 a20
+        = jacobiEigen3Iteration 1 2 0 p
+      | otherwise
+        = case mod n 3 of
+            0 -> jacobiEigen3Iteration 0 1 2 p
+            1 -> jacobiEigen3Iteration 0 2 1 p
+            _ -> jacobiEigen3Iteration 1 2 0 p
+    gt2 :: Scalar t -> Scalar t -> Scalar t -> Bool
+    gt2 a b c = case compare a b of
+                  GT -> a >= c
+                  EQ -> a >  c
+                  LT -> False
+
 
 
 -- | One Givens rotation for a QR algorithm on a 3x3 matrix
