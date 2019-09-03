@@ -15,11 +15,9 @@
 module Numeric.Matrix.SVD
   ( MatrixSVD (..), SVD (..)
   , svd1, svd2, svd3, svd3q
-  , checkSvd3q
   ) where
 
 import Control.Monad.ST
--- import Numeric.DataFrame.Contraction
 import Numeric.DataFrame.Internal.PrimArray
 import Numeric.DataFrame.ST
 import Numeric.DataFrame.SubSpace
@@ -27,7 +25,6 @@ import Numeric.DataFrame.Type
 import Numeric.Dimensions
 import Numeric.Matrix.Internal
 import Numeric.Quaternion.Internal
--- import Numeric.PrimBytes
 import Numeric.Scalar.Internal
 import Numeric.Vector.Internal
 
@@ -371,7 +368,7 @@ qrDecomp3Iteration i j k sPtr = do
     writeDataFrameOff sPtr ii $ a * sii + b * sji
     writeDataFrameOff sPtr ij $ a * sij + b * sjj
     writeDataFrameOff sPtr ik $ a * sik + b * sjk
-    writeDataFrameOff sPtr ji 0 -- $ a * sji - b * sii
+    writeDataFrameOff sPtr ji 0 --  a * sji - b * sii
     writeDataFrameOff sPtr jj $ a * sjj - b * sij
     writeDataFrameOff sPtr jk $ a * sjk - b * sik
 
@@ -406,27 +403,3 @@ qrDecomposition3 m = runST $ do
     sig1 <- readDataFrameOff mPtr 4
     sig2 <- readDataFrameOff mPtr 8
     return (DF3 sig0 sig1 sig2, q3 * q2 * q1)
-
-
-
-
-pprM :: (PrimBytes t, Show t) => Matrix t 3 3 -> String
-pprM (DF3 a b c)
-    =  unlines [pprV a, pprV b, pprV c]
-
-pprV :: (PrimBytes t, Show t) => Vector t 3 -> String
-pprV (DF3 (S a) (S b) (S c)) = show a ++ "\t" ++ show b ++ "\t" ++ show c
-
-
-
-checkSvd3q :: Quaternion Double => Matrix Double 3 3 -> IO ()
-checkSvd3q m = do
-    putStrLn $ "A = \n" ++ pprM m
-    putStrLn $ "u     = " ++ show u
-    putStrLn $ "sigma = " ++ pprV s
-    putStrLn $ "v     = " ++ show v ++ "\n"
-
-    putStrLn $ "U %* S %* Vt = \n" ++
-      pprM (toMatrix33 u %* asDiag s %* toMatrix33 (conjugate v))
-  where
-    (u, s, v) = svd3q m

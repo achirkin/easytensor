@@ -82,12 +82,17 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
           -- inference more difficult later.
         = do
         full <- (1 < ) <$> choose (1, fromScalarChanceFactor)
+        zeroChance <- choose (0, 8)
         if full -- I want to check fromScalar code path sometimes
-        then arbitrary >>= elementWise @_ @ds @'[] f . ewgen . scalar
+        then arbitrary >>= elementWise @_ @ds @'[] (f zeroChance) . ewgen . scalar
         else fromScalar . scalar <$> arbitrary
       where
-        f :: Arbitrary a => Scalar a -> Gen (Scalar a)
-        f _ = scalar <$> arbitrary
+        f :: (Arbitrary a, Num a) => Double -> Scalar a -> Gen (Scalar a)
+        f zeroChance _ = do
+          dice <- (zeroChance >=) <$> choose (0, 10)
+          if dice
+          then return 0
+          else scalar <$> arbitrary
     shrink df
         | Dict <- inferKnownBackend @_ @t @ds
         , mma <- ewfoldMap @t @ds @'[] @ds
