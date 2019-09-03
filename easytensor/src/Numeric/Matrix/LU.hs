@@ -39,7 +39,7 @@ import Numeric.Vector.Internal
 
 
 -- | Result of LU factorization with Partial Pivoting
---   @ PA = LU @.
+--   \( PA = LU \).
 data LU t n
   = LU
   { luLower    :: Matrix t n n

@@ -22,6 +22,10 @@ flags:
     default: false
     manual: true
 
+custom-setup:
+  dependencies:
+  - base
+  - Cabal
 
 ghc-options:
   - -Wall
