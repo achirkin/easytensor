@@ -26,6 +26,7 @@
 module Numeric.DataFrame.Internal.Mutable
     ( MDataFrame ()
     , newDataFrame#, newPinnedDataFrame#
+    , subDataFrameView#, subDataFrameView'#
     , copyDataFrame#, copyMDataFrame#
     , copyDataFrame'#, copyMDataFrame'#
     , freezeDataFrame#, unsafeFreezeDataFrame#
@@ -73,9 +74,46 @@ newPinnedDataFrame# s0
     = (# s1,  MDataFrame# 0# steps mba #)
 {-# INLINE newPinnedDataFrame# #-}
 
+
+-- | View a part of a DataFrame.
+--
+--   This function does not perform a copy.
+--   All changes to a new DataFrame will be reflected in the original DataFrame as well.
+subDataFrameView# :: forall (t :: Type)
+                            (b :: Nat) (bi :: Nat) (bd :: Nat)
+                            (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+                 . ( b ~ (bi + bd - 1)
+                   , KnownDim bd
+                   , ConcatList as (b :+ bs) asbs
+                   )
+                => Idxs (as +: bi) -> MDataFrame s t asbs -> MDataFrame s t (bd :+ bs)
+subDataFrameView# ei (MDataFrame# offM (CumulDims stepsM) arr)
+    = MDataFrame# (case offA of W# w -> word2Int# w)
+                  (CumulDims (n * dimVal' @bd : stepsA)) arr
+  where
+    (offA, stepsA@(n:_)) = getOffAndSteps (W# (int2Word# offM)) stepsM (listIdxs ei)
+
+-- | View a part of a DataFrame.
+--
+--   This function does not perform a copy.
+--   All changes to a new DataFrame will be reflected in the original DataFrame as well.
+--
+--   This is a simpler version of @subDataFrameView#@ that allows to view over one index at a time.
+subDataFrameView'# :: forall (t :: Type) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+                    . ConcatList as bs asbs
+                   => Idxs as -> MDataFrame s t asbs -> MDataFrame s t bs
+subDataFrameView'# ei (MDataFrame# offM (CumulDims stepsM) arr)
+    = MDataFrame# (case offA of W# w -> word2Int# w) (CumulDims stepsA) arr
+  where
+    (offA, stepsA) = getOffAndSteps (W# (int2Word# offM)) stepsM (listIdxs ei)
+
+getOffAndSteps :: Word -> [Word] -> [Word] -> (Word, [Word])
+getOffAndSteps off steps [] = (off, steps)
+getOffAndSteps off ~(_:steps@(s:_)) (i:ixs) = getOffAndSteps (off + i*s) steps ixs
+
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
 --
---   In contrast to @copyDataFrame'@, this function allows to copy over a range of contiguous
+--   In contrast to @copyDataFrame'#@, this function allows to copy over a range of contiguous
 --   indices over a single dimension.
 --   For example, you can write a 3x4 matrix into a 7x4 matrix, starting at indices 0..3.
 copyDataFrame# :: forall (t :: Type)
@@ -97,7 +135,7 @@ copyDataFrame# ei df (MDataFrame# off steps mba) s
 {-# ANN copyMDataFrame# "HLint: ignore Use camelCase" #-}
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
 --
---   In contrast to @copyMDataFrame'@, this function allows to copy over a range of contiguous
+--   In contrast to @copyMDataFrame'#@, this function allows to copy over a range of contiguous
 --   indices over a single dimension.
 --   For example, you can write a 3x4 matrix into a 7x4 matrix, starting at indices 0..3.
 copyMDataFrame# :: forall (t :: Type)
@@ -123,7 +161,7 @@ copyMDataFrame# ei df =
 {-# ANN copyDataFrame'# "HLint: ignore Use camelCase" #-}
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
 --
---   This is a simpler version of @copyDataFrame@ that allows to copy over one index at a time.
+--   This is a simpler version of @copyDataFrame#@ that allows to copy over one index at a time.
 copyDataFrame'# :: forall (t :: Type) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
                 . ( PrimBytes t
                   , PrimBytes (DataFrame t bs)
@@ -139,7 +177,7 @@ copyDataFrame'# ei df (MDataFrame# off steps mba) s
 {-# ANN copyMDataFrame'# "HLint: ignore Use camelCase" #-}
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
 --
---   This is a simpler version of @copyMDataFrame@ that allows to copy over one index at a time.
+--   This is a simpler version of @copyMDataFrame#@ that allows to copy over one index at a time.
 copyMDataFrame'# :: forall (t :: Type) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
                  . ( PrimBytes t
                    , ConcatList as bs asbs

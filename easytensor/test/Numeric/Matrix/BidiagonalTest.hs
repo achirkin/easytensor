@@ -28,9 +28,11 @@ eps = 1.0e-13
 validateBidiagonal :: forall (t :: Type) (n :: Nat) (m :: Nat)
              . ( KnownDim n, KnownDim m, KnownDim (Min n m)
                , PrimBytes t, Floating t, Ord t, Show t
+               , MatrixDeterminant t n
+               , MatrixDeterminant t m
                )
-            => Matrix t n m -> (Matrix t n n, Matrix t n m, Matrix t m m) -> Property
-validateBidiagonal a (u, b, v)
+            => Matrix t n m -> BiDiag t n m -> Property
+validateBidiagonal a BiDiag {..}
   | Dict <- inferKnownBackend @_ @t @'[Min n m]
   , Dict <- inferKnownBackend @_ @t @'[m] =
     counterexample
@@ -38,46 +40,69 @@ validateBidiagonal a (u, b, v)
         [ "failed a ~==~ u %* b %* transpose v:"
         , "a:  " ++ show a
         , "a': " ++ show a'
-        , "u:"   ++ show u
-        , "b:"   ++ show b
-        , "v:"   ++ show v
+        , "u:  "   ++ show u
+        , "b:  "   ++ show b
+        , "v:  "   ++ show v
         ]
       ) (approxEq a a')
     .&&.
     counterexample
       (unlines
         [ "u is not quite orthogonal:"
-        , "a:  " ++ show a
-        , "u:"   ++ show u
-        , "b:"   ++ show b
-        , "v:"   ++ show v
+        , "a: "   ++ show a
+        , "u: "   ++ show u
+        , "b: "   ++ show b
+        , "v: "   ++ show v
         ]
       ) (approxEq eye $ u %* transpose u)
     .&&.
     counterexample
       (unlines
         [ "v is not quite orthogonal:"
-        , "a:  " ++ show a
-        , "u:"   ++ show u
-        , "b:"   ++ show b
-        , "v:"   ++ show v
+        , "a: "  ++ show a
+        , "u: "  ++ show u
+        , "b: "  ++ show b
+        , "v: "  ++ show v
         ]
       ) (approxEq eye $ v %* transpose v)
     .&&.
     counterexample
       (unlines
         [ "b is not upper-bidiagonal"
-        , "a:  " ++ show a
-        , "u:"   ++ show u
-        , "b:"   ++ show b
-        , "v:"   ++ show v
+        , "a: " ++ show a
+        , "u: " ++ show u
+        , "b: " ++ show b
+        , "v: " ++ show v
         ]
       ) (getAll $ iwfoldMap @t @'[n,m]
             (\(Idx i :* Idx j :* U) x -> All (j == i || j == i + 1 || x == 0))
             b
         )
+    .&&.
+    counterexample
+      (unlines
+        [ "Incorrect determinant carried out for U"
+        , "a: " ++ show a
+        , "u: " ++ show u
+        , "bdUDet: " ++ show bdUDet
+        , "det u:  " ++ show (det u)
+        ]
+      ) (approxEq bdUDet $ det u)
+    .&&.
+    counterexample
+      (unlines
+        [ "Incorrect determinant carried out for V"
+        , "a: " ++ show a
+        , "v: " ++ show v
+        , "bdVDet: " ++ show bdVDet
+        , "det v:  " ++ show (det v)
+        ]
+      ) (approxEq bdVDet $ det v)
   where
     a'  = u %* b %* transpose v
+    b = biDiag dims bdAlpha bdBeta
+    u = bdU
+    v = bdV
 
 
 -- | Most of the time, the error is proportional to the maginutude of the biggest element

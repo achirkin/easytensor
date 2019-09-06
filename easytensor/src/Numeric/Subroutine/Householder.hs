@@ -50,6 +50,8 @@ import Numeric.Scalar.Internal
           The subroutine can be used for a QR decomposition:
             \( Q = P \).
 
+     Returns @True@ if reflection has been performed, and @False@ if it was needed.
+     This can be used to track the sign of @det P@.
  -}
 householderReflectionInplaceL ::
        forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat)
@@ -58,7 +60,7 @@ householderReflectionInplaceL ::
     -> STDataFrame s t '[n,n]  -- ^ Current state of \(P^\intercal\)
     -> STDataFrame s t '[n,m]  -- ^ Current state of \(R\)
     -> Idxs '[n,m] -- ^ Pivot element
-    -> ST s ()
+    -> ST s Bool
 householderReflectionInplaceL u p r (Idx i :* Idx j :* U)
     = householderReflectionInplaceL' u p r
       (fromIntegral $ dimVal' @n)
@@ -76,19 +78,22 @@ householderReflectionInplaceL' ::
     -> Int -- ^ \(m\)
     -> Int -- ^ \( 0 \leq k < n \)
     -> Int -- ^ \( 0 \leq l < m \)
-    -> ST s ()
+    -> ST s Bool
 householderReflectionInplaceL' uPtr pPtr rPtr n m k l = do
     -- pivot element (k,l) of new R
     alpha <- getAlphaAndUpdateU
     u2 <- getU2
     -- u2 == 0 means the column is already zeroed
-    when (u2 /= 0) $ do
+    if (u2 /= 0)
+    then do
       let c = 2 / u2 -- a mult constant for updating matrices
       -- update R
       updateRl alpha
       forM_ [l+1..m-1] $ updateRi c
       -- update P
       forM_ [0..n-1] $ updatePi c
+      return True
+    else return False
   where
     n' = n - k -- remaining rows
     rOff0 = k*m + l -- offset of element (k,l) in matrix R
@@ -156,6 +161,9 @@ householderReflectionInplaceL' uPtr pPtr rPtr n m k l = do
 
   Similar to `householderReflectionInplaceR`, but works from right to left
    - use to zero elements to the right from the pivot.
+
+     Returns @True@ if reflection has been performed, and @False@ if it was needed.
+     This can be used to track the sign of @det P@.
  -}
 householderReflectionInplaceR ::
        forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat)
@@ -164,7 +172,7 @@ householderReflectionInplaceR ::
     -> STDataFrame s t '[m,m]  -- ^ Current state of \(P^\intercal\)
     -> STDataFrame s t '[n,m]  -- ^ Current state of \(R\)
     -> Idxs '[n,m] -- ^ Pivot element
-    -> ST s ()
+    -> ST s Bool
 householderReflectionInplaceR u p r (Idx i :* Idx j :* U)
     = householderReflectionInplaceR' u p r
       (fromIntegral $ dimVal' @n)
@@ -182,19 +190,22 @@ householderReflectionInplaceR' ::
     -> Int -- ^ \(m\)
     -> Int -- ^ \( 0 \leq k < n \)
     -> Int -- ^ \( 0 \leq l < m \)
-    -> ST s ()
+    -> ST s Bool
 householderReflectionInplaceR' uPtr pPtr rPtr n m k l = do
     -- pivot element (k,l) of new R
     alpha <- getAlphaAndUpdateU
     u2 <- getU2
     -- u2 == 0 means the column is already zeroed
-    when (u2 /= 0) $ do
+    if (u2 /= 0)
+    then do
       let c = 2 / u2 -- a mult constant for updating matrices
       -- update R
       updateRk alpha
       forM_ [k+1..n-1] $ updateRi c
       -- update P
       forM_ [0..m-1] $ updatePi c
+      return True
+    else return False
   where
     m' = m - l -- remaining cols
     rOff0 = k*m + l -- offset of element (k,l) in matrix R

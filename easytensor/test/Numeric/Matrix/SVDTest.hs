@@ -11,6 +11,7 @@
 module Numeric.Matrix.SVDTest (runTests) where
 
 
+import Control.Monad
 import Data.Kind
 import Data.List                     (inits, tails)
 import Data.Maybe                    (isJust)
@@ -150,6 +151,46 @@ prop_svd3x = once . conjoin $ map prop_svd3 $ xs ++ map negate xs
 
 prop_svd3 :: Matrix Double 3 3 -> Property
 prop_svd3 m = validateSVD m (svd3 m)
+
+
+prop_svdSimple :: Property
+prop_svdSimple = once . conjoin $ prop_svd <$> dfs
+
+dfs :: [DataFrame Double '[XN 1, XN 1]]
+dfs = xs
+  where
+    mkM :: Dims ([n,m]) -> [Double] -> DataFrame Double '[XN 1, XN 1]
+    mkM ds
+      | Just (XDims ds') <- constrainDims ds :: Maybe (Dims '[XN 1, XN 1])
+        = XFrame . fromFlatList ds' 0
+    mkM _ = error "prop_qrSimple: bad dims"
+    variants :: Num a => [a] -> [[a]]
+    variants as = rotateList as ++ rotateList (map negate as)
+    xs :: [DataFrame Double '[XN 1, XN 1]]
+    xs = join
+      [ [mkM $ D2 :* D2 :* U, mkM $ D5 :* D2 :* U, mkM $ D3 :* D7 :* U]
+            <*> [repeat 0, repeat 1, repeat 2]
+      , mkM (D2 :* D2 :* U) <$> variants [3,2, 4,1]
+      , mkM (D3 :* D3 :* U) <$> variants [0,0,1, 3,2,0, 4,1,0]
+      , mkM (D4 :* D2 :* U) <$> variants [3,2, 4,1, 0,0, 0,2]
+      , mkM (D2 :* D3 :* U) <$> variants [3,2,0, 4,1,2]
+      , mkM (D2 :* D2 :* U) <$> variants [2, 0, 0, 0]
+      , mkM (D2 :* D2 :* U) <$> variants [4, 1, 0, 0]
+      , mkM (D2 :* D2 :* U) <$> variants [3, 1, -2, 0]
+      , [mkM $ D2 :* D3 :* U, mkM $ D3 :* D2 :* U]
+            <*> join
+                [ variants [2, 0, 0, 0, 0, 0]
+                , variants [4, 1, 0, 0, 0, 0]
+                , variants [3, 1, -2, 0, 0, 0]
+                , variants [3, 0, -2, 9, 0, 0]
+                ]
+      ]
+
+prop_svd :: DataFrame Double '[XN 1, XN 1] -> Property
+prop_svd (XFrame x)
+  | n@D :* m@D :* U <- dims `inSpaceOf` x
+  , D <- minDim n m = validateSVD x (svd x)
+prop_svd _ = error "prop_svd: impossible pattern"
 
 
 return []
