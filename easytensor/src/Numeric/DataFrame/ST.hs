@@ -23,6 +23,7 @@
 module Numeric.DataFrame.ST
     ( STDataFrame (XSTFrame), SomeSTDataFrame (..)
     , newDataFrame, newPinnedDataFrame
+    , subDataFrameView, subDataFrameView'
     , copyDataFrame, copyMutableDataFrame
     , copyDataFrame', copyMutableDataFrame'
     , freezeDataFrame, unsafeFreezeDataFrame
@@ -73,6 +74,31 @@ newPinnedDataFrame :: forall t (ns :: [Nat]) s
                    => ST s (STDataFrame s t ns)
 newPinnedDataFrame = STDataFrame <$> ST (newPinnedDataFrame# @t @ns)
 {-# INLINE newPinnedDataFrame #-}
+
+-- | View a part of a DataFrame.
+--
+--   This function does not perform a copy.
+--   All changes to a new DataFrame will be reflected in the original DataFrame as well.
+subDataFrameView :: forall (t :: Type)
+                           (b :: Nat) (bi :: Nat) (bd :: Nat)
+                           (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+                 . ( b ~ (bi + bd - 1)
+                   , KnownDim bd
+                   , ConcatList as (b :+ bs) asbs
+                   )
+                => Idxs (as +: bi) -> STDataFrame s t asbs -> STDataFrame s t (bd :+ bs)
+subDataFrameView = coerce (subDataFrameView# @t @b @bi @bd @as @bs @asbs @s)
+
+-- | View a part of a DataFrame.
+--
+--   This function does not perform a copy.
+--   All changes to a new DataFrame will be reflected in the original DataFrame as well.
+--
+--   This is a simpler version of @subDataFrameView@ that allows to view over one index at a time.
+subDataFrameView' :: forall (t :: Type) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
+                   . ConcatList as bs asbs
+                  => Idxs as -> STDataFrame s t asbs -> STDataFrame s t bs
+subDataFrameView' = coerce (subDataFrameView'# @t @as @bs @asbs @s)
 
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.

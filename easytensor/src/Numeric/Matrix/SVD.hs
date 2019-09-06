@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds             #-}
@@ -12,22 +13,27 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE UndecidableInstances  #-}
+
 module Numeric.Matrix.SVD
   ( MatrixSVD (..), SVD (..)
   , svd1, svd2, svd3, svd3q
   ) where
 
+import Control.Monad
 import Control.Monad.ST
+import Data.Kind
 import Numeric.DataFrame.Internal.PrimArray
 import Numeric.DataFrame.ST
 import Numeric.DataFrame.SubSpace
 import Numeric.DataFrame.Type
 import Numeric.Dimensions
+import Numeric.Matrix.Bidiagonal
 import Numeric.Matrix.Internal
 import Numeric.Quaternion.Internal
 import Numeric.Scalar.Internal
+import Numeric.Subroutine.Sort
+import Numeric.Tuple
 import Numeric.Vector.Internal
-
 
 -- | Precision for rounding
 eps :: Fractional t => t
@@ -64,7 +70,8 @@ deriving instance ( Eq (Matrix t n n)
                   , Eq (Vector t (Min n m)))
                   => Eq (SVD t n m)
 
-class MatrixSVD t (n :: Nat) (m :: Nat) where
+class (PrimBytes t, Floating t, Ord t)
+    => MatrixSVD (t :: Type) (n :: Nat) (m :: Nat) where
     -- | Compute SVD factorization of a matrix
     svd :: Matrix t n m -> SVD t n m
 
@@ -85,7 +92,7 @@ svd1 m = SVD
 --   https://scicomp.stackexchange.com/questions/8899/robust-algorithm-for-2-times-2-svd/
 --
 --   https://ieeexplore.ieee.org/document/486688
-svd2 :: forall t . (PrimBytes t, RealFloat t) => Matrix t 2 2 -> SVD t 2 2
+svd2 :: forall t . (PrimBytes t, Floating t, Ord t) => Matrix t 2 2 -> SVD t 2 2
 svd2 (DF2 (DF2 m00 m01) (DF2 m10 m11)) =
     SVD
     { svdU = DF2 (DF2         uc  us)
@@ -130,8 +137,6 @@ svd2 (DF2 (DF2 m00 m01) (DF2 m10 m11)) =
              )
           (_    , _    ) -> let rm = recip . sqrt $ m00*m00 + m01*m01
                             in  (1, 0, m00 * rm, m01 * rm)
-    mneg :: Bool -> Scalar t -> Scalar t
-    mneg a b = if a then b else negate b
 
 
 -- | Get SVD decomposition of a 3x3 matrix using `svd3q` function.
@@ -403,3 +408,424 @@ qrDecomposition3 m = runST $ do
     sig1 <- readDataFrameOff mPtr 4
     sig2 <- readDataFrameOff mPtr 8
     return (DF3 sig0 sig1 sig2, q3 * q2 * q1)
+
+
+instance (PrimBytes t, Floating t, Ord t)
+      => MatrixSVD t 1 1 where
+    svd = svd1
+
+instance (PrimBytes t, Floating t, Ord t)
+      => MatrixSVD t 2 2 where
+    svd = svd2
+
+instance (PrimBytes t, Floating t, Ord t, Quaternion t)
+      => MatrixSVD t 3 3 where
+    svd = svd3
+
+instance {-# INCOHERENT #-}
+         ( PrimBytes t, Floating t, Ord t
+         , KnownDim n, KnownDim m)
+       => MatrixSVD t n m where
+    svd a = runST $ do
+      D <- pure dnm
+      Dict <- pure $ inferKnownBackend @_ @t @'[Min n m]
+      Dict <- pure $ minIsSmaller dn dm -- GHC is not convinced :(
+      alphas <- unsafeThawDataFrame bdAlpha
+      betas <- unsafeThawDataFrame bdBeta
+      uPtr <- unsafeThawDataFrame bdU
+      vPtr <- unsafeThawDataFrame bdV
+
+      -- remove last beta if m > n
+      bLast <- readDataFrameOff betas nm1
+      when (abs bLast > eps) $
+        svdGolubKahanZeroCol alphas betas vPtr nm1
+
+      -- main routine for a bidiagonal matrix
+      svdBidiagonalInplace alphas betas uPtr vPtr nm 25 -- NB: number of tries - add a proper heuristic
+
+      -- sort singular values
+      sUnsorted <- unsafeFreezeDataFrame alphas
+      let sSorted :: Vector (Tuple '[t, Word]) (Min n m)
+          sSorted = sortBy (\(S (x :! _)) (S (y :! _)) -> compare y x)
+                  $ iwmap @_ @_ @'[] (\(Idx i :* U) (S x) -> S (abs x :! i :! U) ) sUnsorted
+          svdS = ewmap @t @_ @'[] (\(S (x :! _)) -> S x) sSorted
+          perm = ewmap @Word @_ @'[] (\(S (_ :! i :! U)) -> S i) sSorted
+          pCount =
+             if nm < 2
+             then 0
+             else foldl (\s (i, j) -> if index i perm > index j perm then succ s else s)
+                         (0 :: Word)
+                         [(i :* U, j :* U) | i <- [0..maxBound - 1], j <- [i+1..]]
+          pPositive = even pCount
+
+      -- alphas and svdS are now out of sync, but that is not a problem
+
+      -- make sure det U == 1
+      when ((bdUDet < 0) == pPositive) $ do
+        readDataFrameOff alphas 0 >>= writeDataFrameOff alphas 0 . negate
+        forM_ [0..n - 1] $ \i ->
+          readDataFrameOff uPtr (i*n) >>= writeDataFrameOff uPtr (i*n) . negate
+
+      -- negate negative singular values
+      forM_ [0..nm1] $ \i -> do
+        s <- readDataFrameOff alphas i
+        when (s < 0) $ do
+          writeDataFrameOff alphas i $ negate s
+          forM_ [0..m - 1] $ \j ->
+            readDataFrameOff vPtr (j*m + i)
+              >>= writeDataFrameOff vPtr (j*m + i) . negate
+
+      -- apply permutations
+      svdU' <- unsafeFreezeDataFrame uPtr
+      svdV' <- unsafeFreezeDataFrame vPtr
+      let svdU = iwgen @_ @_ @'[] $ \(i :* Idx j :* U) ->
+            if j >= dimVal dnm
+            then index (i :* Idx j :* U) svdU'
+            else index (i :* Idx (unScalar $ index (Idx j :* U) perm) :* U) svdU'
+          svdV = iwgen @_ @_ @'[] $ \(i :* Idx j :* U) ->
+            if j >= dimVal dnm
+            then index (i :* Idx j :* U) svdV'
+            else index (i :* Idx (unScalar $ index (Idx j :* U) perm) :* U) svdV'
+
+      return SVD {..}
+      where
+        n = fromIntegral $ dimVal dn :: Int
+        m = fromIntegral $ dimVal dm :: Int
+        dn = dim @n
+        dm = dim @m
+        dnm = minDim dn dm
+        nm1 = nm - 1
+        nm = fromIntegral (dimVal dnm) :: Int
+        -- compute the bidiagonal form b first, solve svd for b.
+        BiDiag {..} = bidiagonalHouseholder a
+
+
+
+{- Compute svd for a square bidiagonal matrix inplace
+   \( B = U S V^\intercal \)
+
+@
+  B = | a1 b1 0     ... 0 |
+      | 0  a2 b2 0  ... 0 |
+      | 0  0 a3 b3  ... 0 |
+      | ................. |
+      | 0  0  ... an1 bn1 |
+      | 0  0  ...  0  an  | bn? (in case if n > m)
+@
+ -}
+svdBidiagonalInplace ::
+       forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat) (nm :: Nat)
+     . ( PrimBytes t, Floating t, Ord t
+       , KnownDim n, KnownDim m, KnownDim nm, nm ~ Min n m)
+    => STDataFrame s t '[nm] -- ^ the main diagonal of B and then the singular values.
+    -> STDataFrame s t '[nm] -- ^ first upper diagonal of B
+    -> STDataFrame s t '[n,n] -- ^ U
+    -> STDataFrame s t '[m,m] -- ^ V
+    -> Int -- ^ 0 < q <= nm -- size of a reduced matrix, such that leftover is diagonal
+    -> Int -- iters
+    -> ST s ()
+svdBidiagonalInplace _ _ _ _ 0 _ = pure ()
+svdBidiagonalInplace _ _ _ _ 1 _ = pure ()
+svdBidiagonalInplace aPtr bPtr uPtr vPtr q' iter = do
+    -- Dict <- pure $ inferKnownBackend @_ @t @'[nm]
+    Dict <- pure $ minIsSmaller (dim @n) (dim @m)
+    -- afreeze <- freezeDataFrame aPtr
+    -- bfreeze <- freezeDataFrame bPtr
+    -- ufreeze <- freezeDataFrame uPtr
+    -- vfreeze <- freezeDataFrame vPtr
+    (p, q) <- findCounters q'
+
+    -- traceM $ unlines
+    --   [ "svdBidiagonalInplace iteration: (n = " ++ show nm ++ ") " ++ show iter
+    --   , "  q': " ++ show q'
+    --   , "  alphas: " ++ show afreeze
+    --   , "  betas:  " ++ show bfreeze
+    --   , "  U: " ++ show ufreeze
+    --   , "  V: " ++ show vfreeze
+    --   , "  submatrix span: " ++ show (p, q)
+    --   ]
+    when (iter == 0) $ error "Too many iterations."
+    when (q /= 0) $ do
+      findZeroDiagonal p q >>= \case
+        Just k
+          | k == q-1  -> svdGolubKahanZeroCol aPtr bPtr vPtr (k-1)
+          | otherwise -> svdGolubKahanZeroRow aPtr bPtr uPtr k
+        Nothing -> svdGolubKahanStep aPtr bPtr uPtr vPtr p q
+      svdBidiagonalInplace aPtr bPtr uPtr vPtr q (iter - 1)
+  where
+    -- nm = fromIntegral $ dimVal' @nm :: Int
+
+    -- Check if off-diagonal elements are close to zero and nullify them
+    -- if they are small along the way.
+    -- And find such indices p and q that satisfy condition in alg. 8.6.2
+    -- on p. 492. of "Matrix Computations " (4-th edition).
+    -- Except these are inverted:
+    --   p -- is the starting index of B22 (last submatrix with non-zero superdiagonal)
+    --   q -- is the starting index of B33 (diagonal submatrix)
+    --
+    -- that is, p and q determine the index and the size of next work piece.
+    findCounters :: Int -> ST s (Int, Int)
+    findCounters = goQ
+      where
+        checkEps :: Int -> ST s Bool
+        checkEps k = do
+          b <- abs <$> readDataFrameOff bPtr (k-1)
+          if b == 0
+          then return True
+          else do
+            a1 <- abs <$> readDataFrameOff aPtr (k-1)
+            a2 <- abs <$> readDataFrameOff aPtr  k
+            if b <= eps * (max (a1 + a2) 1)
+            then True <$ writeDataFrameOff bPtr (k-1) 0
+            else return False
+        goQ :: Int -> ST s (Int, Int)
+        goQ 0 = pure (0, 0) -- guard against calling with q == 0
+        goQ 1 = pure (0, 0) -- 1x1 matrix is always diagonal
+        goQ k = checkEps (k-1) >>= \case
+          True  -> goQ (k-1)
+          False -> flip (,) k <$> goP (k-2)
+        goP :: Int -> ST s Int
+        goP 0 = pure 0
+        goP k = checkEps k >>= \case
+          True  -> return k
+          False -> goP (k-1)
+
+    -- For indices p and q (p < q), find the biggest index (< q) such that
+    --  a[p] == 0
+    findZeroDiagonal :: Int -> Int -> ST s (Maybe Int)
+    findZeroDiagonal p q
+      | k < p     = pure Nothing
+      | otherwise = do
+        ak <- readDataFrameOff aPtr k
+        if ak == 0
+        then pure $ Just k
+        else if abs ak <= eps
+             then Just k <$ writeDataFrameOff aPtr k 0
+             else findZeroDiagonal p k
+      where
+        k = q - 1
+
+
+-- | Apply a series of column transformations to make b[k] (and whole column k+1) zero
+--    (page 491, 1st paragraph) when a[k+1] == 0.
+--   To make this element zero, I apply a series of Givens transforms on columns
+--   (multiply on the right).
+--
+--   Prerequisites:
+--     * a[k+1] == 0
+--     * 0 <= k < min n (m-1)
+--   Invariants:
+--     * matrix \(B :: n \times m \) is bidiagonal, represented by two diagonals;
+--     * matrix V is orthogonal
+--     * \( B = A V^\intercal \), where \(A :: n \times m\) is an implicit original matrix
+--   Results:
+--     * Same bidiagonal matrix with b[k] == 0; i.e. (k+1)-th column is zero.
+--     * matrix V is updated (multiplied on the right)
+--
+--   NB: All changes are made inplace.
+--
+svdGolubKahanZeroCol ::
+       forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat)
+     . (PrimBytes t, Floating t, Eq t, KnownDim n, KnownDim m, n <= m)
+    => STDataFrame s t '[n] -- ^ the main diagonal of \(B\)
+    -> STDataFrame s t '[n] -- ^ first upper diagonal of \(B\)
+    -> STDataFrame s t '[m,m] -- ^ \(V\)
+    -> Int -- ^ 0 <= k < min (n+1) m
+    -> ST s ()
+svdGolubKahanZeroCol aPtr bPtr vPtr k
+  | k < 0 || k >= lim = error $ unwords
+      [ "svdGolubKahanZeroCol: k =", show k
+      , "is outside of a valid range 0 <= k <", show lim]
+    -- this trick is to convince GHC that constraint (n <= m) is not redundant
+  | Dict <- Dict @(n <= m) = do
+    b <- readDataFrameOff bPtr k
+    writeDataFrameOff bPtr k 0
+    foldM_ goGivens b [k, k-1 .. 0]
+  where
+    n = fromIntegral $ dimVal' @n :: Int
+    m = fromIntegral $ dimVal' @m :: Int
+    lim = min n (m-1)
+    goGivens :: Scalar t -> Int -> ST s (Scalar t)
+    goGivens 0 _ = return 0 -- non-diagonal element is nullified prematurely
+    goGivens b i = do
+      ai <- readDataFrameOff aPtr i
+      let rab = recip . sqrt $ b*b + ai*ai
+          c = ai*rab
+          s = b *rab
+      updateGivensMat vPtr i (k+1) c s
+      writeDataFrameOff aPtr i $ ai*c + b*s -- B[i,i]
+      if i == 0
+      then return 0
+      else do
+        bi1 <- readDataFrameOff bPtr (i - 1)  -- B[i,i-1]
+        writeDataFrameOff bPtr (i - 1) $ bi1 * c
+        return $ negate (bi1 * s)
+
+-- | Apply a series of row transformations to make b[k] (and whole column k) zero
+--    (page 490, last paragraph) when a[k] == 0.
+--   To make this element zero, I apply a series of Givens transforms on rows
+--   (multiply on the left).
+--
+--   Prerequisites:
+--     * a[k] == 0
+--     * 0 <= k < n - 1
+--   Invariants:
+--     * matrix \(B :: m \times n \) is bidiagonal, represented by two diagonals;
+--     * matrix U is orthogonal
+--     * \( B = U A \), where \(A :: m \times n \) is an implicit original matrix
+--   Results:
+--     * Same bidiagonal matrix with b[k] == 0; i.e. k-th column is zero.
+--     * matrix U is updated (multiplied on the right)
+--
+--   NB: All changes are made inplace.
+--
+svdGolubKahanZeroRow ::
+       forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat)
+     . (PrimBytes t, Floating t, Eq t, KnownDim n, KnownDim m, n <= m)
+    => STDataFrame s t '[n] -- ^ the main diagonal of B
+    -> STDataFrame s t '[n] -- ^ first upper diagonal of B
+    -> STDataFrame s t '[m,m] -- ^ U
+    -> Int -- ^ 0 <= k < n - 1
+    -> ST s ()
+svdGolubKahanZeroRow aPtr bPtr uPtr k
+  | k < 0 || k >= n1 = error $ unwords
+      [ "svdGolubKahanZeroRow: k =", show k
+      , "is outside of a valid range 0 <= k <", show n1]
+    -- this trick is to convince GHC that constraint (n <= m) is not redundant
+  | Dict <- Dict @(n <= m) = do
+    b <- readDataFrameOff bPtr k
+    writeDataFrameOff bPtr k 0
+    foldM_ goGivens b [k+1..n1]
+  where
+    n = fromIntegral $ dimVal' @n :: Int
+    n1 = n - 1
+    goGivens :: Scalar t -> Int -> ST s (Scalar t)
+    goGivens 0 _ = return 0 -- non-diagonal element is nullified prematurely
+    goGivens b j = do
+      aj <- readDataFrameOff aPtr j
+      bj <- readDataFrameOff bPtr j
+      let rab = recip . sqrt $ b*b + aj*aj
+          c = aj*rab
+          s =  b*rab
+      updateGivensMat uPtr k j c (negate s)
+      writeDataFrameOff aPtr j $ b*s + aj*c
+      writeDataFrameOff bPtr j $ bj*c
+      return $ negate (bj * s)
+
+-- | A Golub-Kahan bidiagonal SVD step on an unreduced matrix
+svdGolubKahanStep ::
+       forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat) (nm :: Nat)
+     . ( PrimBytes t, Floating t, Ord t
+       , KnownDim n, KnownDim m, KnownDim nm, nm ~ Min n m)
+    => STDataFrame s t '[nm] -- ^ the main diagonal of B and then the singular values.
+    -> STDataFrame s t '[nm] -- ^ first upper diagonal of B
+    -> STDataFrame s t '[n,n] -- ^ U
+    -> STDataFrame s t '[m,m] -- ^ V
+    -> Int -- ^ p : 0 <= p < q <= nm; p <= q - 2
+    -> Int -- ^ q : 0 <= p < q <= nm; p <= q - 2
+    -> ST s ()
+svdGolubKahanStep aPtr bPtr uPtr vPtr p q
+  | p > q - 2 || p < 0 || q > nm
+    = error $ unwords
+        [ "svdGolubKahanStep: p =", show p, "and q =", show q
+        , "do not satisfy p <= q - 2 or 0 <= p < q <=", show nm]
+  | Dict <- Dict @(nm ~ Min n m) = do
+    (y,z) <- getWilkinsonShiftYZ
+    goGivens2 y z p
+  where
+    nm = fromIntegral $ dimVal' @nm :: Int
+
+    -- get initial values for one recursion sweep.
+    -- Note, input must satisfy: q >= p+2
+    getWilkinsonShiftYZ :: ST s (Scalar t, Scalar t)
+    getWilkinsonShiftYZ  = do
+      a1 <- readDataFrameOff aPtr p
+      b1 <- readDataFrameOff bPtr p
+      am <- readDataFrameOff aPtr (q-2)
+      an <- readDataFrameOff aPtr (q-1)
+      bm <- if q >= p + 3
+            then readDataFrameOff bPtr (q-3)
+            else pure 0
+      bn <- readDataFrameOff bPtr (q-2)
+      let t11 = a1*a1
+          t12 = a1*b1
+          tmm = am*am + bm*bm
+          tnn = an*an + bn*bn
+          tnm = am*bn
+          d   = 0.5*(tmm - tnn)
+          mu  = tnn + d - mneg (d >= 0) (sqrt $ d*d + tnm*tnm)
+      return (t11 - mu, t12)
+
+    -- yv = b[k-1]; zv = B[k-1,k+1] -- to be eliminated by 1st Givens r
+    -- yu = a[k];   zu = B[k+1,k-1] -- to be eliminated by 2nd Givens r
+    goGivens2 :: Scalar t -> Scalar t -> Int -> ST s ()
+    goGivens2 yv zv k = do
+          a1 <- readDataFrameOff aPtr k     -- B[k,k]
+          a2 <- readDataFrameOff aPtr (k+1) -- B[k+1,k+1]
+          b1 <- readDataFrameOff bPtr k     -- B[k,k+1]
+          let a1' = a1*cv + b1*sv  -- B[k,k] == yu
+              a2' = a2*cv          -- B[k+1,k+1]
+              b0' = yv*cv + zv*sv  -- B[k-1,k]
+              b1' = b1*cv - a1*sv  -- B[k,k+1]
+              yu  = a1'            -- B[k,k]
+              zu  = a2*sv          -- B[k+1,k]
+              ryzu = recip . sqrt $ yu*yu + zu*zu
+              cu = yu * ryzu
+              su = zu * ryzu
+              a1'' = yu *cu + zu *su
+              a2'' = a2'*cu - b1'*su
+              b1'' = b1'*cu + a2'*su
+          updateGivensMat vPtr k (k+1) cv sv
+          updateGivensMat uPtr k (k+1) cu su
+
+          when (k > p) $ writeDataFrameOff bPtr (k-1) b0'
+          writeDataFrameOff bPtr k b1''
+          writeDataFrameOff aPtr k a1''
+          writeDataFrameOff aPtr (k+1) a2''
+          when (k < q - 2) $ do
+            b2 <- readDataFrameOff bPtr (k+1) -- B[k+1,k+2]
+            let b2'' = b2*cu
+                zvn  = b2*su
+            writeDataFrameOff bPtr (k+1) b2''
+            goGivens2 b1'' zvn (k+1)
+        where
+          ryzv = recip . sqrt $ yv*yv + zv*zv
+          cv = yv * ryzv
+          sv = zv * ryzv
+
+-- | Update a transformation matrix with a Givens transform (on the right)
+updateGivensMat ::
+       forall (s :: Type) (t :: Type) (n :: Nat)
+     . (PrimBytes t, Floating t, KnownDim n)
+    => STDataFrame s t '[n,n]
+    -> Int -> Int
+    -> Scalar t -> Scalar t -> ST s ()
+updateGivensMat p i j c s = forM_ [0..n-1] $ \k -> do
+    let nk = n*k
+        ioff = nk + i
+        joff = nk + j
+    uki <- readDataFrameOff p ioff
+    ukj <- readDataFrameOff p joff
+    writeDataFrameOff p ioff $ uki*c + ukj*s
+    writeDataFrameOff p joff $ ukj*c - uki*s
+  where
+    n = fromIntegral $ dimVal' @n :: Int
+
+
+
+-- | negate if false
+mneg :: Num t => Bool -> t -> t
+mneg True  = id
+mneg False = negate
+
+minIsSmaller :: forall (n :: Nat) (m :: Nat)
+              . Dim n -> Dim m -> Dict (Min n m <= n, Min n m <= m)
+minIsSmaller dn dm = case (f dnm dn, f dnm dm) of
+    (Dict, Dict) -> Dict
+  where
+    dnm = minDim dn dm
+    f :: Dim a -> Dim b -> Dict (a <= b)
+    f da db = case compareDim da db of
+      SLT -> Dict
+      SEQ -> Dict
+      SGT -> error "minIsSmaller: impossible type-level comparison"
