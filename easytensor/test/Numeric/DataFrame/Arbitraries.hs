@@ -32,11 +32,39 @@ import qualified Numeric.Tuple.Strict as ST
 maxDims :: Word
 maxDims = 5
 
+-- Some tests are rather slow when we have too many elements
+maxTotalDim :: Word
+maxTotalDim = 100000
+
 maxDimSize :: Word
-maxDimSize = 7
+maxDimSize = 100
 
 fromScalarChanceFactor :: Int
 fromScalarChanceFactor = 5
+
+
+removeDims :: SomeDims -> SomeDims
+removeDims (SomeDims U) = SomeDims U
+removeDims (SomeDims nns@(_ :* ns))
+  | totalDim nns > maxTotalDim = removeDims (SomeDims ns)
+  | otherwise = SomeDims nns
+
+reduceDims :: (All KnownXNatType xns, BoundedDims xns)
+           => Dims (xns :: [XNat]) -> Dims (xns :: [XNat])
+reduceDims = reduceDims' 1
+
+reduceDims' :: (All KnownXNatType xns, BoundedDims xns)
+            => Word -> Dims (xns :: [XNat]) -> Dims (xns :: [XNat])
+reduceDims' _ U = U
+reduceDims' l nns@(n :* ns)
+  | totalDim nns * l <= maxTotalDim = nns
+  | otherwise = case n of
+      Dn d -> n :* reduceDims' (l * dimVal d) ns
+      (Dx d :: Dim xn) -> case compareDim (dimBound @XNat @xn) D2 of
+        SLT -> Dx D2 :* reduceDims' (l * 2) ns
+        SEQ -> Dx D2 :* reduceDims' (l * 2) ns
+        SGT -> n :* reduceDims' (l * dimVal d) ns
+
 
 
 instance (Quaternion t, Arbitrary t, Num t) => Arbitrary (Quater t) where
@@ -173,7 +201,7 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t)
       => Arbitrary (SomeDataFrame t) where
     arbitrary = do
       -- Generate random dimension list
-      SomeDims ds <- arbitrary
+      SomeDims ds <- removeDims <$> arbitrary
       --  and pattern-match against it with Dims pattern.
       --  This gives Dimensions ds evidence immediately.
       case ds of
@@ -188,17 +216,18 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
          , RepresentableList ts)
       => Arbitrary (SomeDataFrame ts) where
     arbitrary = do
-      SomeDims ds <- arbitrary
+      SomeDims ds <- removeDims <$> arbitrary
       case ds of
         (Dims :: Dims ds) -> case inferKnownBackend @_ @ts @ds of
           Dict -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
     shrink (SomeDataFrame df) = SomeDataFrame <$> shrink df
 
+
 instance ( Arbitrary t, PrimBytes t, Num t, Ord t
-         , Arbitrary (Dims xs), All KnownXNatType xs)
+         , Arbitrary (Dims xs), All KnownXNatType xs, BoundedDims xs)
       => Arbitrary (DataFrame t (xs :: [XNat])) where
     arbitrary = do
-      ds <- arbitrary @(Dims xs)
+      ds <- reduceDims <$> arbitrary @(Dims xs)
       case ds of
         XDims (_ :: Dims ds) -> case inferKnownBackend @_ @t @ds of
           Dict -> XFrame <$> arbitrary @(DataFrame t ds)
@@ -206,10 +235,10 @@ instance ( Arbitrary t, PrimBytes t, Num t, Ord t
 
 instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
          , RepresentableList ts
-         , Arbitrary (Dims xs), All KnownXNatType xs)
+         , Arbitrary (Dims xs), All KnownXNatType xs, BoundedDims xs)
       => Arbitrary (DataFrame ts (xs :: [XNat])) where
     arbitrary = do
-      ds <- arbitrary @(Dims xs)
+      ds <- reduceDims <$> arbitrary @(Dims xs)
       case ds of
         XDims (_ :: Dims ds) -> case inferKnownBackend @_ @ts @ds of
           Dict -> XFrame <$> arbitrary @(DataFrame ts ds)

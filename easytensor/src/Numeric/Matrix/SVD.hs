@@ -13,7 +13,6 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE UndecidableInstances  #-}
-
 module Numeric.Matrix.SVD
   ( MatrixSVD (..), SVD (..)
   , svd1, svd2, svd3, svd3q
@@ -106,38 +105,28 @@ svd2 (DF2 (DF2 m00 m01) (DF2 m10 m11)) =
     x2 = m00 + m11 -- 2E
     y1 = m01 + m10 -- 2G
     y2 = m01 - m10 -- 2H
-    xx = x1*x2
     yy = y1*y2
-    -- xy = x1*y2
-    -- yx = y1*x2
     h1 = sqrt $ y1*y1 + x1*x1 -- h1 >= abs x1
     h2 = sqrt $ y2*y2 + x2*x2 -- h2 >= abs x2
     sigma1 = 0.5 * (h2 + h1)  -- sigma1 >= abs sigma2
     sigma2 = 0.5 * (h2 - h1)  -- can be negative, which is accounted by sg2
-    sg2 = mneg (sigma2 >= 0 && h2 /= 0)
-    hh = h1*h2 -- NB: d == 2 hh
-    rd = 0.5 / hh
-    ucos = xx + yy
-    vcos = xx - yy
-    uhhs = hh - ucos
-    uhhc = hh + ucos
-    vhhs = hh - vcos
-    vhhc = hh + vcos
-    (uc, us, vc, vs)
-      = case (h1 == 0, h2 == 0) of
-          (True , True ) -> (1, 0, 1, 0)
-          (False, False) ->
-             ( sqrt (uhhc * rd)
-             , mneg (  (x1 * y2 >  y1 * x2)
-                    || (x1 * y2 == y1 * x2 && (m10 < 0 || m11 < 0))
-                                           -- (y2 > y1 || x1 > x2)
-                    ) . sqrt $ uhhs * rd
-             , mneg (h1 * x2 >= negate h2 * x1) . sqrt $ vhhc * rd
-             , mneg (h1 * y2 >= negate h2 * y1) . sqrt $ vhhs * rd
-             )
-          (_    , _    ) -> let rm = recip . sqrt $ m00*m00 + m01*m01
-                            in  (1, 0, m00 * rm, m01 * rm)
-
+    sg2 = mneg (sigma2 >= 0)
+    hx1 = h1 + x1
+    hx2 = h2 + x2
+    hxhx = hx1*hx2
+    hxy  = hx1*y2
+    yhx  = y1*hx2
+    (uc', us', vc', vs') = case (x1 > 0 || y1 /= 0, x2 > 0 || y2 /= 0) of
+      (True , True ) -> (hxhx + yy, hxy - yhx, hxhx - yy, hxy + yhx)
+      (True , False) -> (y1,  hx1, -y1, hx1)
+      (False, True ) -> (y2, -hx2, -y2, hx2)
+      (False, False) -> (1, 0, -1, 0)
+    ru = recip . sqrt $ uc'*uc' + us'*us'
+    rv = recip . sqrt $ vc'*vc' + vs'*vs'
+    uc = uc' * ru
+    us = us' * ru
+    vc = vc' * rv
+    vs = vs' * rv
 
 -- | Get SVD decomposition of a 3x3 matrix using `svd3q` function.
 --
@@ -441,7 +430,7 @@ instance {-# INCOHERENT #-}
         svdGolubKahanZeroCol alphas betas vPtr nm1
 
       -- main routine for a bidiagonal matrix
-      svdBidiagonalInplace alphas betas uPtr vPtr nm 25 -- NB: number of tries - add a proper heuristic
+      svdBidiagonalInplace alphas betas uPtr vPtr nm (3*nm) -- number of tries
 
       -- sort singular values
       sUnsorted <- unsafeFreezeDataFrame alphas
@@ -527,23 +516,8 @@ svdBidiagonalInplace ::
 svdBidiagonalInplace _ _ _ _ 0 _ = pure ()
 svdBidiagonalInplace _ _ _ _ 1 _ = pure ()
 svdBidiagonalInplace aPtr bPtr uPtr vPtr q' iter = do
-    -- Dict <- pure $ inferKnownBackend @_ @t @'[nm]
     Dict <- pure $ minIsSmaller (dim @n) (dim @m)
-    -- afreeze <- freezeDataFrame aPtr
-    -- bfreeze <- freezeDataFrame bPtr
-    -- ufreeze <- freezeDataFrame uPtr
-    -- vfreeze <- freezeDataFrame vPtr
     (p, q) <- findCounters q'
-
-    -- traceM $ unlines
-    --   [ "svdBidiagonalInplace iteration: (n = " ++ show nm ++ ") " ++ show iter
-    --   , "  q': " ++ show q'
-    --   , "  alphas: " ++ show afreeze
-    --   , "  betas:  " ++ show bfreeze
-    --   , "  U: " ++ show ufreeze
-    --   , "  V: " ++ show vfreeze
-    --   , "  submatrix span: " ++ show (p, q)
-    --   ]
     when (iter == 0) $ error "Too many iterations."
     when (q /= 0) $ do
       findZeroDiagonal p q >>= \case
