@@ -34,10 +34,10 @@ maxDims = 5
 
 -- Some tests are rather slow when we have too many elements
 maxTotalDim :: Word
-maxTotalDim = 100000
+maxTotalDim = 1000
 
 maxDimSize :: Word
-maxDimSize = 100
+maxDimSize = 50
 
 fromScalarChanceFactor :: Int
 fromScalarChanceFactor = 5
