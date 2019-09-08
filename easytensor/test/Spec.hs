@@ -27,10 +27,10 @@ tests = return
   , test "PrimBytes"          $ Numeric.PrimBytesTest.runTests n
   , test "Matrix.QR"          $ Numeric.Matrix.QRTest.runTests n
   , test "Matrix.Bidiagonal"  $ Numeric.Matrix.BidiagonalTest.runTests n
-  , test "Matrix.SVD"         $ Numeric.Matrix.SVDTest.runTests 10000
+  , test "Matrix.SVD"         $ Numeric.Matrix.SVDTest.runTests n
   ]
   where
-    n = 1 :: Int
+    n = 1000 :: Int
 
 
 

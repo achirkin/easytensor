@@ -110,7 +110,7 @@ svd2 (DF2 (DF2 m00 m01) (DF2 m10 m11)) =
     h2 = sqrt $ y2*y2 + x2*x2 -- h2 >= abs x2
     sigma1 = 0.5 * (h2 + h1)  -- sigma1 >= abs sigma2
     sigma2 = 0.5 * (h2 - h1)  -- can be negative, which is accounted by sg2
-    sg2 = mneg (sigma2 >= 0)
+    sg2 = negateUnless (sigma2 >= 0)
     hx1 = h1 + x1
     hx2 = h2 + x2
     hxhx = hx1*hx2
@@ -134,44 +134,25 @@ svd2 (DF2 (DF2 m00 m01) (DF2 m10 m11)) =
 --   @s1 >= s2 >= s3 >= 0@.
 --   Thus, it has some overhead on top of `svd3q`.
 svd3 :: forall t . Quaternion t => Matrix t 3 3 -> SVD t 3 3
-svd3 m
-    | s3' > s1 = SVD
-        { svdU = toMatrix33 (q1 * u)
-        , svdS = DF3 s3' s1 s2
-        , svdV = mapIf (s3 < 0) neg1 $ toMatrix33 (q1 * v)
-        }
-    | s3' > s2 = SVD
-        { svdU = toMatrix33 (q2 * u)
-        , svdS = DF3 s1 s3' s2
-        , svdV = mapIf (s3 < 0) neg2 $ toMatrix33 (q2 * v)
-        }
-    | otherwise = SVD
+svd3 m = SVD
         { svdU = toMatrix33 u
         , svdS = DF3 s1 s2 s3'
-        , svdV = mapIf (s3 < 0) neg3 $ toMatrix33 v
+        , svdV = neg3If (s3 < 0) (toMatrix33 v)
         }
   where
-    (u, (DF3 s1 s20 s30), v) = svd3q m
-    s2 = if s1 * eps > s20 then 0 else s20
-    s3 = if s1 * eps > abs s30 then 0 else s30
+    (u, (DF3 s1 s2 s3), v) = svd3q m
     s3' = abs s3
-    -- put s3 in front of s1 and s2 if it is big negative
-    q1 = Quater 0.5 0.5 0.5 0.5 :: Quater t
-    -- put s3 in front of s2 if it is big negative
-    q2 = Quater sqrt05 0 0 sqrt05 :: Quater t
-    mapIf :: Bool -> (Vector t 3 -> Vector t 3) -> Matrix t 3 3 -> Matrix t 3 3
-    mapIf False _ = id
-    mapIf True  f = ewmap @t @'[3] f
-    neg1, neg2, neg3 :: Vector t 3 -> Vector t 3
-    neg1 (DF3 a b c) = DF3 (negate a) b c
-    neg2 (DF3 a b c) = DF3 a (negate b) c
+    neg3If :: Bool -> Matrix t 3 3 -> Matrix t 3 3
+    neg3If False = id
+    neg3If True  = ewmap @t @'[3] neg3
+    neg3 :: Vector t 3 -> Vector t 3
     neg3 (DF3 a b c) = DF3 a b (negate c)
 
 
--- | Get SVD decomposition of a 3x3 matrix, which orthogonal matrices U and V
+-- | Get SVD decomposition of a 3x3 matrix, with orthogonal matrices U and V
 --   represented as quaternions.
 --   Important: U and V are bound to be rotations at the expense of the last
---              singular value being possible negative.
+--              singular value being possibly negative.
 --
 --   This is an adoptation of a specialized 3x3 SVD algorithm described in
 --     "Computing the Singular Value Decomposition of 3x3 matrices
@@ -179,42 +160,49 @@ svd3 m
 --   by  A. McAdams, A. Selle, R. Tamstorf, J. Teran, E. Sifakis.
 --
 --   http://pages.cs.wisc.edu/~sifakis/papers/SVD_TR1690.pdf
-svd3q :: Quaternion t => Matrix t 3 3 -> (Quater t, Vector t 3, Quater t)
+svd3q :: forall t . Quaternion t
+      => Matrix t 3 3 -> (Quater t, Vector t 3, Quater t)
 svd3q m = (u, s, v)
   where
     v = jacobiEigenQ (transpose m %* m)
-    (s, u) = qrDecomposition3 (m %* toMatrix33 v)
-
+    (s, u) = uncurry fixSigns $ qrDecomposition3 (m %* toMatrix33 v)
+    -- last bit: make sure    s1 >= s2 >= 0
+    fixSigns :: Vector t 3 -> Quater t -> (Vector t 3, Quater t)
+    fixSigns (DF3 s1 s2 s3) q@(Quater a b c d) = case (s1 >= 0, s2 >= 0) of
+      (True , True ) -> (mk3 s1 s2 s3, q)
+      (False, True ) -> (mk3 (negate s1) s2 (negate s3), Quater (-c)  d   a  (-b))
+      (True , False) -> (mk3 s1 (negate s2) (negate s3), Quater   d   c (-b) (-a))
+      (False, False) -> (mk3 (negate s1) (negate s2) s3, Quater   b (-a)  d  (-c))
+    -- one more thing:
+    --   the singular values are ordered, but may have small errors;
+    --   as a result adjacent values may seem to be out of order by a very small number
+    mk3 :: Scalar t -> Scalar t -> Scalar t -> Vector t 3
+    mk3 s1 s2 s3' = case (s1 >= s2, s1 >= abs s3, s2 >= abs s3) of
+        (True , True , True ) -> DF3 s1 s2     s3' -- s1 >= s2 >= s3
+        (True , True , False) -> DF3 s1 s3 (cs s2) -- s1 >= s3 >  s2
+        (True , False, _    ) -> DF3 s3 s1 (cs s2) -- s3 >  s1 >= s2
+        (False, True , True ) -> DF3 s2 s1     s3' -- s2 >  s1 >= s3
+        (False, _    , False) -> DF3 s3 s2 (cs s1) -- s3 >  s2 >  s1
+        (False, False, True ) -> DF3 s2 s3 (cs s1) -- s2 >= s3 >  s1
+      where
+        s3 = abs s3'
+        cs = negateUnless (s3' >= 0)
 
 
 -- | Approximate values for cos (a/2) and sin (a/2) of a Givens rotation for
---    a 2x2 symmetric matrix.
---
---   To make sure the Givens rotations converge, the angle a is limited by pi/4
---   in the base version of an algorithm.
---
---   This is a modified version, that chooses such rotation that always makes
---   the first coefficient bigger.
---   It does so by adding extra rotation pi/4, which just swaps coefficients
---   on the diagonal.
---   It does not affect the aij component, so it should not change the convergence rate.
+--    a 2x2 symmetric matrix. (Algorithm 2)
 jacobiGivensQ :: forall t . (Ord t, Floating t) => t -> t -> t -> (t, t)
 jacobiGivensQ aii aij ajj
-    | g*sh'*sh' < ch'*ch' = ( w * ch, w * sh)
-    | otherwise           = ( c', s')
+    | g*sh*sh < ch*ch = (w * ch, w * sh)
+    | otherwise       = (c', s')
   where
-    ch' = 2 * (aii-ajj)
-    sh' = aij
-    ch = if ch' >= 0 then ch' else negate (ch' - sh')
-    sh = if ch' >= 0 then sh' else negate (ch' + sh')
+    ch = 2 * (aii-ajj)
+    sh = aij
     w = recip . sqrt $ ch * ch + sh * sh -- TODO: consider something like a hypot
     g  = 5.82842712474619 :: t  -- 3 + sqrt 8
-    c' = if sh' == 0
-         then if ch' >= 0 then 1 else sqrt05
-         else if ch' >= 0 then 0.9238795325112867 else 0.3826834323650898 -- sin (pi/8)
-    s' = if sh' == 0
-         then if ch' >= 0 then 0 else sqrt05
-         else if ch' >= 0 then 0.3826834323650898 else 0.9238795325112867 -- cos (pi/8)
+    c' = 0.9238795325112867 :: t -- cos (pi/8)
+    s' = 0.3826834323650898 :: t -- sin (pi/8)
+
 
 -- | A quaternion for a QR Givens iteration
 qrGivensQ :: forall t . (Ord t, Floating t) => t -> t -> (t, t)
@@ -232,8 +220,6 @@ qrGivensQ a1 a2
 --
 --   The three words arguments are indices:
 --     0 <= i /= j /= k <= 2
---
---     if i < j then the eigen values are already sorted!
 jacobiEigen3Iteration :: Quaternion t
                      => Int -> Int -> Int
                      -> STDataFrame s t '[3,3]
@@ -246,7 +232,6 @@ jacobiEigen3Iteration i j k sPtr = do
     sjk <- readDataFrameOff sPtr jk
     -- Coefficients for a quaternion corresponding to a Givens rotation
     let (ch, sh) = jacobiGivensQ sii sij sjj
-        sh' = if rightTriple then negate sh else sh
         a = ch*ch - sh*sh
         b = 2 * sh*ch
         aa = a * a
@@ -264,11 +249,10 @@ jacobiEigen3Iteration i j k sPtr = do
 
     -- write the quaternion
     qPtr <- unsafeThawDataFrame 0
-    writeDataFrameOff qPtr k sh'
+    writeDataFrameOff qPtr k (negate sh)
     writeDataFrameOff qPtr 3 ch
     fromVec4 <$> unsafeFreezeDataFrame qPtr
   where
-    rightTriple = (j - i) == 1 || (k - j) == 1
     ii = i*3 + i
     ij = if i < j then i*3 + j else j*3 + i
     jj = j*3 + j
@@ -288,19 +272,23 @@ eigenItersX3 = 12
 jacobiEigenQ :: forall t . Quaternion t => Matrix t 3 3 -> Quater t
 jacobiEigenQ m = runST $ do
     mPtr <- thawDataFrame m
-    go eigenItersX3 mPtr 1
+    q  <- go eigenItersX3 mPtr 1
+    s1 <- readDataFrameOff mPtr 0
+    s2 <- readDataFrameOff mPtr 4
+    s3 <- readDataFrameOff mPtr 8
+    return $ sortQ s1 s2 s3 * q
   where
     go :: Int -> STDataFrame s t '[3,3] -> Quater t -> ST s (Quater t)
     go 0 _ q = pure q
 
     -- -- primitive cyclic iteration;
     -- --   fast, but the convergence is not perfect
-    --
-    --  set eigenItersX3 = 6 for good precision
+    -- --
+    -- -- set eigenItersX3 = 6 for good precision
     -- go n p q = do
     --   q1 <- jacobiEigen3Iteration 0 1 2 p
     --   q2 <- jacobiEigen3Iteration 1 2 0 p
-    --   q3 <- jacobiEigen3Iteration 0 2 1 p
+    --   q3 <- jacobiEigen3Iteration 2 0 1 p
     --   go (n - 1) p (q3 * q2 * q1 * q)
 
     -- Pick the largest element on lower triangle;
@@ -320,13 +308,13 @@ jacobiEigenQ m = runST $ do
       | gt2 a10 a20 a21
         = jacobiEigen3Iteration 0 1 2 p
       | gt2 a20 a10 a21
-        = jacobiEigen3Iteration 0 2 1 p
+        = jacobiEigen3Iteration 2 0 1 p
       | gt2 a21 a10 a20
         = jacobiEigen3Iteration 1 2 0 p
       | otherwise
         = case mod n 3 of
             0 -> jacobiEigen3Iteration 0 1 2 p
-            1 -> jacobiEigen3Iteration 0 2 1 p
+            1 -> jacobiEigen3Iteration 2 0 1 p
             _ -> jacobiEigen3Iteration 1 2 0 p
     gt2 :: Scalar t -> Scalar t -> Scalar t -> Bool
     gt2 a b c = case compare a b of
@@ -334,6 +322,19 @@ jacobiEigenQ m = runST $ do
                   EQ -> a >  c
                   LT -> False
 
+    -- Make such a quaternion that rotates the matrix so that:
+    -- abs s1 >= abs s2 >= abs s3
+    -- Note, the corresponding singular values may be negative, which must be
+    -- taken into account later.
+    sortQ :: Scalar t -> Scalar t -> Scalar t -> Quater t
+    sortQ s1 s2 s3 = sortQ' (s1 >= s2) (s1 >= s3) (s2 >= s3)
+    sortQ' :: Bool -> Bool -> Bool -> Quater t
+    sortQ' True  True  True  = Quater 0 0 0 1              -- s1 >= s2 >= s3
+    sortQ' True  True  False = Quater sqrt05 0 0 (-sqrt05) -- s1 >= s3 >  s2
+    sortQ' True  False _     = Quater 0.5 0.5 0.5 0.5      -- s3 >  s1 >= s2
+    sortQ' False True  True  = Quater 0 0 sqrt05 (-sqrt05) -- s2 >  s1 >= s3
+    sortQ' False _     False = Quater 0 sqrt05 0 (-sqrt05) -- s3 >  s2 >  s1
+    sortQ' False False True  = Quater 0.5 0.5 0.5 (-0.5)   -- s2 >= s3 >  s1
 
 
 -- | One Givens rotation for a QR algorithm on a 3x3 matrix
@@ -355,7 +356,6 @@ qrDecomp3Iteration i j k sPtr = do
     sjk <- readDataFrameOff sPtr jk
     -- Coefficients for a quaternion corresponding to a Givens rotation
     let (ch, sh) = qrGivensQ sii sji
-        sh' = if rightTriple then negate sh else sh
         a = ch*ch - sh*sh
         b = 2 * sh*ch
     -- update the matrix
@@ -368,11 +368,11 @@ qrDecomp3Iteration i j k sPtr = do
 
     -- write the quaternion
     qPtr <- unsafeThawDataFrame 0
-    writeDataFrameOff qPtr k sh'
+    writeDataFrameOff qPtr k (negateUnless leftTriple sh)
     writeDataFrameOff qPtr 3 ch
     fromVec4 <$> unsafeFreezeDataFrame qPtr
   where
-    rightTriple = (j - i) == 1 || (k - j) == 1
+    leftTriple = (j - i) /= 1 && (k - j) /= 1
     i3 = i*3
     j3 = j*3
     ii = i3 + i
@@ -464,19 +464,24 @@ instance {-# INCOHERENT #-}
             readDataFrameOff vPtr (j*m + i)
               >>= writeDataFrameOff vPtr (j*m + i) . negate
 
-      -- apply permutations
-      svdU' <- unsafeFreezeDataFrame uPtr
-      svdV' <- unsafeFreezeDataFrame vPtr
-      let svdU = iwgen @_ @_ @'[] $ \(i :* Idx j :* U) ->
-            if j >= dimVal dnm
-            then index (i :* Idx j :* U) svdU'
-            else index (i :* Idx (unScalar $ index (Idx j :* U) perm) :* U) svdU'
-          svdV = iwgen @_ @_ @'[] $ \(i :* Idx j :* U) ->
-            if j >= dimVal dnm
-            then index (i :* Idx j :* U) svdV'
-            else index (i :* Idx (unScalar $ index (Idx j :* U) perm) :* U) svdV'
-
-      return SVD {..}
+      -- apply permutations if necessary
+      if pCount == 0
+      then do
+        svdU <- unsafeFreezeDataFrame uPtr
+        svdV <- unsafeFreezeDataFrame vPtr
+        return SVD {..}
+      else do
+        svdU' <- unsafeFreezeDataFrame uPtr
+        svdV' <- unsafeFreezeDataFrame vPtr
+        let svdU = iwgen @_ @_ @'[] $ \(i :* Idx j :* U) ->
+              if j >= dimVal dnm
+              then index (i :* Idx j :* U) svdU'
+              else index (i :* Idx (unScalar $ index (Idx j :* U) perm) :* U) svdU'
+            svdV = iwgen @_ @_ @'[] $ \(i :* Idx j :* U) ->
+              if j >= dimVal dnm
+              then index (i :* Idx j :* U) svdV'
+              else index (i :* Idx (unScalar $ index (Idx j :* U) perm) :* U) svdV'
+        return SVD {..}
       where
         n = fromIntegral $ dimVal dn :: Int
         m = fromIntegral $ dimVal dm :: Int
@@ -727,7 +732,7 @@ svdGolubKahanStep aPtr bPtr uPtr vPtr p q
           tnn = an*an + bn*bn
           tnm = am*bn
           d   = 0.5*(tmm - tnn)
-          mu  = tnn + d - mneg (d >= 0) (sqrt $ d*d + tnm*tnm)
+          mu  = tnn + d - negateUnless (d >= 0) (sqrt $ d*d + tnm*tnm)
       return (t11 - mu, t12)
 
     -- yv = b[k-1]; zv = B[k-1,k+1] -- to be eliminated by 1st Givens r
@@ -787,10 +792,11 @@ updateGivensMat p i j c s = forM_ [0..n-1] $ \k -> do
 
 
 
--- | negate if false
-mneg :: Num t => Bool -> t -> t
-mneg True  = id
-mneg False = negate
+-- | Negate if false
+negateUnless :: Num t => Bool -> t -> t
+negateUnless True  = id
+negateUnless False = negate
+{-# INLINE negateUnless #-}
 
 minIsSmaller :: forall (n :: Nat) (m :: Nat)
               . Dim n -> Dim m -> Dict (Min n m <= n, Min n m <= m)
