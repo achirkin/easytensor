@@ -21,8 +21,8 @@ tests :: IO [Test]
 tests = return
   [ test "DataFrame.Basic"    $ Numeric.DataFrame.BasicTest.runTests n
   , test "DataFrame.SubSpace" $ Numeric.DataFrame.SubSpaceTest.runTests n
-  , test "MatrixDouble"       $ Numeric.MatrixDoubleTest.runTests n
-  , test "MatrixFloat"        $ Numeric.MatrixFloatTest.runTests n
+  , test "MatrixDouble"       $ Numeric.MatrixDoubleTest.runTests 1000
+  , test "MatrixFloat"        $ Numeric.MatrixFloatTest.runTests 1000
   , test "QuaterDouble"       $ Numeric.QuaterDoubleTest.runTests n
   , test "QuaterFloat"        $ Numeric.QuaterFloatTest.runTests n
   , test "PrimBytes"          $ Numeric.PrimBytesTest.runTests n
@@ -33,7 +33,7 @@ tests = return
                               $ Numeric.Subroutine.SolveTriangularTest.runTests n
   ]
   where
-    n = 1000 :: Int
+    n = 1 :: Int
 
 
 

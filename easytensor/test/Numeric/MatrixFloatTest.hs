@@ -38,7 +38,7 @@ maxElem = ewfoldl (\a -> max a . abs) 0
 maxRows :: forall ds
          . (SubSpace TestElem '[Head ds] (Tail ds) ds)
         => TestDF (ds :: [Nat]) -> Scalar TestElem
-maxRows = getProduct . ewfoldMap @_ @'[Head ds] @(Tail ds) @ds (Product . maxElem)
+maxRows = getProduct . ewfoldMap @_ @'[Head ds] @(Tail ds) @ds (Product . max 1 . maxElem)
 
 approxEq ::
   forall (ds :: [Nat]) .
@@ -59,7 +59,7 @@ prop_detTranspose (SSM m)
   = let a = det m
         b = det $ transpose m
         n = (case dims `inSpaceOf` m of dn :* _ -> dimVal dn) :: Word
-        mag = eps * maxRows m * fromIntegral (product [1..n])
+        mag = eps * maxRows m * fromIntegral n
     in  counterexample
           (unlines
             [ "failed det/transpose:"
@@ -84,11 +84,36 @@ prop_inverse (SSM m)
 -- >>> m = unsafeFromFlatList (Dims @'[4,4]) 0 [1,0,1,-2, 0,-1,1,2, 2,-4,2,-2, 4,-8,-2,2 ] :: Mat44f
 -- >>> det m == 0
 -- >>> det (transpose m) == 60
-prop_LU :: SomeSquareMatrix NonSingular TestElem -> Bool
+{-
+=== prop_LU from /home/achirkin/Documents/haskell/easytensor/easytensor/test/Numeric/MatrixFloatTest.hs:87 ===
+*** Failed! Falsifiable (after 423 tests):
+DF3 (DF3 (S 12.113405) (S 0.0) (S (-11.113405))) (DF3 (S (-14.12551)) (S 15.12551) (S 0.0)) (DF3 (S 0.0) (S 0.0) (S 1.0))
+failed LU:
+  m:  DF3 (DF3 (S 12.113405) (S 0.0) (S (-11.113405))) (DF3 (S (-14.12551)) (S 15.12551) (S 0.0)) (DF3 (S 0.0) (S 0.0) (S 1.0))
+  luPerm %* m:        DF3 (DF3 (S (-14.12551)) (S 15.12551) (S 0.0)) (DF3 (S 0.0) (S 0.0) (S 1.0)) (DF3 (S 12.113405) (S 0.0) (S (-11.113405)))
+  luLower %* luUpper: DF3 (DF3 (S (-14.12551)) (S 15.12551) (S 0.0)) (DF3 (S 0.0) (S 0.0) (S 1.0)) (DF3 (S 12.113405) (S (-12.97096)) (S (-11.113405)))
+  error:     S 12.97096
+  tolerance: S 0.1053952
+ -}
+prop_LU :: SomeSquareMatrix NonSingular TestElem -> Property
 prop_LU (SSM m)
   = let f = lu m
-        aeq a b = maxElem (b - a) <= eps * maxRows m
-    in aeq (luPerm f %* m) (luLower f %* luUpper f)
+        n = (case dims `inSpaceOf` m of dn :* _ -> dimVal dn) :: Word
+        mag = eps * (maxRows m + maxRows (luLower f) * maxRows (luUpper f))
+                  * fromIntegral n * 2 -- NB: check out page 131 of Matrix comps.
+        a = luPerm f %* m
+        b = luLower f %* luUpper f
+        err = maxElem (b - a)
+    in  counterexample
+          (unlines
+            [ "failed LU:"
+            , "  m:  " ++ show m
+            , "  luPerm %* m:        " ++ show a
+            , "  luLower %* luUpper: " ++ show b
+            , "  error:     " ++ show err
+            , "  tolerance: " ++ show mag
+            ]
+          ) (err <= mag)
 
 prop_translate3vs4 :: Vector TestElem 4 -> Bool
 prop_translate3vs4 v = translate4 v == translate3 (dropW v)

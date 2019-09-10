@@ -38,7 +38,7 @@ maxElem = ewfoldl (\a -> max a . abs) 0
 maxRows :: forall ds
          . (SubSpace TestElem '[Head ds] (Tail ds) ds)
         => TestDF (ds :: [Nat]) -> Scalar TestElem
-maxRows = getProduct . ewfoldMap @_ @'[Head ds] @(Tail ds) @ds (Product . maxElem)
+maxRows = getProduct . ewfoldMap @_ @'[Head ds] @(Tail ds) @ds (Product . max 1 . maxElem)
 
 approxEq ::
   forall (ds :: [Nat]) .
@@ -59,7 +59,7 @@ prop_detTranspose (SSM m)
   = let a = det m
         b = det $ transpose m
         n = (case dims `inSpaceOf` m of dn :* _ -> dimVal dn) :: Word
-        mag = eps * maxRows m * fromIntegral (product [1..n])
+        mag = eps * maxRows m * fromIntegral n
     in  counterexample
           (unlines
             [ "failed det/transpose:"
@@ -78,11 +78,25 @@ prop_inverse (SSM m)
                             show (m, mi, m %* mi, mi %* m)) $
          aeq eye (m %* mi) && aeq eye (mi %* m)
 
-prop_LU :: SomeSquareMatrix NonSingular TestElem -> Bool
+prop_LU :: SomeSquareMatrix NonSingular TestElem -> Property
 prop_LU (SSM m)
   = let f = lu m
-        aeq a b = maxElem (b - a) <= eps * maxRows m
-    in aeq (luPerm f %* m) (luLower f %* luUpper f)
+        n = (case dims `inSpaceOf` m of dn :* _ -> dimVal dn) :: Word
+        mag = eps * (maxRows m + maxRows (luLower f) * maxRows (luUpper f))
+                  * fromIntegral n * 2 -- NB: check out page 131 of Matrix comps.
+        a = luPerm f %* m
+        b = luLower f %* luUpper f
+        err = maxElem (b - a)
+    in  counterexample
+          (unlines
+            [ "failed LU:"
+            , "  m:  " ++ show m
+            , "  luPerm %* m:        " ++ show a
+            , "  luLower %* luUpper: " ++ show b
+            , "  error:     " ++ show err
+            , "  tolerance: " ++ show mag
+            ]
+          ) (err <= mag)
 
 prop_translate3vs4 :: Vector TestElem 4 -> Bool
 prop_translate3vs4 v = translate4 v == translate3 (dropW v)
