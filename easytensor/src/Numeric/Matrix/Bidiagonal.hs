@@ -54,7 +54,7 @@ data BiDiag t n m
   { bdU     :: Matrix t n n
     -- ^ \( U \) left orthogonal matrix
   , bdUDet  :: Scalar t
-    -- ^ \( |U| = \pm 1 \)
+    -- ^ A shortcut for evaluating a determinant of \( |U| = \pm 1 \)
   , bdAlpha :: Vector t (Min n m)
     -- ^ Main diagonal of \( B \)
   , bdBeta  :: Vector t (Min n m)
@@ -63,7 +63,7 @@ data BiDiag t n m
   , bdV     :: Matrix t m m
     -- ^ \( B \) left orthogonal matrix
   , bdVDet  :: Scalar t
-    -- ^ \( |V| = \pm 1 \)
+    -- ^ A shortcut for evaluating a determinant of \( |V| = \pm 1 \)
   }
 
 deriving instance ( Show t, PrimBytes t

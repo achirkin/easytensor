@@ -50,7 +50,7 @@ import Numeric.Scalar.Internal
           The subroutine can be used for a QR decomposition:
             \( Q = P \).
 
-     Returns @True@ if reflection has been performed, and @False@ if it was needed.
+     Returns @True@ if reflection has been performed, and @False@ if it was not needed.
      This can be used to track the sign of @det P@.
  -}
 householderReflectionInplaceL ::
@@ -162,7 +162,7 @@ householderReflectionInplaceL' uPtr pPtr rPtr n m k l = do
   Similar to `householderReflectionInplaceR`, but works from right to left
    - use to zero elements to the right from the pivot.
 
-     Returns @True@ if reflection has been performed, and @False@ if it was needed.
+     Returns @True@ if reflection has been performed, and @False@ if it was not needed.
      This can be used to track the sign of @det P@.
  -}
 householderReflectionInplaceR ::

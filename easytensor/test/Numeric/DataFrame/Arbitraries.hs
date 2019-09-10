@@ -20,6 +20,7 @@ module Numeric.DataFrame.Arbitraries where
 
 import Test.QuickCheck
 
+import           Control.Monad.Fail
 import           Data.Kind            (Type)
 import           Data.Semigroup       hiding (All)
 import           Numeric.DataFrame
@@ -42,12 +43,14 @@ maxDimSize = 50
 fromScalarChanceFactor :: Int
 fromScalarChanceFactor = 5
 
-
 removeDims :: SomeDims -> SomeDims
-removeDims (SomeDims U) = SomeDims U
-removeDims (SomeDims nns@(_ :* ns))
-  | totalDim nns > maxTotalDim = removeDims (SomeDims ns)
-  | otherwise = SomeDims nns
+removeDims = removeDimsAbove maxTotalDim
+
+removeDimsAbove :: Word -> SomeDims -> SomeDims
+removeDimsAbove _ (SomeDims U) = SomeDims U
+removeDimsAbove z (SomeDims nns@(_ :* ns))
+  | totalDim nns > z = removeDimsAbove z (SomeDims ns)
+  | otherwise        = SomeDims nns
 
 reduceDims :: (All KnownXNatType xns, BoundedDims xns)
            => Dims (xns :: [XNat]) -> Dims (xns :: [XNat])
@@ -66,6 +69,7 @@ reduceDims' l nns@(n :* ns)
         SGT -> n :* reduceDims' (l * dimVal d) ns
 
 
+instance MonadFail Gen where fail = error
 
 instance (Quaternion t, Arbitrary t, Num t) => Arbitrary (Quater t) where
   arbitrary = sequence

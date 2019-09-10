@@ -63,6 +63,44 @@ validateQR x q@QR {..}
   where
     x'  = qrQ %* qrR
 
+-- check invariants of SVD
+validateLQ :: forall (t :: Type) (n :: Nat) (m :: Nat)
+             . ( KnownDim n, KnownDim m, KnownDim (Min n m)
+               , PrimBytes t, Floating t, Ord t, Show t
+               )
+            => Matrix t n m -> LQ t n m -> Property
+validateLQ x q@LQ {..}
+  | Dict <- inferKnownBackend @_ @t @'[Min n m]
+  , Dict <- inferKnownBackend @_ @t @'[n] =
+    counterexample
+      (unlines
+        [ "failed m ~==~ lqL %* lqQ:"
+        , "m:  " ++ show x
+        , "m': " ++ show x'
+        , "lq:"  ++ show q
+        ]
+      ) (approxEq x x')
+    .&&.
+    counterexample
+      (unlines
+        [ "lqQ is not quite orthogonal:"
+        , "lq:" ++ show q
+        , "m:"  ++ show x
+        ]
+      ) (approxEq eye $ lqQ %* transpose lqQ)
+    .&&.
+    counterexample
+      (unlines
+        [ "lqL is not lower-triangular"
+        , "lq:" ++ show q
+        , "m:"  ++ show x
+        ]
+      ) (getAll $ iwfoldMap @t @'[n,m]
+            (\(Idx i :* Idx j :* U) a -> All (j <= i || a == 0))
+            lqL
+        )
+  where
+    x'  = lqL %* lqQ
 
 -- | Most of the time, the error is proportional to the maginutude of the biggest element
 maxElem :: (SubSpace t ds '[] ds, Ord t, Num t)
@@ -94,18 +132,8 @@ approxEq a b = counterexample
 infix 4 `approxEq`
 
 
-prop_qrSimple :: Property
-prop_qrSimple = once . conjoin $ map prop_qr $ xs
-  where
-    mkM :: Dims ([n,m]) -> [Double] -> DataFrame Double '[XN 1, XN 1]
-    mkM ds
-      | Just (XDims ds') <- constrainDims ds :: Maybe (Dims '[XN 1, XN 1])
-        = XFrame . fromFlatList ds' 0
-    mkM _ = error "prop_qrSimple: bad dims"
-    variants :: Num a => [a] -> [[a]]
-    variants as = rotateList as ++ rotateList (map negate as)
-    xs :: [DataFrame Double '[XN 1, XN 1]]
-    xs = join
+manualMats :: [DataFrame Double '[XN 1, XN 1]]
+manualMats = join
       [ [mkM $ D2 :* D2 :* U, mkM $ D5 :* D2 :* U, mkM $ D3 :* D7 :* U]
             <*> [repeat 0, repeat 1, repeat 2]
       , mkM (D2 :* D2 :* U) <$> variants [3,2, 4,1]
@@ -123,6 +151,27 @@ prop_qrSimple = once . conjoin $ map prop_qr $ xs
                 , variants [3, 0, -2, 9, 0, 0]
                 ]
       ]
+  where
+    mkM :: Dims ([n,m]) -> [Double] -> DataFrame Double '[XN 1, XN 1]
+    mkM ds
+      | Just (XDims ds') <- constrainDims ds :: Maybe (Dims '[XN 1, XN 1])
+        = XFrame . fromFlatList ds' 0
+    mkM _ = error "prop_qrSimple: bad dims"
+    variants :: Num a => [a] -> [[a]]
+    variants as = rotateList as ++ rotateList (map negate as)
+
+prop_lqSimple :: Property
+prop_lqSimple = once . conjoin $ map prop_lq manualMats
+
+prop_lq :: DataFrame Double '[XN 1, XN 1] -> Property
+prop_lq (XFrame x)
+  | n@D :* m@D :* U <- dims `inSpaceOf` x
+  , D <- minDim n m
+    = validateLQ x (lq x)
+prop_lq _ = property False
+
+prop_qrSimple :: Property
+prop_qrSimple = once . conjoin $ map prop_qr manualMats
 
 prop_qr :: DataFrame Double '[XN 1, XN 1] -> Property
 prop_qr (XFrame x)
@@ -130,8 +179,6 @@ prop_qr (XFrame x)
   , D <- minDim n m
     = validateQR x (qr x)
 prop_qr _ = property False
-
-
 
 
 return []

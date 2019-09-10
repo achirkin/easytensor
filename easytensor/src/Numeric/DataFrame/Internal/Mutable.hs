@@ -34,6 +34,7 @@ module Numeric.DataFrame.Internal.Mutable
     , writeDataFrame#, writeDataFrameOff#
     , readDataFrame#, readDataFrameOff#
     , withDataFramePtr#, isDataFramePinned#
+    , getDataFrameSteps#
     ) where
 
 
@@ -57,8 +58,10 @@ newDataFrame# :: forall t (ns :: [Nat]) s
 newDataFrame# s0
     | steps <- cumulDims $ dims @ns
     , n <- cdTotalDim# steps
-    , (# s1, mba #) <- newByteArray# (n *# byteSize @t undefined) s0
-    = (# s1,  MDataFrame# 0# steps mba #)
+      = if isTrue# (n ==# 0#)
+        then (# s0, MDataFrame# 0# steps (error "Empty DataFrame (DF0)") #)
+        else case newByteArray# (n *# byteSize @t undefined) s0 of
+               (# s1, mba #) -> (# s1,  MDataFrame# 0# steps mba #)
 {-# INLINE newDataFrame# #-}
 
 -- | Create a new mutable DataFrame.
@@ -68,10 +71,12 @@ newPinnedDataFrame# :: forall t (ns :: [Nat]) s
 newPinnedDataFrame# s0
     | steps <- cumulDims $ dims @ns
     , n <- cdTotalDim# steps
-    , (# s1, mba #)  <- newAlignedPinnedByteArray#
-        (n *# byteSize @t undefined)
-        (byteAlign @t undefined) s0
-    = (# s1,  MDataFrame# 0# steps mba #)
+      = if isTrue# (n ==# 0#)
+        then (# s0, MDataFrame# 0# steps (error "Empty DataFrame (DF0)") #)
+        else case newAlignedPinnedByteArray#
+                    (n *# byteSize @t undefined)
+                    (byteAlign @t undefined) s0 of
+                    (# s1, mba #) -> (# s1,  MDataFrame# 0# steps mba #)
 {-# INLINE newPinnedDataFrame# #-}
 
 
@@ -316,3 +321,8 @@ isDataFramePinned# :: forall (t :: Type) (ns :: [Nat]) s
                     . MDataFrame s t ns -> Bool
 isDataFramePinned# (MDataFrame# _ _ mba)
   = isTrue# (isMutableByteArrayPinned# mba)
+
+-- | Get cumulative dimensions @ns@ of a @MDataFrame s t ns@
+getDataFrameSteps# :: forall (t :: Type) (ns :: [Nat]) s
+                    . MDataFrame s t ns -> CumulDims
+getDataFrameSteps# (MDataFrame# _ c _) = c
