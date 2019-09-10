@@ -31,6 +31,7 @@ module Numeric.DataFrame.ST
     , writeDataFrame, writeDataFrameOff
     , readDataFrame, readDataFrameOff
     , isDataFramePinned
+    , getDataFrameSteps
     ) where
 
 
@@ -248,3 +249,8 @@ isDataFramePinned df = case dimKind @k of
       STDataFrame x -> isDataFramePinned# x
     DimXNat -> case df of
       XSTFrame (STDataFrame x) -> isDataFramePinned# x
+
+-- | Get cumulative dimensions @ns@ of an @STDataFrame s t ns@
+getDataFrameSteps :: forall (t :: Type) (ns :: [Nat]) s
+                   . STDataFrame s t ns -> CumulDims
+getDataFrameSteps = coerce (getDataFrameSteps# @t @ns @s)

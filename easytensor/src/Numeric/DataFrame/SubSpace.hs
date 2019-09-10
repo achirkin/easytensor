@@ -83,13 +83,17 @@ class ( ConcatList as bs asbs
                   -> DataFrame t bs -> DataFrame t asbs -> DataFrame t asbs
     updateOffset# off x df
       | steps <- getSteps (dims @asbs) df
-      , elemBS <- byteSize @t undefined = case runRW#
-        ( \s0 -> case newByteArray# (cdTotalDim# steps *# elemBS) s0 of
-          (# s1, mba #) -> unsafeFreezeByteArray# mba
-            ( writeBytes mba (off *# elemBS) x
-              ( writeBytes mba 0# df s1 )
-            )
-        ) of (# _, r #) -> fromElems steps 0# r
+      , elemBS <- byteSize @t undefined
+      , elems <- cdTotalDim# steps
+        = if isTrue# (elems ==# 0#)
+          then fromElems steps 0# (error "Empty DataFrame (DF0)")
+          else case runRW#
+            ( \s0 -> case newByteArray# (elems *# elemBS) s0 of
+              (# s1, mba #) -> unsafeFreezeByteArray# mba
+                ( writeBytes mba (off *# elemBS) x
+                  ( writeBytes mba 0# df s1 )
+                )
+            ) of (# _, r #) -> fromElems steps 0# r
     {-# INLINE [1] updateOffset# #-}
 
     -- | Get an element by its index in the dataframe
@@ -125,13 +129,17 @@ class ( ConcatList as bs asbs
     update i x df
       | steps <- getSteps (dims @asbs) df
       , I# off <- cdIx steps i
-      , elemBS <- byteSize @t undefined = case runRW#
-        ( \s0 -> case newByteArray# (cdTotalDim# steps *# elemBS) s0 of
-          (# s1, mba #) -> unsafeFreezeByteArray# mba
-            ( writeBytes mba (off *# elemBS) x
-              ( writeBytes mba 0# df s1 )
-            )
-        ) of (# _, r #) -> fromElems steps 0# r
+      , elemBS <- byteSize @t undefined
+      , elems <- cdTotalDim# steps
+        = if isTrue# (elems ==# 0#)
+          then fromElems steps 0# (error "Empty DataFrame (DF0)")
+          else case runRW#
+            ( \s0 -> case newByteArray# (elems *# elemBS) s0 of
+              (# s1, mba #) -> unsafeFreezeByteArray# mba
+                ( writeBytes mba (off *# elemBS) x
+                  ( writeBytes mba 0# df s1 )
+                )
+            ) of (# _, r #) -> fromElems steps 0# r
     {-# INLINE [1] update #-}
 
     -- | Update a few contiguous elements
@@ -145,13 +153,17 @@ class ( ConcatList as bs asbs
       , Dict <- inferKnownBackend @Type @t @(bd ': bs')
       , steps <- getSteps (dims @asbs) df
       , I# off <- cdIx steps i
-      , elemBS <- byteSize @t undefined = case runRW#
-        ( \s0 -> case newByteArray# (cdTotalDim# steps *# elemBS) s0 of
-          (# s1, mba #) -> unsafeFreezeByteArray# mba
-            ( writeBytes mba (off *# elemBS) x
-              ( writeBytes mba 0# df s1 )
-            )
-        ) of (# _, r #) -> fromElems steps 0# r
+      , elemBS <- byteSize @t undefined
+      , elems <- cdTotalDim# steps
+        = if isTrue# (elems ==# 0#)
+          then fromElems steps 0# (error "Empty DataFrame (DF0)")
+          else case runRW#
+            ( \s0 -> case newByteArray# (cdTotalDim# steps *# elemBS) s0 of
+              (# s1, mba #) -> unsafeFreezeByteArray# mba
+                ( writeBytes mba (off *# elemBS) x
+                  ( writeBytes mba 0# df s1 )
+                )
+            ) of (# _, r #) -> fromElems steps 0# r
       | otherwise = error "SubSpace/updateSlice: impossible arguments"
     {-# INLINE [1] updateSlice #-}
 
@@ -177,10 +189,12 @@ class ( ConcatList as bs asbs
               | otherwise
                 = go mba (sourceOffE +# lenBS') (destOffB +# lenBSB)
                      (writeBytes mba destOffB (f (indexOffset# sourceOffE df)) s)
-        in  case runRW#
-          ( \s0 -> case newByteArray# lenASBSB s0 of
-            (# s1, mba #) -> unsafeFreezeByteArray# mba ( go mba 0# 0# s1 )
-          ) of (# _, r #) -> fromElems stepsASBS 0# r
+        in if isTrue# (lenASBSB ==# 0#)
+           then fromElems stepsASBS 0# (error "Empty DataFrame (DF0)")
+           else case runRW#
+            ( \s0 -> case newByteArray# lenASBSB s0 of
+              (# s1, mba #) -> unsafeFreezeByteArray# mba ( go mba 0# 0# s1 )
+            ) of (# _, r #) -> fromElems stepsASBS 0# r
     {-# INLINE [1] ewmap #-}
 
     -- | Map a function over each element with its index of DataFrame
@@ -203,10 +217,12 @@ class ( ConcatList as bs asbs
             go mba (i:is) sourceOffE destOffB s
                 = go mba is (sourceOffE +# lenBS') (destOffB +# lenBSB)
                      (writeBytes mba destOffB (f i (indexOffset# sourceOffE df)) s)
-        in  case runRW#
-          ( \s0 -> case newByteArray# lenASBSB s0 of
-            (# s1, mba #) -> unsafeFreezeByteArray# mba ( go mba [minBound..maxBound] 0# 0# s1 )
-          ) of (# _, r #) -> fromElems stepsASBS 0# r
+        in if isTrue# (lenASBSB ==# 0#)
+           then fromElems stepsASBS 0# (error "Empty DataFrame (DF0)")
+           else case runRW#
+            ( \s0 -> case newByteArray# lenASBSB s0 of
+              (# s1, mba #) -> unsafeFreezeByteArray# mba ( go mba [minBound..maxBound] 0# 0# s1 )
+            ) of (# _, r #) -> fromElems stepsASBS 0# r
     {-# INLINE [1] iwmap #-}
 
     -- | Generate a DataFrame by repeating an element
@@ -225,10 +241,12 @@ class ( ConcatList as bs asbs
                    | otherwise
                      = go mba (destOffB +# lenBSB)
                           (writeBytes mba destOffB df s)
-             in  case runRW#
-              ( \s0 -> case newByteArray# lenASBSB s0 of
-                (# s1, mba #) -> unsafeFreezeByteArray# mba ( go mba 0# s1 )
-              ) of (# _, r #) -> fromElems stepsASBS 0# r
+             in if isTrue# (lenASBSB ==# 0#)
+                then fromElems stepsASBS 0# (error "Empty DataFrame (DF0)")
+                else case runRW#
+                  ( \s0 -> case newByteArray# lenASBSB s0 of
+                    (# s1, mba #) -> unsafeFreezeByteArray# mba ( go mba 0# s1 )
+                  ) of (# _, r #) -> fromElems stepsASBS 0# r
     {-# INLINE [1] ewgen #-}
 
     -- | Generate a DataFrame by iterating a function (index -> element)
@@ -243,10 +261,13 @@ class ( ConcatList as bs asbs
           = let go _ [] _ s = s
                 go mba (i:is) destOffB s
                   = go mba is (destOffB +# lenBSB) (writeBytes mba destOffB (f i) s)
-            in  case runRW#
-              ( \s0 -> case newByteArray# lenASBSB s0 of
-                (# s1, mba #) -> unsafeFreezeByteArray# mba ( go mba [minBound..maxBound] 0# s1 )
-              ) of (# _, r #) -> fromElems stepsASBS 0# r
+            in if isTrue# (lenASBSB ==# 0#)
+               then fromElems stepsASBS 0# (error "Empty DataFrame (DF0)")
+               else case runRW#
+                ( \s0 -> case newByteArray# lenASBSB s0 of
+                  (# s1, mba #) -> unsafeFreezeByteArray# mba
+                                     ( go mba [minBound..maxBound] 0# s1 )
+                ) of (# _, r #) -> fromElems stepsASBS 0# r
     {-# INLINE [1] iwgen #-}
 
     -- | Left-associative fold of a DataFrame.
@@ -366,8 +387,10 @@ class ( ConcatList as bs asbs
         -- Output: state +
         --     ( current mutable byte array + current write position )
         initialState :: State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #)
-        initialState s0 = case newByteArray# (rezLength# *# rezElBSize#) s0 of
-                            (# s1, marr #) -> (# s1, (# marr, 0# #) #)
+        initialState s0
+          | isTrue# (rezLength# ==# 0#) = (# s0, (# error "Empty DataFrame (DF0)", 0# #) #)
+          | otherwise = case newByteArray# (rezLength# *# rezElBSize#) s0 of
+                          (# s1, marr #) -> (# s1, (# marr, 0# #) #)
 
         -- Given the result chunk, write it into a mutable array
         updateChunk :: (State# RealWorld -> (# State# RealWorld, (# MutableByteArray# RealWorld, Int# #) #))

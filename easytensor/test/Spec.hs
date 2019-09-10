@@ -13,6 +13,7 @@ import qualified Numeric.MatrixFloatTest
 import qualified Numeric.PrimBytesTest
 import qualified Numeric.QuaterDoubleTest
 import qualified Numeric.QuaterFloatTest
+import qualified Numeric.Subroutine.SolveTriangularTest
 
 
 -- | Collection of tests in detailed-0.9 format
@@ -28,6 +29,8 @@ tests = return
   , test "Matrix.QR"          $ Numeric.Matrix.QRTest.runTests n
   , test "Matrix.Bidiagonal"  $ Numeric.Matrix.BidiagonalTest.runTests n
   , test "Matrix.SVD"         $ Numeric.Matrix.SVDTest.runTests n
+  , test "Subroutine.SolveTriangular"
+                              $ Numeric.Subroutine.SolveTriangularTest.runTests n
   ]
   where
     n = 1000 :: Int

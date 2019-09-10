@@ -31,6 +31,7 @@ module Numeric.DataFrame.IO
     , writeDataFrame, writeDataFrameOff
     , readDataFrame, readDataFrameOff
     , withDataFramePtr, isDataFramePinned
+    , getDataFrameSteps
     ) where
 
 
@@ -270,3 +271,8 @@ withDataFramePtr df k = case dimKind @k of
     DimXNat -> case df of
       XIOFrame (IODataFrame x)
         -> IO $ withDataFramePtr# x (\p -> case k (Ptr p) of IO f -> f)
+
+-- | Get cumulative dimensions @ns@ of an @IODataFrame t ns@
+getDataFrameSteps :: forall (t :: Type) (ns :: [Nat])
+                   . IODataFrame t ns -> CumulDims
+getDataFrameSteps = coerce (getDataFrameSteps# @t @ns)
