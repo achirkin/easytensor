@@ -15,7 +15,7 @@ import qualified Numeric.DataFrame.ST    as ST
 import           Numeric.DataFrame.Type  (inferKnownBackend)
 import           Numeric.Dimensions      (Dict (..), KnownDim)
 import           Numeric.Matrix.Internal
-import           Numeric.Matrix.QR
+import           Numeric.Matrix.LU
 import           Numeric.Scalar.Internal
 import           Numeric.Vector.Internal
 
@@ -196,7 +196,7 @@ instance HomTransform4 Double where
 instance KnownDim n => MatrixInverse Double n where
     inverse
       | Dict <- inferKnownBackend @_ @Double @'[n]
-      = inverseViaQR
+      = inverseViaLU
 
 instance KnownDim n => MatrixDeterminant Double n where
-    det = detViaQR
+    det = detViaLU

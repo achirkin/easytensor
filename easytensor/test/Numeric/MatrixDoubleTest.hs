@@ -11,7 +11,6 @@ module Numeric.MatrixDoubleTest (runTests) where
 
 
 import Data.Fixed
-import Data.Semigroup
 import Numeric.DataFrame
 import Numeric.DataFrame.Arbitraries
 import Numeric.Dimensions
@@ -22,7 +21,7 @@ type TestElem = Double
 type TestDF = DataFrame TestElem
 
 eps :: Scalar TestElem
-eps = 0.000000001
+eps = 1e-12
 
 dropW :: (SubSpace t '[3] '[] '[3], SubSpace t '[4] '[] '[4])
       => Vector t 4 -> Vector t 3
@@ -33,12 +32,15 @@ maxElem :: (SubSpace TestElem ds '[] ds)
         => TestDF (ds :: [Nat]) -> Scalar TestElem
 maxElem = ewfoldl (\a -> max a . abs) 0
 
--- | For operations like @det@, the error is proportional to maximum possible product
---   over rows or columns
-maxRows :: forall ds
-         . (SubSpace TestElem '[Head ds] (Tail ds) ds)
-        => TestDF (ds :: [Nat]) -> Scalar TestElem
-maxRows = getProduct . ewfoldMap @_ @'[Head ds] @(Tail ds) @ds (Product . max 1 . maxElem)
+-- | \( {|| A ||}_{\Infty} = \max_{0 \leq i < n} \sum_{j = 0}^{m} | a_{ij} | \)
+--     is useful for bounding numeric errors of matrix algorithms.
+matNormPInf :: forall t (n :: Nat) (m :: Nat)
+             . (KnownDim n, KnownDim m, PrimBytes t, Ord t, Num t)
+            => Matrix t n m -> Scalar t
+matNormPInf
+  | Dict <- inferKnownBackend @_ @t @'[m]
+  = ewfoldl @t @'[n] @'[m]
+      (\a -> max a . ewfoldl @t @'[m] @'[] (\e -> (e+) . abs) 0) 0
 
 approxEq ::
   forall (ds :: [Nat]) .
@@ -48,55 +50,77 @@ approxEq ::
     PrimBytes (TestDF ds),
     PrimArray TestElem (TestDF ds)
   ) =>
-  TestDF ds -> TestDF ds -> Bool
-approxEq a b = maxElem (a - b) <= eps * m
+  TestDF ds -> TestDF ds -> Property
+approxEq a b = counterexample
+    (unlines
+      [ "  approxEq failed:"
+      , "    error:     "   ++ show tol
+      , "    tolerance: "   ++ show dif
+      ]
+    ) $ maxElem (a - b) <= tol
   where
-    m = maxElem a `max` maxElem b
+    tol = eps * (maxElem a `max` maxElem b)
+    dif = maxElem (a - b)
 infix 4 `approxEq`
 
 prop_detTranspose :: SomeSquareMatrix AnyMatrix TestElem -> Property
-prop_detTranspose (SSM m)
-  = let a = det m
-        b = det $ transpose m
-        n = (case dims `inSpaceOf` m of dn :* _ -> dimVal dn) :: Word
-        mag = eps * maxRows m * fromIntegral n
-    in  counterexample
-          (unlines
-            [ "failed det/transpose:"
-            , "m:  " ++ show m
-            , "mT: " ++ show (transpose m)
-            , show a ++ " /= " ++ show b
-              ++ " (tolerance: " ++ show mag ++ ")."
-            ]
-          ) $ abs (a - b) <= mag
+prop_detTranspose (SSM m) = counterexample
+    (unlines
+      [ "Failed det/transpose:"
+      , "m:  " ++ show m
+      , "mT: " ++ show (transpose m)
+      , show a ++ " /= " ++ show b
+        ++ " (tolerance: " ++ show mag ++ ")."
+      ]
+    ) $ abs (a - b) <= mag
+  where
+    a = det m
+    b = det $ transpose m
+    nw = (case dims `inSpaceOf` m of dn :* _ -> dimVal dn) :: Word
+    n4 = fromIntegral nw ^ (4 :: Int)
+    mag = eps * n4 * matNormPInf m ^ nw
 
 prop_inverse :: SomeSquareMatrix NonSingular TestElem -> Property
-prop_inverse (SSM m)
-  = let mi = inverse m
-        aeq a b = maxElem (b - a) <= eps * maxRows m
-    in  counterexample ("failed inverse:" ++
-                            show (m, mi, m %* mi, mi %* m)) $
-         aeq eye (m %* mi) && aeq eye (mi %* m)
+prop_inverse (SSM m) = check (m %* mi) .&&. check (mi %* m)
+  where
+    mi = inverse m
+    nw = (case dims `inSpaceOf` m of dn :* _ -> dimVal dn) :: Word
+    n4 = fromIntegral nw ^ (4 :: Int)
+    mag = eps * n4 * matNormPInf m
+    check a = counterexample
+      ( unlines
+        [ "Failed inverse:"
+        , "  m:    " ++ show m
+        , "  mi:   " ++ show mi
+        , "  eye': " ++ show a
+        , "    error:     " ++ show err
+        , "    tolerance: " ++ show mag
+        ]
+      ) $ err <= mag
+      where
+        err = maxElem (a - eye)
+
 
 prop_LU :: SomeSquareMatrix NonSingular TestElem -> Property
-prop_LU (SSM m)
-  = let f = lu m
-        n = (case dims `inSpaceOf` m of dn :* _ -> dimVal dn) :: Word
-        mag = eps * (maxRows m + maxRows (luLower f) * maxRows (luUpper f))
-                  * fromIntegral n * 2 -- NB: check out page 131 of Matrix comps.
-        a = luPerm f %* m
-        b = luLower f %* luUpper f
-        err = maxElem (b - a)
-    in  counterexample
-          (unlines
-            [ "failed LU:"
-            , "  m:  " ++ show m
-            , "  luPerm %* m:        " ++ show a
-            , "  luLower %* luUpper: " ++ show b
-            , "  error:     " ++ show err
-            , "  tolerance: " ++ show mag
-            ]
-          ) (err <= mag)
+prop_LU (SSM m) = counterexample
+      (unlines
+        [ "failed LU:"
+        , "  m:                  " ++ show m
+        , "  luPerm %* m:        " ++ show a
+        , "  luLower %* luUpper: " ++ show b
+        , ""
+        , "    error:     " ++ show err
+        , "    tolerance: " ++ show mag
+        ]
+      ) (err <= mag)
+  where
+    f = lu m
+    nw = (case dims `inSpaceOf` m of dn :* _ -> dimVal dn) :: Word
+    n4 = fromIntegral nw ^ (4 :: Int)
+    mag = eps * n4 * matNormPInf m -- p.131
+    a = luPerm f %* m
+    b = luLower f %* luUpper f
+    err = matNormPInf (b - a)
 
 prop_translate3vs4 :: Vector TestElem 4 -> Bool
 prop_translate3vs4 v = translate4 v == translate3 (dropW v)
@@ -157,7 +181,7 @@ prop_rotate a =
     rotate (vec3 0 0 1) a `approxEq` rotateZ a
   ]
 
-prop_rotateEuler :: TestElem -> TestElem -> TestElem -> Bool
+prop_rotateEuler :: TestElem -> TestElem -> TestElem -> Property
 prop_rotateEuler pitch yaw roll =
   rotateEuler pitch yaw roll `approxEq` rotateZ roll %* rotateY yaw %* rotateX pitch
 
@@ -179,9 +203,9 @@ prop_lookAt up cam foc =
     xb = normalized $ up `cross` zb
     yb = zb `cross` xb
 
-prop_perspective :: TestElem -> TestElem -> TestElem -> TestElem -> Bool
+prop_perspective :: TestElem -> TestElem -> TestElem -> TestElem -> Property
 prop_perspective a b c d =
-  and [
+  conjoin [
     projectTo 0 0 n       `approxEq` vec3 0 0 (-1),
     projectTo 0 0 f       `approxEq` vec3 0 0 1,
     projectTo 1 1 n       `approxEq` vec3 1 1 (-1),
@@ -203,9 +227,9 @@ prop_perspective a b c d =
     m = perspective n f fovy aspect
     projectTo x' y' z = fromHom $ vec4 (x' * wpd * z) (y' * hpd * z) (-z) 1 %* m
 
-prop_orthogonal :: TestElem -> TestElem -> TestElem -> TestElem -> Bool
+prop_orthogonal :: TestElem -> TestElem -> TestElem -> TestElem -> Property
 prop_orthogonal a b c d =
-  and [
+  conjoin [
     projectTo 0 0 n       `approxEq` vec3 0 0 (-1),
     projectTo 0 0 f       `approxEq` vec3 0 0 1,
     projectTo 1 1 n       `approxEq` vec3 1 1 (-1),
@@ -231,10 +255,10 @@ prop_toHomPoint v@(Vec3 x y z) = toHomPoint v == vec4 x y z 1
 prop_toHomVector :: Vector TestElem 3 -> Bool
 prop_toHomVector v@(Vec3 x y z) = toHomVector v == vec4 x y z 0
 
-prop_fromHom :: Vector TestElem 4 -> Bool
+prop_fromHom :: Vector TestElem 4 -> Property
 prop_fromHom v@(Vec4 x y z w) =
   case w of
-    0 -> fromHom v == vec3 x y z
+    0 -> fromHom v === vec3 x y z
     _ -> fromHom v `approxEq` vec3 (x/w) (y/w) (z/w)
 
 return []
