@@ -7,6 +7,7 @@ module Numeric.DataFrame
     -- * Functionality
   , module Numeric.DataFrame.SubSpace
   , module Numeric.DataFrame.Contraction
+  , module Numeric.Basics
   ) where
 
 import Numeric.DataFrame.Internal.Backend ()
@@ -18,3 +19,5 @@ import Numeric.DataFrame.Type
 import Numeric.Matrix
 import Numeric.Scalar
 import Numeric.Vector
+
+import Numeric.Basics

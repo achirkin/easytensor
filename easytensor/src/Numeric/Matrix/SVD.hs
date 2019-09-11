@@ -19,6 +19,7 @@ module Numeric.Matrix.SVD
 import Control.Monad
 import Control.Monad.ST
 import Data.Kind
+import Numeric.Basics
 import Numeric.DataFrame.Internal.PrimArray
 import Numeric.DataFrame.ST
 import Numeric.DataFrame.SubSpace
@@ -31,13 +32,6 @@ import Numeric.Scalar.Internal
 import Numeric.Subroutine.Sort
 import Numeric.Tuple
 import Numeric.Vector.Internal
-
--- | Precision for rounding
-eps :: Fractional t => t
-eps = 10e-12
-
-sqrt05 :: Fractional t => t
-sqrt05 = 0.7071067811865476
 
 -- | Result of SVD factorization
 --   @ M = svdU %* asDiag svdS %* transpose svdV @.
@@ -67,7 +61,7 @@ deriving instance ( Eq (Matrix t n n)
                   , Eq (Vector t (Min n m)))
                   => Eq (SVD t n m)
 
-class (PrimBytes t, Floating t, Ord t)
+class RealFloatExtras t
     => MatrixSVD (t :: Type) (n :: Nat) (m :: Nat) where
     -- | Compute SVD factorization of a matrix
     svd :: Matrix t n m -> SVD t n m
@@ -89,7 +83,7 @@ svd1 m = SVD
 --   https://scicomp.stackexchange.com/questions/8899/robust-algorithm-for-2-times-2-svd/
 --
 --   https://ieeexplore.ieee.org/document/486688
-svd2 :: forall t . (PrimBytes t, Floating t, Ord t) => Matrix t 2 2 -> SVD t 2 2
+svd2 :: forall t . RealFloatExtras t => Matrix t 2 2 -> SVD t 2 2
 svd2 (DF2 (DF2 m00 m01) (DF2 m10 m11)) =
     SVD
     { svdU = DF2 (DF2         uc  us)
@@ -104,8 +98,8 @@ svd2 (DF2 (DF2 m00 m01) (DF2 m10 m11)) =
     y1 = m01 + m10 -- 2G
     y2 = m01 - m10 -- 2H
     yy = y1*y2
-    h1 = sqrt $ y1*y1 + x1*x1 -- h1 >= abs x1
-    h2 = sqrt $ y2*y2 + x2*x2 -- h2 >= abs x2
+    h1 = hypot x1 y1 -- h1 >= abs x1
+    h2 = hypot x2 y2 -- h2 >= abs x2
     sigma1 = 0.5 * (h2 + h1)  -- sigma1 >= abs sigma2
     sigma2 = 0.5 * (h2 - h1)  -- can be negative, which is accounted by sg2
     sg2 = negateUnless (sigma2 >= 0)
@@ -119,8 +113,8 @@ svd2 (DF2 (DF2 m00 m01) (DF2 m10 m11)) =
       (True , False) -> (y1,  hx1, -y1, hx1)
       (False, True ) -> (y2, -hx2, -y2, hx2)
       (False, False) -> (1, 0, -1, 0)
-    ru = recip . sqrt $ uc'*uc' + us'*us'
-    rv = recip . sqrt $ vc'*vc' + vs'*vs'
+    ru = recip $ hypot uc' us'
+    rv = recip $ hypot vc' vs'
     uc = uc' * ru
     us = us' * ru
     vc = vc' * rv
@@ -131,7 +125,7 @@ svd2 (DF2 (DF2 m00 m01) (DF2 m10 m11)) =
 --   This function reorders the singular components under the hood to make sure
 --   @s1 >= s2 >= s3 >= 0@.
 --   Thus, it has some overhead on top of `svd3q`.
-svd3 :: forall t . Quaternion t => Matrix t 3 3 -> SVD t 3 3
+svd3 :: forall t . (Quaternion t, RealFloatExtras t) => Matrix t 3 3 -> SVD t 3 3
 svd3 m = SVD
         { svdU = toMatrix33 u
         , svdS = DF3 s1 s2 s3'
@@ -158,7 +152,7 @@ svd3 m = SVD
 --   by  A. McAdams, A. Selle, R. Tamstorf, J. Teran, E. Sifakis.
 --
 --   http://pages.cs.wisc.edu/~sifakis/papers/SVD_TR1690.pdf
-svd3q :: forall t . Quaternion t
+svd3q :: forall t . (Quaternion t, RealFloatExtras t)
       => Matrix t 3 3 -> (Quater t, Vector t 3, Quater t)
 svd3q m = (u, s, v)
   where
@@ -189,36 +183,36 @@ svd3q m = (u, s, v)
 
 -- | Approximate values for cos (a/2) and sin (a/2) of a Givens rotation for
 --    a 2x2 symmetric matrix. (Algorithm 2)
-jacobiGivensQ :: forall t . (Ord t, Floating t) => t -> t -> t -> (t, t)
+jacobiGivensQ :: forall t . RealFloatExtras t => t -> t -> t -> (t, t)
 jacobiGivensQ aii aij ajj
     | g*sh*sh < ch*ch = (w * ch, w * sh)
     | otherwise       = (c', s')
   where
     ch = 2 * (aii-ajj)
     sh = aij
-    w = recip . sqrt $ ch * ch + sh * sh -- TODO: consider something like a hypot
+    w = recip $ hypot ch sh
     g  = 5.82842712474619 :: t  -- 3 + sqrt 8
     c' = 0.9238795325112867 :: t -- cos (pi/8)
     s' = 0.3826834323650898 :: t -- sin (pi/8)
 
 
 -- | A quaternion for a QR Givens iteration
-qrGivensQ :: forall t . (Ord t, Floating t) => t -> t -> (t, t)
+qrGivensQ :: forall t . RealFloatExtras t => t -> t -> (t, t)
 qrGivensQ a1 a2
     | a1 < 0    = (sh * w, ch * w)
     | otherwise = (ch * w, sh * w)
   where
     rho2 = a1*a1 + a2*a2
-    sh = if rho2 > eps then a2 else 0
-    ch = abs a1 + sqrt (max rho2 eps)
-    w = recip . sqrt $ ch * ch + sh * sh -- TODO: consider something like a hypot
+    sh = if rho2 > M_EPS then a2 else 0
+    ch = abs a1 + sqrt (max rho2 M_EPS)
+    w = recip $ hypot ch sh -- TODO: consider something like a hypot
 
 
 -- | One iteration of the Jacobi algorithm on a symmetric 3x3 matrix
 --
 --   The three words arguments are indices:
 --     0 <= i /= j /= k <= 2
-jacobiEigen3Iteration :: Quaternion t
+jacobiEigen3Iteration :: (Quaternion t, RealFloatExtras t)
                      => Int -> Int -> Int
                      -> STDataFrame s t '[3,3]
                      -> ST s (Quater t)
@@ -267,7 +261,9 @@ eigenItersX3 = 12
 -- | Run a few iterations of the Jacobi algorithm on a real-valued 3x3 symmetric matrix.
 --   The eigenvectors basis of such matrix is orthogonal, and can be represented as
 --   a quaternion.
-jacobiEigenQ :: forall t . Quaternion t => Matrix t 3 3 -> Quater t
+jacobiEigenQ :: forall t
+              . (Quaternion t, RealFloatExtras t)
+             => Matrix t 3 3 -> Quater t
 jacobiEigenQ m = runST $ do
     mPtr <- thawDataFrame m
     q  <- go eigenItersX3 mPtr 1
@@ -327,12 +323,12 @@ jacobiEigenQ m = runST $ do
     sortQ :: Scalar t -> Scalar t -> Scalar t -> Quater t
     sortQ s1 s2 s3 = sortQ' (s1 >= s2) (s1 >= s3) (s2 >= s3)
     sortQ' :: Bool -> Bool -> Bool -> Quater t
-    sortQ' True  True  True  = Quater 0 0 0 1              -- s1 >= s2 >= s3
-    sortQ' True  True  False = Quater sqrt05 0 0 (-sqrt05) -- s1 >= s3 >  s2
-    sortQ' True  False _     = Quater 0.5 0.5 0.5 0.5      -- s3 >  s1 >= s2
-    sortQ' False True  True  = Quater 0 0 sqrt05 (-sqrt05) -- s2 >  s1 >= s3
-    sortQ' False _     False = Quater 0 sqrt05 0 (-sqrt05) -- s3 >  s2 >  s1
-    sortQ' False False True  = Quater 0.5 0.5 0.5 (-0.5)   -- s2 >= s3 >  s1
+    sortQ' True  True  True  = Quater 0 0 0 1                    -- s1 >= s2 >= s3
+    sortQ' True  True  False = Quater M_SQRT1_2 0 0 (-M_SQRT1_2) -- s1 >= s3 >  s2
+    sortQ' True  False _     = Quater 0.5 0.5 0.5 0.5            -- s3 >  s1 >= s2
+    sortQ' False True  True  = Quater 0 0 M_SQRT1_2 (-M_SQRT1_2) -- s2 >  s1 >= s3
+    sortQ' False _     False = Quater 0 M_SQRT1_2 0 (-M_SQRT1_2) -- s3 >  s2 >  s1
+    sortQ' False False True  = Quater 0.5 0.5 0.5 (-0.5)         -- s2 >= s3 >  s1
 
 
 -- | One Givens rotation for a QR algorithm on a 3x3 matrix
@@ -341,7 +337,7 @@ jacobiEigenQ m = runST $ do
 --     0 <= i /= j /= k <= 2
 --
 --     if i < j then the eigen values are already sorted!
-qrDecomp3Iteration :: Quaternion t
+qrDecomp3Iteration :: (Quaternion t, RealFloatExtras t)
                    => Int -> Int -> Int
                    -> STDataFrame s t '[3,3]
                    -> ST s (Quater t)
@@ -385,7 +381,8 @@ qrDecomp3Iteration i j k sPtr = do
 --   The R upper-triangular matrix here is in fact a diagonal matrix Sigma;
 --   The Q orthogonal matrix is matrix U in the svd decomposition,
 --     represented here as a quaternion.
-qrDecomposition3 :: Quaternion t => Matrix t 3 3 -> (Vector t 3, Quater t)
+qrDecomposition3 :: (Quaternion t, RealFloatExtras t)
+                 => Matrix t 3 3 -> (Vector t 3, Quater t)
 qrDecomposition3 m = runST $ do
     mPtr <- thawDataFrame m
     q1 <- qrDecomp3Iteration 0 1 2 mPtr
@@ -397,22 +394,18 @@ qrDecomposition3 m = runST $ do
     return (DF3 sig0 sig1 sig2, q3 * q2 * q1)
 
 
-instance (PrimBytes t, Floating t, Ord t)
-      => MatrixSVD t 1 1 where
+instance RealFloatExtras t => MatrixSVD t 1 1 where
     svd = svd1
 
-instance (PrimBytes t, Floating t, Ord t)
-      => MatrixSVD t 2 2 where
+instance RealFloatExtras t => MatrixSVD t 2 2 where
     svd = svd2
 
-instance (PrimBytes t, Floating t, Ord t, Quaternion t)
-      => MatrixSVD t 3 3 where
+instance (RealFloatExtras t, Quaternion t) => MatrixSVD t 3 3 where
     svd = svd3
 
 instance {-# INCOHERENT #-}
-         ( PrimBytes t, Floating t, Ord t
-         , KnownDim n, KnownDim m)
-       => MatrixSVD t n m where
+         ( RealFloatExtras t, KnownDim n, KnownDim m)
+         => MatrixSVD t n m where
     svd a = runST $ do
       D <- pure dnm
       Dict <- pure $ inferKnownBackend @_ @t @'[Min n m]
@@ -424,7 +417,7 @@ instance {-# INCOHERENT #-}
 
       -- remove last beta if m > n
       bLast <- readDataFrameOff betas nm1
-      when (abs bLast > eps) $
+      when (abs bLast > M_EPS) $
         svdGolubKahanZeroCol alphas betas vPtr nm1
 
       -- main routine for a bidiagonal matrix
@@ -507,7 +500,7 @@ instance {-# INCOHERENT #-}
  -}
 svdBidiagonalInplace ::
        forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat) (nm :: Nat)
-     . ( PrimBytes t, Floating t, Ord t
+     . ( RealFloatExtras t
        , KnownDim n, KnownDim m, KnownDim nm, nm ~ Min n m)
     => STDataFrame s t '[nm] -- ^ the main diagonal of B and then the singular values.
     -> STDataFrame s t '[nm] -- ^ first upper diagonal of B
@@ -552,7 +545,7 @@ svdBidiagonalInplace aPtr bPtr uPtr vPtr q' iter = do
           else do
             a1 <- abs <$> readDataFrameOff aPtr (k-1)
             a2 <- abs <$> readDataFrameOff aPtr  k
-            if b <= eps * (max (a1 + a2) 1)
+            if b <= M_EPS * (max (a1 + a2) 1)
             then True <$ writeDataFrameOff bPtr (k-1) 0
             else return False
         goQ :: Int -> ST s (Int, Int)
@@ -576,7 +569,7 @@ svdBidiagonalInplace aPtr bPtr uPtr vPtr q' iter = do
         ak <- readDataFrameOff aPtr k
         if ak == 0
         then pure $ Just k
-        else if abs ak <= eps
+        else if abs ak <= M_EPS
              then Just k <$ writeDataFrameOff aPtr k 0
              else findZeroDiagonal p k
       where
@@ -603,7 +596,7 @@ svdBidiagonalInplace aPtr bPtr uPtr vPtr q' iter = do
 --
 svdGolubKahanZeroCol ::
        forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat)
-     . (PrimBytes t, Floating t, Eq t, KnownDim n, KnownDim m, n <= m)
+     . (RealFloatExtras t, KnownDim n, KnownDim m, n <= m)
     => STDataFrame s t '[n] -- ^ the main diagonal of \(B\)
     -> STDataFrame s t '[n] -- ^ first upper diagonal of \(B\)
     -> STDataFrame s t '[m,m] -- ^ \(V\)
@@ -626,7 +619,7 @@ svdGolubKahanZeroCol aPtr bPtr vPtr k
     goGivens 0 _ = return 0 -- non-diagonal element is nullified prematurely
     goGivens b i = do
       ai <- readDataFrameOff aPtr i
-      let rab = recip . sqrt $ b*b + ai*ai
+      let rab = recip $ hypot b ai
           c = ai*rab
           s = b *rab
       updateGivensMat vPtr i (k+1) c s
@@ -658,7 +651,7 @@ svdGolubKahanZeroCol aPtr bPtr vPtr k
 --
 svdGolubKahanZeroRow ::
        forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat)
-     . (PrimBytes t, Floating t, Eq t, KnownDim n, KnownDim m, n <= m)
+     . (RealFloatExtras t, KnownDim n, KnownDim m, n <= m)
     => STDataFrame s t '[n] -- ^ the main diagonal of B
     -> STDataFrame s t '[n] -- ^ first upper diagonal of B
     -> STDataFrame s t '[m,m] -- ^ U
@@ -681,7 +674,7 @@ svdGolubKahanZeroRow aPtr bPtr uPtr k
     goGivens b j = do
       aj <- readDataFrameOff aPtr j
       bj <- readDataFrameOff bPtr j
-      let rab = recip . sqrt $ b*b + aj*aj
+      let rab = recip $ hypot b aj
           c = aj*rab
           s =  b*rab
       updateGivensMat uPtr k j c (negate s)
@@ -692,7 +685,7 @@ svdGolubKahanZeroRow aPtr bPtr uPtr k
 -- | A Golub-Kahan bidiagonal SVD step on an unreduced matrix
 svdGolubKahanStep ::
        forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat) (nm :: Nat)
-     . ( PrimBytes t, Floating t, Ord t
+     . ( RealFloatExtras t
        , KnownDim n, KnownDim m, KnownDim nm, nm ~ Min n m)
     => STDataFrame s t '[nm] -- ^ the main diagonal of B and then the singular values.
     -> STDataFrame s t '[nm] -- ^ first upper diagonal of B
@@ -730,7 +723,7 @@ svdGolubKahanStep aPtr bPtr uPtr vPtr p q
           tnn = an*an + bn*bn
           tnm = am*bn
           d   = 0.5*(tmm - tnn)
-          mu  = tnn + d - negateUnless (d >= 0) (sqrt $ d*d + tnm*tnm)
+          mu  = tnn + d - negateUnless (d >= 0) (hypot d tnm)
       return (t11 - mu, t12)
 
     -- yv = b[k-1]; zv = B[k-1,k+1] -- to be eliminated by 1st Givens r
@@ -746,7 +739,7 @@ svdGolubKahanStep aPtr bPtr uPtr vPtr p q
               b1' = b1*cv - a1*sv  -- B[k,k+1]
               yu  = a1'            -- B[k,k]
               zu  = a2*sv          -- B[k+1,k]
-              ryzu = recip . sqrt $ yu*yu + zu*zu
+              ryzu = recip $ hypot yu zu
               cu = yu * ryzu
               su = zu * ryzu
               a1'' = yu *cu + zu *su
@@ -766,14 +759,14 @@ svdGolubKahanStep aPtr bPtr uPtr vPtr p q
             writeDataFrameOff bPtr (k+1) b2''
             goGivens2 b1'' zvn (k+1)
         where
-          ryzv = recip . sqrt $ yv*yv + zv*zv
+          ryzv = recip $ hypot yv zv
           cv = yv * ryzv
           sv = zv * ryzv
 
 -- | Update a transformation matrix with a Givens transform (on the right)
 updateGivensMat ::
        forall (s :: Type) (t :: Type) (n :: Nat)
-     . (PrimBytes t, Floating t, KnownDim n)
+     . (PrimBytes t, Num t, KnownDim n)
     => STDataFrame s t '[n,n]
     -> Int -> Int
     -> Scalar t -> Scalar t -> ST s ()
@@ -788,13 +781,6 @@ updateGivensMat p i j c s = forM_ [0..n-1] $ \k -> do
   where
     n = fromIntegral $ dimVal' @n :: Int
 
-
-
--- | Negate if false
-negateUnless :: Num t => Bool -> t -> t
-negateUnless True  = id
-negateUnless False = negate
-{-# INLINE negateUnless #-}
 
 minIsSmaller :: forall (n :: Nat) (m :: Nat)
               . Dim n -> Dim m -> Dict (Min n m <= n, Min n m <= m)

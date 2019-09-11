@@ -67,6 +67,7 @@ import qualified Text.ParserCombinators.ReadPrec as Read
 import qualified Text.Read                       as Read
 import qualified Text.Read.Lex                   as Read
 
+import           Numeric.Basics
 import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
@@ -187,16 +188,23 @@ deriving instance Fractional (DFBackend t ds)
                => Fractional (DataFrame t ds)
 deriving instance Floating (DFBackend t ds)
                => Floating (DataFrame t ds)
+deriving instance Epsilon (DFBackend t ds)
+               => Epsilon (DataFrame t ds)
 deriving instance Real (DFBackend t ds)
                => Real (DataFrame t ds)
+deriving instance RealExtras (DFBackend t ds)
+               => RealExtras (DataFrame t ds)
 deriving instance RealFrac (DFBackend t ds)
                => RealFrac (DataFrame t ds)
 deriving instance RealFloat (DFBackend t ds)
                => RealFloat (DataFrame t ds)
+deriving instance RealFloatExtras (DFBackend t ds)
+               => RealFloatExtras (DataFrame t ds)
 deriving instance PrimBytes (DFBackend t ds)
                => PrimBytes (DataFrame t ds)
 deriving instance (PrimArray t (DFBackend t ds), PrimBytes t)
                => PrimArray t (DataFrame t ds)
+
 
 instance Ord (NonTransitive.ProductOrd (DFBackend t ds))
       => Ord (NonTransitive.ProductOrd (DataFrame t ds)) where
