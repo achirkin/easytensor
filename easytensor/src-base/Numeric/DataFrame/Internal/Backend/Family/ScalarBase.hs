@@ -10,6 +10,7 @@ module Numeric.DataFrame.Internal.Backend.Family.ScalarBase (ScalarBase (..)) wh
 
 
 import           GHC.Base
+import           Numeric.Basics
 import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.PrimBytes
 import           Numeric.ProductOrd
@@ -18,7 +19,7 @@ import qualified Numeric.ProductOrd.Partial           as Partial
 
 -- | Specialize ScalarBase type without any arrays
 newtype ScalarBase t = ScalarBase { _unScalarBase :: t }
-  deriving ( Enum, Eq, Bounded, Integral
+  deriving ( Enum, Eq, Bounded, Integral, Epsilon, RealExtras, RealFloatExtras
            , Num, Fractional, Floating, Ord, Real, RealFrac, RealFloat
            , PrimBytes)
 
