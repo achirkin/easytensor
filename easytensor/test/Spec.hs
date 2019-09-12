@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-unused-imports #-}
 module Main (tests, main) where
 
 import Distribution.TestSuite
@@ -6,6 +7,7 @@ import System.Exit
 import qualified Numeric.DataFrame.BasicTest
 import qualified Numeric.DataFrame.SubSpaceTest
 import qualified Numeric.Matrix.BidiagonalTest
+import qualified Numeric.Matrix.LUTest
 import qualified Numeric.Matrix.QRTest
 import qualified Numeric.Matrix.SVDTest
 import qualified Numeric.MatrixDoubleTest
@@ -26,6 +28,7 @@ tests = return
   , test "QuaterDouble"       $ Numeric.QuaterDoubleTest.runTests n
   , test "QuaterFloat"        $ Numeric.QuaterFloatTest.runTests n
   , test "PrimBytes"          $ Numeric.PrimBytesTest.runTests n
+  , test "Matrix.LU"          $ Numeric.Matrix.LUTest.runTests n
   , test "Matrix.QR"          $ Numeric.Matrix.QRTest.runTests n
   , test "Matrix.Bidiagonal"  $ Numeric.Matrix.BidiagonalTest.runTests n
   , test "Matrix.SVD"         $ Numeric.Matrix.SVDTest.runTests n
@@ -33,7 +36,7 @@ tests = return
                               $ Numeric.Subroutine.SolveTriangularTest.runTests n
   ]
   where
-    n = 1000 :: Int
+    n = 1000  :: Int
 
 
 

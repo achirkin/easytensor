@@ -2,7 +2,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Numeric.QuaterDoubleTest (runTests) where
 
-import Numeric.DataFrame.Arbitraries ()
+import Numeric.Arbitraries
+import Numeric.Basics
 import Numeric.Quaternion
 import Numeric.Scalar
 import Numeric.Vector
@@ -10,33 +11,25 @@ import Test.QuickCheck
 
 type T = Double
 
-eps :: T
-eps = 1e-7
+-- Extra factor for compensating too strict Epsilon.
+extraTolerance :: T
+extraTolerance = 1
 
 -- | Some non-linear function are very unstable;
 --   it would be a downting task to determine the uncertainty precisely.
---   Instead, I just make sure the numbers are not so big to find at least
+--   Instead, I just make sure the tolerance is small enough to find at least
 --   the most obvious bugs.
-smaller :: Quater T -> Quater T
-smaller q@(Quater x y z w)
-  = if square q >= 1 then Quater (f x) (f y) (f z) (f w) else q
+--   This function increases the tolerance by the span of magnitudes in q.
+qSpan :: Quater T -> T
+qSpan (Quater a b c d) = asSpan . foldl mm (1,1) $ map (\x -> x*x) [a, b, c, d]
   where
-    f :: T -> T
-    f a | abs a > 2 = signum a * log (abs a)
-        | otherwise = a
+    mm :: (T,T) -> T -> (T,T)
+    mm (mi, ma) x
+      | x > M_EPS = (min mi x, max ma x)
+      | otherwise = (mi, ma)
+    asSpan :: (T,T) -> T
+    asSpan (mi, ma) = extraTolerance * ma / mi
 
-(=~=) :: Quater T -> Quater T -> Property
-(=~=) = approxEq eps
-infix 4 =~=
-
--- Even lower precision - for naturally fragile operations
-approxEq :: T -> Quater T -> Quater T -> Property
-approxEq e a b = property $ err <= c * scalar e
-    where
-      v1 = toVec4 a
-      v2 = toVec4 b
-      c = 1 `max` normL1 v1 `max` normL1 v2
-      err = normL1 $ v1 - v2
 
 prop_Eq :: Quater T -> Bool
 prop_Eq q = and
@@ -58,19 +51,20 @@ prop_RotScale q v = fromVecNum (rotScale q v) 0 =~= q * fromVecNum v 0 * conjuga
 
 prop_GetRotScale :: Vector T 3 -> Vector T 3 -> Property
 prop_GetRotScale a b
-  = a /= 0 ==> approxEq eps' (fromVecNum (rotScale q a) 0) (fromVecNum b 0)
+    = normL2 a * ab > M_EPS * normL2 b
+      ==> approxEq (recip $ unScalar ab) b (rotScale q a)
   where
     q = getRotScale a b
     -- when a and b are almost opposite, precision of getRotScale suffers a lot
-    -- compensate it by increasing eps:
-    eps' = if cross a b == 0
-           then eps
-           else eps / (max eps . min 1 . unScalar $
-                         1 + normalized a `dot` normalized b)
+    -- compensate it by increasing tolerance:
+    ab = min 1 $ 1 + normalized a `dot` normalized b
+
 
 prop_InverseRotScale :: Quater T -> Vector T 3 -> Property
 prop_InverseRotScale q v
-  = square q > eps ==> fromVecNum (rotScale (1/q) (rotScale q v)) 0 =~= fromVecNum v 0
+  = min (recip s) s > M_EPS ==> v =~= rotScale (1/q) (rotScale q v)
+  where
+    s = square q
 
 prop_NegateToMatrix33 :: Quater T -> Bool
 prop_NegateToMatrix33 q = toMatrix33 q == toMatrix33 (negate q)
@@ -95,53 +89,57 @@ prop_RotationArg q | q == 0 = axisRotation (imVec q) (qArg q) =~= 1
 
 prop_UnitQ :: Quater T -> Property
 prop_UnitQ q
-  = square q > eps ==> realToFrac (square (q / q)) =~= 1
+  = square q > M_EPS ==> square (q / q) =~= 1
 
 
 prop_ExpLog :: Quater T -> Property
-prop_ExpLog q | square q < eps = log (exp q) =~= q
+prop_ExpLog q | square q < M_EPS = log (exp q) =~= q
               | otherwise = exp (log q) =~= q
 
 prop_SinAsin :: Quater T -> Property
-prop_SinAsin q = sin (asin q') =~= q'
-    where
-      q' = signum q
+prop_SinAsin q = approxEq (qSpan q `max` qSpan q') q $ sin q'
+  where
+    q' = asin q
 
 prop_CosAcos :: Quater T -> Property
-prop_CosAcos q = cos (acos q') =~= q'
-    where
-      q' = signum q
+prop_CosAcos q = approxEq (qSpan q `max` qSpan q') q $ cos q'
+  where
+    q' = acos q
 
 prop_TanAtan :: Quater T -> Property
-prop_TanAtan q = tan (atan q') =~= q'
-    where
-      q' = sqrt (smaller q) -- because this inverse fun is fragile
+prop_TanAtan q = approxEq (qSpan q `max` qSpan q') q $ tan q'
+  where
+    q' = atan q
 
 prop_SinhAsinh :: Quater T -> Property
-prop_SinhAsinh q = sinh (asinh q') =~= q'
-    where
-      q' = sqrt (smaller q) -- because this inverse fun is fragile
+prop_SinhAsinh q = approxEq (qSpan q `max` qSpan q') q $ sinh q'
+  where
+    q' = asinh q
 
 prop_CoshAcosh :: Quater T -> Property
-prop_CoshAcosh q = cosh (acosh q) =~= q
+prop_CoshAcosh q = approxEq (qSpan q `max` qSpan q') q $ cosh q'
+  where
+    q' = acosh q
 
 prop_TanhAtanh :: Quater T -> Property
-prop_TanhAtanh q = tanh (atanh q') =~= q'
-    where
-      q' = sqrt (smaller q) -- because this inverse fun is fragile
+prop_TanhAtanh q = approxEq (qSpan q `max` qSpan q') q $ tanh q'
+  where
+    q' = atanh q
 
 prop_SqrtSqr :: Quater T -> Property
-prop_SqrtSqr q = sqrt q * sqrt q =~= q
+prop_SqrtSqr q = approxEq (qSpan q) q $ sqrt q * sqrt q
 
 prop_SinCos :: Quater T -> Property
-prop_SinCos q = sin q' * sin q' + cos q' * cos q' =~= 1
-    where
-      q' = sqrt (smaller q) -- because it involves exponents
+prop_SinCos q = approxEq (qSpan s `max` qSpan c) 1 $ c * c + s * s
+  where
+    s = sin q
+    c = cos q
 
 prop_SinhCosh :: Quater T -> Property
-prop_SinhCosh q = cosh q' * cosh q' - sinh q' * sinh q' =~= 1
-    where
-      q' = sqrt (smaller q) -- because it involves exponents
+prop_SinhCosh q = approxEq (qSpan s `max` qSpan c) 1 $ c * c - s * s
+  where
+    s = sinh q
+    c = cosh q
 
 prop_ReadShow :: Quater T -> Bool
 prop_ReadShow q = q == read (show q)

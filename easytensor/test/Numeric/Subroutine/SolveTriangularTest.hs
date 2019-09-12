@@ -12,43 +12,13 @@ module Numeric.Subroutine.SolveTriangularTest (runTests) where
 
 
 import           Control.Monad.ST
+import           Numeric.Arbitraries
 import           Numeric.DataFrame
-import           Numeric.DataFrame.Arbitraries
 import           Numeric.DataFrame.ST
 import           Numeric.Dimensions
 import           Numeric.Subroutine.SolveTriangular
 import qualified Numeric.TypedList                  as TypedList (concat)
 import           Test.QuickCheck
-
-
-eps :: Fractional t => Scalar t
-eps = 0.00001
-
--- | Most of the time, the error is proportional to the maginutude of the biggest element
-maxElem :: (SubSpace t ds '[] ds, Ord t, Num t)
-        => DataFrame t (ds :: [Nat]) -> Scalar t
-maxElem = ewfoldl (\a -> max a . abs) 0
-
-approxEq ::
-  forall t (ds :: [Nat]) .
-  (
-    Dimensions ds,
-    Fractional t, Ord t, Show t,
-    Num (DataFrame t ds),
-    PrimBytes (DataFrame t ds),
-    PrimArray t (DataFrame t ds)
-  ) => DataFrame t ds -> DataFrame t ds -> Property
-approxEq a b = counterexample
-    (unlines
-      [ "  approxEq failed:"
-      , "    max rows: "   ++ show m
-      , "    max diff: "   ++ show dif
-      ]
-    ) $ maxElem (a - b) <= eps * m
-  where
-    m = maxElem a `max` maxElem b
-    dif = maxElem (a - b)
-infix 4 `approxEq`
 
 
 arbitraryTriangular ::
@@ -106,7 +76,7 @@ testSolveUpperTriangularR r b
             , "b: " ++ show b
             , "Rx:" ++ show (r %* x)
             ]
-          ) (approxEq (r %* x) b)
+          ) (approxEq (unScalar $ maxElem r) b (r %* x))
 testSolveUpperTriangularR _ _ = error "impossible pattern"
 
 prop_SolveUpperTriangularR :: Property
@@ -168,7 +138,7 @@ testSolveUpperTriangularL b r
               , "b: " ++ show b
               , "xR:" ++ show (x %* r)
               ]
-            ) (approxEq (x %* r) b)
+            ) (approxEq (unScalar $ maxElem r) b (x %* r))
 testSolveUpperTriangularL _ _ = error "impossible pattern"
 
 prop_SolveUpperTriangularL :: Property
@@ -221,7 +191,7 @@ testSolveLowerTriangularR l b
             , "b: " ++ show b
             , "Lx:" ++ show (l %* x)
             ]
-          ) (approxEq (l %* x) b)
+          ) (approxEq (unScalar $ maxElem l) b (l %* x))
 testSolveLowerTriangularR _ _ = error "impossible pattern"
 
 prop_SolveLowerTriangularR :: Property
@@ -284,7 +254,7 @@ testSolveLowerTriangularL b l
               , "b: " ++ show b
               , "xL:" ++ show (x %* l)
               ]
-            ) (approxEq (x %* l) b)
+            ) (approxEq (unScalar $ maxElem l) b (x %* l))
 testSolveLowerTriangularL _ _ = error "impossible pattern"
 
 prop_SolveLowerTriangularL :: Property

@@ -4,7 +4,9 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE FunctionalDependencies    #-}
 {-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE PartialTypeSignatures     #-}
 {-# LANGUAGE PolyKinds                 #-}
 {-# LANGUAGE RankNTypes                #-}
@@ -16,12 +18,13 @@
 -- | Provide instance of Arbitrary for all DataFrame types.
 --   Also, this module is an example of fancy type inference and DataFrame
 --   traversals with monadic actions.
-module Numeric.DataFrame.Arbitraries where
+module Numeric.Arbitraries where
 
 import Test.QuickCheck
 
 import           Control.Monad.Fail
 import           Data.Kind            (Type)
+import           Data.List            (inits, tails)
 import           Data.Semigroup       hiding (All)
 import           Numeric.DataFrame
 import           Numeric.Dimensions
@@ -29,29 +32,35 @@ import           Numeric.Quaternion
 import qualified Numeric.Tuple.Lazy   as LT
 import qualified Numeric.Tuple.Strict as ST
 
-
+-- | Maximum number of elements in SomeDims lists
 maxDims :: Word
 maxDims = 5
 
--- Some tests are rather slow when we have too many elements
+-- | Some tests are rather slow when we have too many elements
 maxTotalDim :: Word
 maxTotalDim = 1000
 
+-- | Maximum value of @Dim (XN _)@
 maxDimSize :: Word
 maxDimSize = 50
 
+-- | Odds of using `fromScalar` constructor instead of element-by-element.
+--   Interpret as "one to fromScalarChanceFactor"
 fromScalarChanceFactor :: Int
 fromScalarChanceFactor = 5
 
+-- | Remove dims from a dim list until its totalDim is less than maxTotalDim
 removeDims :: SomeDims -> SomeDims
 removeDims = removeDimsAbove maxTotalDim
 
+-- | Remove dims from a dim list until its totalDim is less than a given value
 removeDimsAbove :: Word -> SomeDims -> SomeDims
 removeDimsAbove _ (SomeDims U) = SomeDims U
 removeDimsAbove z (SomeDims nns@(_ :* ns))
   | totalDim nns > z = removeDimsAbove z (SomeDims ns)
   | otherwise        = SomeDims nns
 
+-- | Reduce individual XN-dims untils its totalDim is less than maxTotalDim
 reduceDims :: (All KnownXNatType xns, BoundedDims xns)
            => Dims (xns :: [XNat]) -> Dims (xns :: [XNat])
 reduceDims = reduceDims' 1
@@ -68,6 +77,52 @@ reduceDims' l nns@(n :* ns)
         SEQ -> Dx D2 :* reduceDims' (l * 2) ns
         SGT -> n :* reduceDims' (l * dimVal d) ns
 
+-- | Most of the time, we assume the error is proportional to the maginutude of
+--   the biggest element.
+maxElem :: (SubSpace t ds '[] ds, Ord t, Num t)
+        => DataFrame t (ds :: [Nat]) -> Scalar t
+maxElem = ewfoldl (\a -> max a . abs) 0
+
+rotateList :: [a] -> [[a]]
+rotateList xs = init (zipWith (++) (tails xs) (inits xs))
+
+class (RealFloatExtras t, Show t) => Approx t x | x -> t where
+    -- | Check if two values are approximately equal
+    approxEq :: t -- ^ Extra multiplier constant
+             -> x -> x -> Property
+
+-- | Check if two values are approximately equal.
+(=~=) :: Approx t x => x -> x -> Property
+(=~=) = approxEq 1
+infix 4 =~=
+
+instance Approx Double Double where
+    approxEq c a b = counterexample
+      (unlines
+        [ "  Double approxEq failed:"
+        , "    values:    "   ++ show (a, b)
+        , "    error:     "   ++ show err
+        , "    tolerance: "   ++ show tol
+        ]
+      ) $ err <= tol
+      where
+        err = abs (a - b)
+        mel = max a b
+        tol = M_EPS*mel*c
+
+instance Approx Float Float where
+    approxEq c a b = counterexample
+      (unlines
+        [ "  Double approxEq failed:"
+        , "    values:    "   ++ show (a, b)
+        , "    error:     "   ++ show err
+        , "    tolerance: "   ++ show tol
+        ]
+      ) $ err <= tol
+      where
+        err = abs (a - b)
+        mel = max a b
+        tol = M_EPS*mel*c
 
 instance MonadFail Gen where fail = error
 
@@ -97,7 +152,21 @@ instance (Quaternion t, Arbitrary t, Num t) => Arbitrary (Quater t) where
       -- shrink either real or the whole imaginary part
     = ($) <$> zipWith3 Quater (shrink x) (shrink y) (shrink z) <*> shrink t
 
-
+instance (RealFloatExtras t, Show t, Quaternion t) => Approx t (Quater t) where
+    approxEq c a b = counterexample
+        (unlines
+          [ "  Quaternion approxEq failed:"
+          , "    max elem:  "   ++ show mel
+          , "    error:     "   ++ show err
+          , "    tolerance: "   ++ show tol
+          ]
+        ) $ err <= tol
+      where
+        v1 = toVec4 a
+        v2 = toVec4 b
+        err = unScalar $ maxElem (v1 - v2)
+        mel = unScalar $ 1 `max` maxElem v1 `max` maxElem v2
+        tol = M_EPS*mel*c
 
 instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
       => Arbitrary (DataFrame t (ds :: [Nat])) where
@@ -143,6 +212,40 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
                 | otherwise  = signum x * closest2 (abs x) 1
               closest2 :: t -> t -> t
               closest2 x b = if x <= b * 2 then b else closest2 x (b*2)
+
+instance (RealFloatExtras t, Show t, Dimensions ds)
+       => Approx t (DataFrame t (ds :: [Nat])) where
+    approxEq
+      | Dict <- inferKnownBackend @_ @t @ds
+        = approxEqDF
+
+approxEqDF ::
+       forall t (ds :: [Nat])
+     . ( Dimensions ds
+       , Show t, RealFloatExtras t
+       , KnownBackend t ds)
+    => t -> DataFrame t ds -> DataFrame t (ds :: [Nat]) -> Property
+approxEqDF c a b
+  | U <- dims @ds = counterexample
+      (unlines
+        [ "  Scalar approxEq failed:"
+        , "    values:    "   ++ show (unScalar a, unScalar b)
+        , "    error:     "   ++ show err
+        , "    tolerance: "   ++ show tol
+        ]
+      ) $ err <= tol
+  | otherwise = counterexample
+      (unlines
+        [ "  DataFrame approxEq failed:"
+        , "    max elem:  "   ++ show mel
+        , "    error:     "   ++ show err
+        , "    tolerance: "   ++ show tol
+        ]
+      ) $ err <= tol
+  where
+    err = unScalar $ maxElem (a - b)
+    mel = unScalar $ maxElem a `max` maxElem b
+    tol = M_EPS*mel*c
 
 instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
          , RepresentableList ts, Dimensions ds)

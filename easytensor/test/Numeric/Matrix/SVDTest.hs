@@ -13,35 +13,32 @@ module Numeric.Matrix.SVDTest (runTests) where
 
 import Control.Monad
 import Data.Kind
-import Data.List                     (inits, tails)
-import Data.Maybe                    (isJust)
+import Data.Maybe          (isJust)
+import Numeric.Arbitraries
 import Numeric.DataFrame
-import Numeric.DataFrame.Arbitraries ()
 import Numeric.Dimensions
 import Numeric.Matrix.SVD
 import Test.QuickCheck
 
-eps :: Fractional t => Scalar t
-eps = 0.00001
-
 -- check invariants of SVD
 validateSVD :: forall (t :: Type) (n :: Nat) (m :: Nat)
              . ( KnownDim n, KnownDim m, KnownDim (Min n m)
-               , PrimBytes t, Floating t, Ord t, Show t
+               , RealFloatExtras t, Show t
                , MatrixDeterminant t n
                )
-            => Matrix t n m -> SVD t n m -> Property
-validateSVD x s@SVD {..}
+            => t -> Matrix t n m -> SVD t n m -> Property
+validateSVD extraTolerance x s@SVD {..}
   | Dict <- inferKnownBackend @_ @t @'[Min n m]
-  , Dict <- inferKnownBackend @_ @t @'[m] =
+  , Dict <- inferKnownBackend @_ @t @'[m]
+  , nm <- fromIntegral $ dimVal' @n * dimVal' @m =
     counterexample
       (unlines
-        [ "failed m ~==~ u %* asDiag s %* transpose v:"
+        [ "failed m =~= u %* asDiag s %* transpose v:"
         , "m:  " ++ show x
         , "m': " ++ show x'
         , "svd:" ++ show s
         ]
-      ) (approxEq x x')
+      ) (approxEq (nm * nm * extraTolerance) x x')
     .&&.
     counterexample
       (unlines
@@ -49,7 +46,7 @@ validateSVD x s@SVD {..}
         , "svd:" ++ show s
         , "m:"   ++ show x
         ]
-      ) (approxEq eye $ svdU %* transpose svdU)
+      ) (eye =~= svdU %* transpose svdU)
     .&&.
     counterexample
       (unlines
@@ -57,7 +54,7 @@ validateSVD x s@SVD {..}
         , "svd:" ++ show s
         , "m:"   ++ show x
         ]
-      ) (approxEq 1 $ det svdU)
+      ) (1 =~= det svdU)
     .&&.
     counterexample
       (unlines
@@ -65,7 +62,7 @@ validateSVD x s@SVD {..}
         , "svd:" ++ show s
         , "m:"   ++ show x
         ]
-      ) (approxEq eye $ svdV %* transpose svdV)
+      ) (eye =~= svdV %* transpose svdV)
     .&&.
       counterexample
         (unlines
@@ -82,37 +79,6 @@ validateSVD x s@SVD {..}
       | a >= b    = Just a
       | otherwise = Nothing
     x'  = svdU %* asDiag svdS %* transpose svdV
-
-
--- | Most of the time, the error is proportional to the maginutude of the biggest element
-maxElem :: (SubSpace t ds '[] ds, Ord t, Num t)
-        => DataFrame t (ds :: [Nat]) -> Scalar t
-maxElem = ewfoldl (\a -> max a . abs) 0
-
-rotateList :: [a] -> [[a]]
-rotateList xs = init (zipWith (++) (tails xs) (inits xs))
-
-approxEq ::
-  forall t (ds :: [Nat]) .
-  (
-    Dimensions ds,
-    Fractional t, Ord t, Show t,
-    Num (DataFrame t ds),
-    PrimBytes (DataFrame t ds),
-    PrimArray t (DataFrame t ds)
-  ) => DataFrame t ds -> DataFrame t ds -> Property
-approxEq a b = counterexample
-    (unlines
-      [ "  approxEq failed:"
-      , "    max rows: "   ++ show m
-      , "    max diff: "   ++ show dif
-      ]
-    ) $ maxElem (a - b) <= eps * m
-  where
-    m = maxElem a `max` maxElem b
-    dif = maxElem (a - b)
-infix 4 `approxEq`
-
 
 prop_svd2x :: Property
 prop_svd2x = once . conjoin $ map prop_svd2 $ xs ++ map negate xs
@@ -132,7 +98,7 @@ prop_svd2x = once . conjoin $ map prop_svd2 $ xs ++ map negate xs
       ++ map ((eye - ). mkM) (rotateList [4,0,0,0])
 
 prop_svd2 :: Matrix Double 2 2 -> Property
-prop_svd2 m = validateSVD m (svd2 m)
+prop_svd2 m = validateSVD 1 m (svd2 m)
 
 prop_svd3x :: Property
 prop_svd3x = once . conjoin $ map prop_svd3 $ xs ++ map negate xs
@@ -165,7 +131,11 @@ prop_svd3x = once . conjoin $ map prop_svd3 $ xs ++ map negate xs
 
 
 prop_svd3 :: Matrix Double 3 3 -> Property
-prop_svd3 m = validateSVD m (svd3 m)
+prop_svd3 m = validateSVD extraTolerance m (svd3 m)
+  where
+    -- svd3 is fast, but not particularly precise,
+    -- though, 6-8 digits of precision are still there.
+    extraTolerance = 10e3 :: Double
 
 
 prop_svdSimple :: Property
@@ -204,7 +174,7 @@ dfs = xs
 prop_svd :: DataFrame Double '[XN 1, XN 1] -> Property
 prop_svd (XFrame x)
   | n@D :* m@D :* U <- dims `inSpaceOf` x
-  , D <- minDim n m = validateSVD x (svd x)
+  , D <- minDim n m = validateSVD 1 x (svd x)
 prop_svd _ = error "prop_svd: impossible pattern"
 
 

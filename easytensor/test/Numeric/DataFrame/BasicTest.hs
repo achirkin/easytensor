@@ -24,8 +24,8 @@
 
 module Numeric.DataFrame.BasicTest (runTests) where
 
+import           Numeric.Arbitraries              ()
 import           Numeric.DataFrame
-import           Numeric.DataFrame.Arbitraries    ()
 import qualified Numeric.ProductOrd.NonTransitive as NonTransitive
 import qualified Numeric.ProductOrd.Partial       as Partial
 import           Test.QuickCheck
