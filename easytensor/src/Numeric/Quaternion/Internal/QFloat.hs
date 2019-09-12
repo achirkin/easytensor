@@ -17,6 +17,7 @@ module Numeric.Quaternion.Internal.QFloat
 
 import qualified Control.Monad.ST                     as ST
 import           Data.Coerce                          (coerce)
+import           Numeric.Basics
 import           Numeric.DataFrame.Internal.PrimArray
 import qualified Numeric.DataFrame.ST                 as ST
 import           Numeric.DataFrame.Type
@@ -380,12 +381,31 @@ instance Floating QFloat where
               l = cv * sv * cq / mv
           in packQ (x * l) (y * l) (z * l) (cht * sht * cq)
     {-# INLINE asin #-}
-    asin q = -i * log' axis (i*q + sqrt' axis (1 - q*q))
-        where
-          axis = sigVec q
-          i = fromVecNum axis 0
+    -- The original formula:
+    -- asinh q = -i * log (i*q + sqrt (1 - q*q))
+    -- below is a more numerically stable version.
+    asin (unpackQ# -> (# x, y, z, w #))
+      | v2 == 0   = if w2 <= 1
+                    then packQ x y z (asin w)
+                    else packQ l 0 0 arg
+      | otherwise  = packQ (x*c) (y*c) (z*c) arg
+      where
+        v2 = (x * x) + (y * y) + (z * z)
+        v = sqrt v2
+        w2 = w*w
+        w1qq = 0.5 *(1 - w2 + v2)       -- real part of (1 - q*q)/2
+        l1qq = sqrt (w1qq*w1qq + w2*v2) -- length of (1 - q*q)/2
+        sp = sqrt (l1qq + w1qq)
+        sn = copysign (sqrt (l1qq - w1qq)) w
+        (wD, vD) =  -- choose a more stable (symbolically equiv) version
+          if w1qq >= 0
+          then (sp - v, w * (1 - v / sp))
+          else (v * (w / sn - 1), w - sn)
+        l = -0.5 * log (wD*wD + vD*vD)
+        c = l / v
+        arg = atan2 vD wD
     {-# INLINE acos #-}
-    acos q = pi/2 - asin q
+    acos q = M_PI_2 - asin q
     {-# INLINE atan #-}
     -- atan q = i / 2 * log ( (i + q) / (i - q) )
     atan (unpackQ# -> (# x, y, z, w #))
@@ -409,7 +429,7 @@ instance Floating QFloat where
         = if v2 <= 1
           then let c = asin v / v
                in  packQ (c*x) (c*y) (c*z) 0
-          else let c  = 0.5 * pi / v
+          else let c  = M_PI_2 / v
                    w' = 0.5 * log (2*v2 - 1 + 2 * v * sqrt ( v2 - 1 ))
                in  packQ (c*x) (c*y) (c*z) w'
       | otherwise
@@ -417,7 +437,7 @@ instance Floating QFloat where
               w' = 0.5 * log ( t2  + v2) - log t
                      + if w >= 0
                        then log ( t + w )
-                       else log 2 + log w2 - log ( t - w ) - log ( r + w2 + v2 - 1 )
+                       else M_LN2 + log w2 - log ( t - w ) - log ( r + w2 + v2 - 1 )
           in packQ (c*x) (c*y) (c*z) w'
       where
         v2 = (x * x) + (y * y) + (z * z)
@@ -434,7 +454,7 @@ instance Floating QFloat where
       where
         axis = sigVec q
     {-# INLINE atanh #-}
-    atanh q = 0.5 * log ((1+q)/(1-q))
+    atanh q = 0.5 * log' (sigVec q) ((1+q)/(1-q))
 
 -- If q is negative real, provide a fallback axis to align log.
 log' :: Vec3f -> QFloat -> QFloat
@@ -459,11 +479,10 @@ sqrt' r (unpackQ# -> (# x, y, z, w #))
         , sw <- sqrt (negate w)
           -> packQ (sw*rx) (sw*ry) (sw*rz) 0
     mv2 ->
-      let mq = sqrt (mv2 + w * w)
-          l2 = sqrt mq
-          tq = w / (mq * 2.0)
-          sina = sqrt (0.5 - tq) * l2 / sqrt mv2
-      in packQ (x * sina) (y * sina) (z * sina) (sqrt (0.5 + tq) * l2)
+      let mq = 0.5 * sqrt (mv2 + w * w)
+          tq = 0.5 * w
+          c = sqrt $ (mq - tq) / mv2
+      in packQ (x * c) (y * c) (z * c) (sqrt (mq + tq))
 
 sigVec :: QFloat -> Vec3f
 sigVec (unpackQ# -> (# x, y, z, _ #))
