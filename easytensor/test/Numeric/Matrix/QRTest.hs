@@ -11,23 +11,19 @@
 module Numeric.Matrix.QRTest (runTests) where
 
 
-import Control.Monad                 (join)
+import Control.Monad       (join)
 import Data.Kind
-import Data.List                     (inits, tails)
-import Data.Monoid                   (All (..))
+import Data.Monoid         (All (..))
+import Numeric.Arbitraries
 import Numeric.DataFrame
-import Numeric.DataFrame.Arbitraries ()
 import Numeric.Dimensions
 import Numeric.Matrix.QR
 import Test.QuickCheck
 
-eps :: Fractional t => Scalar t
-eps = 1.0e-13
 
--- check invariants of SVD
 validateQR :: forall (t :: Type) (n :: Nat) (m :: Nat)
              . ( KnownDim n, KnownDim m, KnownDim (Min n m)
-               , PrimBytes t, Floating t, Ord t, Show t
+               , RealFloatExtras t, Show t
                )
             => Matrix t n m -> QR t n m -> Property
 validateQR x q@QR {..}
@@ -35,12 +31,12 @@ validateQR x q@QR {..}
   , Dict <- inferKnownBackend @_ @t @'[m] =
     counterexample
       (unlines
-        [ "failed m ~==~ qrQ %* qrR:"
+        [ "failed m =~= qrQ %* qrR:"
         , "m:  " ++ show x
         , "m': " ++ show x'
         , "qr:" ++ show q
         ]
-      ) (approxEq x x')
+      ) (x =~= x')
     .&&.
     counterexample
       (unlines
@@ -48,7 +44,7 @@ validateQR x q@QR {..}
         , "qr:" ++ show q
         , "m:"  ++ show x
         ]
-      ) (approxEq eye $ qrQ %* transpose qrQ)
+      ) (eye =~= qrQ %* transpose qrQ)
     .&&.
     counterexample
       (unlines
@@ -63,10 +59,9 @@ validateQR x q@QR {..}
   where
     x'  = qrQ %* qrR
 
--- check invariants of SVD
 validateLQ :: forall (t :: Type) (n :: Nat) (m :: Nat)
              . ( KnownDim n, KnownDim m, KnownDim (Min n m)
-               , PrimBytes t, Floating t, Ord t, Show t
+               , RealFloatExtras t, Show t
                )
             => Matrix t n m -> LQ t n m -> Property
 validateLQ x q@LQ {..}
@@ -74,12 +69,12 @@ validateLQ x q@LQ {..}
   , Dict <- inferKnownBackend @_ @t @'[n] =
     counterexample
       (unlines
-        [ "failed m ~==~ lqL %* lqQ:"
+        [ "failed m =~= lqL %* lqQ:"
         , "m:  " ++ show x
         , "m': " ++ show x'
         , "lq:"  ++ show q
         ]
-      ) (approxEq x x')
+      ) (x =~= x')
     .&&.
     counterexample
       (unlines
@@ -87,7 +82,7 @@ validateLQ x q@LQ {..}
         , "lq:" ++ show q
         , "m:"  ++ show x
         ]
-      ) (approxEq eye $ lqQ %* transpose lqQ)
+      ) (eye =~= lqQ %* transpose lqQ)
     .&&.
     counterexample
       (unlines
@@ -101,36 +96,6 @@ validateLQ x q@LQ {..}
         )
   where
     x'  = lqL %* lqQ
-
--- | Most of the time, the error is proportional to the maginutude of the biggest element
-maxElem :: (SubSpace t ds '[] ds, Ord t, Num t)
-        => DataFrame t (ds :: [Nat]) -> Scalar t
-maxElem = ewfoldl (\a -> max a . abs) 0
-
-rotateList :: [a] -> [[a]]
-rotateList xs = init (zipWith (++) (tails xs) (inits xs))
-
-approxEq ::
-  forall t (ds :: [Nat]) .
-  (
-    Dimensions ds,
-    Fractional t, Ord t, Show t,
-    Num (DataFrame t ds),
-    PrimBytes (DataFrame t ds),
-    PrimArray t (DataFrame t ds)
-  ) => DataFrame t ds -> DataFrame t ds -> Property
-approxEq a b = counterexample
-    (unlines
-      [ "  approxEq failed:"
-      , "    max rows: "   ++ show m
-      , "    max diff: "   ++ show dif
-      ]
-    ) $ maxElem (a - b) <= eps * m
-  where
-    m = maxElem a `max` maxElem b
-    dif = maxElem (a - b)
-infix 4 `approxEq`
-
 
 manualMats :: [DataFrame Double '[XN 1, XN 1]]
 manualMats = join

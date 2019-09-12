@@ -28,11 +28,11 @@ import           Foreign.Storable
 import           GHC.Exts
 import           GHC.Generics
 import           GHC.Word
-import           Numeric.DataFrame.Arbitraries ()
+import           Numeric.Arbitraries  ()
 import           Numeric.Dimensions
 import           Numeric.PrimBytes
-import qualified Numeric.Tuple.Lazy            as LT
-import qualified Numeric.Tuple.Strict          as ST
+import qualified Numeric.Tuple.Lazy   as LT
+import qualified Numeric.Tuple.Strict as ST
 import           Spec.Util
 import           Test.QuickCheck
 

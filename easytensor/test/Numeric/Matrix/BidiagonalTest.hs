@@ -11,23 +11,18 @@
 module Numeric.Matrix.BidiagonalTest (runTests) where
 
 
-import Control.Monad                 (join)
+import Control.Monad             (join)
 import Data.Kind
-import Data.List                     (inits, tails)
-import Data.Monoid                   (All (..))
+import Data.Monoid               (All (..))
+import Numeric.Arbitraries
 import Numeric.DataFrame
-import Numeric.DataFrame.Arbitraries ()
 import Numeric.Dimensions
 import Numeric.Matrix.Bidiagonal
 import Test.QuickCheck
 
-eps :: Fractional t => Scalar t
-eps = 1.0e-13
-
--- check invariants of SVD
 validateBidiagonal :: forall (t :: Type) (n :: Nat) (m :: Nat)
              . ( KnownDim n, KnownDim m, KnownDim (Min n m)
-               , PrimBytes t, Floating t, Ord t, Show t
+               , RealFloatExtras t, Show t
                , MatrixDeterminant t n
                , MatrixDeterminant t m
                )
@@ -44,7 +39,7 @@ validateBidiagonal a BiDiag {..}
         , "b:  "   ++ show b
         , "v:  "   ++ show v
         ]
-      ) (approxEq a a')
+      ) (a =~= a')
     .&&.
     counterexample
       (unlines
@@ -54,7 +49,7 @@ validateBidiagonal a BiDiag {..}
         , "b: "   ++ show b
         , "v: "   ++ show v
         ]
-      ) (approxEq eye $ u %* transpose u)
+      ) (eye =~= u %* transpose u)
     .&&.
     counterexample
       (unlines
@@ -64,7 +59,7 @@ validateBidiagonal a BiDiag {..}
         , "b: "  ++ show b
         , "v: "  ++ show v
         ]
-      ) (approxEq eye $ v %* transpose v)
+      ) (eye =~= v %* transpose v)
     .&&.
     counterexample
       (unlines
@@ -87,7 +82,7 @@ validateBidiagonal a BiDiag {..}
         , "bdUDet: " ++ show bdUDet
         , "det u:  " ++ show (det u)
         ]
-      ) (approxEq bdUDet $ det u)
+      ) (bdUDet =~= det u)
     .&&.
     counterexample
       (unlines
@@ -97,43 +92,12 @@ validateBidiagonal a BiDiag {..}
         , "bdVDet: " ++ show bdVDet
         , "det v:  " ++ show (det v)
         ]
-      ) (approxEq bdVDet $ det v)
+      ) (bdVDet =~= det v)
   where
     a'  = u %* b %* transpose v
     b = biDiag dims bdAlpha bdBeta
     u = bdU
     v = bdV
-
-
--- | Most of the time, the error is proportional to the maginutude of the biggest element
-maxElem :: (SubSpace t ds '[] ds, Ord t, Num t)
-        => DataFrame t (ds :: [Nat]) -> Scalar t
-maxElem = ewfoldl (\a -> max a . abs) 0
-
-rotateList :: [a] -> [[a]]
-rotateList xs = init (zipWith (++) (tails xs) (inits xs))
-
-approxEq ::
-  forall t (ds :: [Nat]) .
-  (
-    Dimensions ds,
-    Fractional t, Ord t, Show t,
-    Num (DataFrame t ds),
-    PrimBytes (DataFrame t ds),
-    PrimArray t (DataFrame t ds)
-  ) => DataFrame t ds -> DataFrame t ds -> Property
-approxEq a b = counterexample
-    (unlines
-      [ "  approxEq failed:"
-      , "    max rows: "   ++ show m
-      , "    max diff: "   ++ show dif
-      ]
-    ) $ maxElem (a - b) <= eps * m
-  where
-    m = maxElem a `max` maxElem b
-    dif = maxElem (a - b)
-infix 4 `approxEq`
-
 
 prop_bidiagonalSimple :: Property
 prop_bidiagonalSimple = once . conjoin $ map prop_bidiagonal $ xs
