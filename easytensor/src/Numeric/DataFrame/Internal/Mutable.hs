@@ -87,7 +87,7 @@ newPinnedDataFrame# s0
 subDataFrameView# :: forall (t :: Type)
                             (b :: Nat) (bi :: Nat) (bd :: Nat)
                             (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
-                 . ( b ~ (bi + bd - 1)
+                 . ( (b + 1) ~ (bi + bd)
                    , KnownDim bd
                    , ConcatList as (b :+ bs) asbs
                    )
@@ -124,7 +124,7 @@ getOffAndSteps off ~(_:steps@(s:_)) (i:ixs) = getOffAndSteps (off + i*s) steps i
 copyDataFrame# :: forall (t :: Type)
                          (b :: Nat) (bi :: Nat) (bd :: Nat)
                          (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
-                . ( b ~ (bi + bd - 1)
+                . ( (b + 1) ~ (bi + bd)
                   , PrimBytes t
                   , PrimBytes (DataFrame t (bd :+ bs))
                   , ConcatList as (b :+ bs) asbs
@@ -146,7 +146,7 @@ copyDataFrame# ei df (MDataFrame# off steps mba) s
 copyMDataFrame# :: forall (t :: Type)
                           (b :: Nat) (bi :: Nat) (bd :: Nat)
                           (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) s
-                 . ( b ~ (bi + bd - 1)
+                 . ( (b + 1) ~ (bi + bd)
                    , PrimBytes t
                    , ConcatList as (b :+ bs) asbs
                    )

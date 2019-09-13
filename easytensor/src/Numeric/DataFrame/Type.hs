@@ -507,7 +507,7 @@ readPrecBoundedDF ((Dx (m :: Dim m) :: Dim xm) :* xns)
   = Read.parens $ lookLex >>= \case
     Read.Ident ('D':'F':s)
       | Just (Dx (n :: Dim n)) <- (Read.readMaybe ('D':s) :: Maybe SomeDim)
-      , Just Dict <- indeedLE m n -- check if the DF dim is not less than m
+      , Just Dict <- lessOrEqDim m n
         -> case n of
           D0 -> do -- need to repack it under different constraint dims
             XFrame x <- readPrecBoundedDF @t (Dn D0 :* xns)
@@ -521,12 +521,6 @@ readPrecBoundedDF ((Dx (m :: Dim m) :: Dim xm) :* xns)
                 (followedBy x)
 
     _ -> Read.pfail
-  where
-    indeedLE :: forall (a ::Nat) (b :: Nat) . Dim a -> Dim b -> Maybe (Dict (a <= b))
-    indeedLE a b = case compareDim a b of
-      SLT -> Just Dict
-      SEQ -> Just Dict
-      SGT -> Nothing
 
 {-
 In this case we know Nothing about the dimensionality of a DataFrame.

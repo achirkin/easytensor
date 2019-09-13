@@ -784,12 +784,11 @@ updateGivensMat p i j c s = forM_ [0..n-1] $ \k -> do
 
 minIsSmaller :: forall (n :: Nat) (m :: Nat)
               . Dim n -> Dim m -> Dict (Min n m <= n, Min n m <= m)
-minIsSmaller dn dm = case (f dnm dn, f dnm dm) of
-    (Dict, Dict) -> Dict
+minIsSmaller dn dm
+  | Just Dict <- lessOrEqDim dnm dn
+  , Just Dict <- lessOrEqDim dnm dm
+    = Dict
+  | otherwise
+    = error "minIsSmaller: impossible type-level comparison"
   where
     dnm = minDim dn dm
-    f :: Dim a -> Dim b -> Dict (a <= b)
-    f da db = case compareDim da db of
-      SLT -> Dict
-      SEQ -> Dict
-      SGT -> error "minIsSmaller: impossible type-level comparison"
