@@ -11,14 +11,13 @@
 module Numeric.Subroutine.SolveTriangularTest (runTests) where
 
 
-import           Control.Monad.ST
-import           Numeric.Arbitraries
-import           Numeric.DataFrame
-import           Numeric.DataFrame.ST
-import           Numeric.Dimensions
-import           Numeric.Subroutine.SolveTriangular
-import qualified Numeric.TypedList                  as TypedList (concat)
-import           Test.QuickCheck
+import Control.Monad.ST
+import Numeric.Arbitraries
+import Numeric.DataFrame
+import Numeric.DataFrame.ST
+import Numeric.Dimensions
+import Numeric.Subroutine.SolveTriangular
+import Test.QuickCheck
 
 
 arbitraryTriangular ::
@@ -109,14 +108,10 @@ testSolveUpperTriangularL b r
   | dn <- dim @n
   , dm <- dim @m
   , dnm@D  <- minusDim dn dm
-  , dsn1@Dims <- Snoc (dims @ds) dn
-  , dsn2@Dims <- TypedList.concat (dims @ds) (dn :* U)
-  , dsm1@Dims <- Snoc (dims @ds) dm
-  , dsm2@Dims <- TypedList.concat (dims @ds) (dm :* U)
-  , Just Dict <- sameDims dsm1 dsm2
-  , Just Dict <- sameDims dsn1 dsn2
-  , Dict <- inferConcat @Nat @ds @'[m] @(ds +: m)
-  , Dict <- inferConcat @Nat @ds @'[n] @(ds +: n)
+  , Dims <- Snoc (dims @ds) dn
+  , Dims <- Snoc (dims @ds) dm
+  , Dict <- Dict @(SnocList ds n _)
+  , Dict <- Dict @(SnocList ds m _)
   , Just Dict <- sameDim dn (plusDim dm dnm)
   , Dict <- inferKnownBackend @_ @Double @'[n]
   , Dict <- inferKnownBackend @_ @Double @'[m]
@@ -222,12 +217,10 @@ testSolveLowerTriangularL b l
   | dn <- dim @n
   , dm <- dim @m
   , dmn@D  <- minusDim dm dn
-  , dsn1@Dims <- Snoc (dims @ds) dn
-  , dsn2@Dims <- TypedList.concat (dims @ds) (dn :* U)
-  , dsm1@Dims <- Snoc (dims @ds) dm
-  , dsm2@Dims <- TypedList.concat (dims @ds) (dm :* U)
-  , Just Dict <- sameDims dsm1 dsm2
-  , Just Dict <- sameDims dsn1 dsn2
+  , Dims <- Snoc (dims @ds) dn
+  , Dims <- Snoc (dims @ds) dm
+  , Dict <- Dict @(SnocList ds n _)
+  , Dict <- Dict @(SnocList ds m _)
   , Dict <- inferConcat @Nat @ds @'[m] @(ds +: m)
   , Dict <- inferConcat @Nat @ds @'[n] @(ds +: n)
   , Just Dict <- sameDim dm (plusDim dn dmn)
@@ -269,10 +262,8 @@ prop_SolveLowerTriangularL = property run
                       <- if justVec
                          then pure (SomeDims U)
                          else removeDimsAbove 100 <$> arbitrary
-      dsm1@Dims <- pure $ Snoc ds m
-      dsm2@Dims <- pure $ TypedList.concat ds (m :* U)
-      Just Dict <- pure $ sameDims dsm1 dsm2
-      Dict <- pure $ inferConcat @Nat @ds @'[m] @(ds +: m)
+      Dims <- pure $ Snoc ds m
+      Dict <- pure $ Dict @(SnocList ds m _)
       Dict <- pure $ inferKnownBackend @_ @Double @(ds +: m)
       Dict <- pure $ inferKnownBackend @_ @Double @'[m]
       l <- arbitraryTriangular @n @m False

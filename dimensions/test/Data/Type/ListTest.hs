@@ -21,6 +21,7 @@ import Data.Type.Equality
 import Data.Type.List
 import Data.Type.Lits
 import Numeric.Natural
+import Test.QuickCheck
 import Unsafe.Coerce
 
 data P (a :: k) = P Natural
@@ -54,11 +55,14 @@ cmpL (_ :^ _) N = SNe
 
 instance Show (L as) where
   show N           = ""
+  show (P n :^ N)  = show n
   show (P n :^ xs) = show n ++ "." ++ show xs
 
 
 data SomeL (k :: Type) = forall (as :: [k]) . SomeL (L as)
 
+instance Show (SomeL k) where
+  show (SomeL a) = show a
 
 x00 :: P 0
 x00 = p
@@ -92,11 +96,10 @@ someXs02 = SomeL xs02
 someXs03 :: SomeL Nat
 someXs03 = SomeL xs03
 
-tailL :: forall (k :: Type) (xs :: [k]) (s :: k) (xss :: [k])
+initL :: forall (k :: Type) (xs :: [k]) (s :: k) (xss :: [k])
        . SnocList xs s xss => L xss -> L xs
-tailL (_ :^ N)         = N
-tailL (x :^ (y :^ ys)) = x :^ tailL (y :^ ys)
-tailL N                = undefined
+initL (_ :^ N)         = N
+initL (x :^ (y :^ ys)) = x :^ initL (y :^ ys)
 
 revL1 :: forall (k :: Type) (xs :: [k]) (sx :: [k])
      . ReverseList xs sx => L xs -> L sx
@@ -137,12 +140,21 @@ concatL (a :^ as) bs = a :^ concatL as bs
 
 
 
-goList :: ConcatList as bs asbs => L as -> L bs -> L asbs -> IO ()
-goList as bs asbs = do
-  print (as, stripSufL bs asbs, concatL N as, concatL as N, stripSufL bs (concatL N asbs))
-  print (bs, stripPrefL as asbs, concatL N bs, concatL bs N, stripPrefL as (concatL N asbs))
-  print (asbs, concatL as bs, concatL N asbs, concatL asbs N, concatL as (concatL N bs))
-  print (revL1 as, revL1 bs, revL1 asbs)
+goList :: forall as bs asbs
+        . ConcatList as bs asbs => L as -> L bs -> L asbs -> Property
+goList as bs asbs = conjoin
+  [ conjoin $ map ((show as ===) . show)
+    [as, stripSufL bs asbs, concatL N as, concatL as N, stripSufL bs (concatL N asbs)]
+  , conjoin $ map ((show bs ===) . show)
+    [bs, stripPrefL as asbs, concatL N bs, concatL bs N, stripPrefL as (concatL N asbs)]
+  , conjoin $ map ((show asbs ===) . show)
+    [asbs, concatL as bs, concatL N asbs, concatL asbs N, concatL as (concatL N bs)]
+  , -- sadly, we have to use inferConcat here, because GHC cannot voluntarily
+    -- try to infer ConcatList from the appearence of Concat TF alone.
+    --   A plugin would solve this.
+    case inferConcat @_ @(Reverse bs) @(Reverse as) @_ of
+      Dict -> show (revL1 asbs) === show (concatL (revL1 bs) (revL1 as))
+  ]
 
 
 splitN :: Int -> SomeL k -> (SomeL k, SomeL k)
@@ -152,60 +164,30 @@ splitN n (SomeL (x :^ xs))
   | (SomeL as, SomeL bs) <- splitN (n-1) (SomeL xs)
     = (SomeL (snoc as x), SomeL bs)
 
-goStripN :: Int -> SomeL k -> IO ()
-goStripN n xs = case splitN n xs of
-  (SomeL (as :: L as), SomeL (bs :: L bs))
-    | Dict <- inferConcat @_ @as @bs @(Concat as bs) -> goList as bs $ concatL as bs
 
-
-anotherPrint :: forall (k :: Type) (ds :: [k])
-             . (ConcatList '[Head ds] (Tail ds) ds)
-             => L ds -> IO ()
-anotherPrint ds = print
-  ( stripPrefL as ds
-  , stripSufL bs ds
-  , ds
-  )
-  where
-    (as, bs) = (case ds of x :^ xs -> (x :^ N, xs)) :: (L '[Head ds], L (Tail ds))
+dropEnd :: Int -> [a] -> [a]
+dropEnd n = reverse . drop n . reverse
 
 runTests :: IO Bool
-runTests = do
-  putStr "Reverse Empty: "
-  print (xs00, revL1 xs00)
-  putStr "Orig:    "
-  print xs03
-  putStr "UnSnoc:  "
-  print $ tailL xs03
-  putStr "Reverse: "
-  print $ revL1 xs03
-  let as = tailL $ tailL xs03
-      bs = stripPrefL as xs03
-      asbs = concatL as bs
-  putStr "as:   "
-  print as
-  putStr "bs:   "
-  print bs
-  putStr "asbs: "
-  print asbs
-  putStr "suf:  "
-  print $ stripPrefL as asbs
-  putStr "pref: "
-  print $ stripSufL bs asbs
-  print (stripSufL xs00 asbs, stripPrefL xs00 asbs, concatL asbs asbs
-        , concatL xs00 xs00, stripSufL xs00 xs00, stripPrefL xs00 xs00)
-  goList as bs asbs
-  goStripN 0 someXs03
-  goStripN 1 someXs03
-  goStripN 2 someXs03
-  goStripN 3 someXs03
-  goStripN 4 someXs03
-  goStripN 5 someXs03
-  anotherPrint xs01
-  anotherPrint xs02
-  anotherPrint xs03
-  print (revL1 xs00, revL2 xs00, revL3 xs00)
-  print (revL1 xs01, revL2 xs01, revL3 xs01)
-  print (revL1 xs02, revL2 xs02, revL3 xs02)
-  print (revL1 xs03, revL2 xs03, revL3 xs03)
-  return True
+runTests = isSuccess <$> quickCheckResult (conjoin tests)
+  where
+    isSuccess :: Result -> Bool
+    isSuccess Success {} = True
+    isSuccess _          = False
+    tests :: [Property]
+    tests =
+      [ show xs00 === show (revL1 xs00)
+      , dropEnd 2 (show xs03) === show (initL xs03)
+      , show xs03 === reverse (show (revL1 xs03))
+      , show as   === show (stripSufL bs xs03)
+      , show (snd $ splitN 0 $ SomeL asbs) === drop 0 (show asbs)
+      , show (snd $ splitN 1 $ SomeL asbs) === drop 2 (show asbs)
+      , show (snd $ splitN 2 $ SomeL asbs) === drop 4 (show asbs)
+      , show (snd $ splitN 3 $ SomeL asbs) === drop 6 (show asbs)
+      , show (snd $ splitN 4 $ SomeL asbs) === drop 8 (show asbs)
+      , show (snd $ splitN 5 $ SomeL asbs) === drop 10 (show asbs)
+      , goList as bs asbs
+      ]
+    as = initL $ initL xs03
+    bs = stripPrefL as xs03
+    asbs = concatL as bs

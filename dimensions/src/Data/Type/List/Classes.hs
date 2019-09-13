@@ -21,7 +21,7 @@ module Data.Type.List.Classes
     SnocList, ReverseList, ConcatList
   , inferStripSuffix, inferStripPrefix, inferConcat
     -- auto-generating instances
-  , consInstSnocList, incohInstSnocList
+  , nilInstSnocList, consInstSnocList, incohInstSnocList
   , consInstReverseList, incohInstReverseList
   , nilInstConcatList, consInstConcatList, incohInstConcatList
   ) where
@@ -40,7 +40,7 @@ import Data.Type.List.Internal
 -- | Represent a decomposition of a list by appending an element to its end.
 class
     ( bs ~ Snoc as a, as ~ Init bs, a ~ Last bs
-    , SnocListCtx as a bs)
+    , SnocListCtx as a bs, ConcatList as '[a] bs)
       => SnocList (as :: [k]) (a :: k) (bs :: [k])
             | as a -> bs, bs -> as a, as -> k, a -> a, bs -> k where
 
@@ -173,7 +173,10 @@ But as a user of the ClassDict API, I have to write these signatures by hand
 
 {-# ANN defineSnocList ClassDict #-}
 defineSnocList :: forall (k :: Type) (as :: [k]) (a :: k) (bs :: [k])
-                . (bs ~ Snoc as a, as ~ Init bs, a ~ Last bs, SnocListCtx as a bs)
+                . ( bs ~ Snoc as a, as ~ Init bs, a ~ Last bs
+                  , SnocListCtx as a bs
+                  , ConcatList as '[a] bs
+                  )
                => Dict (SnocList as a bs)
 defineSnocList = defineSnocList
 
@@ -224,6 +227,8 @@ unsafeBareSnocList = runMagic m
     m | Dict <- unsafeEqTypes @_ @bs @(Snoc as z)
       , Dict <- unsafeEqTypes @_ @as @(Init bs)
       , Dict <- unsafeEqTypes @_ @z @(Last bs)
+      , Dict <- unsafeEqTypes @_ @bs @(Concat as '[z])
+      , Dict <- inferConcat @_ @as @'[z] @bs
       = Magic (dictToBare $ defineSnocList @k @as @z @bs)
 
 unsafeBareReverseList :: forall (k :: Type) (as :: [k]) (bs :: [k])
@@ -356,8 +361,13 @@ The simplest instances can be created using the vanilla syntax;
 the rest is derived via the three recursive definitions above.
  -}
 
-instance SnocList '[] a '[a] where
-
+-- instance SnocList '[] a '[a] where
+{-# ANN nilInstSnocList (ToInstance NoOverlap) #-}
+nilInstSnocList :: forall (k :: Type) (a :: k)
+                 . Dict (SnocList '[] a '[a])
+nilInstSnocList
+  | Dict <- nilInstConcatList @k @'[a]
+    = defineSnocList @k @'[] @a @'[a]
 
 -- instance SnocList as z bs => SnocList (a ': as) z (a ': bs)
 {-# ANN consInstSnocList (ToInstance NoOverlap) #-}
@@ -368,6 +378,7 @@ consInstSnocList
   | Dict <- unsafeEqTypes @_ @(a ': b ': bs) @(Snoc (a ': as) z)
   , Dict <- unsafeEqTypes @_ @(a ': as) @(Init (a ': b ': bs))
   , Dict <- unsafeEqTypes @_ @z @(Last (a ': b ': bs))
+  , Dict <- consInstConcatList @_ @as @'[z] @(b ': bs) @a
     = defineSnocList @k @(a ': as) @z @(a ': b ': bs)
 
 

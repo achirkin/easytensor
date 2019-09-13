@@ -16,19 +16,18 @@ module Numeric.Matrix.LU
   , detViaLU, inverseViaLU
   ) where
 
-import           Control.Monad
-import           Control.Monad.ST
-import           Data.Kind
-import           Numeric.DataFrame.Contraction        ((%*))
-import           Numeric.DataFrame.Internal.PrimArray
-import           Numeric.DataFrame.ST
-import           Numeric.DataFrame.SubSpace
-import           Numeric.DataFrame.Type
-import           Numeric.Dimensions
-import           Numeric.Matrix.Internal
-import           Numeric.Scalar.Internal
-import           Numeric.Subroutine.SolveTriangular
-import qualified Numeric.TypedList                    as TypedList
+import Control.Monad
+import Control.Monad.ST
+import Data.Kind
+import Numeric.DataFrame.Contraction        ((%*))
+import Numeric.DataFrame.Internal.PrimArray
+import Numeric.DataFrame.ST
+import Numeric.DataFrame.SubSpace
+import Numeric.DataFrame.Type
+import Numeric.Dimensions
+import Numeric.Matrix.Internal
+import Numeric.Scalar.Internal
+import Numeric.Subroutine.SolveTriangular
 
 
 -- | Result of LU factorization with Partial Pivoting
@@ -106,10 +105,8 @@ luSolveL ::
 luSolveL LU {..} b
   | dn  <- dim @n
   , dds <- dims @ds
-  , dsn1@Dims <- Snoc dds dn
-  , dsn2      <- TypedList.concat dds (dn :* U)
-  , Just Dict <- sameDims dsn1 dsn2
-  , Dict <- inferConcat @Nat @ds @'[n] @(ds +: n)
+  , Dims <- Snoc dds dn
+  , Dict <- Dict @(SnocList ds n _)
   , Dict <- inferKnownBackend @_ @t @(ds +: n)
   = runST $ do
     xPtr <- thawDataFrame b
