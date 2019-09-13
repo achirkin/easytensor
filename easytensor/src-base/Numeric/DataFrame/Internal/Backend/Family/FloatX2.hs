@@ -368,7 +368,7 @@ instance PrimBytes FloatX2 where
 
 instance PrimArray Float FloatX2 where
 
-    broadcast (F# x) = FloatX2# x x
+    broadcast = broadcast'
     {-# INLINE broadcast #-}
 
     ix# 0# (FloatX2# a1 _) = F# a1
@@ -386,7 +386,7 @@ instance PrimArray Float FloatX2 where
     upd# _ _ _ x                    = x
     {-# INLINE upd# #-}
 
-    arrayContent# x = (# | (# CumulDims [ELEM_N, 1], 0#, getBytes x #) #)
+    arrayContent# = arrayContent'
     {-# INLINE arrayContent# #-}
 
     offsetElems _ = 0#
@@ -395,7 +395,27 @@ instance PrimArray Float FloatX2 where
     uniqueOrCumulDims _ = Right (CumulDims [ELEM_N, 1])
     {-# INLINE uniqueOrCumulDims #-}
 
-    fromElems _ off ba = FloatX2#
-      (indexFloatArray# ba off)
-      (indexFloatArray# ba (off +# 1#))
+    fromElems = fromElems'
     {-# INLINE fromElems #-}
+
+arrayContent' :: FloatX2 -> (# Float | (# CumulDims, Int#, ByteArray# #) #)
+arrayContent' x = (# | (# CumulDims [2, 1], 0#, getBytes x #) #)
+{-# INLINE [1] arrayContent' #-}
+
+fromElems' :: CumulDims -> Int# -> ByteArray# -> FloatX2
+fromElems' _ off ba = FloatX2#
+  (indexFloatArray# ba off)
+  (indexFloatArray# ba (off +# 1#))
+{-# INLINE [1] fromElems' #-}
+
+broadcast' :: Float -> FloatX2
+broadcast' (F# x) = FloatX2# x x
+{-# INLINE [1] broadcast' #-}
+
+{-# RULES
+"arrayContent+fromElems" forall cd off ba .
+  arrayContent' (fromElems' cd off ba) = (# | (# cd, off, ba #) #)
+
+"arrayContent+broadcast" forall e .
+  arrayContent' (broadcast' e) = (# e | #)
+  #-}

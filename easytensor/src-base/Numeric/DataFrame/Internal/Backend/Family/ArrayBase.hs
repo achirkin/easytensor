@@ -493,7 +493,7 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
     {-# SPECIALIZE instance PrimArray Word32 (ArrayBase Word32 ds) #-}
     {-# SPECIALIZE instance PrimArray Word64 (ArrayBase Word64 ds) #-}
 
-    broadcast t = ArrayBase (# t | #)
+    broadcast = broadcast'
     {-# INLINE broadcast #-}
 
     ix# i (ArrayBase a) = case a of
@@ -543,9 +543,7 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
         {-# NOINLINE go #-}
     {-# INLINE upd# #-}
 
-    arrayContent# (ArrayBase a) = case a of
-      (# x | #)                     -> (# x | #)
-      (# | (# off, arr, cd, _ #) #) -> (# | (# cd, off, arr #) #)
+    arrayContent# = arrayContent'
     {-# INLINE arrayContent# #-}
 
     offsetElems (ArrayBase a) = case a of
@@ -558,8 +556,31 @@ instance PrimBytes t => PrimArray t (ArrayBase t ds) where
       (# | (# _, _, steps, _ #) #) -> Right steps
     {-# INLINE uniqueOrCumulDims #-}
 
-    fromElems steps off ba = ArrayBase (# | (# off, ba, steps, Dict #) #)
+    fromElems = fromElems'
     {-# INLINE fromElems #-}
+
+arrayContent' :: ArrayBase t ds -> (# t | (# CumulDims, Int#, ByteArray# #) #)
+arrayContent' (ArrayBase a) = case a of
+  (# x | #)                     -> (# x | #)
+  (# | (# off, arr, cd, _ #) #) -> (# | (# cd, off, arr #) #)
+{-# INLINE [1] arrayContent' #-}
+
+fromElems' :: PrimBytes t => CumulDims -> Int# -> ByteArray# -> ArrayBase t ds
+fromElems' steps off ba = ArrayBase (# | (# off, ba, steps, Dict #) #)
+{-# INLINE [1] fromElems' #-}
+
+broadcast' :: t -> ArrayBase t ds
+broadcast' t = ArrayBase (# t | #)
+{-# INLINE [1] broadcast' #-}
+
+{-# RULES
+"arrayContent+fromElems" forall cd off ba .
+  arrayContent' (fromElems' cd off ba) = (# | (# cd, off, ba #) #)
+
+"arrayContent+broadcast" forall e .
+  arrayContent' (broadcast' e) = (# e | #)
+  #-}
+
 
 
 loop# :: Int# -- ^ initial value
