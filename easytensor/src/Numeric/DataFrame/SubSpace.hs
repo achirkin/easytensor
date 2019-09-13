@@ -108,7 +108,7 @@ class ( ConcatList as bs asbs
     --
     --   In a sense, this is just a more complicated version of `index`.
     slice :: forall (bi :: Nat) (bd :: Nat) (b' :: Nat) (bs' :: [Nat])
-           . ( b' ~ (bi + bd - 1), bs ~ (b' :+ bs'), KnownDim bd)
+           . ((b' + 1) ~ (bi + bd), bs ~ (b' :+ bs'), KnownDim bd)
           => Idxs (as +: bi) -> DataFrame t asbs -> DataFrame t (bd :+ bs')
     slice  i df
       | _ :* Dims <- dims @bs
@@ -146,7 +146,7 @@ class ( ConcatList as bs asbs
     --
     --   In a sense, this is just a more complicated version of `update`.
     updateSlice :: forall (bi :: Nat) (bd :: Nat) (b' :: Nat) (bs' :: [Nat])
-           . ( b' ~ (bi + bd - 1), bs ~ (b' :+ bs'), KnownDim bd)
+           . ((b' + 1) ~ (bi + bd), bs ~ (b' :+ bs'), KnownDim bd)
           => Idxs (as +: bi) -> DataFrame t (bd :+ bs') -> DataFrame t asbs -> DataFrame t asbs
     updateSlice i x df
       | _ :* Dims <- dims @bs

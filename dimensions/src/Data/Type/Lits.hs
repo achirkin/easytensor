@@ -1,14 +1,15 @@
-{-# LANGUAGE CPP                  #-}
-{-# LANGUAGE ConstraintKinds      #-}
-{-# LANGUAGE DataKinds            #-}
-{-# LANGUAGE ExplicitForAll       #-}
-{-# LANGUAGE ExplicitNamespaces   #-}
-{-# LANGUAGE GADTs                #-}
-{-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE CPP                    #-}
+{-# LANGUAGE ConstraintKinds        #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE ExplicitForAll         #-}
+{-# LANGUAGE ExplicitNamespaces     #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeOperators          #-}
+{-# LANGUAGE UndecidableInstances   #-}
 #if __GLASGOW_HASKELL__ >= 806
-{-# LANGUAGE NoStarIsType         #-}
+{-# LANGUAGE NoStarIsType           #-}
 #endif
 
 
@@ -121,12 +122,13 @@ type family Max' (a :: TN.Nat) (b :: TN.Nat) (r :: Ordering) :: TN.Nat where
 -- | Comparison of type-level naturals, as a constraint.
 type (<=) (a :: TN.Nat) (b :: TN.Nat) = LE a b (TN.CmpNat a b)
 
-type family LE (a :: TN.Nat) (b :: TN.Nat) (r :: Ordering) :: Constraint where
-    LE _ _ 'LT = ()
-    LE _ _ 'EQ = ()
-    LE a b 'GT = TL.TypeError
+type family LE (a :: TN.Nat) (b :: TN.Nat) (r :: Ordering)
+                                         = (y :: Constraint) | y -> r where
+    LE a b 'LT = ('LT ~ TN.CmpNat a b)
+    LE a b 'EQ = ('EQ ~ TN.CmpNat a b)
+    LE a b 'GT = ('GT ~ TL.TypeError
       ('TL.Text "Cannot deduce type-level Nat relation: "
           'TL.:<>: 'TL.ShowType a
           'TL.:<>: 'TL.Text " <= "
           'TL.:<>: 'TL.ShowType b
-      )
+      ))

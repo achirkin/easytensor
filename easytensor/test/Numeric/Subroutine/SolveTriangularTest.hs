@@ -59,7 +59,7 @@ testSolveUpperTriangularR r b
   , dm <- dim @m
   , di@D <- dn `minusDim` dm `plusDim` D1
   , i0 <- (Idx 0 :* U) `inSpaceOf` (di :* U)
-  , Just Dict <- minusDimM (di `plusDim` dm) D1 >>= sameDim dn
+  , Just Dict <- sameDim (plusDim dn D1) (plusDim di dm)
     = let bm :: DataFrame Double (m :+ ds)
           bm = slice i0 b
           x :: DataFrame Double (m :+ ds)
@@ -231,7 +231,7 @@ testSolveLowerTriangularL b l
   , Dict <- inferKnownBackend @_ @Double @(ds +: m)
   , di@D <- dm `minusDim` dn `plusDim` D1
   , i0 <- (Idx 0 :* U) `inSpaceOf` (di :* U)
-  , Just Dict <- minusDimM (di `plusDim` dn) D1 >>= sameDim dm
+  , Just Dict <- sameDim (plusDim dm D1) (plusDim di dn)
     = let dropLast :: DataFrame Double (ds +: m) -> DataFrame Double (ds +: n)
           dropLast = ewmap @_ @ds @'[n] $ slice i0
           x :: DataFrame Double (ds +: n)

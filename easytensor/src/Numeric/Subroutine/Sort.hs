@@ -136,8 +136,8 @@ instance {-# INCOHERENT #-}
           Just d2r@D <- pure $ minusDimM d d2l
           d2li@D <- pure $ plusDim d2l D1
           d2ri@D <- pure $ plusDim d2r D1
-          Just Dict <- pure $ minusDimM (plusDim d2li d2r) D1 >>= sameDim d
-          Just Dict <- pure $ minusDimM (plusDim d2ri d2l) D1 >>= sameDim d
+          Just Dict <- pure $ sameDim (plusDim d D1) (plusDim d2li d2r)
+          Just Dict <- pure $ sameDim (plusDim d D1) (plusDim d2ri d2l)
           let leA = subDataFrameView @t @d @(d - Div d 2 + 1) @(Div d 2) @'[]
                                      (Idx 0 :* U) a
               riA = subDataFrameView @t @d @(Div d 2 + 1) @(d - Div d 2) @'[]
@@ -164,9 +164,8 @@ instance {-# INCOHERENT #-}
               , D <- plusDim dj D1
               , Just bmj@D <- minusDimM db dj
               , Just bmji@D <- minusDimM (plusDim dab D1) bmj
-              , Just Dict <- minusDimM (plusDim bmji bmj) D1 >>= sameDim dab
-              , Just Dict <- minusDimM (dj `plusDim` D1 `plusDim` bmj) D1
-                         >>= sameDim db
+              , Just Dict <- sameDim (plusDim dab D1) (plusDim bmji bmj)
+              , Just Dict <- sameDim (plusDim db D1) (dj `plusDim` D1 `plusDim` bmj)
                 = Nothing <$ copyMutableDataFrame @t @ab @(ab + 1 - (b - j)) @(b - j) (Idx k :* U)
                     (subDataFrameView @t @b @(j + 1) @(b - j) (Idx j :* U) b) ab
               | j >= dimVal db
@@ -174,9 +173,8 @@ instance {-# INCOHERENT #-}
               , D <- plusDim di D1
               , Just bmi@D <- minusDimM da di
               , Just bmii@D <- minusDimM (plusDim dab D1) bmi
-              , Just Dict <- minusDimM (plusDim bmii bmi) D1 >>= sameDim dab
-              , Just Dict <- minusDimM (di `plusDim` D1 `plusDim` bmi) D1
-                         >>= sameDim da
+              , Just Dict <- sameDim (plusDim dab D1) (plusDim bmii bmi)
+              , Just Dict <- sameDim (plusDim da D1) (di `plusDim` D1 `plusDim` bmi)
                 = Nothing <$ copyMutableDataFrame (Idx k :* U)
                     (subDataFrameView @t @a @(i + 1) @(a - i) (Idx i :* U) a) ab
               | otherwise

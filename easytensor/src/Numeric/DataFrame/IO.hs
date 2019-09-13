@@ -84,7 +84,7 @@ newPinnedDataFrame = IODataFrame <$> IO (newPinnedDataFrame# @t @ns)
 subDataFrameView :: forall (t :: Type)
                            (b :: Nat) (bi :: Nat) (bd :: Nat)
                            (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-                 . ( b ~ (bi + bd - 1)
+                 . ( (b + 1) ~ (bi + bd)
                    , KnownDim bd
                    , ConcatList as (b :+ bs) asbs
                    )
@@ -110,7 +110,7 @@ subDataFrameView' = coerce (subDataFrameView'# @t @as @bs @asbs)
 copyDataFrame :: forall (t :: Type)
                         (b :: Nat) (bi :: Nat) (bd :: Nat)
                         (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-               . ( b ~ (bi + bd - 1)
+               . ( (b + 1) ~ (bi + bd)
                  , PrimBytes t
                  , PrimBytes (DataFrame t (bd :+ bs))
                  , ConcatList as (b :+ bs) asbs
@@ -128,7 +128,7 @@ copyDataFrame ei df (IODataFrame mdf) = IO (copyDataFrame# ei df mdf)
 copyMutableDataFrame :: forall (t :: Type)
                                (b :: Nat) (bi :: Nat) (bd :: Nat)
                                (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-                      . ( b ~ (bi + bd - 1)
+                      . ( (b + 1) ~ (bi + bd)
                         , PrimBytes t
                         , ConcatList as (b :+ bs) asbs
                         )

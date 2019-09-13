@@ -61,6 +61,7 @@ module Numeric.Dimensions.Dim
   , KnownDim (..), BoundedDim (..), minimalDim, KnownXNatType (..), FixedDim
   , dimVal, dimVal', typeableDim, someDimVal
   , sameDim, sameDim'
+  , lessOrEqDim, lessOrEqDim'
   , compareDim, compareDim'
   , constrainBy, relax
     -- * Simple Dim arithmetics
@@ -402,11 +403,25 @@ sameDim (DimSing a) (DimSing b)
 
 -- | We either get evidence that this function
 --   was instantiated with the same type-level numbers, or Nothing.
-sameDim' :: forall (x :: Nat) (y :: Nat) (p :: Nat -> Type) (q :: Nat -> Type)
-          . (KnownDim x, KnownDim y)
-         => p x -> q y -> Maybe (Dict (x ~ y))
-sameDim' = const . const $ sameDim (dim @x) (dim @y)
+sameDim' :: forall (x :: Nat) (y :: Nat)
+          . (KnownDim x, KnownDim y) => Maybe (Dict (x ~ y))
+sameDim' = sameDim (dim @x) (dim @y)
 {-# INLINE sameDim' #-}
+
+-- | We either get evidence that @x@ is not greater than @y@, or Nothing.
+lessOrEqDim :: forall (x :: Nat) (y :: Nat)
+             . Dim x -> Dim y -> Maybe (Dict (x <= y))
+lessOrEqDim a b = case compareDim a b of
+  SLT -> Just Dict
+  SEQ -> Just Dict
+  SGT -> Nothing
+{-# INLINE lessOrEqDim #-}
+
+-- | We either get evidence that @x@ is not greater than @y@, or Nothing.
+lessOrEqDim' :: forall (x :: Nat) (y :: Nat)
+              . (KnownDim x, KnownDim y) => Maybe (Dict (x <= y))
+lessOrEqDim' = lessOrEqDim (dim @x) (dim @y)
+{-# INLINE lessOrEqDim' #-}
 
 -- | Ordering of dimension values.
 --
@@ -425,9 +440,9 @@ compareDim a b
 --
 --   Note: `CmpNat` forces type parameters to kind `Nat`;
 --         if you want to compare unknown `XNat`s, use `Ord` instance of `Dim`.
-compareDim' :: forall (a :: Nat) (b :: Nat) (p :: Nat -> Type) (q :: Nat -> Type)
-             . (KnownDim a, KnownDim b) => p a -> q b -> SOrdering (CmpNat a b)
-compareDim' = const . const $ compareDim (dim @a)  (dim @b)
+compareDim' :: forall (a :: Nat) (b :: Nat)
+             . (KnownDim a, KnownDim b) => SOrdering (CmpNat a b)
+compareDim' = compareDim (dim @a)  (dim @b)
 {-# INLINE compareDim' #-}
 
 -- | Same as `Prelude.(+)`.

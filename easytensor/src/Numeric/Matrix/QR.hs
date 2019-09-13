@@ -145,7 +145,7 @@ qrSolveR a b
     solveUpperTriangularR qrR xPtr
     unsafeFreezeDataFrame xPtr
   SGT | Dict <- unsafeCoerce (Dict @(m <= m)) :: Dict (m <= n)
-      , Dict <- unsafeCoerce (Dict @(n ~ n)) :: Dict (((((n - m) + 1) + m) - 1) ~ n)
+      , Dict <- unsafeCoerce (Dict @(n ~ n)) :: Dict ((((n - m) + 1) + m) ~ (n + 1) )
       , D <- minusDim dn dm `plusDim` D1
         -> runST $ do
     let QR {..} = qr a
@@ -156,8 +156,8 @@ qrSolveR a b
     solveUpperTriangularR qrR xPtr
     unsafeFreezeDataFrame xPtr
   SLT | Dict <- unsafeCoerce (Dict @(m <= m)) :: Dict (n <= m)
-      , Dict <- unsafeCoerce (Dict @(n ~ n)) :: Dict (((((m - n) + 1) + n) - 1) ~ m)
-      , Dict <- unsafeCoerce (Dict @(n ~ n)) :: Dict ((((n + 1) + (m - n)) - 1) ~ m)
+      , Dict <- unsafeCoerce (Dict @(n ~ n)) :: Dict ((((m - n) + 1) + n) ~ (m + 1))
+      , Dict <- unsafeCoerce (Dict @(n ~ n)) :: Dict (((n + 1) + (m - n)) ~ (m + 1))
       , dd@D <- minusDim dm dn
       , Dict <- inferKnownBackend @_ @t @((m-n) :+ ds)
       , D <- dd `plusDim` D1
