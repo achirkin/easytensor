@@ -368,7 +368,7 @@ instance PrimBytes DoubleX2 where
 
 instance PrimArray Double DoubleX2 where
 
-    broadcast (D# x) = DoubleX2# x x
+    broadcast = broadcast'
     {-# INLINE broadcast #-}
 
     ix# 0# (DoubleX2# a1 _) = D# a1
@@ -386,7 +386,7 @@ instance PrimArray Double DoubleX2 where
     upd# _ _ _ x                     = x
     {-# INLINE upd# #-}
 
-    arrayContent# x = (# | (# CumulDims [ELEM_N, 1], 0#, getBytes x #) #)
+    arrayContent# = arrayContent'
     {-# INLINE arrayContent# #-}
 
     offsetElems _ = 0#
@@ -395,7 +395,27 @@ instance PrimArray Double DoubleX2 where
     uniqueOrCumulDims _ = Right (CumulDims [ELEM_N, 1])
     {-# INLINE uniqueOrCumulDims #-}
 
-    fromElems _ off ba = DoubleX2#
-      (indexDoubleArray# ba off)
-      (indexDoubleArray# ba (off +# 1#))
+    fromElems = fromElems'
     {-# INLINE fromElems #-}
+
+arrayContent' :: DoubleX2 -> (# Double | (# CumulDims, Int#, ByteArray# #) #)
+arrayContent' x = (# | (# CumulDims [2, 1], 0#, getBytes x #) #)
+{-# INLINE [1] arrayContent' #-}
+
+fromElems' :: CumulDims -> Int# -> ByteArray# -> DoubleX2
+fromElems'  _ off ba = DoubleX2#
+  (indexDoubleArray# ba off)
+  (indexDoubleArray# ba (off +# 1#))
+{-# INLINE [1] fromElems' #-}
+
+broadcast' :: Double -> DoubleX2
+broadcast' (D# x) = DoubleX2# x x
+{-# INLINE [1] broadcast' #-}
+
+{-# RULES
+"arrayContent+fromElems" forall cd off ba .
+  arrayContent' (fromElems' cd off ba) = (# | (# cd, off, ba #) #)
+
+"arrayContent+broadcast" forall e .
+  arrayContent' (broadcast' e) = (# e | #)
+  #-}
