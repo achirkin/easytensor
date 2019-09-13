@@ -22,7 +22,7 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.SubSpace
-  ( SubSpace (..), (!), element
+  ( SubSpace (..), (.!), element
   , ewfoldMap, iwfoldMap
   , ewzip, iwzip
   , indexWise_, elementWise_
@@ -446,11 +446,11 @@ element i f df = flip (update i) df <$> f (index i df)
 {-# INLINE element #-}
 
 -- | Index an element (reverse arguments of `index`)
-(!) :: SubSpace t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-    => DataFrame t asbs -> Idxs as -> DataFrame t bs
-(!) = flip index
-{-# INLINE (!) #-}
-infixl 4 !
+(.!) :: SubSpace t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+     => DataFrame t asbs -> Idxs as -> DataFrame t bs
+(.!) = flip index
+{-# INLINE (.!) #-}
+infixl 4 .!
 
 
 

@@ -138,3 +138,12 @@ unsafeFromFlatList ds x0 vs = case gen# (cumulDims ds) f vs of (# _, r #) -> r
   where
     f []     = (# [], x0 #)
     f (x:xs) = (# xs, x #)
+
+-- The following rules would be good on the implementation side.
+-- {-# RULES
+-- "arrayContent+fromElems" forall cd off ba .
+--   arrayContent# (fromElems cd off ba) = (# | (# cd, off, ba #) #)
+--
+-- "arrayContent+broadcast" forall e .
+--   arrayContent# (broadcast e) = (# e | #)
+--   #-}

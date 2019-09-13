@@ -202,23 +202,15 @@ normLP i' = (**ri) . ewfoldr (\a -> (a**i +)) 0
 
 -- | Take a determinant of a matrix composed from two 2D vectors.
 --   Like a cross product in 2D.
-det2 :: ( Num t, SubSpace t '[2] '[] '[2] )
+det2 :: ( Num t, PrimBytes t )
      => Vector t 2 -> Vector t 2 -> Scalar t
-det2 a b = (a ! 0 :* U) * (b ! 1 :* U)
-         - (a ! 1 :* U) * (b ! 0 :* U)
+det2 (DF2 a0 a1) (DF2 b0 b1) = a0*b1 - b0*a1
 
 -- | Cross product
-cross :: ( Num t, SubSpace t '[3] '[] '[3] )
+cross :: ( Num t, PrimBytes t )
       => Vector t 3 -> Vector t 3 -> Vector t 3
-cross a b = vec3 ( unScalar
-                 $ (a ! 1 :* U) * (b ! 2 :* U)
-                 - (a ! 2 :* U) * (b ! 1 :* U) )
-                 ( unScalar
-                 $ (a ! 2 :* U) * (b ! 0 :* U)
-                 - (a ! 0 :* U) * (b ! 2 :* U) )
-                 ( unScalar
-                 $ (a ! 0 :* U) * (b ! 1 :* U)
-                 - (a ! 1 :* U) * (b ! 0 :* U) )
+cross (DF3 a0 a1 a2) (DF3 b0 b1 b2)
+  = DF3 (a1*b2 - a2*b1) (a2*b0 - a0*b2) (a0*b1 - a1*b0)
 
 
 -- | Cross product for two vectors in 3D
