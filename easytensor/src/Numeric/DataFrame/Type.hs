@@ -38,6 +38,7 @@ module Numeric.DataFrame.Type
   , DataFrame ( SingleFrame, MultiFrame, XFrame, (:*:), Z
               , S, DF2, DF3, DF4, DF5, DF6, DF7, DF8, DF9)
 #endif
+  , IndexFrame (..)
     -- * Flexible assembling and disassembling
   , PackDF, packDF, unpackDF
   , appendDF, consDF, snocDF
@@ -164,6 +165,87 @@ type family AllFrames (f :: Type -> Constraint) (ts :: [Type]) (ds :: [Nat])
                                                              :: Constraint where
     AllFrames _ '[] _ = ()
     AllFrames f (t ': ts) ds = (f (DataFrame t ds), AllFrames f ts ds)
+
+
+-- | Index one dimension deep into a @DataFrame@.
+class IndexFrame (t :: l) (d :: k) (ds :: [k]) where
+  -- | Index one dimension deep into a @DataFrame@.
+  --
+  --   Note, this function does not provide indexing safety at the type level;
+  --   it throws an error if an index is out of bounds
+  --     (unless @unsafeindices@ package flag is enabled).
+  (!) :: DataFrame t (d ': ds) -> Word -> DataFrame t ds
+
+#ifndef UNSAFE_INDICES
+idxError :: Word -> Word -> a
+idxError d i = errorWithoutStackTrace
+  $ "IndexFrame: index "
+    ++ show i ++ " is outside of DataFrame bounds (Dims (" ++ show d ++ " ': ds)."
+#endif
+
+instance (PrimArray t (DataFrame t '[d]), KnownDim d)
+      => IndexFrame (t :: Type) (d :: Nat) '[] where
+    {-# INLINE (!) #-}
+    (!) df i
+#ifndef UNSAFE_INDICES
+      | i >= dimVal' @d = idxError (dimVal' @d) i
+      | otherwise
+#endif
+        = unsafeCoerce# (ixOff (fromIntegral i) df)
+
+instance {-# INCOHERENT #-}
+         ( PrimArray t (DataFrame t (d ': ds))
+         , KnownDim d, KnownBackend t ds)
+      => IndexFrame (t :: Type) (d :: Nat) ds where
+    {-# INLINE (!) #-}
+    (!) df i
+#ifndef UNSAFE_INDICES
+      | i >= dimVal' @d = idxError (dimVal' @d) i
+      | otherwise
+#endif
+        = case arrayContent# df of
+          (# e | #)
+              -> broadcast e
+          (# | (# CumulDims ~(_:ss@(s:_)), off0, ba #) #)
+             | I# off <- fromIntegral (s * i)
+              -> fromElems (CumulDims ss) (off0 +# off) ba
+
+
+instance IndexFrame ('[] :: [Type]) (d :: Nat) ds where
+    {-# INLINE (!) #-}
+    (!) Z _ = Z
+
+instance (IndexFrame t d ds, IndexFrame ts d ds)
+      => IndexFrame ((t ': ts) :: [Type]) (d :: Nat) ds where
+    {-# INLINE (!) #-}
+    (!) (df :*: dfs) i = df ! i :*: dfs ! i
+
+instance PrimBytes t
+      => IndexFrame (t :: Type) (xd :: XNat) xds where
+    {-# INLINE (!) #-}
+    (!) (XFrame df) i
+      | D :* (Dims :: Dims ns) <- dims `inSpaceOf` df
+      , Dict <- inferKnownBackend @_ @t @ns
+        = XFrame (df ! i)
+    (!) _ _ = error "IndexFrame: impossible pattern"
+
+instance (RepresentableList ts, All PrimBytes ts)
+      => IndexFrame (ts :: [Type]) (xd :: XNat) xds where
+    {-# INLINE (!) #-}
+    (!) (XFrame df) i
+      | (D :: Dim n) :* (Dims :: Dims ns) <- dims `inSpaceOf` df
+      , Dict <- getTsEvs @ts @n @ns tList
+        = XFrame (df ! i)
+      where
+        getTsEvs :: forall (as :: [Type]) (d :: Nat) (ds :: [Nat])
+                  . ( All PrimBytes as, KnownBackends as (d ': ds)
+                    , Dimensions ds, KnownDim d)
+                 => TypeList as -> Dict (IndexFrame as d ds, KnownBackends as ds)
+        getTsEvs U = Dict
+        getTsEvs ((_ :: Proxy a) :* as')
+          | Dict <- getTsEvs @_ @d @ds as'
+          , Dict <- inferKnownBackend @_ @a @ds = Dict
+    (!) _ _ = error "IndexFrame: impossible pattern"
 
 
 deriving instance Typeable (DataFrame (t :: l) (xs :: [k]))

@@ -48,7 +48,7 @@ main = do
 
     putStrLn "\nRunning a ewfoldl on vector4 elements..."
     let rezEwv1 = ewfoldl @Float @(Init DList) @'[Last DList]
-                          (\a x -> return $! fromMaybe 2 a + fromMaybe 0 a / (1 + iwgen @_ @_ @'[] (\(Idx i:*U) -> x ! Idx (i+1) :* U )) )
+                          (\a x -> return $! fromMaybe 2 a + fromMaybe 0 a / (1 + iwgen @_ @_ @'[] (\(Idx i:*U) -> x ! (i+1) )) )
                           (Just (3 :: DataFrame Float '[4])) df
     t6 <- rezEwv1 `seq` getCurrentTime
     seq t6 putStrLn $ "Done; elapsed time = " ++ show (diffUTCTime t6 t5)
@@ -56,7 +56,7 @@ main = do
 
     putStrLn "\nRunning a ewfoldr on vector3 elements..."
     let rezEwv2 = ewfoldr @Float @(Init DList) @'[Last DList]
-                          (\x a -> return $! fromMaybe 2 a + fromMaybe 1 a / (1 + iwgen @_ @_ @'[] (\(Idx i:*U) -> x ! Idx (i+1):* U )))
+                          (\x a -> return $! fromMaybe 2 a + fromMaybe 1 a / (1 + iwgen @_ @_ @'[] (\(Idx i:*U) -> x ! (i+1) )))
                           (Just (3 :: DataFrame Float '[3])) df
     t7 <- rezEwv2 `seq` getCurrentTime
     seq t7 putStrLn $ "Done; elapsed time = " ++ show (diffUTCTime t7 t6)
@@ -74,4 +74,4 @@ main = do
 
 
     putStrLn "Checking indexes"
-    print $ df ! (2:*1:*1:*3:*1:*U :: Idxs (Take 5 DList))
+    print $ df .! (2:*1:*1:*3:*1:*U :: Idxs (Take 5 DList))

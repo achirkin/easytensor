@@ -432,10 +432,9 @@ instance {-# INCOHERENT #-}
           perm = ewmap @Word @_ @'[] (\(S (_ :! i :! U)) -> S i) sSorted
           pCount =
              if nm < 2
-             then 0
-             else foldl (\s (i, j) -> if index i perm > index j perm then succ s else s)
-                         (0 :: Word)
-                         [(i :* U, j :* U) | i <- [0..maxBound - 1], j <- [i+1..]]
+             then 0 :: Word
+             else foldl (\s (i, j) -> if perm!i > perm!j then succ s else s)
+                        0 [(i, j) | i <- [0..nm2w], j <- [i+1..nm2w+1]]
           pPositive = even pCount
 
       -- alphas and svdS are now out of sync, but that is not a problem
@@ -467,11 +466,11 @@ instance {-# INCOHERENT #-}
         let svdU = iwgen @_ @_ @'[] $ \(i :* Idx j :* U) ->
               if j >= dimVal dnm
               then index (i :* Idx j :* U) svdU'
-              else index (i :* Idx (unScalar $ index (Idx j :* U) perm) :* U) svdU'
+              else index (i :* Idx (unScalar $ perm!j) :* U) svdU'
             svdV = iwgen @_ @_ @'[] $ \(i :* Idx j :* U) ->
               if j >= dimVal dnm
               then index (i :* Idx j :* U) svdV'
-              else index (i :* Idx (unScalar $ index (Idx j :* U) perm) :* U) svdV'
+              else index (i :* Idx (unScalar $ perm!j) :* U) svdV'
         return SVD {..}
       where
         n = fromIntegral $ dimVal dn :: Int
@@ -481,6 +480,7 @@ instance {-# INCOHERENT #-}
         dnm = minDim dn dm
         nm1 = nm - 1
         nm = fromIntegral (dimVal dnm) :: Int
+        nm2w = fromIntegral (max (nm - 2) 0) :: Word
         -- compute the bidiagonal form b first, solve svd for b.
         BiDiag {..} = bidiagonalHouseholder a
 

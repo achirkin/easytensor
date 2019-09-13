@@ -42,9 +42,9 @@ biDiag (dn@D :* dm@D :* U) a b = runST $ do
     Dict <- pure $ inferKnownBackend @_ @t @'[Min n m]
     rPtr <- thawDataFrame 0
     forM_ [0 .. dimVal dnm - 1] $ \i -> do
-      writeDataFrame rPtr (Idx i :* Idx i :* U) $ index (Idx i :* U) a
+      writeDataFrame rPtr (Idx i :* Idx i :* U) $ a ! i
       when (i+1 < dimVal dm) $
-        writeDataFrame rPtr (Idx i :* Idx (i+1) :* U) $ index (Idx i :* U) b
+        writeDataFrame rPtr (Idx i :* Idx (i+1) :* U) $ b ! i
     unsafeFreezeDataFrame rPtr
 
 -- | Decomposition of a matrix \( A = U B V^\intercal \) such that

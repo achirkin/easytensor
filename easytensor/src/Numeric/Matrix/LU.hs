@@ -79,7 +79,7 @@ instance (KnownDim n, Ord t, Fractional t, PrimBytes t, KnownBackend t '[n,n])
         luUpper <- unsafeFreezeDataFrame uPtr
         let luPermDet = if detPositive then 1 else -1
             luPerm = iwgen @_ @'[n,n] @'[]
-              (\(i :* Idx j :* U) -> if S j == index (i :* U) p then 1 else 0)
+              (\(Idx i :* Idx j :* U) -> if S j == p ! i then 1 else 0)
         return LU {..}
       where
         n = fromIntegral (dimVal' @n) :: Int
