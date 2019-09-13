@@ -2,6 +2,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE InstanceSigs              #-}
 {-# LANGUAGE MagicHash                 #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE PolyKinds                 #-}
@@ -10,6 +11,7 @@
 {-# LANGUAGE TypeFamilies              #-}
 {-# LANGUAGE TypeInType                #-}
 {-# LANGUAGE TypeOperators             #-}
+{-# LANGUAGE UndecidableInstances      #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Numeric.DataFrame.IO
@@ -35,17 +37,20 @@ module Numeric.DataFrame.IO
     ) where
 
 
-import GHC.Base
-import GHC.IO   (IO (..))
-import GHC.Ptr  (Ptr (..))
+import GHC.IO  (IO (..))
+import GHC.Ptr (Ptr (..))
 
+import Control.Monad.ST                     (RealWorld)
+import Data.Coerce
+import Data.Kind
 import Numeric.DataFrame.Internal.Mutable
 import Numeric.DataFrame.Internal.PrimArray
 import Numeric.DataFrame.Type
 import Numeric.Dimensions
+import Unsafe.Coerce                        (unsafeCoerce)
 
 
--- | Mutable DataFrame that lives in IO.
+-- | Mutable DataFrame that lives in ST.
 --   Internal representation is always a MutableByteArray.
 data family IODataFrame (t :: Type) (ns :: [k])
 
@@ -55,7 +60,8 @@ newtype instance IODataFrame t (ns :: [Nat]) = IODataFrame (MDataFrame RealWorld
 -- | Data frame with some dimensions missing at compile time.
 --   Pattern-match against its constructor to get a Nat-indexed mutable data frame.
 data instance IODataFrame t (xs :: [XNat])
-  = forall (ns :: [Nat]) . Dimensions ns
+  = forall (ns :: [Nat])
+  . (KnownXNatTypes xs, FixedDims xs ns, Dimensions ns)
   => XIOFrame (IODataFrame t ns)
 
 -- | Mutable DataFrame of unknown dimensionality
@@ -66,7 +72,7 @@ data SomeIODataFrame (t :: Type)
 newDataFrame :: forall t (ns :: [Nat])
               . ( PrimBytes t, Dimensions ns)
              => IO (IODataFrame t ns)
-newDataFrame = IODataFrame <$> IO (newDataFrame# @t @ns)
+newDataFrame = coerce (newDataFrame# @t @ns)
 {-# INLINE newDataFrame #-}
 
 
@@ -74,33 +80,8 @@ newDataFrame = IODataFrame <$> IO (newDataFrame# @t @ns)
 newPinnedDataFrame :: forall t (ns :: [Nat])
                     . ( PrimBytes t, Dimensions ns)
                    => IO (IODataFrame t ns)
-newPinnedDataFrame = IODataFrame <$> IO (newPinnedDataFrame# @t @ns)
+newPinnedDataFrame = coerce (newPinnedDataFrame# @t @ns)
 {-# INLINE newPinnedDataFrame #-}
-
--- | View a part of a DataFrame.
---
---   This function does not perform a copy.
---   All changes to a new DataFrame will be reflected in the original DataFrame as well.
-subDataFrameView :: forall (t :: Type)
-                           (b :: Nat) (bi :: Nat) (bd :: Nat)
-                           (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-                 . ( (b + 1) ~ (bi + bd)
-                   , KnownDim bd
-                   , ConcatList as (b :+ bs) asbs
-                   )
-                => Idxs (as +: bi) -> IODataFrame t asbs -> IODataFrame t (bd :+ bs)
-subDataFrameView = coerce (subDataFrameView# @t @b @bi @bd @as @bs @asbs)
-
--- | View a part of a DataFrame.
---
---   This function does not perform a copy.
---   All changes to a new DataFrame will be reflected in the original DataFrame as well.
---
---   This is a simpler version of @subDataFrameView@ that allows to view over one index at a time.
-subDataFrameView' :: forall (t :: Type) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-                   . ConcatList as bs asbs
-                  => Idxs as -> IODataFrame t asbs -> IODataFrame t bs
-subDataFrameView' = coerce (subDataFrameView'# @t @as @bs @asbs)
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
 --
@@ -117,7 +98,7 @@ copyDataFrame :: forall (t :: Type)
                  )
               => Idxs (as +: bi) -> DataFrame t (bd :+ bs)
               -> IODataFrame t asbs -> IO ()
-copyDataFrame ei df (IODataFrame mdf) = IO (copyDataFrame# ei df mdf)
+copyDataFrame = coerce (copyDataFrame# @t @b @bi @bd @as @bs @asbs)
 {-# INLINE copyDataFrame #-}
 
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
@@ -134,8 +115,7 @@ copyMutableDataFrame :: forall (t :: Type)
                         )
                      => Idxs (as +: bi) -> IODataFrame t (bd :+ bs)
                      -> IODataFrame t asbs -> IO ()
-copyMutableDataFrame ei (IODataFrame mdfA) (IODataFrame mdfB)
-    = IO (copyMDataFrame# ei mdfA mdfB)
+copyMutableDataFrame = coerce (copyMDataFrame# @t @b @bi @bd @as @bs @asbs)
 {-# INLINE copyMutableDataFrame #-}
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
@@ -149,7 +129,7 @@ copyDataFrame' :: forall (t :: Type)
                  )
                => Idxs as -> DataFrame t bs
                -> IODataFrame t asbs -> IO ()
-copyDataFrame' ei df (IODataFrame mdf) = IO (copyDataFrame'# ei df mdf)
+copyDataFrame' = coerce (copyDataFrame'# @t @as @bs @asbs)
 {-# INLINE copyDataFrame' #-}
 
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
@@ -162,117 +142,326 @@ copyMutableDataFrame' :: forall (t :: Type)
                          )
                       => Idxs as -> IODataFrame t bs
                       -> IODataFrame t asbs -> IO ()
-copyMutableDataFrame' ei (IODataFrame mdfA) (IODataFrame mdfB)
-  = IO (copyMDataFrame'# ei mdfA mdfB)
+copyMutableDataFrame' = coerce (copyMDataFrame'# @t @as @bs @asbs)
 {-# INLINE copyMutableDataFrame' #-}
 
--- | Make a mutable DataFrame immutable, without copying.
-unsafeFreezeDataFrame :: forall (t :: Type) (ns :: [Nat])
-                       . PrimArray t (DataFrame t ns)
-                      => IODataFrame t ns -> IO (DataFrame t ns)
-unsafeFreezeDataFrame (IODataFrame mdf) = IO (unsafeFreezeDataFrame# mdf)
-{-# INLINE unsafeFreezeDataFrame #-}
+-- | Some operations on a mutable DataFrame are allowed if all dimensions
+--   are fixed, others can work with @XNat@.
+--   This class provides an interface for operations that support both kinds
+--   of indices: @Nat@ and @XNat@.
+class KnownDimKind k => IODataFrameDimKind (k :: Type) where
+    type SubDataFrameViewCtx (b :: k) (bi :: k) (bd :: k) :: Constraint
+    type FreezeDataFrameCtx (t :: Type) (ns :: [k]) :: Constraint
+    type ThawDataFrameCtx (t :: Type) (ns :: [k]) :: Constraint
+    -- | View a part of a DataFrame.
+    --
+    --   This function does not perform a copy.
+    --   All changes to a new DataFrame will be reflected in the original DataFrame as well.
+    subDataFrameView ::
+         forall (t :: Type) (b :: k) (bi :: k) (bd :: k)
+                (as :: [k]) (bs :: [k]) (asbs :: [k])
+       . ( SubDataFrameViewCtx b bi bd
+         , ConcatList as (b :+ bs) asbs
+         )
+      => Idxs (as +: bi) -> IODataFrame t asbs -> IODataFrame t (bd :+ bs)
+    -- | View a part of a DataFrame.
+    --
+    --   This function does not perform a copy.
+    --   All changes to a new DataFrame will be reflected in the original DataFrame as well.
+    --
+    --   This is a simpler version of @subDataFrameView@ that allows to view over one index at a time.
+    subDataFrameView' ::
+         forall (t :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k])
+       . ConcatList as bs asbs
+      => Idxs as -> IODataFrame t asbs -> IODataFrame t bs
+    -- | Make a mutable DataFrame immutable, without copying.
+    unsafeFreezeDataFrame ::
+         forall (t :: Type) (ns :: [k])
+       . FreezeDataFrameCtx t ns
+      => IODataFrame t ns -> IO (DataFrame t ns)
+    -- | Copy content of a mutable DataFrame into a new immutable DataFrame.
+    freezeDataFrame ::
+         forall (t :: Type) (ns :: [k])
+       . FreezeDataFrameCtx t ns
+      => IODataFrame t ns -> IO (DataFrame t ns)
+    -- | Create a new mutable DataFrame and copy content of immutable one in there.
+    thawDataFrame ::
+         forall (t :: Type) (ns :: [k])
+       . ThawDataFrameCtx t ns
+      => DataFrame t ns -> IO (IODataFrame t ns)
+    -- | Create a new mutable DataFrame and copy content of immutable one in there.
+    --   The result array is pinned and aligned.
+    thawPinDataFrame ::
+         forall (t :: Type) (ns :: [k])
+       . ThawDataFrameCtx t ns
+      => DataFrame t ns -> IO (IODataFrame t ns)
+    -- | UnsafeCoerces an underlying byte array.
+    unsafeThawDataFrame ::
+         forall (t :: Type) (ns :: [k])
+       . ThawDataFrameCtx t ns
+      => DataFrame t ns -> IO (IODataFrame t ns)
+    -- | Write a single element at the specified index
+    writeDataFrame ::
+         forall t (ns :: [k])
+       . PrimBytes t
+      => IODataFrame t ns
+      -> Idxs ns -> DataFrame t ('[] :: [Nat]) -> IO ()
+    -- | Read a single element at the specified index
+    readDataFrame ::
+         forall (t :: Type) (ns :: [k])
+       . PrimBytes t
+      => IODataFrame t ns -> Idxs ns
+      -> IO (DataFrame t ('[] :: [Nat]))
+    -- | Write a single element at the specified element offset
+    writeDataFrameOff ::
+         forall (t :: Type) (ns :: [k])
+       . PrimBytes t
+      => IODataFrame t ns
+      -> Int -> DataFrame t ('[] :: [Nat]) -> IO ()
+    -- | Read a single element at the specified element offset
+    readDataFrameOff ::
+         forall (t :: Type) (ns :: [k])
+       . PrimBytes t
+      => IODataFrame t ns
+      -> Int -> IO (DataFrame t ('[] :: [Nat]))
+    -- | Check if the byte array wrapped by this DataFrame is pinned,
+    --   which means cannot be relocated by GC.
+    isDataFramePinned ::
+         forall (t :: Type) (ns :: [k])
+       . IODataFrame t ns -> Bool
+    -- | Get cumulative dimensions @ns@ of an @IODataFrame t ns@
+    getDataFrameSteps ::
+         forall (t :: Type) (ns :: [k]) . IODataFrame t ns -> CumulDims
+    -- | Allow arbitrary IO operations on a pointer to the beginning of the data
+    --   keeping the data from garbage collecting until the arg function returns.
+    --
+    --   Warning: do not let @Ptr t@ leave the scope of the arg function,
+    --            the data may be garbage-collected by then.
+    --
+    --   Warning: use this function on a pinned DataFrame only;
+    --            otherwise, the data may be relocated before the arg fun finishes.
+    withDataFramePtr ::
+         forall (t :: Type) (ns :: [k]) (r :: Type)
+       . PrimBytes t
+      => IODataFrame t ns -> ( Ptr t -> IO r ) -> IO r
 
+instance IODataFrameDimKind Nat where
+    type SubDataFrameViewCtx b bi bd
+           = ((b + 1) ~ (bi + bd), KnownDim bd)
+    type FreezeDataFrameCtx t ns
+           = PrimArray t (DataFrame t ns)
+    type ThawDataFrameCtx t ns
+           = (Dimensions ns, PrimBytes (DataFrame t ns), PrimBytes t)
+    subDataFrameView ::
+           forall t (b :: Nat) bi bd as bs asbs
+         . ( SubDataFrameViewCtx b bi bd
+           , ConcatList as (b :+ bs) asbs
+           )
+        => Idxs (as +: bi) -> IODataFrame t asbs -> IODataFrame t (bd :+ bs)
+    subDataFrameView = coerce (subDataFrameView# @t @b @bi @bd @as @bs @asbs)
+    subDataFrameView' ::
+           forall (t :: Type) (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
+         . ConcatList as bs asbs
+        => Idxs as -> IODataFrame t asbs -> IODataFrame t bs
+    subDataFrameView' = coerce (subDataFrameView'# @t @as @bs @asbs)
+    unsafeFreezeDataFrame :: forall (t :: Type) (ns :: [Nat])
+                           . PrimArray t (DataFrame t ns)
+                          => IODataFrame t ns -> IO (DataFrame t ns)
+    unsafeFreezeDataFrame = coerce (unsafeFreezeDataFrame# @t @ns )
+    {-# INLINE unsafeFreezeDataFrame #-}
+    freezeDataFrame :: forall (t :: Type) (ns :: [Nat])
+                     . PrimArray t (DataFrame t ns)
+                    => IODataFrame t ns -> IO (DataFrame t ns)
+    freezeDataFrame = coerce (freezeDataFrame# @t @ns)
+    {-# INLINE freezeDataFrame #-}
+    thawDataFrame :: forall (t :: Type) (ns :: [Nat])
+                   . (Dimensions ns, PrimBytes (DataFrame t ns))
+                  => DataFrame t ns -> IO (IODataFrame t ns)
+    thawDataFrame = coerce (thawDataFrame# @t @ns)
+    {-# INLINE thawDataFrame #-}
+    thawPinDataFrame :: forall (t :: Type) (ns :: [Nat])
+                      . (Dimensions ns, PrimBytes (DataFrame t ns))
+                     => DataFrame t ns -> IO (IODataFrame t ns)
+    thawPinDataFrame = coerce (thawPinDataFrame# @t @ns)
+    {-# INLINE thawPinDataFrame #-}
+    unsafeThawDataFrame ::
+         forall (t :: Type) (ns :: [Nat])
+       . (Dimensions ns, PrimBytes (DataFrame t ns), PrimBytes t)
+      => DataFrame t ns -> IO (IODataFrame t ns)
+    unsafeThawDataFrame = coerce (unsafeThawDataFrame# @t @ns)
+    {-# INLINE unsafeThawDataFrame #-}
+    writeDataFrame ::
+         forall t (ns :: [Nat])
+       . PrimBytes t
+      => IODataFrame t ns
+      -> Idxs ns -> DataFrame t ('[] :: [Nat]) -> IO ()
+    writeDataFrame = coerce (writeDataFrame# @t @ns)
+    {-# INLINE writeDataFrame #-}
+    readDataFrame ::
+         forall (t :: Type) (ns :: [Nat])
+       . PrimBytes t
+      => IODataFrame t ns -> Idxs ns
+      -> IO (DataFrame t ('[] :: [Nat]))
+    readDataFrame = coerce (readDataFrame# @t @ns)
+    {-# INLINE readDataFrame #-}
+    writeDataFrameOff ::
+         forall (t :: Type) (ns :: [Nat])
+       . PrimBytes t
+      => IODataFrame t ns
+      -> Int -> DataFrame t ('[] :: [Nat]) -> IO ()
+    writeDataFrameOff = coerce (writeDataFrameOff# @t @ns)
+    {-# INLINE writeDataFrameOff #-}
+    readDataFrameOff ::
+         forall (t :: Type) (ns :: [Nat])
+       . PrimBytes t
+      => IODataFrame t ns
+      -> Int -> IO (DataFrame t ('[] :: [Nat]))
+    readDataFrameOff = coerce (readDataFrameOff# @t @ns)
+    {-# INLINE readDataFrameOff #-}
+    isDataFramePinned ::
+         forall (t :: Type) (ns :: [Nat])
+       . IODataFrame t ns -> Bool
+    isDataFramePinned = coerce (isDataFramePinned# @t @ns)
+    {-# INLINE isDataFramePinned #-}
+    getDataFrameSteps ::
+         forall (t :: Type) (ns :: [Nat]) . IODataFrame t ns -> CumulDims
+    getDataFrameSteps = coerce (getDataFrameSteps# @t @ns)
+    {-# INLINE getDataFrameSteps #-}
+    withDataFramePtr (IODataFrame x) k
+      = IO $ withDataFramePtr# x (\p -> case k (Ptr p) of IO f -> f)
+    {-# INLINE withDataFramePtr #-}
 
--- | Copy content of a mutable DataFrame into a new immutable DataFrame.
-freezeDataFrame :: forall (t :: Type) (ns :: [Nat])
-                 . PrimArray t (DataFrame t ns)
-                => IODataFrame t ns -> IO (DataFrame t ns)
-freezeDataFrame (IODataFrame mdf) = IO (freezeDataFrame# mdf)
-{-# INLINE freezeDataFrame #-}
+getSubXDims ::
+       forall (asX :: [XNat]) (bsX :: [XNat]) (asbsX :: [XNat])
+              (asN :: [Nat]) (bsN :: [Nat]) (asbsN :: [Nat])
+     . ( ConcatList asX bsX asbsX
+       , KnownXNatTypes asbsX, FixedDims asbsX asbsN
+       )
+    => Idxs asX -> Dims asbsN
+    -> ( Idxs asN
+       , Dims bsN
+       , Dims bsX
+       , Dict ( ConcatList asN bsN asbsN
+              , KnownXNatTypes bsX, FixedDims bsX bsN, Dimensions bsN)
+       )
+getSubXDims U bs@Dims
+  | Dict <- unsafeCoerce (Dict @(asN ~ asN)) :: Dict (asN ~ '[])
+  , Dict <- unsafeCoerce (Dict @(bsN ~ bsN)) :: Dict (bsN ~ asbsN)
+    = (U, bs, XDims bs, Dict)
+getSubXDims (i :* (is :: Idxs asX')) ((D :: Dim a) :* (asbs :: Dims asbsN'))
+  | (isN, bs, xbs, Dict) <- getSubXDims @asX' @bsX @_ @_ @bsN @asbsN' is asbs
+  , Dict <- unsafeCoerce (Dict @(asN ~ asN))
+              :: Dict (asN ~ (a ': StripSuffix bsN asbsN'))
+    = (Idx (idxToWord i) :* isN, bs, xbs, Dict)
 
--- | Create a new mutable DataFrame and copy content of immutable one in there.
-thawDataFrame :: forall (t :: Type) (ns :: [Nat])
-               . (Dimensions ns, PrimBytes (DataFrame t ns))
-              => DataFrame t ns -> IO (IODataFrame t ns)
-thawDataFrame df = IODataFrame <$> IO (thawDataFrame# df)
-{-# INLINE thawDataFrame #-}
-
--- | Create a new mutable DataFrame and copy content of immutable one in there.
---   The result array is pinned and aligned.
-thawPinDataFrame :: forall (t :: Type) (ns :: [Nat])
-                  . (Dimensions ns, PrimBytes (DataFrame t ns))
-                 => DataFrame t ns -> IO (IODataFrame t ns)
-thawPinDataFrame df = IODataFrame <$> IO (thawPinDataFrame# df)
-{-# INLINE thawPinDataFrame #-}
-
--- | UnsafeCoerces an underlying byte array.
-unsafeThawDataFrame :: forall (t :: Type) (ns :: [Nat])
-                     . ( Dimensions ns
-                       , PrimBytes (DataFrame t ns), PrimBytes t)
-                    => DataFrame t ns -> IO (IODataFrame t ns)
-unsafeThawDataFrame df = IODataFrame <$> IO (unsafeThawDataFrame# df)
-{-# INLINE unsafeThawDataFrame #-}
-
-
--- | Write a single element at the specified index
-writeDataFrame :: forall t (ns :: [Nat])
-                . PrimBytes t
-               => IODataFrame t ns -> Idxs ns -> DataFrame t ('[] :: [Nat]) -> IO ()
-writeDataFrame (IODataFrame mdf) ei = IO . writeDataFrame# mdf ei . unsafeCoerce#
-{-# INLINE writeDataFrame #-}
-
-
--- | Read a single element at the specified index
-readDataFrame :: forall (t :: Type) (ns :: [Nat])
-               . PrimBytes t
-              => IODataFrame t ns -> Idxs ns -> IO (DataFrame t ('[] :: [Nat]))
-readDataFrame (IODataFrame mdf) = unsafeCoerce# . IO . readDataFrame# mdf
-{-# INLINE readDataFrame #-}
-
-
--- | Write a single element at the specified element offset
-writeDataFrameOff :: forall (t :: Type) (ns :: [Nat])
+instance IODataFrameDimKind XNat where
+    type SubDataFrameViewCtx b bi bd
+           = ( (DimBound bi + DimBound bd) ~ (DimBound b + 1)
+             , BoundedDim bd
+             , bi ~ N (DimBound bi)
+             , bd ~ N (DimBound bd)
+             )
+    type FreezeDataFrameCtx t ns
+           = PrimBytes t
+    type ThawDataFrameCtx t ns
+           = PrimBytes t
+    subDataFrameView ::
+           forall t (b :: XNat) bi bd as bs asbs
+         . ( SubDataFrameViewCtx b bi bd
+           , ConcatList as (b :+ bs) asbs
+           )
+        => Idxs (as +: bi) -> IODataFrame t asbs -> IODataFrame t (bd :+ bs)
+    subDataFrameView i (XIOFrame a@IODataFrame {})
+      | asbs@(Dims :: Dims asbsN) <- dims `inSpaceOf` a
+      , Dict <- Dict @(SnocList as bi _)
+      , Snoc (ii :: Idxs as) (bi :: Idx bi) <- i
+      , (ii', ((D :: Dim bN) :* (Dims :: Dims bsN)), _, Dict)
+          <- getSubXDims @as @(b :+ bs) @asbs @_ @_ @asbsN ii asbs
+      , Dict <- unsafeCoerce (Dict @(bN ~ bN)) :: Dict (bN ~ DimBound b)
+      , i' <- Snoc ii' (unsafeCoerce bi)
+        = XIOFrame @t @(bd :+ bs) @(DimBound bd :+ bsN)
+            (subDataFrameView @Nat @t @bN @(DimBound bi) @(DimBound bd)
+                                      @_ @bsN @asbsN i' a)
+      | otherwise
+        = error "subDataFrameView: impossible pattern"
+    subDataFrameView' ::
+           forall (t :: Type) (as :: [XNat]) bs asbs
+         . ConcatList as bs asbs
+        => Idxs as -> IODataFrame t asbs -> IODataFrame t bs
+    subDataFrameView' i (XIOFrame a)
+      | asbs@(Dims :: Dims asbsN) <- dims `inSpaceOf` a
+      , (i', (_ :: Dims bsN), _, Dict)
+          <- getSubXDims @as @bs @asbs @_ @_ @asbsN i asbs
+        = XIOFrame @t @bs @bsN (subDataFrameView' @_ @t @_ @bsN @asbsN i' a)
+      | otherwise
+        = error "subDataFrameView': impossible pattern"
+    unsafeFreezeDataFrame :: forall (t :: Type) (ns :: [XNat])
+                           . PrimBytes t
+                          => IODataFrame t ns -> IO (DataFrame t ns)
+    unsafeFreezeDataFrame (XIOFrame (a :: IODataFrame t as))
+      | Dict <- inferKnownBackend @_ @t @as
+        = XFrame <$> unsafeFreezeDataFrame a
+    {-# INLINE unsafeFreezeDataFrame #-}
+    freezeDataFrame :: forall (t :: Type) (ns :: [XNat])
+                     . PrimBytes t
+                    => IODataFrame t ns -> IO (DataFrame t ns)
+    freezeDataFrame (XIOFrame (a :: IODataFrame t as))
+      | Dict <- inferKnownBackend @_ @t @as
+        = XFrame <$> freezeDataFrame a
+    {-# INLINE freezeDataFrame #-}
+    thawDataFrame :: forall (t :: Type) (ns :: [XNat])
                    . PrimBytes t
-               => IODataFrame t ns -> Int -> DataFrame t ('[] :: [Nat])  -> IO ()
-writeDataFrameOff (IODataFrame mdf) (I# i)
-  = IO . writeDataFrameOff# mdf i . unsafeCoerce#
-{-# INLINE writeDataFrameOff #-}
-
-
--- | Read a single element at the specified element offset
-readDataFrameOff :: forall (t :: Type) (ns :: [Nat])
-                  . PrimBytes t
-               => IODataFrame t ns -> Int -> IO (DataFrame t ('[] :: [Nat]))
-readDataFrameOff (IODataFrame mdf) (I# i)
-  = unsafeCoerce# (IO (readDataFrameOff# mdf i))
-{-# INLINE readDataFrameOff #-}
-
-
--- | Check if the byte array wrapped by this DataFrame is pinned,
---   which means cannot be relocated by GC.
-isDataFramePinned :: forall (k :: Type) (t :: Type) (ns :: [k])
-                   . KnownDimKind k
-                  => IODataFrame t ns -> Bool
-isDataFramePinned df = case dimKind @k of
-    DimNat -> case df of
-      IODataFrame x -> isDataFramePinned# x
-    DimXNat -> case df of
-      XIOFrame (IODataFrame x) -> isDataFramePinned# x
-
-
--- | Allow arbitrary IO operations on a pointer to the beginning of the data
---   keeping the data from garbage collecting until the arg function returns.
---
---   Warning: do not let @Ptr t@ leave the scope of the arg function,
---            the data may be garbage-collected by then.
---
---   Warning: use this function on a pinned DataFrame only;
---            otherwise, the data may be relocated before the arg fun finishes.
-withDataFramePtr :: forall (k :: Type) (t :: Type) (ns :: [k]) (r :: Type)
-                  . (PrimBytes t, KnownDimKind k)
-                 => IODataFrame t ns
-                 -> ( Ptr t -> IO r )
-                 -> IO r
-withDataFramePtr df k = case dimKind @k of
-    DimNat -> case df of
-      IODataFrame x
-        -> IO $ withDataFramePtr# x (\p -> case k (Ptr p) of IO f -> f)
-    DimXNat -> case df of
-      XIOFrame (IODataFrame x)
-        -> IO $ withDataFramePtr# x (\p -> case k (Ptr p) of IO f -> f)
-
--- | Get cumulative dimensions @ns@ of an @IODataFrame t ns@
-getDataFrameSteps :: forall (t :: Type) (ns :: [Nat])
-                   . IODataFrame t ns -> CumulDims
-getDataFrameSteps = coerce (getDataFrameSteps# @t @ns)
+                  => DataFrame t ns -> IO (IODataFrame t ns)
+    thawDataFrame (XFrame a) = XIOFrame <$> thawDataFrame a
+    {-# INLINE thawDataFrame #-}
+    thawPinDataFrame :: forall (t :: Type) (ns :: [XNat])
+                      . PrimBytes t
+                     => DataFrame t ns -> IO (IODataFrame t ns)
+    thawPinDataFrame (XFrame a) = XIOFrame <$> thawPinDataFrame a
+    {-# INLINE thawPinDataFrame #-}
+    unsafeThawDataFrame ::
+         forall (t :: Type) (ns :: [XNat])
+       . PrimBytes t
+      => DataFrame t ns -> IO (IODataFrame t ns)
+    unsafeThawDataFrame (XFrame a) = XIOFrame <$> unsafeThawDataFrame a
+    {-# INLINE unsafeThawDataFrame #-}
+    writeDataFrame ::
+         forall t (ns :: [XNat])
+       . PrimBytes t
+      => IODataFrame t ns
+      -> Idxs ns -> DataFrame t ('[] :: [Nat]) -> IO ()
+    writeDataFrame (XIOFrame a) ix = writeDataFrame a (unsafeCoerce ix)
+    {-# INLINE writeDataFrame #-}
+    readDataFrame ::
+         forall (t :: Type) (ns :: [XNat])
+       . PrimBytes t
+      => IODataFrame t ns -> Idxs ns
+      -> IO (DataFrame t ('[] :: [Nat]))
+    readDataFrame (XIOFrame a) ix = readDataFrame a (unsafeCoerce ix)
+    {-# INLINE readDataFrame #-}
+    writeDataFrameOff ::
+         forall (t :: Type) (ns :: [XNat])
+       . PrimBytes t
+      => IODataFrame t ns
+      -> Int -> DataFrame t ('[] :: [Nat]) -> IO ()
+    writeDataFrameOff (XIOFrame a) = writeDataFrameOff a
+    {-# INLINE writeDataFrameOff #-}
+    readDataFrameOff ::
+         forall (t :: Type) (ns :: [XNat])
+       . PrimBytes t
+      => IODataFrame t ns
+      -> Int -> IO (DataFrame t ('[] :: [Nat]))
+    readDataFrameOff (XIOFrame a) = readDataFrameOff a
+    {-# INLINE readDataFrameOff #-}
+    isDataFramePinned ::
+         forall (t :: Type) (ns :: [XNat])
+       . IODataFrame t ns -> Bool
+    isDataFramePinned (XIOFrame a) = isDataFramePinned a
+    {-# INLINE isDataFramePinned #-}
+    getDataFrameSteps ::
+         forall (t :: Type) (ns :: [XNat]) . IODataFrame t ns -> CumulDims
+    getDataFrameSteps (XIOFrame a) = getDataFrameSteps a
+    {-# INLINE getDataFrameSteps #-}
+    withDataFramePtr (XIOFrame (IODataFrame x)) k
+      = IO $ withDataFramePtr# x (\p -> case k (Ptr p) of IO f -> f)
+    {-# INLINE withDataFramePtr #-}
