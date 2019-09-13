@@ -272,32 +272,32 @@ unsafeThawDataFrame# df s0
 -- | Write a single element at the specified element offset
 writeDataFrameOff# :: forall (t :: Type) (ns :: [Nat]) s
                     . PrimBytes t
-                   => MDataFrame s t ns -> Int# -> t -> State# s -> (# State# s, () #)
-writeDataFrameOff# (MDataFrame# off _ mba) i x s
+                   => MDataFrame s t ns -> Int -> DataFrame t ('[] :: [Nat]) -> State# s -> (# State# s, () #)
+writeDataFrameOff# (MDataFrame# off _ mba) (I# i) (S x) s
   = (# writeArray mba (off +# i) x s, () #)
 {-# INLINE writeDataFrameOff# #-}
 
 -- | Write a single element at the specified index
 writeDataFrame# :: forall (t :: Type) (ns :: [Nat]) s
                  . PrimBytes t
-                => MDataFrame s t ns -> Idxs ns -> t -> State# s -> (# State# s, () #)
+                => MDataFrame s t ns -> Idxs ns -> DataFrame t ('[] :: [Nat]) -> State# s -> (# State# s, () #)
 writeDataFrame# mdf@(MDataFrame# _ st _) ei
-  | I# i <- cdIx st ei = writeDataFrameOff# mdf i
+  = writeDataFrameOff# mdf (cdIx st ei)
 {-# INLINE writeDataFrame# #-}
 
 -- | Read a single element at the specified element offset
 readDataFrameOff# :: forall (t :: Type) (ns :: [Nat]) s
                    . PrimBytes t
-                  => MDataFrame s t ns -> Int# -> State# s -> (# State# s, t #)
-readDataFrameOff# (MDataFrame# off _ mba) i = readArray mba (off +# i)
+                  => MDataFrame s t ns -> Int -> State# s -> (# State# s, DataFrame t ('[] :: [Nat]) #)
+readDataFrameOff# (MDataFrame# off _ mba) (I# i) = readArray mba (off +# i)
 {-# INLINE readDataFrameOff# #-}
 
 -- | Read a single element at the specified index
 readDataFrame# :: forall (t :: Type) (ns :: [Nat]) s
                 . PrimBytes t
-               => MDataFrame s t ns -> Idxs ns -> State# s -> (# State# s, t #)
+               => MDataFrame s t ns -> Idxs ns -> State# s -> (# State# s, DataFrame t ('[] :: [Nat]) #)
 readDataFrame# mdf@(MDataFrame# _ st _) ei
-  | I# i <- cdIx st ei = readDataFrameOff# mdf i
+  = readDataFrameOff# mdf (cdIx st ei)
 {-# INLINE readDataFrame# #-}
 
 -- | Allow arbitrary operations on a pointer to the beginning of the data.

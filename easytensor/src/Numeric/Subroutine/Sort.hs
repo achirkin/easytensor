@@ -39,20 +39,11 @@ sortBy cmp df = case dimKind @k of
         mdf
       unsafeFreezeDataFrame mdf
     DimXNat -> runST $ do
-      XFrame (df' :: DataFrame t dds) <- pure $ df
-      D :* (ds@Dims :: Dims ds) <- pure $ dims @dds
-      Dict <- pure $ inferKnownBackend @_ @t @ds
-      Dict <- pure $ inferKnownBackend @_ @t @dds
-      mdf <- thawDataFrame df'
-      sortByInplace @k @n @t @ns
-        (\(XSTFrame (x :: STDataFrame s t as))
-          (XSTFrame (y :: STDataFrame s t bs)) -> do
-            Just Dict <- pure $ sameDims ds (dims @as)
-            Just Dict <- pure $ sameDims ds (dims @bs)
-            cmp <$> fmap XFrame (unsafeFreezeDataFrame x)
-                <*> fmap XFrame (unsafeFreezeDataFrame y))
-        (XSTFrame mdf)
-      XFrame <$> unsafeFreezeDataFrame mdf
+      mdf <- thawDataFrame df
+      sortByInplace
+        (\x y -> cmp <$> unsafeFreezeDataFrame x <*> unsafeFreezeDataFrame y)
+        mdf
+      unsafeFreezeDataFrame mdf
 
 
 class BoundedDim n => SortBy (n :: k) where
@@ -138,13 +129,13 @@ instance {-# INCOHERENT #-}
           d2ri@D <- pure $ plusDim d2r D1
           Just Dict <- pure $ sameDim (plusDim d D1) (plusDim d2li d2r)
           Just Dict <- pure $ sameDim (plusDim d D1) (plusDim d2ri d2l)
-          let leA = subDataFrameView @t @d @(d - Div d 2 + 1) @(Div d 2) @'[]
+          let leA = subDataFrameView @_ @t @d @(d - Div d 2 + 1) @(Div d 2) @'[]
                                      (Idx 0 :* U) a
-              riA = subDataFrameView @t @d @(Div d 2 + 1) @(d - Div d 2) @'[]
+              riA = subDataFrameView @_ @t @d @(Div d 2 + 1) @(d - Div d 2) @'[]
                                      (Idx (dimVal d2l) :* U) a
-              leB = subDataFrameView @t @d @(d - Div d 2 + 1) @(Div d 2) @'[]
+              leB = subDataFrameView @_ @t @d @(d - Div d 2 + 1) @(Div d 2) @'[]
                                      (Idx 0 :* U) b
-              riB = subDataFrameView @t @d @(Div d 2 + 1) @(d - Div d 2) @'[]
+              riB = subDataFrameView @_ @t @d @(Div d 2 + 1) @(d - Div d 2) @'[]
                                      (Idx (dimVal d2l) :* U) b
           mergeSort d2l leA leB
           mergeSort d2r riA riB
@@ -167,7 +158,7 @@ instance {-# INCOHERENT #-}
               , Just Dict <- sameDim (plusDim dab D1) (plusDim bmji bmj)
               , Just Dict <- sameDim (plusDim db D1) (dj `plusDim` D1 `plusDim` bmj)
                 = Nothing <$ copyMutableDataFrame @t @ab @(ab + 1 - (b - j)) @(b - j) (Idx k :* U)
-                    (subDataFrameView @t @b @(j + 1) @(b - j) (Idx j :* U) b) ab
+                    (subDataFrameView @_ @t @b @(j + 1) @(b - j) (Idx j :* U) b) ab
               | j >= dimVal db
               , Dx di@(D :: Dim i) <- someDimVal i
               , D <- plusDim di D1
@@ -176,7 +167,7 @@ instance {-# INCOHERENT #-}
               , Just Dict <- sameDim (plusDim dab D1) (plusDim bmii bmi)
               , Just Dict <- sameDim (plusDim da D1) (di `plusDim` D1 `plusDim` bmi)
                 = Nothing <$ copyMutableDataFrame (Idx k :* U)
-                    (subDataFrameView @t @a @(i + 1) @(a - i) (Idx i :* U) a) ab
+                    (subDataFrameView @_ @t @a @(i + 1) @(a - i) (Idx i :* U) a) ab
               | otherwise
                 = cmp (subDataFrameView' (Idx i :* U) a)
                       (subDataFrameView' (Idx j :* U) b) >>= \case
