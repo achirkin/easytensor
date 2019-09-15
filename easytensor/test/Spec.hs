@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -fno-warn-unused-imports #-}
 module Main (tests, main) where
 
 import Distribution.TestSuite

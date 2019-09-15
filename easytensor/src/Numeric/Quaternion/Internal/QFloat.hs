@@ -350,7 +350,7 @@ instance Floating QFloat where
               shv = sinh mv
               ct = cos w
               st = sin w
-              cq = recip ( (ct * ct * chv * chv) + (st * st * shv * shv) )
+              cq = recip $ ct * ct * chv * chv + st * st * shv * shv
               l = chv * shv * cq / mv
           in packQ (x * l) (y * l) (z * l) (ct * st * cq)
     {-# INLINE sinh #-}
@@ -409,52 +409,80 @@ instance Floating QFloat where
     {-# INLINE atan #-}
     -- atan q = i / 2 * log ( (i + q) / (i - q) )
     atan (unpackQ# -> (# x, y, z, w #))
-      = case (x * x) + (y * y) + (z * z) of
-        0 -> packQ 0 0 0 (atan w)
-        v2 ->
-          let v = sqrt v2
-              w2 = w*w
-              vw2 = w2 + v2
-              t  = 1 + vw2
-              c  = 0.25 * log ((t + 2*v) / (t - 2*v)) / v
-          in packQ (c*x) (c*y) (c*z) $ 0.5 * atan2 (2*w) (1 - vw2)
+      | v2 == 0   = packQ x y z (atan w)
+      | v2 == 1   = packQ (mInf x) (mInf y) (mInf z) 0
+      | otherwise = packQ (x*c) (y*c) (z*c) arg
+      where
+        mInf :: Float -> Float
+        mInf 0 = 0
+        mInf a = a / 0
+        v2 = (x * x) + (y * y) + (z * z)
+        v = sqrt v2
+        w2 = w*w
+        q2 = w2 + v2
+        v' = v - 1
+        c  = 0.25 * (log (1 + q2 + 2*v) - log (w2 + v'*v')) / v
+        arg = 0.5 * atan2 (2*w) (1 - q2)
     {-# INLINE asinh #-}
     -- The original formula:
     -- asinh q = log (q + sqrt (q*q + 1))
     -- below is a more numerically stable version.
     asinh (unpackQ# -> (# x, y, z, w #))
-      | v2 == 0
-        = packQ 0 0 0 (asinh w)
-      | w == 0
-        = if v2 <= 1
-          then let c = asin v / v
-               in  packQ (c*x) (c*y) (c*z) 0
-          else let c  = M_PI_2 / v
-                   w' = 0.5 * log (2*v2 - 1 + 2 * v * sqrt ( v2 - 1 ))
-               in  packQ (c*x) (c*y) (c*z) w'
-      | otherwise
-        = let c = atan2 v t / v
-              w' = 0.5 * log ( t2  + v2) - log t
-                     + if w >= 0
-                       then log ( t + w )
-                       else M_LN2 + log w2 - log ( t - w ) - log ( r + w2 + v2 - 1 )
-          in packQ (c*x) (c*y) (c*z) w'
+      | v2 == 0   = packQ x y z (asinh w)
+      | otherwise = packQ (x*c) (y*c) (z*c) arg
       where
         v2 = (x * x) + (y * y) + (z * z)
-        v  = sqrt v2
+        v = sqrt v2
         w2 = w*w
-        wvp1 = w2 - v2 + 1
-        r = sqrt $ wvp1*wvp1 + 4*w2*v2
-        t = sqrt $ ( r + wvp1 ) * 0.5
-        t2 = t*t
+        w1qq = 0.5 *(1 + w2 - v2)       -- real part of (1 + q*q)/2
+        l1qq = sqrt (w1qq*w1qq + w2*v2) -- length of (1 + q*q)/2
+        sp = sqrt (l1qq + w1qq)
+        sn = copysign (sqrt (l1qq - w1qq)) w
+        (wD, vD) =  -- choose a more stable (symbolically equiv) version
+          if w1qq >= 0
+          then (w + sp, v * (1 + w / sp))
+          else (w * (1 + v / sn), v + sn)
+        c = atan2 vD wD / v
+        arg = 0.5 * log (wD*wD + vD*vD)
     {-# INLINE acosh #-}
+    -- The original formula:
+    -- asinh q = log (q + sqrt (q + 1) * sqrt (q - 1))
+    -- below is a more numerically stable version.
     -- note, log (q + sqrt (q*q - 1)) would not work, because that would not
     -- be the principal value.
-    acosh q = log' axis (q + sqrt' axis (q + 1) * sqrt' axis (q - 1))
+    acosh (unpackQ# -> (# x, y, z, w #))
+      | v2 == 0   = packQ x y z (acosh w)
+      | otherwise = packQ (x*c) (y*c) (z*c) arg
       where
-        axis = sigVec q
+        v2 = (x * x) + (y * y) + (z * z)
+        v = sqrt v2
+        w2 = w*w
+        w1qq = 0.5 *(w2 - v2 - 1)       -- real part of (q*q - 1)/2
+        l1qq = sqrt (w1qq*w1qq + w2*v2) -- length of (q*q - 1)/2
+        sp = sqrt (l1qq + w1qq)
+        sn = copysign (sqrt (l1qq - w1qq)) w
+        (wD, vD) =  -- choose a more stable (symbolically equiv) version
+          if w1qq >= 0
+          then (w + sp, v * (1 + w / sp))
+          else (w * (1 + v / sn), v + sn)
+        c = atan2 vD wD / v
+        arg = 0.5 * log (wD*wD + vD*vD)
     {-# INLINE atanh #-}
-    atanh q = 0.5 * log' (sigVec q) ((1+q)/(1-q))
+    -- atanh q = 0.5 * log ( (1 + q) / (1 - q) )
+    atanh (unpackQ# -> (# x, y, z, w #))
+      | v2 ==  0  = packQ x y z (atanh w)
+      | w  ==  1  = packQ 0 0 0 (1/0)
+      | w  == -1  = packQ 0 0 0 (-1/0)
+      | otherwise = packQ (x*c) (y*c) (z*c) arg
+      where
+        v2 = (x * x) + (y * y) + (z * z)
+        v = sqrt v2
+        w2 = w*w
+        q2 = w2 + v2
+        w' = abs w - 1
+        c  = 0.5 * atan2 (2*v) (1 - q2) / v
+        arg = negateUnless (w >= 0)
+            $ 0.25 * (log (1 + q2 + 2 * abs w) - log (v2 + w'*w'))
 
 -- If q is negative real, provide a fallback axis to align log.
 log' :: Vec3f -> QFloat -> QFloat
@@ -472,23 +500,19 @@ log' r (unpackQ# -> (# x, y, z, w #))
 -- If q is negative real, provide a fallback axis to align sqrt.
 sqrt' :: Vec3f -> QFloat -> QFloat
 sqrt' r (unpackQ# -> (# x, y, z, w #))
-  = case (x * x) + (y * y) + (z * z) of
-    0.0 | w >= 0
-          -> packQ 0.0 0.0 0.0 (sqrt w)
-        | Vec3 rx ry rz <- r
-        , sw <- sqrt (negate w)
-          -> packQ (sw*rx) (sw*ry) (sw*rz) 0
-    mv2 ->
-      let mq = 0.5 * sqrt (mv2 + w * w)
-          tq = 0.5 * w
-          c = sqrt $ (mq - tq) / mv2
-      in packQ (x * c) (y * c) (z * c) (sqrt (mq + tq))
-
-sigVec :: QFloat -> Vec3f
-sigVec (unpackQ# -> (# x, y, z, _ #))
-  = case sqrt ((x * x) + (y * y) + (z * z)) of
-      0 -> vec3 1 0 0
-      l -> vec3 (x/l) (y/l) (z/l)
+  | v2 == 0 && w >= 0
+    = packQ x y z (sqrt w)
+  | v2 == 0
+  , Vec3 rx ry rz <- r
+  , sw <- sqrt (negate w)
+    = packQ (sw*rx) (sw*ry) (sw*rz) 0
+  | otherwise
+    = packQ (x * c) (y * c) (z * c) arg
+  where
+    v2 = (x * x) + (y * y) + (z * z)
+    mq = sqrt (v2 + w * w)
+    arg = sqrt $ 0.5 * if w >= 0 then mq + w else v2 / (mq - w)
+    c = 0.5 / arg
 
 instance Eq QFloat where
     {-# INLINE (==) #-}

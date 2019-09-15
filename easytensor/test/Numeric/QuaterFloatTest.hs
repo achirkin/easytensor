@@ -13,7 +13,7 @@ type T = Float
 
 -- Extra factor for compensating too strict Epsilon.
 extraTolerance :: T
-extraTolerance = 10
+extraTolerance = 2
 
 -- | Some non-linear function are very unstable;
 --   it would be a downting task to determine the uncertainty precisely.
