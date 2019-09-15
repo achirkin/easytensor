@@ -89,9 +89,7 @@ luSolveR ::
        forall t (n :: Nat) (ds :: [Nat])
      . (MatrixLU t n, Dimensions ds)
     => LU t n -> DataFrame t (n :+ ds) -> DataFrame t (n :+ ds)
-luSolveR LU {..} b
-  | Dict <- inferKnownBackend @_ @t @(n :+ ds)
-  = runST $ do
+luSolveR LU {..} b = runST $ do
     xPtr <- thawDataFrame (luPerm %* b) -- NB: wasting resources!
     solveLowerTriangularR luLower xPtr
     solveUpperTriangularR luUpper xPtr
@@ -107,7 +105,6 @@ luSolveL LU {..} b
   , dds <- dims @ds
   , Dims <- Snoc dds dn
   , Dict <- Dict @(SnocList ds n _)
-  , Dict <- inferKnownBackend @_ @t @(ds +: n)
   = runST $ do
     xPtr <- thawDataFrame b
     solveUpperTriangularL xPtr luUpper

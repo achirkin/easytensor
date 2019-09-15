@@ -399,15 +399,13 @@ instance IODataFrameDimKind XNat where
                            . PrimBytes t
                           => IODataFrame t ns -> IO (DataFrame t ns)
     unsafeFreezeDataFrame (XIOFrame (a :: IODataFrame t as))
-      | Dict <- inferKnownBackend @_ @t @as
-        = XFrame <$> unsafeFreezeDataFrame a
+      = XFrame <$> unsafeFreezeDataFrame a
     {-# INLINE unsafeFreezeDataFrame #-}
     freezeDataFrame :: forall (t :: Type) (ns :: [XNat])
                      . PrimBytes t
                     => IODataFrame t ns -> IO (DataFrame t ns)
     freezeDataFrame (XIOFrame (a :: IODataFrame t as))
-      | Dict <- inferKnownBackend @_ @t @as
-        = XFrame <$> freezeDataFrame a
+      = XFrame <$> freezeDataFrame a
     {-# INLINE freezeDataFrame #-}
     thawDataFrame :: forall (t :: Type) (ns :: [XNat])
                    . PrimBytes t

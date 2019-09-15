@@ -31,8 +31,6 @@ sortBy :: forall (k :: Type) (n :: k) (t :: Type) (ns :: [k])
        -> DataFrame t (n ': ns)
 sortBy cmp df = case dimKind @k of
     DimNat -> runST $ do
-      Dict <- pure $ inferKnownBackend @_ @t @ns
-      Dict <- pure $ inferKnownBackend @_ @t @(n ': ns)
       mdf <- thawDataFrame df
       sortByInplace
         (\x y -> cmp <$> unsafeFreezeDataFrame x <*> unsafeFreezeDataFrame y)

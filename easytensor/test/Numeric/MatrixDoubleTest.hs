@@ -27,9 +27,7 @@ dropW (Vec4 x y z _) = Vec3 x y z
 matNormPInf :: forall t (n :: Nat) (m :: Nat)
              . (KnownDim n, KnownDim m, PrimBytes t, Ord t, Num t)
             => Matrix t n m -> Scalar t
-matNormPInf
-  | Dict <- inferKnownBackend @_ @t @'[m]
-  = ewfoldl @t @'[n] @'[m]
+matNormPInf = ewfoldl @t @'[n] @'[m]
       (\a -> max a . ewfoldl @t @'[m] @'[] (\e -> (e+) . abs) 0) 0
 
 prop_detTranspose :: SomeSquareMatrix AnyMatrix TestElem -> Property

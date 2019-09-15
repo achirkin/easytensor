@@ -25,8 +25,7 @@ validateLU :: forall (t :: Type) (n :: Nat)
              . ( KnownDim n, RealFloatExtras t, Show t
                , MatrixDeterminant t n)
             => Matrix t n n -> LU t n -> Property
-validateLU x lux@LU {..}
-  | Dict <- inferKnownBackend @_ @t @'[n] =
+validateLU x lux@LU {..} =
     counterexample
       (unlines
         [ "failed luPerm m =~= luLower %* luUpper:"
@@ -86,11 +85,8 @@ manualMats = join
       ]
   where
     mkM :: Dim n -> [t] -> SomeSquareMatrix AnyMatrix t
-    mkM (d@D :: Dim n)
-      | Dict <- inferKnownBackend @_ @t @'[n]
-      , Dict <- inferKnownBackend @_ @t @'[n, n]
-        = SSM . fromFlatList (d :* d :* U) 0
-    mkM _ = error "manualMats: bad dims"
+    mkM (d@D :: Dim n) = SSM . fromFlatList (d :* d :* U) 0
+    mkM _              = error "manualMats: bad dims"
     variants :: Num a => [a] -> [[a]]
     variants as = rotateList as ++ rotateList (map negate as)
 

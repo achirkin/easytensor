@@ -22,13 +22,11 @@ import Test.QuickCheck
 
 
 validateQR :: forall (t :: Type) (n :: Nat) (m :: Nat)
-             . ( KnownDim n, KnownDim m, KnownDim (Min n m)
+             . ( KnownDim n, KnownDim m
                , RealFloatExtras t, Show t
                )
             => Matrix t n m -> QR t n m -> Property
-validateQR x q@QR {..}
-  | Dict <- inferKnownBackend @_ @t @'[Min n m]
-  , Dict <- inferKnownBackend @_ @t @'[m] =
+validateQR x q@QR {..} =
     counterexample
       (unlines
         [ "failed m =~= qrQ %* qrR:"
@@ -60,13 +58,11 @@ validateQR x q@QR {..}
     x'  = qrQ %* qrR
 
 validateLQ :: forall (t :: Type) (n :: Nat) (m :: Nat)
-             . ( KnownDim n, KnownDim m, KnownDim (Min n m)
+             . ( KnownDim n, KnownDim m
                , RealFloatExtras t, Show t
                )
             => Matrix t n m -> LQ t n m -> Property
-validateLQ x q@LQ {..}
-  | Dict <- inferKnownBackend @_ @t @'[Min n m]
-  , Dict <- inferKnownBackend @_ @t @'[n] =
+validateLQ x q@LQ {..} =
     counterexample
       (unlines
         [ "failed m =~= lqL %* lqQ:"

@@ -28,9 +28,7 @@ validateSVD :: forall (t :: Type) (n :: Nat) (m :: Nat)
                )
             => t -> Matrix t n m -> SVD t n m -> Property
 validateSVD extraTolerance x s@SVD {..}
-  | Dict <- inferKnownBackend @_ @t @'[Min n m]
-  , Dict <- inferKnownBackend @_ @t @'[m]
-  , nm <- fromIntegral $ dimVal' @n * dimVal' @m =
+  | nm <- fromIntegral $ dimVal' @n * dimVal' @m =
     counterexample
       (unlines
         [ "failed m =~= u %* asDiag s %* transpose v:"

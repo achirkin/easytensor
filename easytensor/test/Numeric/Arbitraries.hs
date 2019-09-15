@@ -170,18 +170,7 @@ instance (RealFloatExtras t, Show t, Quaternion t) => Approx t (Quater t) where
 
 instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
       => Arbitrary (DataFrame t (ds :: [Nat])) where
-    arbitrary
-        | -- First, we need to find out exact array implementation to use
-          -- inside this DataFrame.
-          -- We need to do that whenever exact value of ds is not known
-          Dict <- inferKnownBackend @_ @t @ds
-          -- After that, GHC can infer all necessary fancy things like SubSpace
-          -- to do complex operations on sub-dimensions of a DataFrame.
-          --
-          -- Note, we could put SubSpace into constraints of this instance as well.
-          -- That would render the above lines unnecessary, but would make
-          -- inference more difficult later.
-        = do
+    arbitrary = do
         full <- (1 < ) <$> choose (1, fromScalarChanceFactor)
         zeroChance <- choose (0, 8)
         if full -- I want to check fromScalar code path sometimes
@@ -195,16 +184,12 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
           then return 0
           else scalar <$> arbitrary
     shrink df
-        | Dict <- inferKnownBackend @_ @t @ds
-        , mma <- ewfoldMap @t @ds @'[] @ds
+        | Just (Max ma) <- ewfoldMap @t @ds @'[] @ds
             ((\x -> if x == 0 then Nothing else Just (Max x)) . abs) df
-        = case mma of
-            Nothing
-              -> [] -- all-zero is the most primitive DF possible
-            Just (Max ma)
-             -> [ ewmap (\x -> if abs x == ma then 0 else x) df
-                , ewmap (scalar . withAbs . unScalar) df
-                ]
+           = [ ewmap (\x -> if abs x == ma then 0 else x) df
+             , ewmap (scalar . withAbs . unScalar) df
+             ]
+        | otherwise = []
             where
               withAbs :: t -> t
               withAbs x
@@ -215,9 +200,7 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
 
 instance (RealFloatExtras t, Show t, Dimensions ds)
        => Approx t (DataFrame t (ds :: [Nat])) where
-    approxEq
-      | Dict <- inferKnownBackend @_ @t @ds
-        = approxEqDF
+    approxEq = approxEqDF
 
 approxEqDF ::
        forall t (ds :: [Nat])
@@ -307,15 +290,8 @@ instance (KnownDim m, Arbitrary (Dims xs)) => Arbitrary (Dims (XN m ': xs)) wher
 instance (Arbitrary t, PrimBytes t, Num t, Ord t)
       => Arbitrary (SomeDataFrame t) where
     arbitrary = do
-      -- Generate random dimension list
-      SomeDims ds <- removeDims <$> arbitrary
-      --  and pattern-match against it with Dims pattern.
-      --  This gives Dimensions ds evidence immediately.
-      case ds of
-        -- We also need to figure out an array implementation...
-        (Dims :: Dims ds) -> case inferKnownBackend @_ @t @ds of
-          -- ... and generating a random DataFrame becomes a one-liner
-          Dict -> SomeDataFrame <$> arbitrary @(DataFrame t ds)
+      SomeDims (Dims :: Dims ds) <- removeDims <$> arbitrary
+      SomeDataFrame <$> arbitrary @(DataFrame t ds)
     shrink (SomeDataFrame df) = SomeDataFrame <$> shrink df
 
 -- All same as above, just change constraints a bit
@@ -334,10 +310,8 @@ instance ( Arbitrary t, PrimBytes t, Num t, Ord t
          , Arbitrary (Dims xs), All KnownXNatType xs, BoundedDims xs)
       => Arbitrary (DataFrame t (xs :: [XNat])) where
     arbitrary = do
-      ds <- reduceDims <$> arbitrary @(Dims xs)
-      case ds of
-        XDims (_ :: Dims ds) -> case inferKnownBackend @_ @t @ds of
-          Dict -> XFrame <$> arbitrary @(DataFrame t ds)
+      XDims (_ :: Dims ds) <- reduceDims <$> arbitrary @(Dims xs)
+      XFrame <$> arbitrary @(DataFrame t ds)
     shrink (XFrame df) = XFrame <$> shrink df
 
 instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
@@ -394,10 +368,8 @@ instance (Show t, PrimBytes t) => Show (SomeSquareMatrix prop t) where
 instance (Arbitrary t, PrimBytes t, Num t, Ord t)
       => Arbitrary (SomeSquareMatrix AnyMatrix t) where
     arbitrary = do
-      dx <- arbitrary @(Dim (XN 2))
-      case dx of
-        Dx (D :: Dim n) -> case inferKnownBackend @_ @t @'[n] of
-          Dict -> SSM <$> arbitrary @(DataFrame t '[n,n])
+      Dx (D :: Dim n) <- arbitrary @(Dim (XN 2))
+      SSM <$> arbitrary @(DataFrame t '[n,n])
     shrink (SSM df)= SSM <$> shrink df
 
 instance (Arbitrary t, PrimBytes t, Num t, Ord t)

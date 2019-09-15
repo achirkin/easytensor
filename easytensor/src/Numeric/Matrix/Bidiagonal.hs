@@ -39,7 +39,6 @@ biDiag :: forall (t :: Type) (n :: Nat) (m :: Nat)
        -> Matrix t n m
 biDiag (dn@D :* dm@D :* U) a b = runST $ do
     dnm@D <- pure $ minDim dn dm
-    Dict <- pure $ inferKnownBackend @_ @t @'[Min n m]
     rPtr <- thawDataFrame 0
     forM_ [0 .. dimVal dnm - 1] $ \i -> do
       writeDataFrame rPtr (Idx i :* Idx i :* U) $ a ! i
@@ -87,7 +86,6 @@ bidiagonalHouseholder ::
     -> BiDiag t n m
 bidiagonalHouseholder a = runST $ do
       D <- pure $ minDim (dim @n) (dim @m)
-      Dict <- pure $ inferKnownBackend @_ @t @'[Min n m]
       tmpNPtr <- newDataFrame
       tmpMPtr <- newDataFrame
       uPtr <- thawDataFrame eye

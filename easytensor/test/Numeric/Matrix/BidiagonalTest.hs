@@ -21,15 +21,13 @@ import Numeric.Matrix.Bidiagonal
 import Test.QuickCheck
 
 validateBidiagonal :: forall (t :: Type) (n :: Nat) (m :: Nat)
-             . ( KnownDim n, KnownDim m, KnownDim (Min n m)
+             . ( KnownDim n, KnownDim m
                , RealFloatExtras t, Show t
                , MatrixDeterminant t n
                , MatrixDeterminant t m
                )
             => Matrix t n m -> BiDiag t n m -> Property
-validateBidiagonal a BiDiag {..}
-  | Dict <- inferKnownBackend @_ @t @'[Min n m]
-  , Dict <- inferKnownBackend @_ @t @'[m] =
+validateBidiagonal a BiDiag {..} =
     counterexample
       (unlines
         [ "failed a ~==~ u %* b %* transpose v:"

@@ -54,6 +54,7 @@ module Numeric.DataFrame.Type
   ) where
 
 
+import           Control.Arrow                   (second, (***))
 import           Data.Data
 import           Data.Proxy                      (Proxy)
 import           Data.Semigroup                  hiding (All, Min)
@@ -1036,14 +1037,15 @@ constrainDF (XFrame (df :: DataFrame ts ns))
 --   This may cause some obscure type errors.
 --   Specify type parameters @n@ and @m@ explicitly or make sure the result type is fixed.
 asDiag :: forall (n :: Nat) (m :: Nat) (ds :: [Nat]) (t :: Type)
-        . (Dimensions ds, KnownDim n, KnownDim m, PrimBytes t)
+        . ( Dimensions ds, KnownDim n, KnownDim m
+          , KnownBackend t (Min n m :+ ds)
+          , KnownBackend t (n :+ m :+ ds)
+          , PrimBytes t)
        => DataFrame t (Min n m :+ ds)
        -> DataFrame t (n :+ m :+ ds)
 asDiag x
   | elemSize <- byteSize @t undefined
   , dMinNM@D <- minDim (D @n) (D @m)
-  , Dict <- inferKnownBackend @_ @t @(Min n m ': ds)
-  , Dict <- inferKnownBackend @_ @t @(n :+ m :+ ds)
   , xba <- getBytes x
   , ds <- dims @ds
   , steps@(CumulDims (elemsNR:_:elemsNE:_)) <- cumulDims (D @n :* D @m :* ds)
@@ -1258,6 +1260,275 @@ instance G.Generic (DataFrame (ts :: [Type]) (ds :: [Nat])) where
     to (G.M1 (G.R1 xxs))
       | Dict <- unsafeEqTypes @[Type] @ts @(Head ts ': Tail ts)
       , G.M1 (G.M1 (G.K1 x) G.:*: G.M1 (G.K1 xs)) <- xxs = x :*: xs
+
+
+
+instance (AllFrames Eq ts ds, AllFrames Ord ts ds)
+      => Ord (DataFrame (ts :: [Type]) ds) where
+    compare Z Z                   = EQ
+    compare (a :*: as) (b :*: bs) = compare a b <> compare as bs
+
+
+withFixedDF1 :: forall (l :: Type) (ts :: l) (xns :: [XNat])
+                       (rep :: RuntimeRep) (r :: TYPE rep)
+              . xns ~ Map 'N (DimsBound xns)
+             => ( forall (ns :: [Nat])
+               . ( KnownXNatTypes xns, FixedDims xns ns
+                 , Dimensions ns
+                 , KnownBackends ts ns
+                 , ns ~ DimsBound xns
+                 , xns ~ Map 'N ns
+                 ) => DataFrame ts ns -> r
+              ) -> DataFrame ts xns -> r
+withFixedDF1 f (XFrame (df :: DataFrame ts ds))
+  | Dict <- unsafeCoerce# (Dict @(ds ~ ds)) :: Dict (ds ~ DimsBound xns)
+    = f df
+{-# INLINE withFixedDF1 #-}
+
+withFixedDF2 :: forall (l :: Type) (ts :: l) (xns :: [XNat])
+                       (rep :: RuntimeRep) (r :: TYPE rep)
+              . xns ~ Map 'N (DimsBound xns)
+             => ( forall (ns :: [Nat])
+               . ( KnownXNatTypes xns, FixedDims xns ns
+                 , Dimensions ns
+                 , KnownBackends ts ns
+                 , ns ~ DimsBound xns
+                 , xns ~ Map 'N ns
+                 ) => DataFrame ts ns -> DataFrame ts ns -> r
+              ) -> DataFrame ts xns -> DataFrame ts xns -> r
+withFixedDF2 f (XFrame (a :: DataFrame ts as)) (XFrame (b :: DataFrame ts bs))
+  | Dict <- unsafeCoerce# (Dict @(as ~ as, bs ~ bs))
+               :: Dict (as ~ DimsBound xns, bs ~ DimsBound xns)
+    = f a b
+{-# INLINE withFixedDF2 #-}
+
+
+iAmFixed :: forall (xns :: [XNat])
+          . xns ~ Map 'N (DimsBound xns)
+         => Dims (DimsBound xns)
+         -> Dict (All KnownXNatType xns, FixedDims xns (DimsBound xns))
+iAmFixed U = Dict
+iAmFixed (D :* (ds :: Dims ns'))
+  | Dict <- iAmFixed @(Map 'N ns') ds = Dict
+
+instance ( xns ~ Map 'N (DimsBound xns)
+         , Eq (DataFrame ts xns)
+         , Ord (DataFrame ts (DimsBound xns))
+         ) => Ord (DataFrame (ts :: l) (xns :: [XNat])) where
+    compare = withFixedDF2 compare
+    (>=) = withFixedDF2 (>=)
+    (<=) = withFixedDF2 (<=)
+    (>)  = withFixedDF2 (>)
+    (<)  = withFixedDF2 (<)
+    min  = withFixedDF2 ((.) XFrame . min)
+    max  = withFixedDF2 ((.) XFrame . max)
+
+instance ( BoundedDims xns
+         , xns ~ Map 'N (DimsBound xns)
+         , KnownBackends ts (DimsBound xns)
+         , Num (DataFrame ts (DimsBound xns))
+         ) => Num (DataFrame (ts :: l) (xns :: [XNat])) where
+    (+) = withFixedDF2 ((.) XFrame . (+))
+    (-) = withFixedDF2 ((.) XFrame . (-))
+    (*) = withFixedDF2 ((.) XFrame . (*))
+    negate = withFixedDF1 (XFrame . negate)
+    abs    = withFixedDF1 (XFrame . abs)
+    signum = withFixedDF1 (XFrame . signum)
+    fromInteger i
+      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+        = XFrame (fromInteger i ::  DataFrame ts (DimsBound xns))
+
+instance ( BoundedDims xns
+         , xns ~ Map 'N (DimsBound xns)
+         , KnownBackends ts (DimsBound xns)
+         , Fractional (DataFrame ts (DimsBound xns))
+         ) => Fractional (DataFrame (ts :: l) (xns :: [XNat])) where
+    (/) = withFixedDF2 ((.) XFrame . (/))
+    recip = withFixedDF1 (XFrame . recip)
+    fromRational i
+      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+        = XFrame (fromRational i ::  DataFrame ts (DimsBound xns))
+
+instance ( BoundedDims xns
+         , xns ~ Map 'N (DimsBound xns)
+         , KnownBackends ts (DimsBound xns)
+         , Floating (DataFrame ts (DimsBound xns))
+         ) => Floating (DataFrame (ts :: l) (xns :: [XNat])) where
+    pi | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+          = XFrame (pi ::  DataFrame ts (DimsBound xns))
+    exp   = withFixedDF1 (XFrame . exp)
+    log   = withFixedDF1 (XFrame . log)
+    sqrt  = withFixedDF1 (XFrame . sqrt)
+    sin   = withFixedDF1 (XFrame . sin)
+    cos   = withFixedDF1 (XFrame . cos)
+    tan   = withFixedDF1 (XFrame . tan)
+    asin  = withFixedDF1 (XFrame . asin)
+    acos  = withFixedDF1 (XFrame . acos)
+    atan  = withFixedDF1 (XFrame . atan)
+    sinh  = withFixedDF1 (XFrame . sinh)
+    cosh  = withFixedDF1 (XFrame . cosh)
+    tanh  = withFixedDF1 (XFrame . tanh)
+    asinh = withFixedDF1 (XFrame . asinh)
+    acosh = withFixedDF1 (XFrame . acosh)
+    atanh = withFixedDF1 (XFrame . atanh)
+    (**)    = withFixedDF2 ((.) XFrame . (**))
+    logBase = withFixedDF2 ((.) XFrame . logBase)
+
+instance ( xns ~ Map 'N (DimsBound xns)
+         , ProductOrder (DataFrame ts (DimsBound xns))
+         ) => ProductOrder (DataFrame (ts :: l) (xns :: [XNat])) where
+    cmp = withFixedDF2 cmp
+
+instance ( BoundedDims xns
+         , xns ~ Map 'N (DimsBound xns)
+         , KnownBackends ts (DimsBound xns)
+         , Bounded (DataFrame ts (DimsBound xns))
+         ) => Bounded (DataFrame (ts :: l) (xns :: [XNat])) where
+    minBound
+      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+        = XFrame (minBound ::  DataFrame ts (DimsBound xns))
+    maxBound
+      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+        = XFrame (maxBound ::  DataFrame ts (DimsBound xns))
+
+instance ( BoundedDims xns
+         , xns ~ Map 'N (DimsBound xns)
+         , KnownBackends ts (DimsBound xns)
+         , PrimBytes (DataFrame ts (DimsBound xns))
+         ) => PrimBytes (DataFrame (ts :: l) (xns :: [XNat])) where
+    type PrimFields (DataFrame ts xns)
+      = PrimFields (DataFrame ts (DimsBound xns))
+    getBytes = withFixedDF1 getBytes
+    getBytesPinned = withFixedDF1 getBytesPinned
+    fromBytes i ba
+      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+        = XFrame (fromBytes i ba :: DataFrame ts (DimsBound xns))
+    readBytes mba i s0
+      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+      , (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- readBytes mba i s0
+        = (# s1, XFrame a #)
+    writeBytes mba i = withFixedDF1 (writeBytes mba i)
+    readAddr addr s0
+      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+      , (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- readAddr addr s0
+        = (# s1, XFrame a #)
+    writeAddr = withFixedDF1 writeAddr
+    byteSize  _ = byteSize @(DataFrame ts (DimsBound xns)) undefined
+    byteAlign _ = byteAlign @(DataFrame ts (DimsBound xns)) undefined
+    byteOffset = withFixedDF1 byteOffset
+    byteFieldOffset n _
+        = byteFieldOffset @(DataFrame ts (DimsBound xns)) n undefined
+    indexArray ba i
+      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+        = XFrame (indexArray ba i :: DataFrame ts (DimsBound xns))
+    readArray mba i s0
+      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+      , (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- readArray mba i s0
+        = (# s1, XFrame a #)
+    writeArray mba i = withFixedDF1 (writeArray mba i)
+
+instance ( BoundedDims xns
+         , xns ~ Map 'N (DimsBound xns)
+         , KnownBackend t (DimsBound xns)
+         , PrimArray t (DataFrame t (DimsBound xns))
+         , PrimBytes t
+         ) => PrimArray t (DataFrame t (xns :: [XNat])) where
+    broadcast
+      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+        = XFrame . (broadcast :: t -> DataFrame t (DimsBound xns))
+    ix# i = withFixedDF1 (ix# i)
+    gen# cd f s0
+      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+      , (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- gen# cd f s0
+        = (# s1, XFrame a #)
+    upd# cd i t = withFixedDF1 (XFrame . upd# cd i t)
+    arrayContent# = withFixedDF1 arrayContent#
+    offsetElems = withFixedDF1 offsetElems
+    uniqueOrCumulDims = withFixedDF1 uniqueOrCumulDims
+    fromElems cd i ba
+     | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+       = XFrame (fromElems cd i ba :: DataFrame t (DimsBound xns))
+
+
+-- The following instance only make sense on scalars.
+
+instance ( Enum (DataFrame ts ('[] :: [Nat]))
+         , KnownBackends ts ('[] :: [Nat])
+         ) => Enum (DataFrame (ts :: l) ('[] :: [XNat])) where
+    succ (XFrame x) = XFrame (succ x)
+    pred (XFrame x) = XFrame (pred x)
+    toEnum  = XFrame . toEnum
+    fromEnum (XFrame x) = fromEnum x
+    enumFrom (XFrame x) = map XFrame $ enumFrom x
+    enumFromThen   (XFrame x) (XFrame y) = map XFrame $ enumFromThen x y
+    enumFromTo     (XFrame x) (XFrame y) = map XFrame $ enumFromTo x y
+    enumFromThenTo (XFrame x) (XFrame y) (XFrame z)
+      = map XFrame $ enumFromThenTo x y z
+
+instance ( Epsilon (DataFrame ts ('[] :: [Nat]))
+         , KnownBackends ts ('[] :: [Nat])
+         , Eq (DataFrame ts ('[] :: [XNat]))
+         ) => Epsilon (DataFrame (ts :: l) ('[] :: [XNat])) where
+    epsilon = XFrame epsilon
+
+instance ( Real (DataFrame ts ('[] :: [Nat]))
+         , KnownBackends ts ('[] :: [Nat])
+         , Eq (DataFrame ts ('[] :: [XNat]))
+         ) => Real (DataFrame (ts :: l) ('[] :: [XNat])) where
+    toRational (XFrame x) = toRational x
+
+instance ( Integral (DataFrame ts ('[] :: [Nat]))
+         , KnownBackends ts ('[] :: [Nat])
+         , Eq (DataFrame ts ('[] :: [XNat]))
+         ) => Integral (DataFrame (ts :: l) ('[] :: [XNat])) where
+    quot (XFrame x) (XFrame y) = XFrame (quot x y)
+    rem (XFrame x) (XFrame y) = XFrame (rem x y)
+    div (XFrame x) (XFrame y) = XFrame (div x y)
+    mod (XFrame x) (XFrame y) = XFrame (mod x y)
+    quotRem (XFrame x) (XFrame y) = (XFrame *** XFrame) (quotRem x y)
+    divMod (XFrame x) (XFrame y) = (XFrame *** XFrame) (divMod x y)
+    toInteger (XFrame x) = toInteger x
+
+instance ( RealExtras (DataFrame t ('[] :: [Nat]))
+         , KnownBackend t ('[] :: [Nat])
+         , Eq t
+         ) => RealExtras (DataFrame (t :: Type) ('[] :: [XNat])) where
+    copysign (XFrame x) (XFrame y) = XFrame (copysign x y)
+
+instance ( RealFrac (DataFrame t ('[] :: [Nat]))
+         , KnownBackend t ('[] :: [Nat])
+         , Eq t
+         ) => RealFrac (DataFrame (t :: Type) ('[] :: [XNat])) where
+    properFraction (XFrame x) = second XFrame (properFraction x)
+    truncate (XFrame x) = truncate x
+    round (XFrame x) = round x
+    ceiling (XFrame x) = ceiling x
+    floor (XFrame x) = floor x
+
+instance ( RealFloat (DataFrame t ('[] :: [Nat]))
+         , KnownBackend t ('[] :: [Nat])
+         , Eq t
+         ) => RealFloat (DataFrame (t :: Type) ('[] :: [XNat])) where
+    floatRadix  = const (floatRadix  @(DataFrame t ('[] :: [Nat])) undefined)
+    floatDigits = const (floatDigits @(DataFrame t ('[] :: [Nat])) undefined)
+    floatRange  = const (floatRange  @(DataFrame t ('[] :: [Nat])) undefined)
+    decodeFloat (XFrame x) = decodeFloat x
+    encodeFloat i = XFrame . encodeFloat i
+    exponent (XFrame x) = exponent x
+    significand (XFrame x) = XFrame (significand x)
+    scaleFloat i (XFrame x) = XFrame (scaleFloat i x)
+    isNaN (XFrame x) = isNaN x
+    isInfinite (XFrame x) = isInfinite x
+    isDenormalized (XFrame x) = isDenormalized x
+    isNegativeZero (XFrame x) = isNegativeZero x
+    isIEEE (XFrame x) = isIEEE x
+    atan2 (XFrame y) (XFrame x) = XFrame (atan2 y x)
+
+instance ( RealFloatExtras (DataFrame t ('[] :: [Nat]))
+         , KnownBackend t ('[] :: [Nat])
+         , Eq t
+         ) => RealFloatExtras (DataFrame (t :: Type) ('[] :: [XNat])) where
+    hypot (XFrame x) (XFrame y) = XFrame (hypot x y)
 
 
 
