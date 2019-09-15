@@ -382,15 +382,13 @@ instance STDataFrameDimKind XNat where
                            . PrimBytes t
                           => STDataFrame s t ns -> ST s (DataFrame t ns)
     unsafeFreezeDataFrame (XSTFrame (a :: STDataFrame s t as))
-      | Dict <- inferKnownBackend @_ @t @as
-        = XFrame <$> unsafeFreezeDataFrame a
+      = XFrame <$> unsafeFreezeDataFrame a
     {-# INLINE unsafeFreezeDataFrame #-}
     freezeDataFrame :: forall (t :: Type) (ns :: [XNat]) s
                      . PrimBytes t
                     => STDataFrame s t ns -> ST s (DataFrame t ns)
     freezeDataFrame (XSTFrame (a :: STDataFrame s t as))
-      | Dict <- inferKnownBackend @_ @t @as
-        = XFrame <$> freezeDataFrame a
+      = XFrame <$> freezeDataFrame a
     {-# INLINE freezeDataFrame #-}
     thawDataFrame :: forall (t :: Type) (ns :: [XNat]) s
                    . PrimBytes t

@@ -22,16 +22,9 @@ import Test.QuickCheck
 
 arbitraryTriangular ::
        forall (n :: Nat) (m :: Nat)
-     . (KnownDim n, KnownDim m)
-    => Bool -> Gen (DataFrame Double '[n,m])
-arbitraryTriangular
-  | Dict <- inferKnownBackend @_ @Double @'[m] = arbitraryTriangular' @n @m
-
-arbitraryTriangular' ::
-       forall (n :: Nat) (m :: Nat)
      . (KnownDim n, KnownDim m, KnownBackend Double '[m])
     => Bool -> Gen (DataFrame Double '[n,m])
-arbitraryTriangular' upper = iwmap f <$> arbitrary
+arbitraryTriangular upper = iwmap f <$> arbitrary
   where
     f :: Idxs '[n] -> DataFrame Double '[m] -> DataFrame Double '[m]
     f (Idx i :* U) x = iwmap g x
@@ -51,11 +44,7 @@ testSolveUpperTriangularR ::
     -> DataFrame Double  (n :+ ds) -- ^ b
     -> Property
 testSolveUpperTriangularR r b
-  | Dict <- inferKnownBackend @_ @Double @'[n]
-  , Dict <- inferKnownBackend @_ @Double @'[m]
-  , Dict <- inferKnownBackend @_ @Double @(n :+ ds)
-  , Dict <- inferKnownBackend @_ @Double @(m :+ ds)
-  , dn <- dim @n
+  | dn <- dim @n
   , dm <- dim @m
   , di@D <- dn `minusDim` dm `plusDim` D1
   , i0 <- (Idx 0 :* U) `inSpaceOf` (di :* U)
@@ -92,8 +81,7 @@ prop_SolveUpperTriangularR = property run
                          else removeDimsAbove 100 <$> arbitrary
       r <- arbitraryTriangular @n @m True
       b' <- arbitrary @(DataFrame Double (n :+ ds))
-      let b | Dict <- inferKnownBackend @_ @Double @(n :+ ds)
-            = iwmap @_ @(n ': ds) @'[]
+      let b = iwmap @_ @(n ': ds) @'[]
                 (\(Idx i :* _) x -> if i >= dimVal m then 0 else x) b'
       return $ testSolveUpperTriangularR r b
 
@@ -113,11 +101,6 @@ testSolveUpperTriangularL b r
   , Dict <- Dict @(SnocList ds n _)
   , Dict <- Dict @(SnocList ds m _)
   , Just Dict <- sameDim dn (plusDim dm dnm)
-  , Dict <- inferKnownBackend @_ @Double @'[n]
-  , Dict <- inferKnownBackend @_ @Double @'[m]
-  , Dict <- inferKnownBackend @_ @Double @'[n - m]
-  , Dict <- inferKnownBackend @_ @Double @(ds +: n)
-  , Dict <- inferKnownBackend @_ @Double @(ds +: m)
     = let padZeroes :: DataFrame Double (ds +: m) -> DataFrame Double (ds +: n)
           padZeroes = ewmap @_ @ds @'[n] $ \a -> appendDF a (0 `inSpaceOf` (dnm :* U))
           x :: DataFrame Double (ds +: n)
@@ -162,14 +145,9 @@ testSolveLowerTriangularR ::
     -> DataFrame Double  (n :+ ds) -- ^ b
     -> Property
 testSolveLowerTriangularR l b
-  | Dict <- inferKnownBackend @_ @Double @'[n]
-  , Dict <- inferKnownBackend @_ @Double @'[m]
-  , Dict <- inferKnownBackend @_ @Double @(n :+ ds)
-  , Dict <- inferKnownBackend @_ @Double @(m :+ ds)
-  , dn <- dim @n
+  | dn <- dim @n
   , dm <- dim @m
   , dmn@D <- dm `minusDim` dn
-  , Dict <- inferKnownBackend @_ @Double @((m-n) :+ ds)
   , Just Dict <- sameDim dm (dn `plusDim` dmn)
     = let padZeroes :: DataFrame Double (n :+ ds) -> DataFrame Double (m :+ ds)
           padZeroes z = appendDF z (0 :: DataFrame Double ((m-n) :+ ds))
@@ -224,11 +202,6 @@ testSolveLowerTriangularL b l
   , Dict <- inferConcat @Nat @ds @'[m] @(ds +: m)
   , Dict <- inferConcat @Nat @ds @'[n] @(ds +: n)
   , Just Dict <- sameDim dm (plusDim dn dmn)
-  , Dict <- inferKnownBackend @_ @Double @'[n]
-  , Dict <- inferKnownBackend @_ @Double @'[m]
-  , Dict <- inferKnownBackend @_ @Double @'[m - n]
-  , Dict <- inferKnownBackend @_ @Double @(ds +: n)
-  , Dict <- inferKnownBackend @_ @Double @(ds +: m)
   , di@D <- dm `minusDim` dn `plusDim` D1
   , i0 <- (Idx 0 :* U) `inSpaceOf` (di :* U)
   , Just Dict <- sameDim (plusDim dm D1) (plusDim di dn)
@@ -264,8 +237,6 @@ prop_SolveLowerTriangularL = property run
                          else removeDimsAbove 100 <$> arbitrary
       Dims <- pure $ Snoc ds m
       Dict <- pure $ Dict @(SnocList ds m _)
-      Dict <- pure $ inferKnownBackend @_ @Double @(ds +: m)
-      Dict <- pure $ inferKnownBackend @_ @Double @'[m]
       l <- arbitraryTriangular @n @m False
       b' <- arbitrary @(DataFrame Double (ds +: m))
       let b = ewmap @_ @ds @'[m]

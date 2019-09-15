@@ -12,8 +12,7 @@ module Numeric.Matrix.Internal.Float () where
 
 import qualified Control.Monad.ST        as ST
 import qualified Numeric.DataFrame.ST    as ST
-import           Numeric.DataFrame.Type  (inferKnownBackend)
-import           Numeric.Dimensions      (Dict (..), KnownDim)
+import           Numeric.Dimensions      (KnownDim)
 import           Numeric.Matrix.Internal
 import           Numeric.Matrix.LU
 import           Numeric.Scalar.Internal
@@ -194,9 +193,7 @@ instance HomTransform4 Float where
     | otherwise = vec3 (x/w) (y/w) (z/w)
 
 instance KnownDim n => MatrixInverse Float n where
-    inverse
-      | Dict <- inferKnownBackend @_ @Float @'[n]
-      = inverseViaLU
+    inverse = inverseViaLU
 
 instance KnownDim n => MatrixDeterminant Float n where
     det = detViaLU

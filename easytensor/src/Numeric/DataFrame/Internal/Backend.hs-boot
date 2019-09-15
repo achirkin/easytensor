@@ -1,11 +1,16 @@
-{-# LANGUAGE CPP              #-}
-{-# LANGUAGE ConstraintKinds  #-}
-{-# LANGUAGE DataKinds        #-}
-{-# LANGUAGE ExplicitForAll   #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE PolyKinds        #-}
-{-# LANGUAGE RoleAnnotations  #-}
-{-# LANGUAGE TypeOperators    #-}
+{-# LANGUAGE CPP                   #-}
+{-# LANGUAGE ConstraintKinds       #-}
+{-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE ExplicitForAll        #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds             #-}
+{-# LANGUAGE RoleAnnotations       #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 #if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
 {-# OPTIONS_GHC -fno-warn-simplifiable-class-constraints #-}
 #endif
@@ -40,7 +45,10 @@ type DFBackend (t :: Type) (ds :: [Nat]) = Backend I t ds (BackendFamily t ds)
 -- | Backend resolver:
 --   Use this constraint to find any class instances defined for all DataFrame implementations,
 --   e.g. @Num@, @PrimBytes@, etc.
-type KnownBackend (t :: Type) (ds :: [Nat]) = Impl.KnownBackend t ds (BackendFamily t ds)
+class Impl.KnownBackend t ds (BackendFamily t ds)
+   => KnownBackend (t :: Type) (ds :: [Nat])
+instance Impl.KnownBackend t ds (BackendFamily t ds)
+   => KnownBackend (t :: Type) (ds :: [Nat])
 
 -- | A newtype wrapper for all DataFrame implementations.
 --   I need two layers of wrappers to provide default overlappable instances to

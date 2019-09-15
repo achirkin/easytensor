@@ -382,7 +382,7 @@ instance Floating QDouble where
           in packQ (x * l) (y * l) (z * l) (cht * sht * cq)
     {-# INLINE asin #-}
     -- The original formula:
-    -- asinh q = -i * log (i*q + sqrt (1 - q*q))
+    -- asin q = -i * log (i*q + sqrt (1 - q*q))
     -- below is a more numerically stable version.
     asin (unpackQ# -> (# x, y, z, w #))
       | v2 == 0   = if w2 <= 1

@@ -135,9 +135,7 @@ qrSolveR ::
        forall t (n :: Nat) (m :: Nat) (ds :: [Nat])
      . (MatrixQR t n m, Dimensions ds)
     => Matrix t n m -> DataFrame t (n :+ ds) -> DataFrame t (m :+ ds)
-qrSolveR a b
-  | Dict <- inferKnownBackend @_ @t @(n :+ ds)
-  , Dict <- inferKnownBackend @_ @t @(m :+ ds) = case compareDim dn dm of
+qrSolveR a b = case compareDim dn dm of
   SEQ | Dict <- (unsafeCoerce (Dict @(m ~ m)) :: Dict (m ~ n))
         -> runST $ do
     let QR {..} = qr a
@@ -159,7 +157,6 @@ qrSolveR a b
       , Dict <- unsafeCoerce (Dict @(n ~ n)) :: Dict ((((m - n) + 1) + n) ~ (m + 1))
       , Dict <- unsafeCoerce (Dict @(n ~ n)) :: Dict (((n + 1) + (m - n)) ~ (m + 1))
       , dd@D <- minusDim dm dn
-      , Dict <- inferKnownBackend @_ @t @((m-n) :+ ds)
       , D <- dd `plusDim` D1
       , D <- dn `plusDim` D1
         -> runST $ do

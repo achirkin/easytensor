@@ -2,6 +2,7 @@
 {-# LANGUAGE ConstraintKinds       #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds             #-}
 {-# LANGUAGE RoleAnnotations       #-}
@@ -9,6 +10,7 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
+{-# LANGUAGE UndecidableInstances  #-}
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 #if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
 {-# OPTIONS_GHC -fno-warn-simplifiable-class-constraints #-}
@@ -55,7 +57,10 @@ type DFBackend (t :: Type) (ds :: [Nat]) = Backend I t ds (BackendFamily t ds)
 -- | Backend resolver:
 --   Use this constraint to find any class instances defined for all DataFrame implementations,
 --   e.g. @Num@, @PrimBytes@, etc.
-type KnownBackend (t :: Type) (ds :: [Nat]) = Impl.KnownBackend t ds (BackendFamily t ds)
+class Impl.KnownBackend t ds (BackendFamily t ds)
+   => KnownBackend (t :: Type) (ds :: [Nat])
+instance Impl.KnownBackend t ds (BackendFamily t ds)
+   => KnownBackend (t :: Type) (ds :: [Nat])
 
 -- | A newtype wrapper for all DataFrame implementations.
 --   I need two layers of wrappers to provide default overlappable instances to
@@ -70,7 +75,7 @@ type instance DeriveContext (Backend I t ds b) = b ~ BackendFamily t ds
 -- because @b@ is always always a concrete type.
 -- The "dynamic instances" derived via ToInstance have to be incoherent,
 -- because @BackendFamily t ds@ as a type family (before resolving it)
---  is no more conrete than just @b@.
+--  is no more concrete than just @b@.
 {-# ANN type Backend (DeriveAll' NoOverlap ["KnownBackend"]) #-}
 
 
@@ -80,7 +85,8 @@ inferKnownBackend
    . (PrimBytes t, Dimensions ds)
   => Dict (KnownBackend t ds)
 inferKnownBackend
-  = Impl.inferKnownBackend @t @ds @(BackendFamily t ds)
+  = case Impl.inferKnownBackend @t @ds @(BackendFamily t ds) of
+      Dict -> Dict
 
 inferPrimElem
   :: forall (t :: Type) (d :: Nat) (ds :: [Nat])

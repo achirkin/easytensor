@@ -408,7 +408,6 @@ instance {-# INCOHERENT #-}
          => MatrixSVD t n m where
     svd a = runST $ do
       D <- pure dnm
-      Dict <- pure $ inferKnownBackend @_ @t @'[Min n m]
       Dict <- pure $ minIsSmaller dn dm -- GHC is not convinced :(
       alphas <- unsafeThawDataFrame bdAlpha
       betas <- unsafeThawDataFrame bdBeta

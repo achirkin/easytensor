@@ -14,6 +14,8 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeInType             #-}
 {-# LANGUAGE TypeOperators          #-}
+-- Combined GADT patterns are a bit of a trouble
+{-# OPTIONS_GHC -fno-warn-overlapping-patterns #-}
 -- Constraints @b ~ BackendFamily t ds@ is not redundant; they allows to avoid AllowAmbigousTypes.
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 {- |
@@ -99,33 +101,37 @@ class KnownBackend (t :: Type) (ds :: [Nat]) (backend :: Type) where
 #if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
 instance KnownBackend t ds b where bSing = undefined
 #else
-instance KnownBackend t      '[]  (ScalarBase t)   where bSing = BSC
-instance KnownBackend Float  '[2]  FloatX2         where bSing = BF2
-instance KnownBackend Float  '[3]  FloatX3         where bSing = BF3
-instance KnownBackend Float  '[4]  FloatX4         where bSing = BF4
-instance KnownBackend Double '[2]  DoubleX2        where bSing = BD2
-instance KnownBackend Double '[3]  DoubleX3        where bSing = BD3
-instance KnownBackend Double '[4]  DoubleX4        where bSing = BD4
+instance KnownBackend t      '[]  (ScalarBase t)   where bSing = BSC; {-# INLINE bSing #-}
+instance KnownBackend Float  '[2]  FloatX2         where bSing = BF2; {-# INLINE bSing #-}
+instance KnownBackend Float  '[3]  FloatX3         where bSing = BF3; {-# INLINE bSing #-}
+instance KnownBackend Float  '[4]  FloatX4         where bSing = BF4; {-# INLINE bSing #-}
+instance KnownBackend Double '[2]  DoubleX2        where bSing = BD2; {-# INLINE bSing #-}
+instance KnownBackend Double '[3]  DoubleX3        where bSing = BD3; {-# INLINE bSing #-}
+instance KnownBackend Double '[4]  DoubleX4        where bSing = BD4; {-# INLINE bSing #-}
 instance PrimBytes t
       => KnownBackend t       ds  (ArrayBase t ds) where
     bSing = case unsafeDefault @t @ds of Dict -> BPB
+    {-# INLINE bSing #-}
+instance {-# INCOHERENT #-}
+         (PrimBytes t, Dimensions ds, b ~ BackendFamily t ds)
+      => KnownBackend t ds b where
+    bSing = case (dims @ds, primTag @t undefined) of
+      (U, _)                -> BSC
+      (D2 :* U, PTagFloat)  -> BF2
+      (D3 :* U, PTagFloat)  -> BF3
+      (D4 :* U, PTagFloat)  -> BF4
+      (D2 :* U, PTagDouble) -> BD2
+      (D3 :* U, PTagDouble) -> BD3
+      (D4 :* U, PTagDouble) -> BD4
+      _                     -> case unsafeDefault @t @ds of Dict -> BPB
+    {-# INLINE bSing #-}
 #endif
 
 -- | Find an instance of `KnownBackend` class using `PrimBytes` and `Dimensions`.
 inferKnownBackend :: forall t ds b
                   . (PrimBytes t, Dimensions ds, b ~ BackendFamily t ds)
                   => Dict (KnownBackend t ds b)
-inferKnownBackend = case (dims @ds, primTag @t undefined) of
-  (U, _) -> Dict
-  (d :* U, PTagFloat)
-      | Just Dict <- sameDim (D @2) d -> Dict
-      | Just Dict <- sameDim (D @3) d -> Dict
-      | Just Dict <- sameDim (D @4) d -> Dict
-  (d :* U, PTagDouble)
-      | Just Dict <- sameDim (D @2) d -> Dict
-      | Just Dict <- sameDim (D @3) d -> Dict
-      | Just Dict <- sameDim (D @4) d -> Dict
-  _ -> case unsafeDefault @t @ds of Dict -> Dict
+inferKnownBackend = Dict
 {-# INLINE inferKnownBackend #-}
 
 
