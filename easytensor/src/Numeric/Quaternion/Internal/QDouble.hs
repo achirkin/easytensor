@@ -492,9 +492,9 @@ log' r (unpackQ# -> (# x, y, z, w #))
            -> packQ 0.0 0.0 0.0 (log w)
         | Vec3 rx ry rz <- r
            ->  packQ (pi*rx) (pi*ry) (pi*rz) (log (negate w))
-    mv2 -> case (# sqrt (mv2 + (w * w)), sqrt mv2 #) of
-      (# mq, mv #) -> case atan2 mv w / mv of
-        l -> packQ (x * l) (y * l) (z * l) (log mq)
+    mv2 -> case (# mv2 + w * w, sqrt mv2 #) of
+      (# q2, mv #) -> case atan2 mv w / mv of
+        l -> packQ (x * l) (y * l) (z * l) (0.5 * log q2)
 
 
 -- If q is negative real, provide a fallback axis to align sqrt.
