@@ -43,7 +43,7 @@ import Numeric.Vector.Internal
 --   * det svdU == 1
 --
 --   NB: <https://en.wikipedia.org/wiki/Singular_value_decomposition SVD on wiki>
-data SVD t n m
+data SVD (t :: Type) (n :: Nat) (m :: Nat)
   = SVD
   { svdU :: Matrix t n n
     -- ^ Left-singular basis matrix

@@ -72,7 +72,7 @@ reduceDims' l nns@(n :* ns)
   | totalDim nns * l <= maxTotalDim = nns
   | otherwise = case n of
       Dn d -> n :* reduceDims' (l * dimVal d) ns
-      (Dx d :: Dim xn) -> case compareDim (dimBound @XNat @xn) D2 of
+      (Dx d :: Dim xn) -> case compareDim (dimBound @xn) D2 of
         SLT -> Dx D2 :* reduceDims' (l * 2) ns
         SEQ -> Dx D2 :* reduceDims' (l * 2) ns
         SGT -> n :* reduceDims' (l * dimVal d) ns
@@ -237,7 +237,7 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
     -- SingleFrames are "variables" or "columns" of a MultiFrame that are
     -- independent byte arrays bounded by a common dimensions type signature.
     arbitrary = -- Use RepresentableList to find out how many columns are there.
-                case tList @_ @ts of
+                case tList @ts of
         -- Zero columns, empty MultiFrame
         U -> return Z
         -- Cons-like construction.
@@ -262,7 +262,7 @@ instance KnownDim a => Arbitrary (Dim (N a)) where
 instance KnownDim m => Arbitrary (Dim (XN m)) where
     arbitrary = do
       dimN <- choose (dimVal' @m, maxDims)
-      case constrainDim @XNat @(XN m) (someDimVal dimN) of
+      case constrainDim @(XN m) (someDimVal dimN) of
         Nothing -> error "impossible argument"
         Just d  -> return d
     shrink _ = []
@@ -301,7 +301,7 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
     arbitrary = do
       SomeDims ds <- removeDims <$> arbitrary
       case ds of
-        (Dims :: Dims ds) -> case inferKnownBackend @_ @ts @ds of
+        (Dims :: Dims ds) -> case inferKnownBackend @ts @ds of
           Dict -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
     shrink (SomeDataFrame df) = SomeDataFrame <$> shrink df
 
@@ -321,23 +321,36 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
     arbitrary = do
       ds <- reduceDims <$> arbitrary @(Dims xs)
       case ds of
-        XDims (_ :: Dims ds) -> case inferKnownBackend @_ @ts @ds of
+        XDims (_ :: Dims ds) -> case inferKnownBackend @ts @ds of
           Dict -> XFrame <$> arbitrary @(DataFrame ts ds)
     shrink (XFrame df) = XFrame <$> shrink df
 
 
-instance KnownDim n => Arbitrary (Idx n) where
+instance KnownDim n => Arbitrary (Idx (n :: Nat)) where
     arbitrary = elements [0..]
 
-instance Dimensions ns => Arbitrary (Idxs ns) where
-    arbitrary = go (Dims @ns)
+instance KnownDim n => Arbitrary (Idx (N n)) where
+    arbitrary = elements [0..]
+
+instance Dimensions ns => Arbitrary (Idxs (ns :: [Nat])) where
+    arbitrary = go (dims @ns)
       where
         go :: forall (bs :: [Nat]) . Dims bs -> Gen (Idxs bs)
         go U         = pure U
         go (D :* bs) = (:*) <$> arbitrary <*> go bs
 
+instance Dimensions ns => Arbitrary (Idxs (ns :: [XNat])) where
+    arbitrary = withKnownXDims @ns $ go (dims @ns)
+      where
+        go :: forall (bs :: [XNat])
+            . bs ~ Map 'N (DimsBound bs)
+           => Dims bs -> Gen (Idxs bs)
+        go U            = pure U
+        go (Dn D :* bs) = (:*) <$> arbitrary <*> go bs
+
+
 instance (RepresentableList xs, All Arbitrary xs) => Arbitrary (ST.Tuple xs) where
-    arbitrary = go (tList @Type @xs)
+    arbitrary = go (tList @xs)
       where
         go :: forall (bs :: [Type])
             . All Arbitrary bs
@@ -346,7 +359,7 @@ instance (RepresentableList xs, All Arbitrary xs) => Arbitrary (ST.Tuple xs) whe
         go (_ :* bs) = (ST.:$) <$> arbitrary <*> go bs
 
 instance (RepresentableList xs, All Arbitrary xs) => Arbitrary (LT.Tuple xs) where
-    arbitrary = go (tList @Type @xs)
+    arbitrary = go (tList @xs)
       where
         go :: forall (bs :: [Type])
             . All Arbitrary bs

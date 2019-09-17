@@ -23,6 +23,9 @@
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE ViewPatterns               #-}
+#ifdef UNSAFE_INDICES
+{-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
+#endif
 {- |
   The core @easytensor@ types.
  -}
@@ -38,7 +41,7 @@ module Numeric.DataFrame.Type
   , DataFrame ( SingleFrame, MultiFrame, XFrame, (:*:), Z
               , S, DF2, DF3, DF4, DF5, DF6, DF7, DF8, DF9)
 #endif
-  , IndexFrame (..)
+  , IndexFrame (..), SubFrameIndexCtx
     -- * Flexible assembling and disassembling
   , PackDF, packDF, unpackDF
   , appendDF, consDF, snocDF
@@ -46,7 +49,7 @@ module Numeric.DataFrame.Type
   , constrainDF, asDiag
     -- * Infer type class instances
   , KnownBackend (), DFBackend, KnownBackends
-  , InferKnownBackend (..), inferPrimElem
+  , InferKnownBackend (), inferKnownBackend, inferPrimElem
     -- * Re-exports
   , Dim (..), Idx (), XNat (..), N, XN, Dims, Idxs, TypedList (..)
   , PrimBytes (), bSizeOf, bAlignOf, bFieldOffsetOf
@@ -144,15 +147,15 @@ type family KnownBackends (ts :: l) (ns :: [Nat]) :: Constraint where
 
 -- | Allow inferring @KnownBackends@ if you know the dimensions and the element types.
 class InferKnownBackend (t :: k) (ds :: [Nat]) where
-    -- Infer @KnownBackends@ if you know the dimensions and the element types.
-    inferKnownBackend :: Dict (KnownBackends t ds)
+    -- | Infer @KnownBackends@ if you know the dimensions and the element types.
+    inferKnownBackendI :: Dict (KnownBackends t ds)
 
 instance (PrimBytes t, Dimensions ds) => InferKnownBackend (t :: Type) ds where
-    inferKnownBackend = Backend.inferKnownBackend @t @ds
+    inferKnownBackendI = Backend.inferKnownBackend @t @ds
 
 instance (RepresentableList ts, All PrimBytes ts, Dimensions ds)
       => InferKnownBackend (ts :: [Type]) ds where
-    inferKnownBackend = go (tList @_ @ts)
+    inferKnownBackendI = go (tList @ts)
       where
         go :: forall ss . All PrimBytes ss => TypeList ss -> Dict (KnownBackends ss ds)
         go U = Dict
@@ -160,6 +163,11 @@ instance (RepresentableList ts, All PrimBytes ts, Dimensions ds)
              = case Backend.inferKnownBackend @t @ds of
                  Dict -> case go ts of
                    Dict -> Dict
+
+-- | Infer @KnownBackends@ if you know the dimensions and the element types.
+inferKnownBackend :: forall t (ds :: [Nat])
+                   . InferKnownBackend t ds => Dict (KnownBackends t ds)
+inferKnownBackend = inferKnownBackendI @_ @t @ds
 
 -- | All component data frames must satisfy a given constraint.
 type family AllFrames (f :: Type -> Constraint) (ts :: [Type]) (ds :: [Nat])
@@ -226,7 +234,7 @@ instance PrimBytes t
     {-# INLINE (!) #-}
     (!) (XFrame df) i
       | D :* (Dims :: Dims ns) <- dims `inSpaceOf` df
-      , Dict <- inferKnownBackend @_ @t @ns
+      , Dict <- inferKnownBackend @t @ns
         = XFrame (df ! i)
     (!) _ _ = error "IndexFrame: impossible pattern"
 
@@ -245,9 +253,19 @@ instance (RepresentableList ts, All PrimBytes ts)
         getTsEvs U = Dict
         getTsEvs ((_ :: Proxy a) :* as')
           | Dict <- getTsEvs @_ @d @ds as'
-          , Dict <- inferKnownBackend @_ @a @ds = Dict
+          , Dict <- inferKnownBackend @a @ds = Dict
     (!) _ _ = error "IndexFrame: impossible pattern"
 
+-- | When slicing a @DataFrame@, the index space is bounded by the size of the
+--   original space minus the subframe size.
+type family SubFrameIndexCtx (n :: k) (idxN :: k) (subN :: k) :: Constraint where
+    SubFrameIndexCtx (n :: Nat) idxN subN
+      = (n + 1) ~ (idxN + subN)
+    SubFrameIndexCtx (n :: XNat) idxN subN
+      = ( (DimBound idxN + DimBound subN) ~ (DimBound n + 1)
+        , idxN ~ N (DimBound idxN)
+        , subN ~ N (DimBound subN)
+        )
 
 deriving instance Typeable (DataFrame (t :: l) (xs :: [k]))
 deriving instance ( Data (DataFrame t xs)
@@ -404,7 +422,7 @@ instance (Read t, PrimBytes t, Dimensions ds)
 
 instance (All Read ts, All PrimBytes ts, RepresentableList ts, Dimensions ds)
       => Read (DataFrame (ts :: [Type]) (ds :: [Nat])) where
-    readPrec = readFixedMultiDF (tList @Type @ts) (dims @ds)
+    readPrec = readFixedMultiDF (tList @ts) (dims @ds)
     readList = Read.readListDefault
     readListPrec = Read.readListPrecDefault
 
@@ -412,7 +430,7 @@ instance (Read t, PrimBytes t, BoundedDims ds, All KnownXNatType ds)
       => Read (DataFrame (t :: Type) (ds :: [XNat])) where
     readPrec = Read.parens . Read.prec 10 $ do
       Read.lift . Read.expect $ Read.Ident "XFrame"
-      Read.step $ readPrecBoundedDF (minimalDims @XNat @ds)
+      Read.step $ readPrecBoundedDF (minimalDims @ds)
     readList = Read.readListDefault
     readListPrec = Read.readListPrecDefault
 
@@ -421,7 +439,7 @@ instance ( All Read ts, All PrimBytes ts, RepresentableList ts
       => Read (DataFrame (ts :: [Type]) (ds :: [XNat])) where
     readPrec = Read.parens . Read.prec 10 $ do
       Read.lift . Read.expect $ Read.Ident "XFrame"
-      Read.step $ readBoundedMultiDF (tList @Type @ts) (minimalDims @XNat @ds)
+      Read.step $ readBoundedMultiDF (tList @ts) (minimalDims @ds)
     readList = Read.readListDefault
     readListPrec = Read.readListPrecDefault
 
@@ -437,7 +455,7 @@ instance ( All Read ts, All PrimBytes ts, RepresentableList ts )
       => Read (SomeDataFrame (ts :: [Type])) where
     readPrec = Read.parens . Read.prec 10 $ do
       Read.lift . Read.expect $ Read.Ident "SomeDataFrame"
-      Read.step $ readSomeMultiDF (tList @Type @ts)
+      Read.step $ readSomeMultiDF (tList @ts)
     readList = Read.readListDefault
     readListPrec = Read.readListPrecDefault
 
@@ -481,13 +499,13 @@ readPrecBoundedDF :: forall (t :: Type) (ds :: [XNat])
 readPrecBoundedDF U
   = Read.parens . Read.prec 10 $ do
     Read.lift . Read.expect $ Read.Ident "S"
-    case inferKnownBackend @Type @t @'[] of
+    case inferKnownBackend @t @'[] of
       Dict -> XFrame . S <$> Read.step Read.readPrec
 -- DF0 is funny because it will succesfully parse any dimension to the right of it.
 readPrecBoundedDF (Dn D0 :* XDims (Dims :: Dims ns))
   = Read.parens $ do
     Read.lift . Read.expect . Read.Ident $ "DF0"
-    return $ case inferKnownBackend @Type @t @(0 ': ns) of
+    return $ case inferKnownBackend @t @(0 ': ns) of
       Dict -> XFrame @Type @t @ds @(0 ': ns) (packDF @t @0 @ns)
 -- Fixed dimension:
 --  The number of component frames is exactly n
@@ -496,7 +514,7 @@ readPrecBoundedDF (Dn d@(D :: Dim n) :* xns)
   = Read.parens . Read.prec 10 $ do
     Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal d)
     XFrame (x :: DataFrame t ns) <- Read.step $ readPrecBoundedDF @t xns
-    case inferKnownBackend @Type @t @(n ': ns) of
+    case inferKnownBackend @t @(n ': ns) of
       Dict -> fmap XFrame . snd . runDelay $ packDF' @t @n @ns
         (readDelayed $ Read.prec 10 (readPrecFixedDF @t @ns dims))
         (followedBy x)
@@ -516,7 +534,7 @@ readPrecBoundedDF ((Dx (m :: Dim m) :: Dim xm) :* xns)
           D  -> do
             Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal n)
             XFrame (x :: DataFrame t ns) <- Read.prec 10 $ readPrecBoundedDF @t xns
-            case inferKnownBackend @Type @t @(n ': ns) of
+            case inferKnownBackend @t @(n ': ns) of
               Dict -> fmap XFrame . snd . runDelay $ packDF' @t @n @ns
                 (readDelayed $ Read.prec 10 (readPrecFixedDF @t @ns dims))
                 (followedBy x)
@@ -533,7 +551,7 @@ readPrecSomeDF :: forall (t :: Type) . (Read t, PrimBytes t)
 readPrecSomeDF = Read.parens $
     Read.prec 10 (do
       Read.lift . Read.expect $ Read.Ident "S"
-      case inferKnownBackend @Type @t @'[] of
+      case inferKnownBackend @t @'[] of
         Dict -> SomeDataFrame . S <$> Read.readPrec
     )
     Read.+++
@@ -541,12 +559,12 @@ readPrecSomeDF = Read.parens $
        Read.Ident ('D':'F':s)
          | Just (Dx (d :: Dim d)) <- (Read.readMaybe ('D':s) :: Maybe SomeDim)
            -> case d of
-             D0 | Dict <- inferKnownBackend @Type @t @'[0]
+             D0 | Dict <- inferKnownBackend @t @'[0]
                  -> SomeDataFrame <$> readPrecFixedDF @t (D0 :* U)
              _ -> do
                Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal d)
                SomeDataFrame (x :: DataFrame t ds) <- Read.prec 10 $ readPrecSomeDF @t
-               case inferKnownBackend @Type @t @(d ': ds) of
+               case inferKnownBackend @t @(d ': ds) of
                  Dict -> fmap SomeDataFrame . snd . runDelay $ packDF' @t @d @ds
                    (readDelayed $ Read.prec 10 (readPrecFixedDF @t @ds dims))
                    (followedBy x)
@@ -579,7 +597,7 @@ readBoundedMultiDF ((_ :: Proxy t) :* ts@TypeList) ds
     XFrame (x :: DataFrame t ns) <- Read.step $ readPrecBoundedDF @t ds
     Read.lift . Read.expect $ Read.Symbol ":*:"
     xs <- readFixedMultiDF ts (dims @ns)
-    case inferKnownBackend @[Type] @ts @ns of
+    case inferKnownBackend @ts @ns of
       Dict -> return $ XFrame (x :*: xs)
 
 readSomeMultiDF :: forall (ts :: [Type])
@@ -594,7 +612,7 @@ readSomeMultiDF ((_ :: Proxy t) :* ts@TypeList)
     SomeDataFrame (x :: DataFrame t ns) <- Read.step $ readPrecSomeDF @t
     Read.lift . Read.expect $ Read.Symbol ":*:"
     xs <- readFixedMultiDF ts (dims @ns)
-    case inferKnownBackend @[Type] @ts @ns of
+    case inferKnownBackend @ts @ns of
       Dict -> return $ SomeDataFrame (x :*: xs)
 
 -- First element is read separately, enforcing the structure of the rest.
@@ -768,8 +786,8 @@ packDF :: forall (t :: Type) (d :: Nat) (ds :: [Nat])
        => PackDF t ds d (DataFrame t (d ': ds))
 packDF
   | d :* Dims <- dims @(d ': ds)
-  , Dict <- inferKnownBackend @Type @t @(d ': ds)
-  , Dict <- inferKnownBackend @Type @t @ds
+  , Dict <- inferKnownBackend @t @(d ': ds)
+  , Dict <- inferKnownBackend @t @ds
     = go d
   | otherwise = error "Numeric.DataFrame.Type.packDF: impossible args"
   where
@@ -890,8 +908,8 @@ unpackDF' :: forall (rep :: RuntimeRep)
           -> r
 unpackDF' k df
   | d :* Dims <- dims @(d ': ds)
-  , Dict <- inferKnownBackend @Type @t @(d ': ds)
-  , Dict <- inferKnownBackend @Type @t @ds
+  , Dict <- inferKnownBackend @t @(d ': ds)
+  , Dict <- inferKnownBackend @t @ds
     = case arrayContent# df of
         (# x | #)
           | e <- broadcast x
@@ -922,9 +940,9 @@ appendDF :: forall (n :: Nat) (m :: Nat) (ds :: [Nat]) (t :: Type)
         -> DataFrame t ((n + m) :+ ds)
 appendDF
   | D <- D @n `plusDim` D @m
-  , Dict <- inferKnownBackend @Type @t @(n :+ ds)
-  , Dict <- inferKnownBackend @Type @t @(m :+ ds)
-  , Dict <- inferKnownBackend @Type @t @((n + m) :+ ds)
+  , Dict <- inferKnownBackend @t @(n :+ ds)
+  , Dict <- inferKnownBackend @t @(m :+ ds)
+  , Dict <- inferKnownBackend @t @((n + m) :+ ds)
               = unsafeAppendPB
   | otherwise = error "Numeri.DataFrame.Type/appendDF: impossible arguments"
 
@@ -940,9 +958,9 @@ consDF :: forall (n :: Nat) (ds :: [Nat]) (t :: Type)
         -> DataFrame t ((n + 1) :+ ds)
 consDF
   | D <- D @n `plusDim` D1
-  , Dict <- inferKnownBackend @Type @t @(n :+ ds)
-  , Dict <- inferKnownBackend @Type @t @ds
-  , Dict <- inferKnownBackend @Type @t @((n + 1) :+ ds)
+  , Dict <- inferKnownBackend @t @(n :+ ds)
+  , Dict <- inferKnownBackend @t @ds
+  , Dict <- inferKnownBackend @t @((n + 1) :+ ds)
               = unsafeAppendPB
   | otherwise = error "Numeri.DataFrame.Type/consDF: impossible arguments"
 
@@ -958,9 +976,9 @@ snocDF :: forall (n :: Nat) (ds :: [Nat]) (t :: Type)
         -> DataFrame t ((n + 1) :+ ds)
 snocDF
   | D <- D @n `plusDim` D1
-  , Dict <- inferKnownBackend @Type @t @(n :+ ds)
-  , Dict <- inferKnownBackend @Type @t @ds
-  , Dict <- inferKnownBackend @Type @t @((n + 1) :+ ds)
+  , Dict <- inferKnownBackend @t @(n :+ ds)
+  , Dict <- inferKnownBackend @t @ds
+  , Dict <- inferKnownBackend @t @((n + 1) :+ ds)
               = unsafeAppendPB
   | otherwise = error "Numeri.DataFrame.Type/snocDF: impossible arguments"
 
@@ -1004,7 +1022,7 @@ fromList :: forall (t :: Type) (ds :: [Nat])
          => [DataFrame t ds] -> DataFrame t (XN 0 ': AsXDims ds)
 fromList xs
     | Dx (D :: Dim n) <- someDimVal . fromIntegral $ length xs
-    , Dict <- inferKnownBackend @_ @t @(n ': ds)
+    , Dict <- inferKnownBackend @t @(n ': ds)
     , ds@(AsXDims (XDims ds')) <- dims @ds
     , Just Dict <- sameDims ds ds'
       = XFrame (fromListWithDefault @t @n @ds undefined xs)
@@ -1021,7 +1039,7 @@ constrainDF :: forall (ds :: [XNat]) (ys :: [XNat]) (l :: Type) (ts :: l)
             => DataFrame ts ys -> Maybe (DataFrame ts ds)
 constrainDF (XFrame (df :: DataFrame ts ns))
   | ns <- dims @ns
-  = case constrainDims @XNat @ds ns of
+  = case constrainDims @ds ns of
       Just (XDims (Dims :: Dims ms))
         | Dict <- unsafeEqTypes @[Nat] @ns @ms
           -> Just $ XFrame df
@@ -1168,8 +1186,8 @@ fromSingleFrame :: forall (t :: Type) (ds :: [Nat]) (x :: Type)
                 -> SingleFrameRep t ds x
 fromSingleFrame U (S x) = G.M1 . G.M1 $ G.K1 x
 fromSingleFrame (dd@D :* (Dims :: Dims ds')) x
-  | Dict <- inferKnownBackend @Type @t @ds
-  , Dict <- inferKnownBackend @Type @t @ds'
+  | Dict <- inferKnownBackend @t @ds
+  , Dict <- inferKnownBackend @t @ds'
     = G.M1 $ case arrayContent# x of
       (# e | #) -> fillRep @_ @ds' (const $ broadcast e) 0 dd
       (# | (# cdims, off, arr #) #)
@@ -1201,8 +1219,8 @@ toSingleFrame :: forall (t :: Type) (ds :: [Nat]) (x :: Type)
               -> DataFrame t ds
 toSingleFrame U (G.M1 (G.M1 (G.K1 x))) = S x
 toSingleFrame (dd@D :* (Dims :: Dims ds')) (G.M1 rep)
-  | Dict  <- inferKnownBackend @Type @t @ds
-  , Dict  <- inferKnownBackend @Type @t @ds'
+  | Dict  <- inferKnownBackend @t @ds
+  , Dict  <- inferKnownBackend @t @ds'
   , els   <- case dimVal dd of W# w -> word2Int# w
   , asize <- byteSize @(DataFrame t ds') undefined
     = runRW#
@@ -1304,12 +1322,17 @@ withFixedDF2 f (XFrame (a :: DataFrame ts as)) (XFrame (b :: DataFrame ts bs))
 
 
 iAmFixed :: forall (xns :: [XNat])
-          . xns ~ Map 'N (DimsBound xns)
-         => Dims (DimsBound xns)
-         -> Dict (All KnownXNatType xns, FixedDims xns (DimsBound xns))
-iAmFixed U = Dict
-iAmFixed (D :* (ds :: Dims ns'))
-  | Dict <- iAmFixed @(Map 'N ns') ds = Dict
+          . Dimensions xns
+         => Dict (All KnownXNatType xns, FixedDims xns (DimsBound xns))
+iAmFixed = go (dims @xns)
+  where
+    go :: forall (xs :: [XNat])
+        . Dims xs -> Dict (All KnownXNatType xs, FixedDims xs (DimsBound xs))
+    go U = Dict
+    go ((_ :: Dim x) :* ds)
+      | Dict <- unsafeEqTypes @_ @x @(N (DimBound x))
+      , Dict <- go ds = Dict
+
 
 instance ( xns ~ Map 'N (DimsBound xns)
          , Eq (DataFrame ts xns)
@@ -1323,131 +1346,125 @@ instance ( xns ~ Map 'N (DimsBound xns)
     min  = withFixedDF2 ((.) XFrame . min)
     max  = withFixedDF2 ((.) XFrame . max)
 
-instance ( BoundedDims xns
-         , xns ~ Map 'N (DimsBound xns)
+instance ( Dimensions xns
          , KnownBackends ts (DimsBound xns)
          , Num (DataFrame ts (DimsBound xns))
          ) => Num (DataFrame (ts :: l) (xns :: [XNat])) where
-    (+) = withFixedDF2 ((.) XFrame . (+))
-    (-) = withFixedDF2 ((.) XFrame . (-))
-    (*) = withFixedDF2 ((.) XFrame . (*))
-    negate = withFixedDF1 (XFrame . negate)
-    abs    = withFixedDF1 (XFrame . abs)
-    signum = withFixedDF1 (XFrame . signum)
-    fromInteger i
-      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
-        = XFrame (fromInteger i ::  DataFrame ts (DimsBound xns))
+    (+) = withKnownXDims @xns $ withFixedDF2 ((.) XFrame . (+))
+    (-) = withKnownXDims @xns $ withFixedDF2 ((.) XFrame . (-))
+    (*) = withKnownXDims @xns $ withFixedDF2 ((.) XFrame . (*))
+    negate = withKnownXDims @xns $ withFixedDF1 (XFrame . negate)
+    abs    = withKnownXDims @xns $ withFixedDF1 (XFrame . abs)
+    signum = withKnownXDims @xns $ withFixedDF1 (XFrame . signum)
+    fromInteger
+      | Dict <- iAmFixed @xns
+        = withKnownXDims @xns (XFrame . fromInteger @(DataFrame ts (DimsBound xns)))
 
-instance ( BoundedDims xns
-         , xns ~ Map 'N (DimsBound xns)
+instance ( Dimensions xns
          , KnownBackends ts (DimsBound xns)
          , Fractional (DataFrame ts (DimsBound xns))
          ) => Fractional (DataFrame (ts :: l) (xns :: [XNat])) where
-    (/) = withFixedDF2 ((.) XFrame . (/))
-    recip = withFixedDF1 (XFrame . recip)
-    fromRational i
-      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
-        = XFrame (fromRational i ::  DataFrame ts (DimsBound xns))
+    (/) = withKnownXDims @xns $ withFixedDF2 ((.) XFrame . (/))
+    recip = withKnownXDims @xns $ withFixedDF1 (XFrame . recip)
+    fromRational
+      | Dict <- iAmFixed @xns
+        = withKnownXDims @xns (XFrame . fromRational @(DataFrame ts (DimsBound xns)))
 
-instance ( BoundedDims xns
-         , xns ~ Map 'N (DimsBound xns)
+instance ( Dimensions xns
          , KnownBackends ts (DimsBound xns)
          , Floating (DataFrame ts (DimsBound xns))
          ) => Floating (DataFrame (ts :: l) (xns :: [XNat])) where
-    pi | Dict <- iAmFixed @xns (dimsBound @_ @xns)
-          = XFrame (pi ::  DataFrame ts (DimsBound xns))
-    exp   = withFixedDF1 (XFrame . exp)
-    log   = withFixedDF1 (XFrame . log)
-    sqrt  = withFixedDF1 (XFrame . sqrt)
-    sin   = withFixedDF1 (XFrame . sin)
-    cos   = withFixedDF1 (XFrame . cos)
-    tan   = withFixedDF1 (XFrame . tan)
-    asin  = withFixedDF1 (XFrame . asin)
-    acos  = withFixedDF1 (XFrame . acos)
-    atan  = withFixedDF1 (XFrame . atan)
-    sinh  = withFixedDF1 (XFrame . sinh)
-    cosh  = withFixedDF1 (XFrame . cosh)
-    tanh  = withFixedDF1 (XFrame . tanh)
-    asinh = withFixedDF1 (XFrame . asinh)
-    acosh = withFixedDF1 (XFrame . acosh)
-    atanh = withFixedDF1 (XFrame . atanh)
-    (**)    = withFixedDF2 ((.) XFrame . (**))
-    logBase = withFixedDF2 ((.) XFrame . logBase)
+    pi | Dict <- iAmFixed @xns
+          = withKnownXDims @xns $ XFrame (pi :: DataFrame ts (DimsBound xns))
+    exp   = withKnownXDims @xns $ withFixedDF1 (XFrame . exp)
+    log   = withKnownXDims @xns $ withFixedDF1 (XFrame . log)
+    sqrt  = withKnownXDims @xns $ withFixedDF1 (XFrame . sqrt)
+    sin   = withKnownXDims @xns $ withFixedDF1 (XFrame . sin)
+    cos   = withKnownXDims @xns $ withFixedDF1 (XFrame . cos)
+    tan   = withKnownXDims @xns $ withFixedDF1 (XFrame . tan)
+    asin  = withKnownXDims @xns $ withFixedDF1 (XFrame . asin)
+    acos  = withKnownXDims @xns $ withFixedDF1 (XFrame . acos)
+    atan  = withKnownXDims @xns $ withFixedDF1 (XFrame . atan)
+    sinh  = withKnownXDims @xns $ withFixedDF1 (XFrame . sinh)
+    cosh  = withKnownXDims @xns $ withFixedDF1 (XFrame . cosh)
+    tanh  = withKnownXDims @xns $ withFixedDF1 (XFrame . tanh)
+    asinh = withKnownXDims @xns $ withFixedDF1 (XFrame . asinh)
+    acosh = withKnownXDims @xns $ withFixedDF1 (XFrame . acosh)
+    atanh = withKnownXDims @xns $ withFixedDF1 (XFrame . atanh)
+    (**)    = withKnownXDims @xns $ withFixedDF2 ((.) XFrame . (**))
+    logBase = withKnownXDims @xns $ withFixedDF2 ((.) XFrame . logBase)
 
 instance ( xns ~ Map 'N (DimsBound xns)
          , ProductOrder (DataFrame ts (DimsBound xns))
          ) => ProductOrder (DataFrame (ts :: l) (xns :: [XNat])) where
     cmp = withFixedDF2 cmp
 
-instance ( BoundedDims xns
-         , xns ~ Map 'N (DimsBound xns)
+instance ( Dimensions xns
          , KnownBackends ts (DimsBound xns)
          , Bounded (DataFrame ts (DimsBound xns))
          ) => Bounded (DataFrame (ts :: l) (xns :: [XNat])) where
     minBound
-      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
-        = XFrame (minBound ::  DataFrame ts (DimsBound xns))
+      | Dict <- iAmFixed @xns
+        = withKnownXDims @xns (XFrame (minBound :: DataFrame ts (DimsBound xns)))
     maxBound
-      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
-        = XFrame (maxBound ::  DataFrame ts (DimsBound xns))
+      | Dict <- iAmFixed @xns
+        = withKnownXDims @xns (XFrame (maxBound :: DataFrame ts (DimsBound xns)))
 
-instance ( BoundedDims xns
-         , xns ~ Map 'N (DimsBound xns)
+instance ( Dimensions xns
          , KnownBackends ts (DimsBound xns)
          , PrimBytes (DataFrame ts (DimsBound xns))
          ) => PrimBytes (DataFrame (ts :: l) (xns :: [XNat])) where
     type PrimFields (DataFrame ts xns)
       = PrimFields (DataFrame ts (DimsBound xns))
-    getBytes = withFixedDF1 getBytes
-    getBytesPinned = withFixedDF1 getBytesPinned
+    getBytes = withKnownXDims @xns $ withFixedDF1 getBytes
+    getBytesPinned = withKnownXDims @xns $ withFixedDF1 getBytesPinned
     fromBytes i ba
-      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
-        = XFrame (fromBytes i ba :: DataFrame ts (DimsBound xns))
+      | Dict <- iAmFixed @xns
+        = withKnownXDims @xns (XFrame (fromBytes i ba :: DataFrame ts (DimsBound xns)))
     readBytes mba i s0
-      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+      | Dict <- iAmFixed @xns
       , (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- readBytes mba i s0
-        = (# s1, XFrame a #)
-    writeBytes mba i = withFixedDF1 (writeBytes mba i)
+        = (# s1, withKnownXDims @xns (XFrame a) #)
+    writeBytes mba i = withKnownXDims @xns $ withFixedDF1 (writeBytes mba i)
     readAddr addr s0
-      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+      | Dict <- iAmFixed @xns
       , (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- readAddr addr s0
-        = (# s1, XFrame a #)
-    writeAddr = withFixedDF1 writeAddr
-    byteSize  _ = byteSize @(DataFrame ts (DimsBound xns)) undefined
-    byteAlign _ = byteAlign @(DataFrame ts (DimsBound xns)) undefined
-    byteOffset = withFixedDF1 byteOffset
+        = (# s1, withKnownXDims @xns (XFrame a) #)
+    writeAddr = withKnownXDims @xns $ withFixedDF1 writeAddr
+    byteSize  _ = withKnownXDims @xns (byteSize @(DataFrame ts (DimsBound xns)) undefined)
+    byteAlign _ = withKnownXDims @xns (byteAlign @(DataFrame ts (DimsBound xns)) undefined)
+    byteOffset  = withKnownXDims @xns (withFixedDF1 byteOffset)
     byteFieldOffset n _
-        = byteFieldOffset @(DataFrame ts (DimsBound xns)) n undefined
+        = withKnownXDims @xns (byteFieldOffset @(DataFrame ts (DimsBound xns)) n undefined)
     indexArray ba i
-      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
-        = XFrame (indexArray ba i :: DataFrame ts (DimsBound xns))
+      | Dict <- iAmFixed @xns
+        = withKnownXDims @xns (XFrame (indexArray ba i :: DataFrame ts (DimsBound xns)))
     readArray mba i s0
-      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
+      | Dict <- iAmFixed @xns
       , (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- readArray mba i s0
-        = (# s1, XFrame a #)
-    writeArray mba i = withFixedDF1 (writeArray mba i)
+        = (# s1, withKnownXDims @xns (XFrame a) #)
+    writeArray mba i = withKnownXDims @xns (withFixedDF1 (writeArray mba i))
 
-instance ( BoundedDims xns
-         , xns ~ Map 'N (DimsBound xns)
+instance ( Dimensions xns
          , KnownBackend t (DimsBound xns)
          , PrimArray t (DataFrame t (DimsBound xns))
          , PrimBytes t
          ) => PrimArray t (DataFrame t (xns :: [XNat])) where
     broadcast
-      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
-        = XFrame . (broadcast :: t -> DataFrame t (DimsBound xns))
-    ix# i = withFixedDF1 (ix# i)
+      | Dict <- iAmFixed @xns
+        = withKnownXDims @xns (XFrame . broadcast @t @(DataFrame t (DimsBound xns)))
+    ix# i = withKnownXDims @xns (withFixedDF1 (ix# i))
     gen# cd f s0
-      | Dict <- iAmFixed @xns (dimsBound @_ @xns)
-      , (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- gen# cd f s0
-        = (# s1, XFrame a #)
-    upd# cd i t = withFixedDF1 (XFrame . upd# cd i t)
-    arrayContent# = withFixedDF1 arrayContent#
-    offsetElems = withFixedDF1 offsetElems
-    uniqueOrCumulDims = withFixedDF1 uniqueOrCumulDims
+      | Dict <- iAmFixed @xns
+      , (# s1, (a  :: DataFrame t (DimsBound xns)) #) <- gen# cd f s0
+        = (# s1, withKnownXDims @xns (XFrame a) #)
+    upd# cd i t = withKnownXDims @xns (withFixedDF1 (XFrame . upd# cd i t))
+    arrayContent# = withKnownXDims @xns (withFixedDF1 arrayContent#)
+    offsetElems = withKnownXDims @xns (withFixedDF1 offsetElems)
+    uniqueOrCumulDims = withKnownXDims @xns (withFixedDF1 uniqueOrCumulDims)
     fromElems cd i ba
-     | Dict <- iAmFixed @xns (dimsBound @_ @xns)
-       = XFrame (fromElems cd i ba :: DataFrame t (DimsBound xns))
+     | Dict <- iAmFixed @xns
+       = withKnownXDims @xns (XFrame (fromElems cd i ba :: DataFrame t (DimsBound xns)))
 
 
 -- The following instance only make sense on scalars.

@@ -32,7 +32,7 @@ import Numeric.Subroutine.SolveTriangular
 
 -- | Result of LU factorization with Partial Pivoting
 --   \( PA = LU \).
-data LU t n
+data LU (t :: Type) (n :: Nat)
   = LU
   { luLower   :: Matrix t n n
     -- ^ Unit lower triangular matrix \(L\).

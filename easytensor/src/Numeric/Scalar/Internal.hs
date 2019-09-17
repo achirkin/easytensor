@@ -12,10 +12,10 @@ module Numeric.Scalar.Internal
     ) where
 
 
-import Data.Type.Lits             (Nat)
-import GHC.Base                   (unsafeCoerce#)
-import Numeric.DataFrame.SubSpace (SubSpace (ewgen))
-import Numeric.DataFrame.Type     (DataFrame, pattern S)
+import Data.Type.Lits                       (Nat)
+import GHC.Base                             (unsafeCoerce#)
+import Numeric.DataFrame.Internal.PrimArray (PrimArray (broadcast))
+import Numeric.DataFrame.Type               (DataFrame, pattern S)
 
 -- | Alias for zero-dimensional DataFrame
 type Scalar t = DataFrame t ('[] :: [Nat])
@@ -37,7 +37,7 @@ scalar = unsafeCoerce#
 {-# INLINE scalar #-}
 
 -- | Broadcast scalar value onto a whole data frame
-fromScalar :: SubSpace t ds '[] ds
-           => Scalar t -> DataFrame t ds
-fromScalar = ewgen
+fromScalar :: PrimArray t (DataFrame t ds)
+           => Scalar t -> DataFrame t (ds :: [Nat])
+fromScalar = broadcast . unScalar
 {-# INLINE fromScalar #-}

@@ -97,14 +97,14 @@ unsafeIdxFromWord w
               $ "idxFromWord{" ++ showIdxType @k @d ++ "}: word "
               ++ show w ++ " is outside of index bounds."
   where
-    d = dimVal (dimBound @k @d)
+    d = dimVal (dimBound @d)
 #endif
 {-# INLINE unsafeIdxFromWord #-}
 
 -- | Convert an arbitrary Word to @Idx@.
-idxFromWord :: forall (k :: Type) (d :: k) . BoundedDim d => Word -> Maybe (Idx d)
+idxFromWord :: forall d . BoundedDim d => Word -> Maybe (Idx d)
 idxFromWord w
-  | w < dimVal (dimBound @k @d) = Just (coerce w)
+  | w < dimVal (dimBound @d) = Just (coerce w)
   | otherwise                   = Nothing
 {-# INLINE idxFromWord #-}
 
@@ -125,9 +125,8 @@ listIdxs = unsafeCoerce#
 
 -- | /O(n)/ Convert a plain list of words into an @Idxs@, while checking
 --   the index bounds.
-idxsFromWords :: forall (k :: Type) (xs :: [k])
-               . BoundedDims xs => [Word] -> Maybe (Idxs xs)
-idxsFromWords = unsafeCoerce# . go (listDims (dimsBound @k @xs))
+idxsFromWords :: forall xs . BoundedDims xs => [Word] -> Maybe (Idxs xs)
+idxsFromWords = unsafeCoerce# . go (listDims (dimsBound @xs))
   where
     go :: [Word] -> [Word] -> Maybe [Word]
     go [] [] = Just []
@@ -140,7 +139,7 @@ idxsFromWords = unsafeCoerce# . go (listDims (dimsBound @k @xs))
 instance BoundedDim x => Read (Idx (x :: k)) where
     readPrec = do
       w <- P.readPrec
-      if w < dimVal (dimBound @k @x)
+      if w < dimVal (dimBound @x)
       then return (Idx' w)
       else P.pfail
     readList = P.readListDefault
@@ -152,7 +151,7 @@ instance Show (Idx (x :: k)) where
 instance BoundedDim n => Bounded (Idx (n :: k)) where
     minBound = 0
     {-# INLINE minBound #-}
-    maxBound = coerce (dimVal(dimBound @k @n)  - 1)
+    maxBound = coerce (dimVal(dimBound @n)  - 1)
     {-# INLINE maxBound #-}
 
 instance BoundedDim n => Enum (Idx (n :: k)) where
@@ -182,7 +181,7 @@ instance BoundedDim n => Enum (Idx (n :: k)) where
         | i >= 0 && i' < d = coerce i'
         | otherwise        = toEnumError (showIdxType @k @n) i (0, d - 1)
       where
-        d  = dimVal (dimBound @k @n)
+        d  = dimVal (dimBound @n)
         i' = fromIntegral i
 #endif
     {-# INLINE toEnum #-}
@@ -199,12 +198,12 @@ instance BoundedDim n => Enum (Idx (n :: k)) where
     {-# INLINE fromEnum #-}
 
     enumFrom (Idx' n)
-      = coerce (enumFromTo n (dimVal (dimBound @k @n) - 1))
+      = coerce (enumFromTo n (dimVal (dimBound @n) - 1))
     {-# INLINE enumFrom #-}
     enumFromThen (Idx' n0) (Idx' n1)
       = coerce (enumFromThenTo n0 n1 lim)
       where
-        lim = if n1 >= n0 then dimVal (dimBound @k @n) - 1 else 0
+        lim = if n1 >= n0 then dimVal (dimBound @n) - 1 else 0
     {-# INLINE enumFromThen #-}
     enumFromTo
       = coerce (enumFromTo :: Word -> Word -> [Word])
@@ -228,7 +227,7 @@ instance BoundedDim n => Num (Idx (n :: k)) where
       where
         (ovf, r) = case plusWord2# a# b# of
           (# r2#, r1# #) -> ( W# r2# > 0 , W# r1# )
-        d = dimVal (dimBound @k @n)
+        d = dimVal (dimBound @n)
 #endif
     {-# INLINE (+) #-}
 
@@ -258,7 +257,7 @@ instance BoundedDim n => Num (Idx (n :: k)) where
       where
         (ovf, r) = case timesWord2# a# b# of
           (# r2#, r1# #) -> ( W# r2# > 0 , W# r1# )
-        d = dimVal (dimBound @k @n)
+        d = dimVal (dimBound @n)
 #endif
     {-# INLINE (*) #-}
 
@@ -279,7 +278,7 @@ instance BoundedDim n => Num (Idx (n :: k)) where
                         $ "Num.fromInteger{" ++ showIdxType @k @n ++ "}: integer "
                         ++ show i ++ " is outside of index bounds."
       where
-        d = toInteger $ dimVal (dimBound @k @n)
+        d = toInteger $ dimVal (dimBound @n)
 #endif
     {-# INLINE fromInteger #-}
 
@@ -311,7 +310,7 @@ instance Show (Idxs (xs :: [k])) where
     showsPrec = typedListShowsPrec @k @Idx @xs showsPrec
 
 instance BoundedDims xs => Read (Idxs (xs :: [k])) where
-    readPrec = typedListReadPrec @k @BoundedDim ":*" P.readPrec (tList @k @xs)
+    readPrec = typedListReadPrec @k @BoundedDim ":*" P.readPrec (tList @xs)
     readList = P.readListDefault
     readListPrec = P.readListPrecDefault
 
@@ -334,13 +333,13 @@ instance BoundedDim n => Num (Idxs '[(n :: k)]) where
     {-# INLINE fromInteger #-}
 
 instance BoundedDims ds => Bounded (Idxs (ds :: [k])) where
-    maxBound = f (minimalDims @k @ds)
+    maxBound = f (minimalDims @ds)
       where
         f :: forall (ns :: [k]) . Dims ns -> Idxs ns
         f U         = U
         f (d :* ds) = coerce (dimVal d - 1) :* f ds
     {-# INLINE maxBound #-}
-    minBound = f (minimalDims @k @ds)
+    minBound = f (minimalDims @ds)
       where
         f :: forall (ns :: [k]) . Dims ns -> Idxs ns
         f U         = U
@@ -476,7 +475,7 @@ instance Dimensions ds => Enum (Idxs (ds :: [Nat])) where
 
 -- | Show type of Idx (for displaying nice errors).
 showIdxType :: forall (k :: Type) (x :: k) . BoundedDim x => String
-showIdxType = "Idx " ++ show (dimVal (dimBound @k @x))
+showIdxType = "Idx " ++ show (dimVal (dimBound @x))
 
 -- | Show type of Idxs (for displaying nice errors).
 showIdxsType :: Dims ns -> String

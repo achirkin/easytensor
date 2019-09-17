@@ -132,8 +132,8 @@ prop_svd3 :: Matrix Double 3 3 -> Property
 prop_svd3 m = validateSVD extraTolerance m (svd3 m)
   where
     -- svd3 is fast, but not particularly precise,
-    -- though, 6-8 digits of precision are still there.
-    extraTolerance = 10e3 :: Double
+    -- though, 5-7 digits of precision are still there.
+    extraTolerance = 10e4 :: Double
 
 
 prop_svdSimple :: Property

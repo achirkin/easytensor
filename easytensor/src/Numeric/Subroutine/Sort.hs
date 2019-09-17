@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -18,6 +19,7 @@ import Control.Monad.ST
 import Control.Monad.ST.Unsafe
 import Data.Kind
 import Data.Type.Lits
+import Numeric.DataFrame.Internal.PrimArray
 import Numeric.DataFrame.ST
 import Numeric.DataFrame.Type
 import Numeric.Dimensions
@@ -25,29 +27,26 @@ import Numeric.Dimensions
 
 -- | Sort a @DataFrame@ along the first dimension using given comparison function.
 sortBy :: forall (k :: Type) (n :: k) (t :: Type) (ns :: [k])
-        . (PrimBytes t, SortBy n, BoundedDims ns)
+        . ( PrimArray t (DataFrame t (n ': ns))
+          , PrimArray t (DataFrame t ns)
+          , SortBy n)
        => (DataFrame t ns -> DataFrame t ns -> Ordering)
        -> DataFrame t (n ': ns)
        -> DataFrame t (n ': ns)
-sortBy cmp df = case dimKind @k of
-    DimNat -> runST $ do
-      mdf <- thawDataFrame df
-      sortByInplace
-        (\x y -> cmp <$> unsafeFreezeDataFrame x <*> unsafeFreezeDataFrame y)
-        mdf
-      unsafeFreezeDataFrame mdf
-    DimXNat -> runST $ do
-      mdf <- thawDataFrame df
-      sortByInplace
-        (\x y -> cmp <$> unsafeFreezeDataFrame x <*> unsafeFreezeDataFrame y)
-        mdf
-      unsafeFreezeDataFrame mdf
+sortBy cmp df
+  | Left _ <- uniqueOrCumulDims df = df -- all elements equal, no need for sorting.
+  | otherwise = runST $ do
+    mdf <- uncheckedThawDataFrame df
+    sortByInplace
+      (\x y -> cmp <$> unsafeFreezeDataFrame x <*> unsafeFreezeDataFrame y)
+      mdf
+    unsafeFreezeDataFrame mdf
 
 
 class BoundedDim n => SortBy (n :: k) where
     -- | Note, "Inplace" here means the input frame is modified.
     --   It does not mean the algorithm does not use extra space (it does use).
-    sortByInplace :: (PrimBytes t, BoundedDims ns)
+    sortByInplace :: PrimBytes t
                   => (STDataFrame s t ns -> STDataFrame s t ns -> ST s Ordering)
                       -- ^ must not modify state!
                   -> STDataFrame s t (n ': ns)
@@ -63,7 +62,7 @@ instance SortBy 1 where
 instance SortBy 2 where
     sortByInplace cmp xs = cmp a b >>= \case
         GT -> do
-          tmp <- newDataFrame
+          tmp <- oneMoreDataFrame a
           swapDF tmp a b
         _  -> pure ()
       where
@@ -72,7 +71,7 @@ instance SortBy 2 where
 
 instance SortBy 3 where
     sortByInplace cmp xs = join $
-        go <$> (unsafeDupableInterleaveST newDataFrame)
+        go <$> (unsafeDupableInterleaveST (oneMoreDataFrame a))
            <*> cmp a b <*> cmp b c <*> cmp a c
       where
         a = subDataFrameView' (Idx 0 :* U) xs
@@ -92,7 +91,7 @@ instance SortBy 3 where
 
 instance SortBy 4 where
     sortByInplace cmp xs = do
-        tmp <- unsafeDupableInterleaveST newDataFrame
+        tmp <- unsafeDupableInterleaveST (oneMoreDataFrame a)
         cmpSwap tmp a c
         cmpSwap tmp b d
         cmpSwap tmp a b
@@ -110,11 +109,11 @@ instance SortBy 4 where
 instance {-# INCOHERENT #-}
          KnownDim n => SortBy (n :: Nat) where
     sortByInplace cmp (xs :: STDataFrame s t (n ': ns)) = do
-        tmp <- newDataFrame
+        tmp <- oneMoreDataFrame xs
         copyMutableDataFrame' U xs tmp
         mergeSort D tmp xs
       where
-        mergeSort :: Dim d
+        mergeSort :: Dim (d :: Nat)
                   -> STDataFrame s t (d ': ns)
                   -> STDataFrame s t (d ': ns)
                   -> ST s ()
@@ -127,13 +126,13 @@ instance {-# INCOHERENT #-}
           d2ri@D <- pure $ plusDim d2r D1
           Just Dict <- pure $ sameDim (plusDim d D1) (plusDim d2li d2r)
           Just Dict <- pure $ sameDim (plusDim d D1) (plusDim d2ri d2l)
-          let leA = subDataFrameView @_ @t @d @(d - Div d 2 + 1) @(Div d 2) @'[]
+          let leA = subDataFrameView @t @_ @d @(d - Div d 2 + 1) @(Div d 2) @'[]
                                      (Idx 0 :* U) a
-              riA = subDataFrameView @_ @t @d @(Div d 2 + 1) @(d - Div d 2) @'[]
+              riA = subDataFrameView @t @_ @d @(Div d 2 + 1) @(d - Div d 2) @'[]
                                      (Idx (dimVal d2l) :* U) a
-              leB = subDataFrameView @_ @t @d @(d - Div d 2 + 1) @(Div d 2) @'[]
+              leB = subDataFrameView @t @_ @d @(d - Div d 2 + 1) @(Div d 2) @'[]
                                      (Idx 0 :* U) b
-              riB = subDataFrameView @_ @t @d @(Div d 2 + 1) @(d - Div d 2) @'[]
+              riB = subDataFrameView @t @_ @d @(Div d 2 + 1) @(d - Div d 2) @'[]
                                      (Idx (dimVal d2l) :* U) b
           mergeSort d2l leA leB
           mergeSort d2r riA riB
@@ -155,8 +154,8 @@ instance {-# INCOHERENT #-}
               , Just bmji@D <- minusDimM (plusDim dab D1) bmj
               , Just Dict <- sameDim (plusDim dab D1) (plusDim bmji bmj)
               , Just Dict <- sameDim (plusDim db D1) (dj `plusDim` D1 `plusDim` bmj)
-                = Nothing <$ copyMutableDataFrame @t @ab @(ab + 1 - (b - j)) @(b - j) (Idx k :* U)
-                    (subDataFrameView @_ @t @b @(j + 1) @(b - j) (Idx j :* U) b) ab
+                = Nothing <$ copyMutableDataFrame @t @_ @ab @(ab + 1 - (b - j)) @(b - j) (Idx k :* U)
+                    (subDataFrameView @t @_ @b @(j + 1) @(b - j) (Idx j :* U) b) ab
               | j >= dimVal db
               , Dx di@(D :: Dim i) <- someDimVal i
               , D <- plusDim di D1
@@ -165,7 +164,7 @@ instance {-# INCOHERENT #-}
               , Just Dict <- sameDim (plusDim dab D1) (plusDim bmii bmi)
               , Just Dict <- sameDim (plusDim da D1) (di `plusDim` D1 `plusDim` bmi)
                 = Nothing <$ copyMutableDataFrame (Idx k :* U)
-                    (subDataFrameView @_ @t @a @(i + 1) @(a - i) (Idx i :* U) a) ab
+                    (subDataFrameView @t @_ @a @(i + 1) @(a - i) (Idx i :* U) a) ab
               | otherwise
                 = cmp (subDataFrameView' (Idx i :* U) a)
                       (subDataFrameView' (Idx j :* U) b) >>= \case
@@ -178,11 +177,9 @@ instance {-# INCOHERENT #-}
 
 
 instance BoundedDim xn => SortBy (xn :: XNat) where
-    sortByInplace cmp (XSTFrame (xs :: STDataFrame s t dds))
-      | (D :: Dim d) :* (Dims :: Dims ds) <- dims @dds
-        = let cmp' :: STDataFrame s t ds -> STDataFrame s t ds -> ST s Ordering
-              cmp' x y = cmp (XSTFrame x) (XSTFrame y)
-          in sortByInplace cmp' xs
+    sortByInplace cmp (XSTFrame xs)
+      | D :* _ <- dims `inSpaceOf` xs
+        = sortByInplace (\x y -> cmp (castDataFrame x) (castDataFrame y)) xs
       | otherwise = error "sortByInplace: impossible pattern"
 
 
