@@ -1,20 +1,36 @@
 language: haskell
 
-ghc:
-  - "8.4"
-  - "8.6"
+cache:
+  directories:
+  - $HOME/.ghc
+  - $HOME/.cabal
+
+matrix:
+  include:
+  - ghc: "8.4"
+    env: PFLAGS="--flags=unsafeindices"
+  - ghc: "8.4"
+    env: PFLAGS="--flags=-unsafeindices"
+  - ghc: "8.6"
+    env: PFLAGS="--flags=unsafeindices"
+  - ghc: "8.6"
+    env: PFLAGS="--flags=-unsafeindices"
+  - ghc: "8.8"
+    env: PFLAGS="--flags=unsafeindices"
+  - ghc: "8.8"
+    env: PFLAGS="--flags=-unsafeindices"
+  allow_failures:
+  - ghc: "8.8"
 
 before_install:
   - printf "packages\u3A \u2A/\u2A.cabal\n" > cabal.project
-  - cabal update
-  - cabal install hpack
-  - cabal exec hpack dimensions/package.yaml
-  - cabal exec hpack easytensor/package.yaml
-
+  - curl -sSL https://github.com/sol/hpack/raw/master/get-hpack.sh | bash
+  - hpack dimensions/package.yaml
+  - hpack easytensor/package.yaml
 
 install:
   - cabal new-build all --ghc-options="-O0" --enable-tests --dependencies-only
 
 script:
-  - cabal new-build all --ghc-options="-O0" --enable-tests
-  - cabal new-test all --ghc-options="-O0"
+  - cabal new-build all --ghc-options="-O0" --enable-tests $PFLAGS
+  - cabal new-test all --ghc-options="-O0" $PFLAGS
