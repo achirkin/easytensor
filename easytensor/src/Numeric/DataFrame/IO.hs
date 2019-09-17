@@ -31,6 +31,7 @@ module Numeric.DataFrame.IO
     , subDataFrameView, subDataFrameView'
     , copyDataFrame, copyMutableDataFrame
     , copyDataFrame', copyMutableDataFrame'
+    , copyDataFrameOff, copyMutableDataFrameOff
     , freezeDataFrame, unsafeFreezeDataFrame
     , thawDataFrame, thawPinDataFrame, unsafeThawDataFrame
     , uncheckedThawDataFrame
@@ -185,6 +186,33 @@ copyMutableDataFrame ::
     => Idxs (as +: bi) -> IODataFrame t (bd :+ bs) -> IODataFrame t asbs -> IO ()
 copyMutableDataFrame = coerce (copyMDataFrame# @t @k @b @bi @bd @as @bs @asbs)
 {-# INLINE copyMutableDataFrame #-}
+
+-- | Copy one DataFrame into another mutable DataFrame by offset in
+--   primitive elements.
+--
+--   This is a low-level copy function; you have to keep in mind the row-major
+--   layout of Mutable DataFrames. Offset bounds are not checked.
+copyDataFrameOff ::
+       forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k])
+     . ( ExactDims bs
+       , PrimBytes t
+       , PrimBytes (DataFrame t bs)
+       , ConcatList as bs asbs )
+    => Int -> DataFrame t bs -> IODataFrame t asbs -> IO ()
+copyDataFrameOff = coerce (copyDataFrameOff# @t @k @as @bs @asbs)
+{-# INLINE copyDataFrameOff #-}
+
+-- | Copy one mutable DataFrame into another mutable DataFrame by offset in
+--   primitive elements.
+--
+--   This is a low-level copy function; you have to keep in mind the row-major
+--   layout of Mutable DataFrames. Offset bounds are not checked.
+copyMutableDataFrameOff ::
+       forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k])
+     . (ExactDims bs, PrimBytes t, ConcatList as bs asbs)
+    => Int -> IODataFrame t bs -> IODataFrame t asbs -> IO ()
+copyMutableDataFrameOff = coerce (copyMDataFrameOff# @t @k @as @bs @asbs)
+{-# INLINE copyMutableDataFrameOff #-}
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
 --

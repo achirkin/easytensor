@@ -31,6 +31,7 @@ module Numeric.DataFrame.Internal.Mutable
     , subDataFrameView#, subDataFrameView'#
     , copyDataFrame#, copyMDataFrame#
     , copyDataFrame'#, copyMDataFrame'#
+    , copyDataFrameOff#, copyMDataFrameOff#
     , freezeDataFrame#, unsafeFreezeDataFrame#
     , thawDataFrame#, thawPinDataFrame#, unsafeThawDataFrame#
     , uncheckedThawDataFrame#
@@ -218,6 +219,42 @@ copyMDataFrame'# ei (MDataFrame# offA stepsA arrA) (MDataFrame# offM stepsM arrM
                                arrM ((offM +# i) *# elS) (lenA *# elS) s
        , () #)
 {-# INLINE copyMDataFrame'# #-}
+
+-- | Copy one DataFrame into another mutable DataFrame by offset in
+--   primitive elements.
+--
+--   This is a low-level copy function; you have to keep in mind the row-major
+--   layout of Mutable DataFrames. Offset bounds are not checked.
+copyDataFrameOff# ::
+       forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k]) s
+     . ( ExactDims bs
+       , PrimBytes t
+       , PrimBytes (DataFrame t bs)
+       , ConcatList as bs asbs )
+    => Int -> DataFrame t bs -> MDataFrame s t asbs
+    -> State# s -> (# State# s, () #)
+copyDataFrameOff# (I# off) df (MDataFrame# off0 _ mba) s
+    = (# writeBytes mba ((off0 +# off) *# byteSize @t undefined) df s, () #)
+{-# INLINE copyDataFrameOff# #-}
+
+-- | Copy one mutable DataFrame into another mutable DataFrame by offset in
+--   primitive elements.
+--
+--   This is a low-level copy function; you have to keep in mind the row-major
+--   layout of Mutable DataFrames. Offset bounds are not checked.
+copyMDataFrameOff# ::
+       forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k]) s
+     . (ExactDims bs, PrimBytes t, ConcatList as bs asbs)
+    => Int -> MDataFrame s t bs -> MDataFrame s t asbs
+    -> State# s -> (# State# s, () #)
+copyMDataFrameOff# (I# off) (MDataFrame# offA stepsA arrA)
+                            (MDataFrame# offM _      arrM) s
+    | elS <- byteSize @t undefined
+    , lenA <- cdTotalDim# stepsA
+    = (# copyMutableByteArray# arrA (offA *# elS)
+                               arrM ((offM +# off) *# elS) (lenA *# elS) s
+       , () #)
+{-# INLINE copyMDataFrameOff# #-}
 
 -- | Make a mutable DataFrame immutable, without copying.
 unsafeFreezeDataFrame# ::

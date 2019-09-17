@@ -31,6 +31,7 @@ module Numeric.DataFrame.ST
     , subDataFrameView, subDataFrameView'
     , copyDataFrame, copyMutableDataFrame
     , copyDataFrame', copyMutableDataFrame'
+    , copyDataFrameOff, copyMutableDataFrameOff
     , freezeDataFrame, unsafeFreezeDataFrame
     , thawDataFrame, thawPinDataFrame, unsafeThawDataFrame
     , uncheckedThawDataFrame
@@ -196,7 +197,6 @@ copyDataFrame' ::
 copyDataFrame' = coerce (copyDataFrame'# @t @k @as @bs @asbs)
 {-# INLINE copyDataFrame' #-}
 
-
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
 --
 --   This is a simpler version of @copyMutableDataFrame@ that allows
@@ -207,6 +207,33 @@ copyMutableDataFrame' ::
     => Idxs as -> STDataFrame s t bs -> STDataFrame s t asbs -> ST s ()
 copyMutableDataFrame' = coerce (copyMDataFrame'# @t @k @as @bs @asbs)
 {-# INLINE copyMutableDataFrame' #-}
+
+-- | Copy one DataFrame into another mutable DataFrame by offset in
+--   primitive elements.
+--
+--   This is a low-level copy function; you have to keep in mind the row-major
+--   layout of Mutable DataFrames. Offset bounds are not checked.
+copyDataFrameOff ::
+       forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k]) s
+     . ( ExactDims bs
+       , PrimBytes t
+       , PrimBytes (DataFrame t bs)
+       , ConcatList as bs asbs )
+    => Int -> DataFrame t bs -> STDataFrame s t asbs -> ST s ()
+copyDataFrameOff = coerce (copyDataFrameOff# @t @k @as @bs @asbs)
+{-# INLINE copyDataFrameOff #-}
+
+-- | Copy one mutable DataFrame into another mutable DataFrame by offset in
+--   primitive elements.
+--
+--   This is a low-level copy function; you have to keep in mind the row-major
+--   layout of Mutable DataFrames. Offset bounds are not checked.
+copyMutableDataFrameOff ::
+       forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k]) s
+     . (ExactDims bs, PrimBytes t, ConcatList as bs asbs)
+    => Int -> STDataFrame s t bs -> STDataFrame s t asbs -> ST s ()
+copyMutableDataFrameOff = coerce (copyMDataFrameOff# @t @k @as @bs @asbs)
+{-# INLINE copyMutableDataFrameOff #-}
 
 -- | Make a mutable DataFrame immutable, without copying.
 unsafeFreezeDataFrame ::
