@@ -194,7 +194,7 @@ instance All Semigroup xs => Sem.Semigroup (Tuple xs) where
 instance ( RepresentableList xs
          , All Semigroup xs
          , All Monoid xs) => Mon.Monoid (Tuple xs) where
-    mempty = go (tList @Type @xs)
+    mempty = go (tList @xs)
       where
         go :: forall (ys :: [Type])
             . All Monoid ys => TypeList ys -> Tuple ys
@@ -206,13 +206,13 @@ instance ( RepresentableList xs
 
 
 instance (RepresentableList xs, All Bounded xs) => Bounded (Tuple xs) where
-    minBound = go (tList @Type @xs)
+    minBound = go (tList @xs)
       where
         go :: forall (ys :: [Type])
             . All Bounded ys => TypeList ys -> Tuple ys
         go U         = U
         go (_ :* xs) = minBound *! go xs
-    maxBound = go (tList @Type @xs)
+    maxBound = go (tList @xs)
       where
         go :: forall (ys :: [Type])
             . All Bounded ys => TypeList ys -> Tuple ys
@@ -234,7 +234,7 @@ instance All Show xs => Show (Tuple xs) where
    showsPrec = typedListShowsPrecC @Type @Show ":!" showsPrec1
 
 instance (All Read xs, RepresentableList xs) => Read (Tuple xs) where
-   readPrec = typedListReadPrec @Type @Read ":!" readPrec1 (tList @Type @xs)
+   readPrec = typedListReadPrec @Type @Read ":!" readPrec1 (tList @xs)
    readList = P.readListDefault
    readListPrec = P.readListPrecDefault
 

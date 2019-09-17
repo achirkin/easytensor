@@ -169,11 +169,11 @@ dropEnd :: Int -> [a] -> [a]
 dropEnd n = reverse . drop n . reverse
 
 runTests :: IO Bool
-runTests = isSuccess <$> quickCheckResult (conjoin tests)
+runTests = isGood <$> quickCheckResult (conjoin tests)
   where
-    isSuccess :: Result -> Bool
-    isSuccess Success {} = True
-    isSuccess _          = False
+    isGood :: Result -> Bool
+    isGood Success {} = True
+    isGood _          = False
     tests :: [Property]
     tests =
       [ show xs00 === show (revL1 xs00)

@@ -36,7 +36,7 @@
 -----------------------------------------------------------------------------
 module Numeric.TypedList
     ( TypedList (U, (:*), Empty, TypeList, EvList, Cons, Snoc, Reverse)
-    , RepresentableList (..)
+    , RepresentableList (), tList
     , Dict1 (..), DictList
     , TypeList, types, typeables, inferTypeableList
     , order, order'
@@ -181,7 +181,7 @@ pattern TypeList :: forall (k :: Type) (xs :: [k])
                   . () => RepresentableList xs => TypeList xs
 pattern TypeList <- (mkRTL -> Dict)
   where
-    TypeList = tList @k @xs
+    TypeList = tListI @k @xs
 
 -- | Pattern matching against this allows manipulating lists of constraints.
 --   Useful when creating functions that change the shape of dimensions.
@@ -189,7 +189,7 @@ pattern EvList :: forall (k :: Type) (c :: k -> Constraint) (xs :: [k])
                 . () => (All c xs, RepresentableList xs) => DictList c xs
 pattern EvList <- (mkEVL -> Dict)
   where
-    EvList = _evList (tList @k @xs)
+    EvList = _evList (tListI @k @xs)
 
 -- | Zero-length type list
 pattern U :: forall (k :: Type) (f :: k -> Type) (xs :: [k])
@@ -312,9 +312,8 @@ splitAt = coerce (Prelude.splitAt . dimValInt :: Dim n -> [Any] -> ([Any], [Any]
 
 -- | Return the number of elements in a type list @xs@ bound by a constraint
 --   @RepresentableList xs@ (same as `order`, but takes no value arguments).
-order' :: forall (k :: Type) (xs :: [k])
-        . RepresentableList xs => Dim (Length xs)
-order' = order (tList @_ @xs)
+order' :: forall xs . RepresentableList xs => Dim (Length xs)
+order' = order (tList @xs)
 {-# INLINE order' #-}
 
 -- | Return the number of elements in a @TypedList@ (same as `length`).
@@ -442,13 +441,17 @@ inferTypeableList (_ :* xs) = case inferTypeableList xs of Dict -> Dict
 --   Allows getting type information about list structure at runtime.
 class RepresentableList (xs :: [k]) where
   -- | Get type-level constructed list
-  tList :: TypeList xs
+  tListI :: TypeList xs
 
 instance RepresentableList ('[] :: [k]) where
-  tList = U
+  tListI = U
 
 instance RepresentableList xs => RepresentableList (x ': xs :: [k]) where
-  tList = Proxy @x :* tList @k @xs
+  tListI = Proxy @x :* tListI @k @xs
+
+-- | Get type-level constructed list
+tList :: forall xs . RepresentableList xs => TypeList xs
+tList = tListI @_ @xs
 
 -- | Generic show function for a @TypedList@.
 typedListShowsPrecC :: forall (k :: Type) (c :: k -> Constraint) (f :: k -> Type) (xs :: [k])

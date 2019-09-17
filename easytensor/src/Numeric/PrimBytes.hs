@@ -1328,7 +1328,7 @@ instance PrimBytes (Idx (x :: k)) where
 
 anyList :: forall (k :: Type) (xs :: [k])
         . RepresentableList xs => [Any]
-anyList = unsafeCoerce# (tList @_ @xs)
+anyList = unsafeCoerce# (tList @xs)
 {-# INLINE anyList #-}
 
 instance RepresentableList xs => PrimBytes (Idxs (xs :: [k])) where
@@ -1368,7 +1368,7 @@ instance RepresentableList xs => PrimBytes (Idxs (xs :: [k])) where
         go i (W# x :xs) s = go (plusAddr# i SIZEOF_HSWORD#) xs
                                (writeWordOffAddr# i 0# x s)
     {-# INLINE writeAddr #-}
-    byteSize _ = case dimVal (order' @_ @xs) of
+    byteSize _ = case dimVal (order' @xs) of
       W# n -> byteSize (undefined :: Idx x) *# word2Int# n
     {-# INLINE byteSize #-}
     byteAlign _ = byteAlign (undefined :: Idx x)
@@ -1376,14 +1376,14 @@ instance RepresentableList xs => PrimBytes (Idxs (xs :: [k])) where
     byteFieldOffset _ _ = negateInt# 1#
     {-# INLINE byteFieldOffset #-}
     indexArray ba off
-      | n@(W# n#) <- dimVal (order' @_ @xs)
+      | n@(W# n#) <- dimVal (order' @xs)
         = unsafeCoerce# (go (off *# word2Int# n#) n)
       where
         go _ 0 = []
         go i n = W# (indexWordArray# ba i) : go (i +# 1#) (n-1)
     {-# INLINE indexArray #-}
     readArray mba off s
-      | n@(W# n#) <- dimVal (order' @_ @xs)
+      | n@(W# n#) <- dimVal (order' @xs)
         = unsafeCoerce# (go (off *# word2Int# n#) n s)
       where
         go _ 0 s0 = (# s0, [] #)
@@ -1393,7 +1393,7 @@ instance RepresentableList xs => PrimBytes (Idxs (xs :: [k])) where
             = (# s2, W# w : xs #)
     {-# INLINE readArray #-}
     writeArray mba off is
-      | W# n# <- dimVal (order' @_ @xs)
+      | W# n# <- dimVal (order' @xs)
         = go (off *# word2Int# n#) (listIdxs is)
       where
         go _ [] s         = s
@@ -1437,7 +1437,7 @@ instance ( RepresentableList xs
          , L.All PrimBytes xs
          ) => PrimBytes (TS.Tuple xs) where
     type PrimFields (TS.Tuple xs) = TupleFields 1 xs
-    fromBytes off ba = go 0# (tList @_ @xs)
+    fromBytes off ba = go 0# (tList @xs)
       where
         go :: L.All PrimBytes ds
            => Int# -> TypeList ds -> TS.Tuple ds
@@ -1447,7 +1447,7 @@ instance ( RepresentableList xs
           , n' <- roundUpInt n (byteAlign x)
           = TS.Id (fromBytes (off +# n') ba) :* go (n' +# byteSize x) ts
     {-# INLINE fromBytes #-}
-    readBytes mb off = go mb 0# (tList @_ @xs)
+    readBytes mb off = go mb 0# (tList @xs)
       where
         go :: L.All PrimBytes ds
            => MutableByteArray# s
@@ -1469,7 +1469,7 @@ instance ( RepresentableList xs
           | n' <- roundUpInt n (byteAlign x)
           = go mb (n' +# byteSize x) xs ts (writeBytes mb (off +# n') x s)
     {-# INLINE writeBytes #-}
-    readAddr addr = go 0# (tList @_ @xs)
+    readAddr addr = go 0# (tList @xs)
       where
         go :: L.All PrimBytes ds
            => Int# -> TypeList ds -> State# s -> (# State# s, TS.Tuple ds #)
@@ -1490,7 +1490,7 @@ instance ( RepresentableList xs
           | n' <- roundUpInt n (byteAlign x)
           = go (n' +# byteSize x) xs ts (writeAddr x (plusAddr# addr n') s)
     {-# INLINE writeAddr #-}
-    byteSize _ = go 0# 1# (tList @_ @xs)
+    byteSize _ = go 0# 1# (tList @xs)
       where
         go :: L.All PrimBytes ys => Int# -> Int# -> TypeList ys -> Int#
         go s a Empty     = s `roundUpInt` a
@@ -1499,7 +1499,7 @@ instance ( RepresentableList xs
                            in  go ( roundUpInt s xa +# byteSize x)
                                   ( maxInt a xa ) ps
     {-# INLINE byteSize #-}
-    byteAlign _ = go (tList @_ @xs)
+    byteAlign _ = go (tList @xs)
       where
         go :: L.All PrimBytes ys => TypeList ys -> Int#
         go Empty     = 0#
@@ -1507,7 +1507,7 @@ instance ( RepresentableList xs
     {-# INLINE byteAlign #-}
     byteFieldOffset name _
       | Just n <- readMaybe $ symbolVal' name
-        = go (n-1) 0# (tList @_ @xs)
+        = go (n-1) 0# (tList @xs)
       | otherwise = negateInt# 1#
       where
         go :: L.All PrimBytes ys => Word -> Int# -> TypeList ys -> Int#

@@ -8,7 +8,9 @@
 {-# LANGUAGE PatternSynonyms           #-}
 {-# LANGUAGE PolyKinds                 #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeFamilies              #-}
+{-# LANGUAGE TypeInType                #-}
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UnboxedTuples             #-}
 {-# LANGUAGE UndecidableInstances      #-}
@@ -29,6 +31,8 @@ module Numeric.Vector.Internal
     , det2, cross, (×)
     ) where
 
+import Data.Kind
+import Data.Type.Lits             (Nat)
 import Numeric.DataFrame.SubSpace
 import Numeric.DataFrame.Type
 import Numeric.Scalar.Internal
@@ -97,8 +101,8 @@ instance {-# OVERLAPPABLE #-} SubSpace t '[2] '[] '[2] => Vector2 t where
       f _        = scalar b
   {-# INLINE vec2 #-}
   unpackV2# v =
-    (# unScalar (indexOffset# 0# v)
-     , unScalar (indexOffset# 1# v) #)
+    (# unScalar (indexOffset 0 v)
+     , unScalar (indexOffset 1 v) #)
   {-# INLINE unpackV2# #-}
 
 instance {-# OVERLAPPABLE #-} SubSpace t '[3] '[] '[3] => Vector3 t where
@@ -109,9 +113,9 @@ instance {-# OVERLAPPABLE #-} SubSpace t '[3] '[] '[3] => Vector3 t where
       f _        = scalar c
   {-# INLINE vec3 #-}
   unpackV3# v =
-    (# unScalar (indexOffset# 0# v)
-     , unScalar (indexOffset# 1# v)
-     , unScalar (indexOffset# 2# v) #)
+    (# unScalar (indexOffset 0 v)
+     , unScalar (indexOffset 1 v)
+     , unScalar (indexOffset 2 v) #)
   {-# INLINE unpackV3# #-}
 
 instance {-# OVERLAPPABLE #-} SubSpace t '[4] '[] '[4] => Vector4 t where
@@ -123,10 +127,10 @@ instance {-# OVERLAPPABLE #-} SubSpace t '[4] '[] '[4] => Vector4 t where
       f _        = scalar d
   {-# INLINE vec4 #-}
   unpackV4# v =
-    (# unScalar (indexOffset# 0# v)
-     , unScalar (indexOffset# 1# v)
-     , unScalar (indexOffset# 2# v)
-     , unScalar (indexOffset# 3# v) #)
+    (# unScalar (indexOffset 0 v)
+     , unScalar (indexOffset 1 v)
+     , unScalar (indexOffset 2 v)
+     , unScalar (indexOffset 3 v) #)
   {-# INLINE unpackV4# #-}
 
 
@@ -137,7 +141,7 @@ instance {-# OVERLAPPABLE #-} SubSpace t '[4] '[] '[4] => Vector4 t where
          , Num (Vector t n)
          , SubSpace t '[n] '[] '[n]
          )
-      => Vector t n -> Vector t n -> Vector t n
+      => Vector t (n :: Nat) -> Vector t n -> Vector t n
 (.*.) a b = fromScalar . ewfoldl (+) 0 $ a * b
 infixl 7 .*.
 
@@ -146,7 +150,7 @@ dot :: ( Num t
        , Num (Vector t n)
        , SubSpace t '[n] '[] '[n]
        )
-    => Vector t n -> Vector t n -> Scalar t
+    => Vector t (n :: Nat) -> Vector t n -> Scalar t
 dot a b = ewfoldl (+) 0 $ a * b
 
 -- | Dot product of two vectors
@@ -155,41 +159,47 @@ infixl 7 ·
        , Num (Vector t n)
        , SubSpace t '[n] '[] '[n]
        )
-    => Vector t n -> Vector t n -> Scalar t
+    => Vector t (n :: Nat) -> Vector t n -> Scalar t
 (·) = dot
 {-# INLINE (·) #-}
 
 
 -- | Sum of absolute values
-normL1 :: ( Num t, SubSpace t '[n] '[] '[n] )
-       => Vector t n -> Scalar t
+normL1 :: ( Num (DataFrame t ('[] :: [k])), SubSpace t '[n] '[] '[n] )
+       => Vector t (n :: k) -> DataFrame t ('[] :: [k])
 normL1 = ewfoldr (\a -> (abs a +)) 0
 
 -- | hypot function (square root of squares)
-normL2 :: ( Floating t , SubSpace t '[n] '[] '[n] )
-       => Vector t n -> Scalar t
+normL2 :: ( Floating (DataFrame t ('[] :: [k])), SubSpace t '[n] '[] '[n] )
+       => Vector t (n :: k) -> DataFrame t ('[] :: [k])
 normL2 = sqrt . ewfoldr (\a -> (a*a +)) 0
 
 -- | Normalize vector w.r.t. Euclidean metric (L2).
-normalized :: ( Floating t , Fractional (Vector t n), SubSpace t '[n] '[] '[n] )
+normalized :: forall (k :: Type) (t :: Type) (n :: k)
+            . ( Floating (DataFrame t ('[] :: [k]))
+              , SubSpace t '[n] '[] '[n] )
            => Vector t n -> Vector t n
-normalized v = v / n
+normalized v = ewmap @t @'[n] @'[] (*rn) v
   where
-    n = fromScalar . sqrt $ ewfoldr (\a -> (a*a +)) 0 v
+    rn = recip . sqrt $ ewfoldr (\a -> (a*a +)) 0 v
 
 -- | Maximum of absolute values
-normLPInf :: ( Ord t, Num t , SubSpace t '[n] '[] '[n] )
-          => Vector t n -> Scalar t
+normLPInf :: ( Ord (DataFrame t ('[] :: [k]))
+             , Num (DataFrame t ('[] :: [k]))
+             , SubSpace t '[n] '[] '[n] )
+          => Vector t (n :: k) -> DataFrame t ('[] :: [k])
 normLPInf = ewfoldr (max . abs) 0
 
 -- | Minimum of absolute values
-normLNInf :: ( Ord t, Num t , SubSpace t '[n] '[] '[n] )
-          => Vector t n -> Scalar t
-normLNInf x = ewfoldr (min . abs) (scalar . abs $ ixOff 0 x) x
+normLNInf :: ( Ord (DataFrame t ('[] :: [k]))
+             , Num (DataFrame t ('[] :: [k]))
+             , SubSpace t '[n] '[] '[n] )
+          => Vector t (n :: k) -> DataFrame t ('[] :: [k])
+normLNInf x = ewfoldr (min . abs) (abs $ indexOffset 0 x) x
 
 -- | Norm in Lp space
-normLP :: ( Floating t , SubSpace t '[n] '[] '[n] )
-       => Int -> Vector t n -> Scalar t
+normLP :: (Floating (DataFrame t ('[] :: [k])), SubSpace t '[n] '[] '[n])
+       => Int -> Vector t (n :: k) -> DataFrame t ('[] :: [k])
 normLP i' = (**ri) . ewfoldr (\a -> (a**i +)) 0
   where
     i  = fromIntegral i'

@@ -48,7 +48,7 @@ biDiag (dn@D :* dm@D :* U) a b = runST $ do
 
 -- | Decomposition of a matrix \( A = U B V^\intercal \) such that
 --   \( U \) and \( V \) are orthogonal and \( B \) is bidiagonal.
-data BiDiag t n m
+data BiDiag (t :: Type) (n :: Nat)  (m :: Nat)
   = BiDiag
   { bdU     :: Matrix t n n
     -- ^ \( U \) left orthogonal matrix

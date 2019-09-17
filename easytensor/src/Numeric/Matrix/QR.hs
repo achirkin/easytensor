@@ -19,6 +19,7 @@ module Numeric.Matrix.QR
 
 import Control.Monad
 import Control.Monad.ST
+import Data.Kind
 import Numeric.DataFrame.ST
 import Numeric.DataFrame.SubSpace
 import Numeric.DataFrame.Type
@@ -32,7 +33,7 @@ import Unsafe.Coerce (unsafeCoerce)
 
 -- | Result of QR factorization
 --   \( A = QR \).
-data QR t n m
+data QR (t :: Type) (n :: Nat) (m :: Nat)
   = QR
   { qrQ    :: Matrix t n n
     -- ^ Orthogonal matrix \( Q \)
@@ -43,8 +44,8 @@ data QR t n m
   }
 
 -- | Result of LQ factorization
---   \( A = QR \).
-data LQ t n m
+--   \( A = LQ \).
+data LQ (t :: Type) (n :: Nat) (m :: Nat)
   = LQ
   { lqL    :: Matrix t n m
       -- ^ Lower-triangular matrix \( L \)
