@@ -627,4 +627,8 @@ nonVoidDims :: Dims ns -> Bool
 nonVoidDims = all (0 <) . listDims
 
 dropPref :: Dims (ns :: [Nat]) -> CumulDims -> CumulDims
-dropPref ds = CumulDims . drop (length $ listDims ds) . unCumulDims
+dropPref ds = CumulDims . dropSome (listDims ds) . unCumulDims
+  where
+    dropSome :: [Word] -> [Word] -> [Word]
+    dropSome []     xs = xs
+    dropSome (_:as) xs = dropSome as (tail xs)
