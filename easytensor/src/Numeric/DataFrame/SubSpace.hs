@@ -24,26 +24,24 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.SubSpace
-  ( SubSpace (..), (.!), element
-  , ewzip, iwzip
+  ( SubSpace (), (.!), element
   , joinDataFrame, indexOffset, updateOffset
   , index, update, slice, updateSlice
-  , ewgen, iwgen, ewmap, iwmap
+  , ewgen, iwgen, ewmap, iwmap, ewzip, iwzip
   , elementWise, elementWise_, indexWise, indexWise_
   , ewfoldl, ewfoldl', ewfoldr, ewfoldr', ewfoldMap
   , iwfoldl, iwfoldl', iwfoldr, iwfoldr', iwfoldMap
   ) where
 
-import Data.Kind
-import GHC.Exts
+import GHC.Exts (Int (..), (+#))
 
 import Control.Monad
 import Control.Monad.ST
+import Data.Kind
 import Numeric.DataFrame.Internal.PrimArray
 import Numeric.DataFrame.ST
 import Numeric.DataFrame.Type
 import Numeric.Dimensions
-
 
 -- | Flatten a nested DataFrame, analogous to `Control.Monad.join`.
 joinDataFrame ::
@@ -255,6 +253,76 @@ indexWise ::
 indexWise = indexWiseI @_ @t @as @bs @asbs @s @bs' @asbs' @f
 {-# INLINE[1] indexWise #-}
 
+-- | Apply an applicative functor on each element (Lens-like traversal)
+elementWise_ ::
+       forall t as bs asbs f b
+     . (SubSpace t as bs asbs, Applicative f)
+    => (DataFrame t bs -> f b) -> DataFrame t asbs -> f ()
+elementWise_ f = ewfoldr ((*>) . f) (pure ())
+{-# INLINE elementWise_ #-}
+
+-- | Apply an applicative functor on each element with its index
+--     (Lens-like indexed traversal)
+indexWise_ ::
+       forall t as bs asbs f b
+    . (SubSpace t as bs asbs, Applicative f)
+   => (Idxs as -> DataFrame t bs -> f b) -> DataFrame t asbs -> f ()
+indexWise_ f = iwfoldr (\i -> (*>) . f i) (pure ())
+{-# INLINE indexWise_ #-}
+
+-- | Apply a functor over a single element (simple lens)
+element ::
+       forall t as bs asbs f
+     . (SubSpace t as bs asbs, Applicative f)
+    => Idxs as
+    -> (DataFrame t bs -> f (DataFrame t bs))
+    -> DataFrame t asbs -> f (DataFrame t asbs)
+element i f df = flip (update i) df <$> f (index i df)
+{-# INLINE element #-}
+
+-- | Index an element (reverse arguments of `index`)
+(.!) :: SubSpace t as bs asbs
+     => DataFrame t asbs -> Idxs as -> DataFrame t bs
+(.!) = flip index
+{-# INLINE (.!) #-}
+infixl 4 .!
+
+-- | Map each element of the DataFrame to a monoid,
+--    and combine the results.
+ewfoldMap ::
+       forall t as bs asbs m
+     . (SubSpace t as bs asbs, Monoid m)
+    => (DataFrame t bs -> m) -> DataFrame t asbs -> m
+ewfoldMap f = ewfoldr (mappend . f) mempty
+{-# INLINE ewfoldMap #-}
+
+-- | Map each element of the DataFrame and its index to a monoid,
+--    and combine the results.
+iwfoldMap ::
+       forall t as bs asbs m
+     . (SubSpace t as bs asbs, Monoid m)
+    => (Idxs as -> DataFrame t bs -> m) -> DataFrame t asbs -> m
+iwfoldMap f = iwfoldr (\i -> mappend . f i) mempty
+{-# INLINE iwfoldMap #-}
+
+-- | Zip two spaces on a specified subspace element-wise (without index)
+ewzip :: forall t as bs asbs l bsL asbsL r bsR asbsR
+     . (SubSpace t as bs asbs, SubSpace l as bsL asbsL, SubSpace r as bsR asbsR)
+    => (DataFrame l bsL -> DataFrame r bsR -> DataFrame t bs)
+    -> DataFrame l asbsL -> DataFrame r asbsR -> DataFrame t asbs
+ewzip = iwzip . const
+{-# INLINE ewzip #-}
+
+-- | Zip two spaces on a specified subspace index-wise (with index)
+iwzip :: forall t as bs asbs l bsL asbsL r bsR asbsR
+     . (SubSpace t as bs asbs, SubSpace l as bsL asbsL, SubSpace r as bsR asbsR)
+    => (Idxs as -> DataFrame l bsL -> DataFrame r bsR -> DataFrame t bs)
+    -> DataFrame l asbsL -> DataFrame r asbsR -> DataFrame t asbs
+iwzip f dft dfs = iwmap g dft
+  where
+    g i dft' = f i dft' (index i dfs)
+{-# INLINE iwzip #-}
+
 -- | Operations on DataFrames
 --
 -- @as@ is an indexing dimensionality
@@ -350,6 +418,8 @@ class ( ConcatList as bs asbs
                   . (Applicative f, SubSpace s as bs' asbs')
                  => (DataFrame s bs' -> f (DataFrame t bs))
                  -> DataFrame s asbs' -> f (DataFrame t asbs)
+    elementWiseI = indexWiseI . const
+    {-# INLINE elementWiseI #-}
 
     -- | Apply an applicative functor on each element with its index
     --     (Lens-like indexed traversal).
@@ -446,7 +516,7 @@ instance ( ConcatList as bs asbs
             bsTD  = fromIntegral (totalDim' @bs ) :: Int
             bs'TD = fromIntegral (totalDim' @bs') :: Int
         asbsM <- newDataFrame
-        forM_ [0..asTD] $ \i ->
+        forM_ [0..asTD-1] $ \i ->
           copyDataFrameOff (i*bsTD) (f (indexOffset (i*bs'TD) asbs')) asbsM
         unsafeFreezeDataFrame asbsM
     {-# INLINE ewmapI #-}
@@ -536,108 +606,21 @@ instance ( ConcatList as bs asbs
           in  go minBound
     {-# INLINE iwfoldrI #-}
 
-    elementWiseI = indexWise . const
-    {-# INLINE elementWiseI #-}
-
     indexWiseI (f :: Idxs as -> DataFrame s bs' -> f (DataFrame t bs))
-        = fmap mkSTDF . iwfoldr fST (pure $ MakingSTDF newDataFrame)
+        = fmap mkSTDF . iwfoldr fST (pure $ MakingDF newDataFrame)
       where
-        mkSTDF :: MakingSTDF t asbs -> DataFrame t asbs
-        mkSTDF (MakingSTDF st) = runST (st >>= unsafeFreezeDataFrame)
+        mkSTDF :: MakingDF t asbs -> DataFrame t asbs
+        mkSTDF st = runST (getMDF st >>= unsafeFreezeDataFrame)
         fST :: Idxs as -> DataFrame s bs'
-            -> f (MakingSTDF t asbs)
-            -> f (MakingSTDF t asbs)
+            -> f (MakingDF t asbs) -> f (MakingDF t asbs)
         fST i bs' asbsSTF
-          = (\(MakingSTDF st) r ->
-               MakingSTDF (st >>= \df -> df <$ copyDataFrame' i r df)
-            ) <$> asbsSTF <*> f i bs'
+          = (\st r -> MakingDF (getMDF st >>= \x -> x <$ copyDataFrame' i r x))
+             <$> asbsSTF <*> f i bs'
+    {-# INLINE indexWiseI #-}
 
 -- | Hide ST monad state with a DataFrame in works inside a plain type.
-newtype MakingSTDF t asbs = MakingSTDF (forall s . ST s (STDataFrame s t asbs))
-
-
--- | Apply an applicative functor on each element with its index
---     (Lens-like indexed traversal)
-indexWise_ :: forall t as bs asbs f b
-            . (SubSpace t as bs asbs, Applicative f)
-           => (Idxs as -> DataFrame t bs -> f b)
-           -> DataFrame t asbs -> f ()
-indexWise_ f = iwfoldr (\i -> (*>) . f i) (pure ())
-{-# INLINE indexWise_ #-}
-
--- | Apply an applicative functor on each element (Lens-like traversal)
-elementWise_ :: forall t as bs asbs f b
-              . (SubSpace t as bs asbs, Applicative f)
-             => (DataFrame t bs -> f b)
-             -> DataFrame t asbs -> f ()
-elementWise_ f = ewfoldr ((*>) . f) (pure ())
-{-# INLINE elementWise_ #-}
-
-
--- | Apply a functor over a single element (simple lens)
-element :: forall t as bs asbs f
-         . (SubSpace t as bs asbs, Applicative f)
-        => Idxs as
-        -> (DataFrame t bs -> f (DataFrame t bs))
-        -> DataFrame t asbs -> f (DataFrame t asbs)
-element i f df = flip (updateI i) df <$> f (indexI i df)
-{-# INLINE element #-}
-
--- | Index an element (reverse arguments of `index`)
-(.!) :: SubSpace t as bs asbs
-     => DataFrame t asbs -> Idxs as -> DataFrame t bs
-(.!) = flip index
-{-# INLINE (.!) #-}
-infixl 4 .!
-
--- | Map each element of the DataFrame to a monoid,
---    and combine the results.
-ewfoldMap :: forall t as bs asbs m
-           . (Monoid m, SubSpace t as bs asbs)
-          => (DataFrame t bs -> m) -> DataFrame t asbs -> m
-ewfoldMap f = ewfoldr (mappend . f) mempty
-{-# INLINE ewfoldMap #-}
-
--- | Map each element of the DataFrame and its index to a monoid,
---    and combine the results.
-iwfoldMap :: forall t as bs asbs m
-           . (Monoid m, SubSpace t as bs asbs)
-          => (Idxs as -> DataFrame t bs -> m) -> DataFrame t asbs -> m
-iwfoldMap f = iwfoldr (\i -> mappend . f i) mempty
-{-# INLINE iwfoldMap #-}
-
-
--- | Zip two spaces on a specified subspace index-wise (with index)
-iwzip :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-                s (bs' :: [Nat]) (asbs' :: [Nat])
-                r (bs'' :: [Nat]) (asbs'' :: [Nat])
-       . ( SubSpace t as bs asbs
-         , SubSpace s as bs' asbs'
-         , SubSpace r as bs'' asbs''
-         )
-      => (Idxs as -> DataFrame t bs -> DataFrame s bs' -> DataFrame r bs'')
-      -> DataFrame t asbs
-      -> DataFrame s asbs'
-      -> DataFrame r asbs''
-iwzip f dft dfs = iwmapI g dft
-  where
-    g i dft' = f i dft' (indexI i dfs)
-{-# INLINE iwzip #-}
-
--- | Zip two spaces on a specified subspace element-wise (without index)
-ewzip :: forall t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat])
-                s (bs' :: [Nat]) (asbs' :: [Nat])
-                r (bs'' :: [Nat]) (asbs'' :: [Nat])
-       . ( SubSpace t as bs asbs
-         , SubSpace s as bs' asbs'
-         , SubSpace r as bs'' asbs''
-         )
-      => (DataFrame t bs -> DataFrame s bs' -> DataFrame r bs'')
-      -> DataFrame t asbs
-      -> DataFrame s asbs'
-      -> DataFrame r asbs''
-ewzip = iwzip . const
-{-# INLINE ewzip #-}
+newtype MakingDF t asbs
+  = MakingDF { getMDF :: forall s . ST s (STDataFrame s t asbs) }
 
 -- | Checks if all of the dimensions are non-zero.
 nonVoidDims :: Dims ns -> Bool
@@ -645,12 +628,3 @@ nonVoidDims = all (0 <) . listDims
 
 dropPref :: Dims (ns :: [Nat]) -> CumulDims -> CumulDims
 dropPref ds = CumulDims . drop (length $ listDims ds) . unCumulDims
-
-
--- unSc :: DataFrame (t :: Type) ('[] :: [Nat]) -> t
--- unSc = unsafeCoerce#
---
--- {-# RULES
--- "ewgenI/broadcast" ewgenI = broadcast . unSc
---
---   #-}
