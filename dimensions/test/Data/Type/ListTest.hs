@@ -119,7 +119,7 @@ revL3 xs = go xs N
         . ReverseList ys sy => L ys -> L zs -> L (sy ++ zs)
     go N ms         = ms
     go ((n :: P n) :^ (ns :: L ns)) ms
-      | Dict <- inferConcat @k @sy @zs
+      | Dict <- inferConcat @sy @zs
       = go ns (n :^ ms)
 
 
@@ -152,7 +152,7 @@ goList as bs asbs = conjoin
   , -- sadly, we have to use inferConcat here, because GHC cannot voluntarily
     -- try to infer ConcatList from the appearence of Concat TF alone.
     --   A plugin would solve this.
-    case inferConcat @_ @(Reverse bs) @(Reverse as) @_ of
+    case inferConcat @(Reverse bs) @(Reverse as) @_ of
       Dict -> show (revL1 asbs) === show (concatL (revL1 bs) (revL1 as))
   ]
 

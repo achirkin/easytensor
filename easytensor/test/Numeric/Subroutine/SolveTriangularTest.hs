@@ -199,8 +199,6 @@ testSolveLowerTriangularL b l
   , Dims <- Snoc (dims @ds) dm
   , Dict <- Dict @(SnocList ds n _)
   , Dict <- Dict @(SnocList ds m _)
-  , Dict <- inferConcat @Nat @ds @'[m] @(ds +: m)
-  , Dict <- inferConcat @Nat @ds @'[n] @(ds +: n)
   , Just Dict <- sameDim dm (plusDim dn dmn)
   , di@D <- dm `minusDim` dn `plusDim` D1
   , i0 <- (Idx 0 :* U) `inSpaceOf` (di :* U)
