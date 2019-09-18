@@ -228,7 +228,7 @@ unsafeBareSnocList = runMagic m
       , Dict <- unsafeEqTypes @_ @as @(Init bs)
       , Dict <- unsafeEqTypes @_ @z @(Last bs)
       , Dict <- unsafeEqTypes @_ @bs @(Concat as '[z])
-      , Dict <- inferConcat @_ @as @'[z] @bs
+      , Dict <- inferConcat @as @'[z] @bs
       = Magic (dictToBare $ defineSnocList @k @as @z @bs)
 
 unsafeBareReverseList :: forall (k :: Type) (as :: [k]) (bs :: [k])
@@ -471,19 +471,19 @@ consInstConcatList
 
 
 -- | Derive @ConcatList@ given @Concat@
-inferConcat :: forall (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k])
+inferConcat :: forall as bs asbs
              . asbs ~ Concat as bs
             => Dict (ConcatList as bs asbs)
-inferConcat = bareToDict $ unsafeIncohBareConcatList @k @as @bs @asbs
+inferConcat = bareToDict $ unsafeIncohBareConcatList @_ @as @bs @asbs
 
 -- | Derive @ConcatList@ given @StripSuffix@
-inferStripSuffix :: forall (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k])
+inferStripSuffix :: forall as bs asbs
                   . as ~ StripSuffix bs asbs
                  => Dict (ConcatList as bs asbs)
-inferStripSuffix = bareToDict $ unsafeIncohBareConcatList @k @as @bs @asbs
+inferStripSuffix = bareToDict $ unsafeIncohBareConcatList @_ @as @bs @asbs
 
 -- | Derive @ConcatList@ given @StripPrefix@
-inferStripPrefix :: forall (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k])
+inferStripPrefix :: forall as bs asbs
                   . bs ~ StripPrefix as asbs
                  => Dict (ConcatList as bs asbs)
-inferStripPrefix = bareToDict $ unsafeIncohBareConcatList @k @as @bs @asbs
+inferStripPrefix = bareToDict $ unsafeIncohBareConcatList @_ @as @bs @asbs
