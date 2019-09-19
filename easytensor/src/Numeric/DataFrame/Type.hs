@@ -1320,20 +1320,6 @@ withFixedDF2 f (XFrame (a :: DataFrame ts as)) (XFrame (b :: DataFrame ts bs))
     = f a b
 {-# INLINE withFixedDF2 #-}
 
-
-iAmFixed :: forall (xns :: [XNat])
-          . Dimensions xns
-         => Dict (All KnownXNatType xns, FixedDims xns (DimsBound xns))
-iAmFixed = go (dims @xns)
-  where
-    go :: forall (xs :: [XNat])
-        . Dims xs -> Dict (All KnownXNatType xs, FixedDims xs (DimsBound xs))
-    go U = Dict
-    go ((_ :: Dim x) :* ds)
-      | Dict <- unsafeEqTypes @_ @x @(N (DimBound x))
-      , Dict <- go ds = Dict
-
-
 instance ( xns ~ Map 'N (DimsBound xns)
          , Eq (DataFrame ts xns)
          , Ord (DataFrame ts (DimsBound xns))
@@ -1356,9 +1342,8 @@ instance ( Dimensions xns
     negate = withKnownXDims @xns $ withFixedDF1 (XFrame . negate)
     abs    = withKnownXDims @xns $ withFixedDF1 (XFrame . abs)
     signum = withKnownXDims @xns $ withFixedDF1 (XFrame . signum)
-    fromInteger
-      | Dict <- iAmFixed @xns
-        = withKnownXDims @xns (XFrame . fromInteger @(DataFrame ts (DimsBound xns)))
+    fromInteger = withKnownXDims @xns
+      (XFrame . fromInteger @(DataFrame ts (DimsBound xns)))
 
 instance ( Dimensions xns
          , KnownBackends ts (DimsBound xns)
@@ -1366,16 +1351,14 @@ instance ( Dimensions xns
          ) => Fractional (DataFrame (ts :: l) (xns :: [XNat])) where
     (/) = withKnownXDims @xns $ withFixedDF2 ((.) XFrame . (/))
     recip = withKnownXDims @xns $ withFixedDF1 (XFrame . recip)
-    fromRational
-      | Dict <- iAmFixed @xns
-        = withKnownXDims @xns (XFrame . fromRational @(DataFrame ts (DimsBound xns)))
+    fromRational = withKnownXDims @xns
+      (XFrame . fromRational @(DataFrame ts (DimsBound xns)))
 
 instance ( Dimensions xns
          , KnownBackends ts (DimsBound xns)
          , Floating (DataFrame ts (DimsBound xns))
          ) => Floating (DataFrame (ts :: l) (xns :: [XNat])) where
-    pi | Dict <- iAmFixed @xns
-          = withKnownXDims @xns $ XFrame (pi :: DataFrame ts (DimsBound xns))
+    pi    = withKnownXDims @xns $ XFrame (pi :: DataFrame ts (DimsBound xns))
     exp   = withKnownXDims @xns $ withFixedDF1 (XFrame . exp)
     log   = withKnownXDims @xns $ withFixedDF1 (XFrame . log)
     sqrt  = withKnownXDims @xns $ withFixedDF1 (XFrame . sqrt)
@@ -1403,12 +1386,8 @@ instance ( Dimensions xns
          , KnownBackends ts (DimsBound xns)
          , Bounded (DataFrame ts (DimsBound xns))
          ) => Bounded (DataFrame (ts :: l) (xns :: [XNat])) where
-    minBound
-      | Dict <- iAmFixed @xns
-        = withKnownXDims @xns (XFrame (minBound :: DataFrame ts (DimsBound xns)))
-    maxBound
-      | Dict <- iAmFixed @xns
-        = withKnownXDims @xns (XFrame (maxBound :: DataFrame ts (DimsBound xns)))
+    minBound = withKnownXDims @xns (XFrame (minBound :: DataFrame ts (DimsBound xns)))
+    maxBound = withKnownXDims @xns (XFrame (maxBound :: DataFrame ts (DimsBound xns)))
 
 instance ( Dimensions xns
          , KnownBackends ts (DimsBound xns)
@@ -1419,16 +1398,13 @@ instance ( Dimensions xns
     getBytes = withKnownXDims @xns $ withFixedDF1 getBytes
     getBytesPinned = withKnownXDims @xns $ withFixedDF1 getBytesPinned
     fromBytes i ba
-      | Dict <- iAmFixed @xns
-        = withKnownXDims @xns (XFrame (fromBytes i ba :: DataFrame ts (DimsBound xns)))
+      = withKnownXDims @xns (XFrame (fromBytes i ba :: DataFrame ts (DimsBound xns)))
     readBytes mba i s0
-      | Dict <- iAmFixed @xns
-      , (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- readBytes mba i s0
+      | (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- readBytes mba i s0
         = (# s1, withKnownXDims @xns (XFrame a) #)
     writeBytes mba i = withKnownXDims @xns $ withFixedDF1 (writeBytes mba i)
     readAddr addr s0
-      | Dict <- iAmFixed @xns
-      , (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- readAddr addr s0
+      | (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- readAddr addr s0
         = (# s1, withKnownXDims @xns (XFrame a) #)
     writeAddr = withKnownXDims @xns $ withFixedDF1 writeAddr
     byteSize  _ = withKnownXDims @xns (byteSize @(DataFrame ts (DimsBound xns)) undefined)
@@ -1437,11 +1413,9 @@ instance ( Dimensions xns
     byteFieldOffset n _
         = withKnownXDims @xns (byteFieldOffset @(DataFrame ts (DimsBound xns)) n undefined)
     indexArray ba i
-      | Dict <- iAmFixed @xns
-        = withKnownXDims @xns (XFrame (indexArray ba i :: DataFrame ts (DimsBound xns)))
+      = withKnownXDims @xns (XFrame (indexArray ba i :: DataFrame ts (DimsBound xns)))
     readArray mba i s0
-      | Dict <- iAmFixed @xns
-      , (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- readArray mba i s0
+      | (# s1, (a  :: DataFrame ts (DimsBound xns)) #) <- readArray mba i s0
         = (# s1, withKnownXDims @xns (XFrame a) #)
     writeArray mba i = withKnownXDims @xns (withFixedDF1 (writeArray mba i))
 
@@ -1451,20 +1425,17 @@ instance ( Dimensions xns
          , PrimBytes t
          ) => PrimArray t (DataFrame t (xns :: [XNat])) where
     broadcast
-      | Dict <- iAmFixed @xns
-        = withKnownXDims @xns (XFrame . broadcast @t @(DataFrame t (DimsBound xns)))
+      = withKnownXDims @xns (XFrame . broadcast @t @(DataFrame t (DimsBound xns)))
     ix# i = withKnownXDims @xns (withFixedDF1 (ix# i))
     gen# cd f s0
-      | Dict <- iAmFixed @xns
-      , (# s1, (a  :: DataFrame t (DimsBound xns)) #) <- gen# cd f s0
+      | (# s1, (a  :: DataFrame t (DimsBound xns)) #) <- gen# cd f s0
         = (# s1, withKnownXDims @xns (XFrame a) #)
     upd# cd i t = withKnownXDims @xns (withFixedDF1 (XFrame . upd# cd i t))
     arrayContent# = withKnownXDims @xns (withFixedDF1 arrayContent#)
     offsetElems = withKnownXDims @xns (withFixedDF1 offsetElems)
     uniqueOrCumulDims = withKnownXDims @xns (withFixedDF1 uniqueOrCumulDims)
     fromElems cd i ba
-     | Dict <- iAmFixed @xns
-       = withKnownXDims @xns (XFrame (fromElems cd i ba :: DataFrame t (DimsBound xns)))
+     = withKnownXDims @xns (XFrame (fromElems cd i ba :: DataFrame t (DimsBound xns)))
 
 
 -- The following instance only make sense on scalars.

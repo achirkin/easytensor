@@ -8,6 +8,7 @@ module Numeric.DataFrame
   , module Numeric.DataFrame.SubSpace
   , module Numeric.DataFrame.Contraction
   , module Numeric.Basics
+  , module Numeric.Subroutine.Sort
   ) where
 
 import Numeric.DataFrame.Internal.Backend ()
@@ -21,3 +22,5 @@ import Numeric.Scalar
 import Numeric.Vector
 
 import Numeric.Basics
+
+import Numeric.Subroutine.Sort (sort, sortBy)

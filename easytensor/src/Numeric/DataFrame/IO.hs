@@ -76,23 +76,11 @@ data XIOFramePat (t :: Type) (xns :: [XNat])
 mkXIOFramePat :: forall (t :: Type) (xns :: [XNat])
                . IODataFrame t xns -> XIOFramePat t xns
 mkXIOFramePat df
-  | SomeDims (ds@Dims :: Dims ns) <- fromSteps (getDataFrameSteps df)
-  , Dict <- go @xns @ns (unsafeCoerce ds) ds
+  | SomeDims ds <- fromSteps (getDataFrameSteps df)
+  , XDims (_ :: Dims ns) <- (unsafeCoerce ds) :: Dims xns
     = XIOFramePat @t @xns @ns (unsafeCoerce df)
   | otherwise
     = error "XIOFrame pattern: impossible args"
-  where
-    -- Warning! I rely here on the fact that FixedDim xn n has the same
-    -- runtime rep as a single coercion.
-    -- If that changes, then the code is broke.
-    go :: forall (xs :: [XNat]) (ns :: [Nat])
-        . Dims xs -> Dims ns -> Dict (FixedDims xs ns)
-    go U U = Dict
-    go ((_ :: Dim xn) :* xds) ((_ :: Dim n) :* ds)
-      | Dict <- unsafeCoerce (Dict @(n ~ n)) :: Dict (FixedDim xn n)
-      , Dict <- go xds ds
-        = Dict
-    go _ _ = error "XIOFrame pattern / go: impossible args"
 
 -- | Mutable DataFrame of unknown dimensionality
 data SomeIODataFrame (t :: Type)
@@ -161,10 +149,8 @@ copyDataFrame ::
        forall (t :: Type) (k :: Type)
               (b :: k) (bi :: k) (bd :: k)
               (as :: [k]) (bs :: [k]) (asbs :: [k])
-     . ( SubFrameIndexCtx b bi bd
-       , ExactDims bs
-       , PrimBytes t
-       , PrimBytes (DataFrame t (bd :+ bs))
+     . ( SubFrameIndexCtx b bi bd, KnownDim bd, ExactDims bs
+       , PrimArray t (DataFrame t (bd :+ bs))
        , ConcatList as (b :+ bs) asbs )
     => Idxs (as +: bi) -> DataFrame t (bd :+ bs) -> IODataFrame t asbs -> IO ()
 copyDataFrame = coerce (copyDataFrame# @t @k @b @bi @bd @as @bs @asbs)
@@ -194,9 +180,8 @@ copyMutableDataFrame = coerce (copyMDataFrame# @t @k @b @bi @bd @as @bs @asbs)
 --   layout of Mutable DataFrames. Offset bounds are not checked.
 copyDataFrameOff ::
        forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k])
-     . ( ExactDims bs
-       , PrimBytes t
-       , PrimBytes (DataFrame t bs)
+     . ( Dimensions bs
+       , PrimArray t (DataFrame t bs)
        , ConcatList as bs asbs )
     => Int -> DataFrame t bs -> IODataFrame t asbs -> IO ()
 copyDataFrameOff = coerce (copyDataFrameOff# @t @k @as @bs @asbs)
@@ -221,13 +206,11 @@ copyMutableDataFrameOff = coerce (copyMDataFrameOff# @t @k @as @bs @asbs)
 copyDataFrame' ::
        forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k])
      . ( ExactDims bs
-       , PrimBytes t
-       , PrimBytes (DataFrame t bs)
+       , PrimArray t (DataFrame t bs)
        , ConcatList as bs asbs )
     => Idxs as -> DataFrame t bs -> IODataFrame t asbs -> IO ()
 copyDataFrame' = coerce (copyDataFrame'# @t @k @as @bs @asbs)
 {-# INLINE copyDataFrame' #-}
-
 
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
 --
@@ -259,7 +242,7 @@ freezeDataFrame = coerce (freezeDataFrame# @t @k @ns)
 -- | Create a new mutable DataFrame and copy content of immutable one in there.
 thawDataFrame ::
        forall (t :: Type) (k :: Type) (ns :: [k])
-     . (Dimensions ns, PrimBytes (DataFrame t ns))
+     . (Dimensions ns, PrimArray t (DataFrame t ns))
     => DataFrame t ns -> IO (IODataFrame t ns)
 thawDataFrame = coerce (thawDataFrame# @t @k @ns)
 {-# INLINE thawDataFrame #-}
@@ -268,7 +251,7 @@ thawDataFrame = coerce (thawDataFrame# @t @k @ns)
 --   The result array is pinned and aligned.
 thawPinDataFrame ::
        forall (t :: Type) (k :: Type) (ns :: [k])
-     . (Dimensions ns, PrimBytes (DataFrame t ns))
+     . (Dimensions ns, PrimArray t (DataFrame t ns))
     => DataFrame t ns -> IO (IODataFrame t ns)
 thawPinDataFrame = coerce (thawPinDataFrame# @t @k @ns)
 {-# INLINE thawPinDataFrame #-}
@@ -276,7 +259,7 @@ thawPinDataFrame = coerce (thawPinDataFrame# @t @k @ns)
 -- | UnsafeCoerces an underlying byte array.
 unsafeThawDataFrame ::
        forall (t :: Type) (k :: Type) (ns :: [k])
-     . (Dimensions ns, PrimBytes (DataFrame t ns), PrimBytes t)
+     . (Dimensions ns, PrimArray t (DataFrame t ns))
     => DataFrame t ns
     -> IO (IODataFrame t ns)
 unsafeThawDataFrame = coerce (unsafeThawDataFrame# @t @k @ns)

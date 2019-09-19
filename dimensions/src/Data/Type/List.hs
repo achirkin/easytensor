@@ -29,7 +29,7 @@ module Data.Type.List
   , StripPrefix, StripSuffix
   , Reverse, Take, Drop, Length
     -- * Operations on elements
-  , All, Map, Elem
+  , All, Map, UnMap, Elem
     -- * Classes that simplify inference of type equalities
   , SnocList, ReverseList, ConcatList
   , inferStripSuffix, inferStripPrefix, inferConcat
@@ -89,6 +89,11 @@ type family All (f :: k -> Constraint) (xs :: [k]) :: Constraint where
 type family Map (f :: a -> b) (xs :: [a]) :: [b] where
     Map f '[]       = '[]
     Map f (x ': xs) = f x ': Map f xs
+
+-- | Unmap a functor over the elements of a type list.
+type family UnMap (f :: a -> b) (xs :: [b]) :: [a] where
+    UnMap f '[]         = '[]
+    UnMap f (f x ': ys) = x ': UnMap f ys
 
 -- | Check if an item is a member of a list.
 type family Elem (x :: k) (xs :: [k]) :: Constraint where
