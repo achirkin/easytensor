@@ -319,9 +319,30 @@ iwzip :: forall t as bs asbs l bsL asbsL r bsR asbsR
      . (SubSpace t as bs asbs, SubSpace l as bsL asbsL, SubSpace r as bsR asbsR)
     => (Idxs as -> DataFrame l bsL -> DataFrame r bsR -> DataFrame t bs)
     -> DataFrame l asbsL -> DataFrame r asbsR -> DataFrame t asbs
-iwzip f dft dfs = iwmap g dft
+iwzip f dfl dfr = case getDimKind dfl of
+  DimNat -> iwmap (\i x -> f i x (index i dfr)) dfl
+  DimXNat
+    | XFrame (_ :: DataFrame l asbsLN) <- dfl
+    , XFrame (_ :: DataFrame r asbsRN) <- dfr
+    , asbs <- unsafeCoerce -- minimum spans
+        $ zipWith min (listDims $ dims @asbsLN) (listDims $ dims @asbsRN) :: Dims asbs
+    , bs <- (dims :: Dims bs)
+    , as <- (dropSufDims bs asbs :: Dims as)
+      -> withLiftedConcatList @'Nothing @('Just (DimsBound bs)) @'Nothing as bs asbs $
+          \(Dims :: Dims asn) (Dims :: Dims bsn) (Dims :: Dims asbsn) -> case () of
+            _ | Dict <- inferKnownBackend @t @asbsn
+              , Dict <- inferKnownBackend @t @bsn
+             -> XFrame (iwgen @t @asn @bsn @asbsn
+                         (\i -> case f (unsafeCoerce i)
+                                       (index (unsafeCoerce i) dfl)
+                                       (index (unsafeCoerce i) dfr) of
+                                  XFrame r -> unsafeCoerce r
+                         )
+                       )
   where
-    g i dft' = f i dft' (index i dfs)
+    getDimKind :: forall (k :: Type) (ns :: [k]) (p :: [k] -> Type)
+                . KnownDimKind k => p ns -> DimKind k
+    getDimKind = const (dimKind @k)
 {-# INLINE iwzip #-}
 
 -- | Operations on DataFrames
@@ -335,6 +356,7 @@ iwzip f dft dfs = iwmap g dft
 class ( ConcatList as bs asbs
       , SubSpaceCtx t as bs asbs
       , PrimBytes t
+      , KnownDimKind k
       ) => SubSpace (t :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k])
                     | asbs as -> bs, asbs bs -> as, as bs -> asbs where
     type SubSpaceCtx t as bs asbs :: Constraint
