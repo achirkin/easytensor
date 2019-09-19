@@ -8,9 +8,11 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE TypeInType            #-}
 {-# LANGUAGE TypeOperators         #-}
 module Numeric.Subroutine.Sort
-  ( SortBy (..), sortBy
+  ( SortBy (..), sortBy, sort
+  , SortableDataFrame
   ) where
 
 
@@ -23,24 +25,63 @@ import Numeric.DataFrame.Internal.PrimArray
 import Numeric.DataFrame.ST
 import Numeric.DataFrame.Type
 import Numeric.Dimensions
+import Unsafe.Coerce
 
+-- | Sort a @DataFrame@ along the first dimension.
+--
+--   Note: the elements (which are of type @DataFrame t ns@) are compared
+--         lexicographically.
+sort :: forall (k :: Type) (n :: k) (t :: Type) (ns :: [k])
+      . ( SortableDataFrame t (n ': ns), Ord t, SortBy n)
+     => DataFrame t (n ': ns)
+     -> DataFrame t (n ': ns)
+sort df = case dimKind @k of
+    DimNat  -> case uniqueOrCumulDims df of
+      Left _ -> df -- all equal, no need for sorting.
+      Right steps
+        | SomeDims (Dims :: Dims ms) <- fromSteps steps
+        , Dict <- (unsafeCoerce (Dict @(ns ~ ns)) :: Dict (ns ~ ms))
+          -> sortBy compare df
+        | otherwise
+          -> error "sort/DimNat/uniqueOrCumulDims -- impossible pattern"
+    DimXNat
+        | XFrame (df' :: DataFrame t ms) <- df
+        , D :* Dims <- dims @ms
+          -> XFrame (sortBy compare df')
+        | otherwise
+          -> error "sort/DimXNat -- impossible pattern"
 
 -- | Sort a @DataFrame@ along the first dimension using given comparison function.
 sortBy :: forall (k :: Type) (n :: k) (t :: Type) (ns :: [k])
-        . ( PrimArray t (DataFrame t (n ': ns))
-          , PrimArray t (DataFrame t ns)
+        . ( SortableDataFrame t (n ': ns)
           , SortBy n)
        => (DataFrame t ns -> DataFrame t ns -> Ordering)
        -> DataFrame t (n ': ns)
        -> DataFrame t (n ': ns)
-sortBy cmp df
-  | Left _ <- uniqueOrCumulDims df = df -- all elements equal, no need for sorting.
-  | otherwise = runST $ do
-    mdf <- uncheckedThawDataFrame df
-    sortByInplace
-      (\x y -> cmp <$> unsafeFreezeDataFrame x <*> unsafeFreezeDataFrame y)
-      mdf
-    unsafeFreezeDataFrame mdf
+sortBy cmp df = case dimKind @k of
+    DimNat
+      | Left _ <- uniqueOrCumulDims df -> df -- all equal, no need for sorting.
+      | otherwise -> runST $ do
+        mdf <- uncheckedThawDataFrame df
+        sortByInplace
+          (\x y -> cmp <$> unsafeFreezeDataFrame x <*> unsafeFreezeDataFrame y)
+          mdf
+        unsafeFreezeDataFrame mdf
+    DimXNat
+      | XFrame dfN <- df
+      , D :* Dims <- dims `inSpaceOf` dfN
+        -> XFrame (sortBy (\a b -> cmp (XFrame a) (XFrame b)) dfN)
+      | otherwise
+        -> error "sortBy/DimXNat -- impossible pattern"
+
+-- | The required context for sorting a DataFrame is slightly different
+--   for @Nat@ and @XNat@ indexed arrays.
+--   This type family abstracts away the difference.
+type family SortableDataFrame (t :: Type) (ns :: [k]) :: Constraint where
+    SortableDataFrame t ((n ': ns) :: [Nat])
+      = (PrimArray t (DataFrame t ns), PrimArray t (DataFrame t (n ': ns)))
+    SortableDataFrame t ((n ': ns) :: [XNat])
+      = PrimBytes t
 
 
 class BoundedDim n => SortBy (n :: k) where
@@ -154,7 +195,8 @@ instance {-# INCOHERENT #-}
               , Just bmji@D <- minusDimM (plusDim dab D1) bmj
               , Just Dict <- sameDim (plusDim dab D1) (plusDim bmji bmj)
               , Just Dict <- sameDim (plusDim db D1) (dj `plusDim` D1 `plusDim` bmj)
-                = Nothing <$ copyMutableDataFrame @t @_ @ab @(ab + 1 - (b - j)) @(b - j) (Idx k :* U)
+                = Nothing <$ copyMutableDataFrame @t @_ @ab @(ab + 1 - (b - j))
+                                                            @(b - j) (Idx k :* U)
                     (subDataFrameView @t @_ @b @(j + 1) @(b - j) (Idx j :* U) b) ab
               | j >= dimVal db
               , Dx di@(D :: Dim i) <- someDimVal i

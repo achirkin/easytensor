@@ -114,6 +114,7 @@ module Numeric.Dimensions.Dim
 import           Data.Bits                (countLeadingZeros, finiteBitSize)
 import           Data.Coerce
 import           Data.Constraint
+import           Data.Constraint.Bare
 import           Data.Constraint.Deriving
 import           Data.Data                hiding (TypeRep, typeRep,
                                            typeRepTyCon)
@@ -406,7 +407,8 @@ instance KnownDim n => KnownDim (N n) where
 --   This function assures the type checker that this is indeed the case.
 withKnownXDim :: forall (d :: XNat) (rep :: RuntimeRep) (r :: TYPE rep)
                . KnownDim d
-              => ((KnownDim (DimBound d), ExactDim d) => r)
+              => ( (KnownDim (DimBound d), ExactDim d
+                 , KnownXNatType d, FixedDim d (DimBound d)) => r)
               -> r
 withKnownXDim
   | Dict <- unsafeEqTypes @_ @d @(N (DimBound d))
@@ -732,7 +734,7 @@ pattern KnownDims <- (patKDims -> PatKDims)
 
 
 #define PLEASE_STYLISH_HASKELL \
-  forall (xns :: [XNat]) . KnownXNatTypes xns => \
+  forall (xns :: [XNat]) . () => \
   forall (ns :: [Nat]) . (FixedDims xns ns, Dimensions ns) => \
   Dims ns -> Dims xns
 
@@ -809,13 +811,29 @@ instance (KnownDim d, Dimensions ds) => Dimensions ((d ': ds) :: [k]) where
 --   This function assures the type checker that this is indeed the case.
 withKnownXDims :: forall (ds :: [XNat]) (rep :: RuntimeRep) (r :: TYPE rep)
                 . Dimensions ds
-               => ((Dimensions (DimsBound ds), ExactDims ds) => r)
+               => (( Dimensions (DimsBound ds), ExactDims ds
+                   , KnownXNatTypes ds, FixedDims ds (DimsBound ds)) => r)
                -> r
-withKnownXDims
+withKnownXDims f
   | Dict <- unsafeEqTypes @_ @ds @(Map 'N (DimsBound ds))
-    = reifyDims @Nat @(DimsBound ds) (unsafeCoerce# (dims_ @XNat @ds))
+    = reifyDims @Nat @(DimsBound ds) dsN
+        (k (WithConstraint f) (dictToBare (inferExactFixedDims @ds dsN)))
+  where
+    dsN :: Dims (DimsBound ds)
+    dsN = unsafeCoerce# (dims @ds)
+    k :: forall (rep' :: RuntimeRep) (r' :: TYPE rep')
+       . WithConstraint (KnownXNatTypes ds, FixedDims ds (DimsBound ds)) r'
+      -> BareConstraint (KnownXNatTypes ds, FixedDims ds (DimsBound ds)) -> r'
+    k = unsafeCoerce#
 {-# INLINE withKnownXDims #-}
+newtype WithConstraint c (r :: TYPE rep) = WithConstraint (c => r)
 
+inferExactFixedDims :: forall (ds :: [XNat]) . ExactDims ds
+                    => Dims (DimsBound ds)
+                    -> Dict (KnownXNatTypes ds, FixedDims ds (DimsBound ds))
+inferExactFixedDims U = Dict
+inferExactFixedDims (_ :* ns)
+  | Dict <- inferExactFixedDims @(Tail ds) ns = Dict
 
 -- | Minimal or exact bound of @Dims@.
 --   This is a plural form of `DimBound`.
@@ -1275,14 +1293,21 @@ data PatXDims (xns :: [XNat])
   = forall (ns :: [Nat])
   . (FixedDims xns ns, Dimensions ns) => PatXDims (Dims ns)
 
-patXDims :: forall (xns :: [XNat])
-          . All KnownXNatType xns => Dims xns -> PatXDims xns
+patXDims :: forall (xns :: [XNat]) . Dims xns -> PatXDims xns
 patXDims U = PatXDims U
-patXDims (Dn n :* xns) = case patXDims xns of
-  PatXDims ns -> PatXDims (n :* ns)
-patXDims (Dx n :* xns) = case patXDims xns of
-  PatXDims ns -> PatXDims (n :* ns)
+patXDims ((xn :: Dim xn) :* xns)
+  | Dx (n :: Dim n) <- coerce xn :: Dim (XN 0)
+    -- Warning! I rely here on the fact that FixedDim xn n has the same
+    -- runtime rep as a single type equality.
+    -- If that changes, then the code is broke.
+  , Dict <- unsafeCoerce# (Dict @(n ~ n)) :: Dict (FixedDim xn n)
+  , PatXDims ns <- patXDims xns
+    = PatXDims (n :* ns)
+  | otherwise
+    = error "XDims/patXDims -- impossible pattern"
 {-# INLINE patXDims #-}
+
+
 
 data PatAsXDims (ns :: [Nat])
   = (KnownXNatTypes (AsXDims ns), RepresentableList (AsXDims ns))
