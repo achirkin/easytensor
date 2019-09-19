@@ -24,7 +24,7 @@ matrix:
 
 before_install:
   - printf "packages\u3A \u2A/\u2A.cabal\n" > cabal.project
-  - curl -sSL https://github.com/sol/hpack/raw/master/get-hpack.sh | bash
+  - until curl -sSL https://github.com/sol/hpack/raw/master/get-hpack.sh | bash; do sleep 1; done
   - hpack dimensions/package.yaml
   - hpack easytensor/package.yaml
 
