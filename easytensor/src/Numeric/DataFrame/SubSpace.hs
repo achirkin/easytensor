@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes     #-}
+{-# LANGUAGE CPP                     #-}
 {-# LANGUAGE DataKinds               #-}
 {-# LANGUAGE FlexibleContexts        #-}
 {-# LANGUAGE FlexibleInstances       #-}
@@ -928,7 +929,7 @@ instance ( ConcatList as bs asbs
                               as bs asbs $
            \(Dims :: Dims asn) (Dims :: Dims bsn) (Dims :: Dims asbsn)
              -> case inferKnownBackend @t @bsn of
-               Dict -> XFrame (index @t @asn @bsn @asbsn (unsafeCoerce i) df)
+               Dict -> XFrame (index @t @asn @bsn @asbsn (liftIdxs i) df)
     {-# INLINE indexI #-}
 
     sliceI ::
@@ -946,9 +947,12 @@ instance ( ConcatList as bs asbs
                Dict
                 | Dict <- inferKnownBackend @t @(DimBound bd ': Tail bsn)
                 , Dict <- inferKnownBackend @t @bsN
+                  -- last indexing Dim (bi) is not checked, but we know it's fixed,
+                  --  so that's fine to unsafeCoerce it.
+                , ii <- unsafeCoerce (liftIdxs i :: Idxs asn)
                  -> XFrame (slice @t @asn @bsn @asbsn
                                  @(DimBound bi) @(DimBound bd) @(Head bsn)
-                                 @(Tail bsn) (unsafeCoerce i) df)
+                                 @(Tail bsn) ii df)
     sliceI _ _ = error "SubSpace[XNat]/sliceI -- impossible pattern"
     {-# INLINE sliceI #-}
 
@@ -961,7 +965,7 @@ instance ( ConcatList as bs asbs
       in withLiftedConcatList @'Nothing @('Just bsN) @('Just asbsN)
                               as bs asbs $
            \(Dims :: Dims asn) (Dims :: Dims bsn) (Dims :: Dims asbsn)
-             -> XFrame (update @t @asn @bsn @asbsn (unsafeCoerce i) bsDf asbsDf)
+             -> XFrame (update @t @asn @bsn @asbsn (liftIdxs i) bsDf asbsDf)
     {-# INLINE updateI #-}
 
     updateSliceI :: forall (bi :: XNat) (bd :: XNat) (b' :: XNat) (bs' :: [XNat])
@@ -981,9 +985,12 @@ instance ( ConcatList as bs asbs
                Dict
                 | Dict <- unsafeEqTypes @_ @bs'N @bs'N2
                 , Dict <- inferKnownBackend @t @bsN
+                  -- last indexing Dim (bi) is not checked, but we know it's fixed,
+                  --  so that's fine to unsafeCoerce it.
+                , ii <- unsafeCoerce (liftIdxs i :: Idxs asn)
                  -> XFrame (updateSlice @t @asn @bsn @asbsn
                                  @(DimBound bi) @bdN @b'N
-                                 @bs'N (unsafeCoerce i) dbs'Df asbsDf)
+                                 @bs'N ii dbs'Df asbsDf)
     updateSliceI _ _ _ = error "SubSpace[XNat]/updateSliceI -- impossible pattern"
     {-# INLINE updateSliceI #-}
 
@@ -1129,6 +1136,17 @@ instance ( ConcatList as bs asbs
     {-# INLINE indexWiseI #-}
 
 
+liftIdxs :: forall (ds :: [Nat]) (xds :: [XNat])
+          . Dimensions ds => Idxs xds -> Idxs ds
+liftIdxs ixs
+#ifndef UNSAFE_INDICES
+  | or $ zipWith (>=) (listIdxs ixs) (listDims (dims @ds)) = errorWithoutStackTrace
+    $ "SubSpace/liftIdxs: index "
+      ++ show ixs ++ " is outside of DataFrame bounds (Dims (" ++ show (dims @ds) ++ ")."
+  | otherwise
+#endif
+    = unsafeCoerce ixs
+{-# INLINABLE liftIdxs #-}
 
 dropSufDims :: ConcatList as bs asbs
             => Dims bs -> Dims asbs -> Dims as
