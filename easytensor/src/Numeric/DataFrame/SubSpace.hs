@@ -27,11 +27,34 @@
 -----------------------------------------------------------------------------
 
 module Numeric.DataFrame.SubSpace
-  ( SubSpace (SubSpaceCtx), (.!), element
+  ( -- * Class definition
+    SubSpace (SubSpaceCtx)
+    -- * Simple interface
+    --
+    --   All functions in this section are named @sxxx@, where @s@ stands for
+    --   "simple". These allow using all functions of `SubSpace` with indexing
+    --   dimensionality @as@ fixed to a single dim @(as ~ '[a])@.
+    --   Use these functions if you are tired of @TypeApplications@ or find the
+    --   error messages too cryptic.
+  , sindexOffset, supdateOffset
+  , sindex, supdate, sslice, supdateSlice
+  , sewgen, siwgen, sewmap, siwmap, sewzip, siwzip
+  , selement, selementWise, selementWise_, sindexWise, sindexWise_
+  , sewfoldl, sewfoldl', sewfoldr, sewfoldr', sewfoldMap
+  , siwfoldl, siwfoldl', siwfoldr, siwfoldr', siwfoldMap
+    -- * Flexible interface
+    --
+    --   Functions in this section allow you pick, fold, iterate, or do whatever
+    --   you want with arbitrary sub-dataframe dimensionalities:
+    --   e.g. a DataFrame of rank 3 can be processed as an 1D array of matrices
+    --   or a matrix of vectors, or a 3D array of scalars.
+    --   Often, you would need @TypeApplications@ to specify explicitly at least
+    --   the indexing subspace (parameter @as@).
+  , (.!)
   , joinDataFrame, indexOffset, updateOffset
   , index, update, slice, updateSlice
   , ewgen, iwgen, ewmap, iwmap, ewzip, iwzip
-  , elementWise, elementWise_, indexWise, indexWise_
+  , element, elementWise, elementWise_, indexWise, indexWise_
   , ewfoldl, ewfoldl', ewfoldr, ewfoldr', ewfoldMap
   , iwfoldl, iwfoldl', iwfoldr, iwfoldr', iwfoldMap
   ) where
@@ -48,6 +71,258 @@ import           Numeric.Dimensions
 import qualified Numeric.TypedList                    as TL
 import           Unsafe.Coerce
 
+-- | Unsafely get a sub-dataframe by its primitive element offset.
+--   The offset is not checked to be aligned to the space structure or for bounds.
+sindexOffset ::
+       forall t a bs
+     . SubSpace t '[a] bs (a :+ bs)
+    => Int -- ^ Prim element offset
+    -> DataFrame t (a :+ bs) -> DataFrame t bs
+sindexOffset = indexOffset @t @'[a] @bs @(a :+ bs)
+{-# INLINE sindexOffset #-}
+
+-- | Unsafely update a sub-dataframe by its primitive element offset.
+--   The offset is not checked to be aligned to the space structure or for bounds.
+supdateOffset ::
+       forall t a bs
+     . SubSpace t '[a] bs (a :+ bs)
+    => Int -- ^ Prim element offset
+    -> DataFrame t bs -> DataFrame t (a :+ bs) -> DataFrame t (a :+ bs)
+supdateOffset = updateOffset @t @'[a] @bs @(a :+ bs)
+{-# INLINE supdateOffset #-}
+
+-- | Get an element by its index in the dataframe.
+sindex ::
+       forall t a bs
+     . SubSpace t '[a] bs (a :+ bs)
+    => Idx a -> DataFrame t (a :+ bs) -> DataFrame t bs
+sindex = index @t @'[a] @bs @(a :+ bs) . (:* U)
+{-# INLINE[1] sindex #-}
+
+-- | Get a few contiguous elements.
+--
+--   In a sense, this is just a more complicated version of `index`.
+sslice ::
+       forall t bi bd b bs
+     . ( SubSpace t '[] (b :+ bs) (b :+ bs)
+       , SubFrameIndexCtx b bi bd
+       , KnownDim bd
+       , PrimArray t (DataFrame t (bd :+ bs)))
+    => Idx bi -> DataFrame t (b :+ bs) -> DataFrame t (bd :+ bs)
+sslice = slice @t @'[] @(b :+ bs) @(b :+ bs) @bi @bd @b . (:* U)
+{-# INLINE[1] sslice #-}
+
+
+-- | Set a new value to an element.
+supdate ::
+       forall t a bs
+     . SubSpace t '[a] bs (a :+ bs)
+    => Idxs '[a] -> DataFrame t bs -> DataFrame t (a :+ bs) -> DataFrame t (a :+ bs)
+supdate = update @t @'[a] @bs @(a :+ bs)
+{-# INLINE[1] supdate #-}
+
+-- | Update a few contiguous elements.
+--
+--   In a sense, this is just a more complicated version of `update`.
+supdateSlice ::
+       forall t bi bd b bs
+     . ( SubSpace t '[] (b :+ bs) (b :+ bs)
+       , SubFrameIndexCtx b bi bd
+       , KnownDim bd
+       , PrimArray t (DataFrame t (bd :+ bs)))
+    => Idx bi -> DataFrame t (bd :+ bs)
+    -> DataFrame t (b :+ bs) -> DataFrame t (b :+ bs)
+supdateSlice = updateSlice @t @'[] @(b :+ bs) @(b :+ bs) @bi @bd @b . (:* U)
+{-# INLINE[1] supdateSlice #-}
+
+-- | Map a function over each element of DataFrame.
+sewmap ::
+       forall t a bs s bs'
+     . (SubSpace t '[a] bs (a :+ bs), SubSpace s '[a] bs' (a :+ bs'))
+    => (DataFrame s bs' -> DataFrame t bs)
+    -> DataFrame s (a :+ bs') -> DataFrame t (a :+ bs)
+sewmap = ewmap @t @'[a] @bs @(a :+ bs) @s @bs' @(a :+ bs')
+{-# INLINE sewmap #-}
+
+-- | Map a function over each element with its index of DataFrame.
+siwmap ::
+       forall t a bs s bs'
+     . (SubSpace t '[a] bs (a :+ bs), SubSpace s '[a] bs' (a :+ bs'))
+    => (Idx a -> DataFrame s bs' -> DataFrame t bs)
+    -> DataFrame s (a :+ bs') -> DataFrame t (a :+ bs)
+siwmap f = iwmap @t @'[a] @bs @(a :+ bs) @s @bs' @(a :+ bs') (\(i :* U) -> f i)
+{-# INLINE[1] siwmap #-}
+
+-- | Generate a DataFrame by repeating an element.
+sewgen ::
+       forall t a bs
+     . (SubSpace t '[a] bs (a :+ bs), Dimensions '[a])
+    => DataFrame t bs -> DataFrame t (a :+ bs)
+sewgen = ewgen @t @'[a] @bs @(a :+ bs)
+{-# INLINE sewgen #-}
+
+-- | Generate a DataFrame by iterating a function (index -> element).
+siwgen ::
+       forall t a bs
+     . (SubSpace t '[a] bs (a :+ bs), Dimensions '[a])
+    => (Idx a -> DataFrame t bs) -> DataFrame t (a :+ bs)
+siwgen f = iwgen @t @'[a] @bs @(a :+ bs) (\(i :* U) -> f i)
+{-# INLINE[1] siwgen #-}
+
+-- | Left-associative lazy fold of a DataFrame.
+--   Same rules apply as for `foldl`.
+sewfoldl ::
+       forall t a bs b
+     . SubSpace t '[a] bs (a :+ bs)
+    => (b -> DataFrame t bs -> b) -> b -> DataFrame t (a :+ bs) -> b
+sewfoldl = ewfoldl @t @'[a] @bs @(a :+ bs) @b
+{-# INLINE sewfoldl #-}
+
+-- | Left-associative strict fold of a DataFrame.
+--   Same rules apply as for `foldl'`.
+sewfoldl' ::
+       forall t a bs b
+     . SubSpace t '[a] bs (a :+ bs)
+    => (b -> DataFrame t bs -> b) -> b -> DataFrame t (a :+ bs) -> b
+sewfoldl' = ewfoldl' @t @'[a] @bs @(a :+ bs) @b
+{-# INLINE sewfoldl' #-}
+
+-- | Left-associative lazy fold of a DataFrame with an index.
+--   Same rules apply as for `foldl`.
+siwfoldl ::
+       forall t a bs b
+     . SubSpace t '[a] bs (a :+ bs)
+    => (Idx a -> b -> DataFrame t bs -> b) -> b -> DataFrame t (a :+ bs) -> b
+siwfoldl f = iwfoldl @t @'[a] @bs @(a :+ bs) @b (\(i :* U) -> f i)
+{-# INLINE[1] siwfoldl #-}
+
+-- | Left-associative strict fold of a DataFrame with an index.
+--   Same rules apply as for `foldl'`.
+siwfoldl' ::
+       forall t a bs b
+     . SubSpace t '[a] bs (a :+ bs)
+    => (Idx a -> b -> DataFrame t bs -> b) -> b -> DataFrame t (a :+ bs) -> b
+siwfoldl' f = iwfoldl' @t @'[a] @bs @(a :+ bs) @b (\(i :* U) -> f i)
+{-# INLINE[1] siwfoldl' #-}
+
+-- | Right-associative lazy fold of a DataFrame.
+--   Same rules apply as for `foldr`.
+sewfoldr ::
+       forall t a bs b
+     . SubSpace t '[a] bs (a :+ bs)
+    => (DataFrame t bs -> b -> b) -> b -> DataFrame t (a :+ bs) -> b
+sewfoldr = ewfoldr @t @'[a] @bs @(a :+ bs) @b
+{-# INLINE sewfoldr #-}
+
+-- | Right-associative strict fold of a DataFrame.
+--   Same rules apply as for `foldr'`.
+sewfoldr' ::
+       forall t a bs b
+     . SubSpace t '[a] bs (a :+ bs)
+    => (DataFrame t bs -> b -> b) -> b -> DataFrame t (a :+ bs) -> b
+sewfoldr' = ewfoldr' @t @'[a] @bs @(a :+ bs) @b
+{-# INLINE sewfoldr' #-}
+
+-- | Right-associative lazy fold of a DataFrame with an index.
+--   Same rules apply as for `foldr`.
+siwfoldr ::
+       forall t a bs b
+     . SubSpace t '[a] bs (a :+ bs)
+    => (Idx a -> DataFrame t bs -> b -> b) -> b -> DataFrame t (a :+ bs) -> b
+siwfoldr f = iwfoldr @t @'[a] @bs @(a :+ bs) @b (\(i :* U) -> f i)
+{-# INLINE[1] siwfoldr #-}
+
+-- | Right-associative strict fold of a DataFrame with an index.
+--   Same rules apply as for `foldr'`.
+siwfoldr' ::
+       forall t a bs b
+     . SubSpace t '[a] bs (a :+ bs)
+    => (Idx a -> DataFrame t bs -> b -> b) -> b -> DataFrame t (a :+ bs) -> b
+siwfoldr' f = iwfoldr' @t @'[a] @bs @(a :+ bs) @b (\(i :* U) -> f i)
+{-# INLINE[1] siwfoldr' #-}
+
+-- | Apply an applicative functor on each element (Lens-like traversal).
+selementWise ::
+       forall t a bs s bs' f
+     . (SubSpace t '[a] bs (a :+ bs), SubSpace s '[a] bs' (a :+ bs'), Applicative f)
+    => (DataFrame s bs' -> f (DataFrame t bs))
+    -> DataFrame s (a :+ bs') -> f (DataFrame t (a :+ bs))
+selementWise = elementWise @t @'[a] @bs @(a :+ bs) @s @bs' @(a :+ bs') @f
+{-# INLINE selementWise #-}
+
+-- | Apply an applicative functor on each element with its index
+--     (Lens-like indexed traversal).
+sindexWise ::
+       forall t a bs s bs' f
+     . (SubSpace t '[a] bs (a :+ bs), SubSpace s '[a] bs' (a :+ bs'), Applicative f)
+    => (Idx a -> DataFrame s bs' -> f (DataFrame t bs))
+    -> DataFrame s (a :+ bs') -> f (DataFrame t (a :+ bs))
+sindexWise f = indexWise @t @'[a] @bs @(a :+ bs) @s @bs' @(a :+ bs') @f (\(i :* U) -> f i)
+{-# INLINE[1] sindexWise #-}
+
+-- | Apply an applicative functor on each element (Lens-like traversal)
+selementWise_ ::
+       forall t a bs f b
+     . (SubSpace t '[a] bs (a :+ bs), Applicative f)
+    => (DataFrame t bs -> f b) -> DataFrame t (a :+ bs) -> f ()
+selementWise_ = elementWise_ @t @'[a] @bs @(a :+ bs) @f @b
+{-# INLINE selementWise_ #-}
+
+-- | Apply an applicative functor on each element with its index
+--     (Lens-like indexed traversal)
+sindexWise_ ::
+       forall t a bs f b
+    . (SubSpace t '[a] bs (a :+ bs), Applicative f)
+   => (Idx a -> DataFrame t bs -> f b) -> DataFrame t (a :+ bs) -> f ()
+sindexWise_ f = indexWise_ @t @'[a] @bs @(a :+ bs) @f @b (\(i :* U) -> f i)
+{-# INLINE sindexWise_ #-}
+
+-- | Apply a functor over a single element (simple lens)
+selement ::
+       forall t a bs f
+     . (SubSpace t '[a] bs (a :+ bs), Applicative f)
+    => Idx a
+    -> (DataFrame t bs -> f (DataFrame t bs))
+    -> DataFrame t (a :+ bs) -> f (DataFrame t (a :+ bs))
+selement = element @t @'[a] @bs @(a :+ bs) @f . (:* U)
+{-# INLINE selement #-}
+
+-- | Map each element of the DataFrame to a monoid,
+--    and combine the results.
+sewfoldMap ::
+       forall t a bs m
+     . (SubSpace t '[a] bs (a :+ bs), Monoid m)
+    => (DataFrame t bs -> m) -> DataFrame t (a :+ bs) -> m
+sewfoldMap = ewfoldMap @t @'[a] @bs @(a :+ bs) @m
+{-# INLINE sewfoldMap #-}
+
+-- | Map each element of the DataFrame and its index to a monoid,
+--    and combine the results.
+siwfoldMap ::
+       forall t a bs m
+     . (SubSpace t '[a] bs (a :+ bs), Monoid m)
+    => (Idx a -> DataFrame t bs -> m) -> DataFrame t (a :+ bs) -> m
+siwfoldMap f = iwfoldMap @t @'[a] @bs @(a :+ bs) @m (\(i :* U) -> f i)
+{-# INLINE[1] siwfoldMap #-}
+
+-- | Zip two spaces on a specified subspace element-wise (without index)
+sewzip ::
+       forall t a bs l bsL r bsR
+     . (SubSpace t '[a] bs (a :+ bs), SubSpace l '[a] bsL (a :+ bsL), SubSpace r '[a] bsR (a :+ bsR))
+    => (DataFrame l bsL -> DataFrame r bsR -> DataFrame t bs)
+    -> DataFrame l (a :+ bsL) -> DataFrame r (a :+ bsR) -> DataFrame t (a :+ bs)
+sewzip = ewzip @t @'[a] @bs @(a :+ bs) @l @bsL @(a :+ bsL) @r @bsR @(a :+ bsR)
+{-# INLINE sewzip #-}
+
+-- | Zip two spaces on a specified subspace index-wise (with index)
+siwzip ::
+       forall t a bs l bsL r bsR
+     . (SubSpace t '[a] bs (a :+ bs), SubSpace l '[a] bsL (a :+ bsL), SubSpace r '[a] bsR (a :+ bsR))
+    => (Idx a -> DataFrame l bsL -> DataFrame r bsR -> DataFrame t bs)
+    -> DataFrame l (a :+ bsL) -> DataFrame r (a :+ bsR) -> DataFrame t (a :+ bs)
+siwzip f = iwzip @t @'[a] @bs @(a :+ bs) @l @bsL @(a :+ bsL) @r @bsR @(a :+ bsR) (\(i :* U) -> f i)
+{-# INLINE siwzip #-}
+
 -- | Flatten a nested DataFrame, analogous to `Control.Monad.join`.
 joinDataFrame ::
        forall t as bs asbs
@@ -55,7 +330,6 @@ joinDataFrame ::
     => DataFrame (DataFrame t bs) as -> DataFrame t asbs
 joinDataFrame = joinDataFrameI @_ @t @as @bs @asbs
 {-# INLINE[1] joinDataFrame #-}
-
 
 -- | Unsafely get a sub-dataframe by its primitive element offset.
 --   The offset is not checked to be aligned to the space structure or for bounds.
