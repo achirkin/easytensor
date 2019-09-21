@@ -32,11 +32,11 @@ deriving instance PrimBytes (Quater Float)
 deriving instance PrimArray Float (Quater Float)
 
 instance Quaternion Float where
-    newtype Quater Float = QFloat Vec4f
+    newtype Quater Float = QFloat (Vector Float 4)
     {-# INLINE packQ #-}
-    packQ = coerce (vec4 :: Float -> Float -> Float -> Float -> Vec4f)
+    packQ = coerce (vec4 :: Float -> Float -> Float -> Float -> Vector Float 4)
     {-# INLINE unpackQ# #-}
-    unpackQ# = coerce (unpackV4# :: Vec4f -> (# Float, Float, Float, Float #))
+    unpackQ# = coerce (unpackV4# :: Vector Float 4 -> (# Float, Float, Float, Float #))
     {-# INLINE fromVecNum #-}
     fromVecNum (unpackV3# -> (# x, y, z #))  = packQ x y z
     {-# INLINE fromVec4 #-}
@@ -48,7 +48,7 @@ instance Quaternion Float where
     {-# INLINE im #-}
     im (unpackQ# -> (# x, y, z, _ #)) = packQ x y z 0.0
     {-# INLINE re #-}
-    re (unpackQ# -> (# _, _, _, w #)) = packQ 0.0 0.0 0.0 w
+    re (unpackQ# -> (# _, _, _, w #)) = packQ 0 0 0 w
     {-# INLINE imVec #-}
     imVec (unpackQ# -> (# x, y, z, _ #)) = vec3 x y z
     {-# INLINE taker #-}
@@ -73,7 +73,7 @@ instance Quaternion Float where
                 (l*z + d*k + t2 * (y*i - x*j))
     {-# INLINE getRotScale #-}
     getRotScale a b = case (# unpackV3# a, unpackV3# b #) of
-      (# _, (# 0, 0, 0 #) #) -> packQ 0.0 0.0 0.0 0.0
+      (# _, (# 0, 0, 0 #) #) -> packQ 0 0 0 0
       (# (# 0, 0, 0 #), _ #) -> let x = (1 / 0 :: Float) in packQ x x x x
       (# (# a1, a2, a3 #), (# b1, b2, b3 #) #) ->
         let ma = sqrt (a1*a1 + a2*a2 + a3*a3)
@@ -100,7 +100,7 @@ instance Quaternion Float where
           (# t1, t2, t3 #) -> packQ (t1 * r) (t2 * r) (t3 * r) (c / ma2)
     {-# INLINE axisRotation #-}
     axisRotation v a = case unpackV3# v of
-      (# 0, 0, 0 #) -> packQ 0.0 0.0 0.0 (if abs a < pi then 1 else -1)
+      (# 0, 0, 0 #) -> packQ 0 0 0 (negateUnless (abs a < M_PI) 1)
       (# x, y, z #) ->
         let c = cos (a * 0.5)
             s = sin (a * 0.5)
@@ -262,39 +262,35 @@ instance Num QFloat where
       = QFloat (a - b)
     {-# INLINE (-) #-}
     (unpackQ# -> (# a1, a2, a3, a4 #)) * (unpackQ# -> (# b1, b2, b3, b4 #))
-      = packQ
-           ((a4 * b1) +
-            (a1 * b4) +
-            (a2 * b3) -
-            (a3 * b2)
-            )
-           ((a4 * b2) -
-            (a1 * b3) +
-            (a2 * b4) +
-            (a3 * b1)
-            )
-           ((a4 * b3) +
-            (a1 * b2) -
-            (a2 * b1) +
-            (a3 * b4)
-            )
-           ((a4 * b4) -
-            (a1 * b1) -
-            (a2 * b2) -
-            (a3 * b3)
-            )
+      = packQ ((a4 * b1) + (a1 * b4) + (a2 * b3) - (a3 * b2))
+              ((a4 * b2) - (a1 * b3) + (a2 * b4) + (a3 * b1))
+              ((a4 * b3) + (a1 * b2) - (a2 * b1) + (a3 * b4))
+              ((a4 * b4) - (a1 * b1) - (a2 * b2) - (a3 * b3))
     {-# INLINE (*) #-}
     negate (QFloat a) = QFloat (negate a)
     {-# INLINE negate #-}
-    abs = packQ 0.0 0.0 0.0 . sqrt . square
+    abs = packQ 0 0 0 . sqrt . square
     {-# INLINE abs #-}
     signum q@(unpackQ# -> (# x, y, z, w #))
-      = case square q of
-          0.0 -> packQ 0.0 0.0 0.0 0.0
-          qd -> case recip (sqrt qd) of
-             s -> packQ (x * s) (y * s) (z * s) (w * s)
+      | qd == 0   = q
+      | otherwise = case ix + iy + iz + iw + nn of
+        0 -> packQ (x * l) (y * l) (z * l) (w * l)
+        1 -> packQ (copysign 1 x) 0 0 0
+        2 -> packQ 0 (copysign 1 y) 0 0
+        4 -> packQ 0 0 (copysign 1 z) 0
+        8 -> packQ 0 0 0 (copysign 1 w)
+        _ -> packQ n n n n
+      where
+        n  = 0 / 0 :: Float
+        qd = x*x + y*y + z*z + w*w
+        ix = if isInfinite x then 1 else 0 :: Int
+        iy = if isInfinite y then 2 else 0 :: Int
+        iz = if isInfinite z then 4 else 0 :: Int
+        iw = if isInfinite w then 8 else 0 :: Int
+        nn = if isNaN x || isNaN y || isNaN z || isNaN w then 16 else 0 :: Int
+        l  = recip (sqrt qd)
     {-# INLINE signum #-}
-    fromInteger = packQ 0.0 0.0 0.0 . fromInteger
+    fromInteger = packQ 0 0 0 . fromInteger
     {-# INLINE fromInteger #-}
 
 
@@ -305,81 +301,103 @@ instance Fractional QFloat where
     {-# INLINE (/) #-}
     a / b = a * recip b
     {-# INLINE fromRational #-}
-    fromRational = packQ 0.0 0.0 0.0 . fromRational
+    fromRational = packQ 0 0 0 . fromRational
 
 
 instance Floating QFloat where
     {-# INLINE pi #-}
-    pi = packQ 0.0 0.0 0.0 3.141592653589793
+    pi = packQ 0 0 0 M_PI
     {-# INLINE exp #-}
     exp (unpackQ# -> (# x, y, z, w #))
-      = case (# (x * x) +
-                (y * y) +
-                (z * z)
-             , exp w
-             #) of
-        (# 0.0, et #) -> packQ 0.0 0.0 0.0 et
-        (# mv2, et #) -> case sqrt mv2 of
-          mv -> case et * sin mv / mv of
-            l -> packQ (x * l) (y * l) (z * l) (et * cos mv)
+      | mv2 == 0  = packQ x y z ew
+      | otherwise = packQ (x * l) (y * l) (z * l) arg
+      where
+        mv2 = (x * x) + (y * y) + (z * z)
+        mv  = sqrt mv2
+        ew  = exp w
+        l   = ew * sin mv / mv
+        arg = ew * cos mv
     {-# INLINE log #-}
     log = log' (Vec3 1 0 0)
     {-# INLINE sqrt #-}
     sqrt = sqrt' (Vec3 1 0 0)
     {-# INLINE sin #-}
     sin (unpackQ# -> (# x, y, z, w #))
-      = case (x * x) + (y * y) + (z * z) of
-        0.0 -> packQ 0.0 0.0 0.0 (sin w)
-        mv2 -> case sqrt mv2 of
-          mv -> case cos w * sinh mv / mv of
-            l -> packQ (x * l) (y * l) (z * l) (sin w * cosh mv)
+      | mv2 == 0  = packQ x y z (sin w)
+      | otherwise = packQ (x * l) (y * l) (z * l) arg
+      where
+        mv2 = (x * x) + (y * y) + (z * z)
+        mv  = sqrt mv2
+        l   = cos w * sinh mv / mv
+        arg = sin w * cosh mv
     {-# INLINE cos #-}
     cos (unpackQ# -> (# x, y, z, w #))
-      = case (x * x) + (y * y) + (z * z) of
-        0.0 -> packQ 0.0 0.0 0.0 (cos w)
-        mv2 -> case sqrt mv2 of
-          mv -> case sin w * sinh mv / negate mv of
-            l -> packQ (x * l) (y * l) (z * l) (cos w * cosh mv)
+      | mv2 == 0  = packQ x y z (cos w)
+      | otherwise = packQ (x * l) (y * l) (z * l) arg
+      where
+        mv2 = (x * x) + (y * y) + (z * z)
+        mv  = sqrt mv2
+        l   = sin w * sinh mv / negate mv
+        arg = cos w * cosh mv
     {-# INLINE tan #-}
     tan (unpackQ# -> (# x, y, z, w #))
-      = case (x * x) + (y * y) + (z * z) of
-        0.0 -> packQ 0.0 0.0 0.0 (tan w)
-        mv2 ->
-          let mv = sqrt mv2
-              chv = cosh mv
-              shv = sinh mv
-              ct = cos w
-              st = sin w
-              cq = recip $ ct * ct * chv * chv + st * st * shv * shv
-              l = chv * shv * cq / mv
-          in packQ (x * l) (y * l) (z * l) (ct * st * cq)
+      | mv2 == 0       = packQ x y z (tan w)
+      | isInfinite mv2 = signum (packQ x y z 0)
+      | otherwise      = packQ (x * l) (y * l) (z * l) arg
+      where
+        mv2 = (x * x) + (y * y) + (z * z)
+        mv = sqrt mv2
+        b = 2*mv
+        a = 2*w
+        sina = sin a
+        eb = exp (-b)
+        eb2 = eb*eb
+        d = 1 + eb2 + 2 * eb * cos a
+        rd = recip d
+        pa = M_PI - abs a
+        rd' = 2 / (b*b + pa*pa)
+        (l, arg) =
+          if d >= M_EPS
+          then ((1 - eb2) * rd / mv, 2 * sina * eb * rd)
+          else (2 * rd' , negate sina * rd')
     {-# INLINE sinh #-}
     sinh (unpackQ# -> (# x, y, z, w #))
-      = case (x * x) + (y * y) + (z * z) of
-        0.0 -> packQ 0.0 0.0 0.0 (sinh w)
-        mv2 -> case sqrt mv2 of
-          mv -> case cosh w * sin mv / mv of
-            l -> packQ (x * l) (y * l) (z * l) (sinh w * cos mv)
+      | mv2 == 0  = packQ x y z (sinh w)
+      | otherwise = packQ (x * l) (y * l) (z * l) arg
+      where
+        mv2 = (x * x) + (y * y) + (z * z)
+        mv  = sqrt mv2
+        l   = cosh w * sin mv / mv
+        arg = sinh w * cos mv
     {-# INLINE cosh #-}
     cosh (unpackQ# -> (# x, y, z, w #))
-      = case (x * x) + (y * y) + (z * z) of
-        0.0 -> packQ 0.0 0.0 0.0 (cosh w)
-        mv2 -> case sqrt mv2 of
-          mv -> case sinh w * sin mv / mv of
-            l -> packQ (x * l) (y * l) (z * l) (cosh w * cos mv)
+      | mv2 == 0  = packQ x y z (cosh w)
+      | otherwise = packQ (x * l) (y * l) (z * l) arg
+      where
+        mv2 = (x * x) + (y * y) + (z * z)
+        mv  = sqrt mv2
+        l   = sinh w * sin mv / mv
+        arg = cosh w * cos mv
     {-# INLINE tanh #-}
     tanh (unpackQ# -> (# x, y, z, w #))
-      = case (x * x) + (y * y) + (z * z) of
-        0.0 -> packQ 0.0 0.0 0.0 (tanh w)
-        mv2 ->
-          let mv = sqrt mv2
-              cv = cos mv
-              sv = sin mv
-              cht = cosh w
-              sht = sinh w
-              cq = recip ( (cht * cht * cv * cv) + (sht * sht * sv * sv) )
-              l = cv * sv * cq / mv
-          in packQ (x * l) (y * l) (z * l) (cht * sht * cq)
+      | mv2 == 0       = packQ x y z (tanh w)
+      | isInfinite mv2 = packQ 0 0 0 (signum w)
+      | otherwise      = packQ (x * l) (y * l) (z * l) arg
+      where
+        mv2 = (x * x) + (y * y) + (z * z)
+        mv = sqrt mv2
+        b = 2*w
+        a = 2*mv
+        eb = exp (- abs b)
+        eb2 = eb*eb
+        d = 1 + eb2 + 2 * eb * cos a
+        rd = recip d
+        pa = M_PI - a
+        rd' = 2 / (b*b + pa*pa)
+        (l, arg) =
+          if d >= M_EPS
+          then (2 * sin a * eb * rd / mv, copysign (1 - eb2) b * rd)
+          else (2 * rd' , b * rd')
     {-# INLINE asin #-}
     -- The original formula:
     -- asin q = -i * log (i*q + sqrt (1 - q*q))
@@ -395,12 +413,17 @@ instance Floating QFloat where
         w2 = w*w
         w1qq = 0.5 *(1 - w2 + v2)       -- real part of (1 - q*q)/2
         l1qq = sqrt (w1qq*w1qq + w2*v2) -- length of (1 - q*q)/2
-        sp = sqrt (l1qq + w1qq)
-        sn = copysign (sqrt (l1qq - w1qq)) w
+        sp2 = l1qq + w1qq
+        sn2 = l1qq - w1qq
+        sp = sqrt sp2
+        sn = copysign (sqrt sn2) w
+        dp = v2 / ((sp + v)*(sn2 + v2))
+        dn = w2 / ((sn + w)*(sp2 + w2))
         (wD, vD) =  -- choose a more stable (symbolically equiv) version
-          if w1qq >= 0
-          then (sp - v, w * (1 - v / sp))
-          else (v * (w / sn - 1), w - sn)
+          case compare w1qq 0 of
+            GT -> (dp, w * dp / sp)
+            LT -> (v * dn / sn, dn)
+            EQ -> (-v, w)
         l = -0.5 * log (wD*wD + vD*vD)
         c = l / v
         arg = atan2 vD wD
@@ -410,19 +433,19 @@ instance Floating QFloat where
     -- atan q = i / 2 * log ( (i + q) / (i - q) )
     atan (unpackQ# -> (# x, y, z, w #))
       | v2 == 0   = packQ x y z (atan w)
-      | v2 == 1   = packQ (mInf x) (mInf y) (mInf z) 0
       | otherwise = packQ (x*c) (y*c) (z*c) arg
       where
-        mInf :: Float -> Float
-        mInf 0 = 0
-        mInf a = a / 0
         v2 = (x * x) + (y * y) + (z * z)
         v = sqrt v2
         w2 = w*w
         q2 = w2 + v2
         v' = v - 1
-        c  = 0.25 * (log (1 + q2 + 2*v) - log (w2 + v'*v')) / v
-        arg = 0.5 * atan2 (2*w) (1 - q2)
+        mzero = w2 + v'*v'
+        (c, arg) =
+          if mzero == 0
+          then ( sqrt maxFinite / v, 0)
+          else ( 0.25 * (log (1 + q2 + 2*v) - log mzero) / v
+               , 0.5 * atan2 (2*w) (1 - q2) )
     {-# INLINE asinh #-}
     -- The original formula:
     -- asinh q = log (q + sqrt (q*q + 1))
@@ -436,12 +459,17 @@ instance Floating QFloat where
         w2 = w*w
         w1qq = 0.5 *(1 + w2 - v2)       -- real part of (1 + q*q)/2
         l1qq = sqrt (w1qq*w1qq + w2*v2) -- length of (1 + q*q)/2
-        sp = sqrt (l1qq + w1qq)
-        sn = copysign (sqrt (l1qq - w1qq)) w
+        sp2 = l1qq + w1qq
+        sn2 = l1qq - w1qq
+        sp = sqrt sp2
+        sn = copysign (sqrt sn2) w
+        dp = w2 / ((sp - w)*(w2 + sn2))
+        dn = v2 / ((v - sn)*(v2 + sp2))
         (wD, vD) =  -- choose a more stable (symbolically equiv) version
-          if w1qq >= 0
-          then (w + sp, v * (1 + w / sp))
-          else (w * (1 + v / sn), v + sn)
+          case compare w1qq 0 of
+            GT -> if w >= 0 then (w + sp, v * (1 + w / sp)) else (dp, v * dp / sp)
+            LT -> if w >= 0 then (w * (1 + v / sn), v + sn) else (w * dn / sn, dn)
+            EQ -> (w, v)
         c = atan2 vD wD / v
         arg = 0.5 * log (wD*wD + vD*vD)
     {-# INLINE acosh #-}
@@ -459,21 +487,24 @@ instance Floating QFloat where
         w2 = w*w
         w1qq = 0.5 *(w2 - v2 - 1)       -- real part of (q*q - 1)/2
         l1qq = sqrt (w1qq*w1qq + w2*v2) -- length of (q*q - 1)/2
-        sp = sqrt (l1qq + w1qq)
-        sn = copysign (sqrt (l1qq - w1qq)) w
+        sp2 = l1qq + w1qq
+        sn2 = l1qq - w1qq
+        sp = sqrt sp2
+        sn = copysign (sqrt sn2) w
+        dp = w2 / ((w - sp)*(w2 + sn2))
+        dn = v2 / ((sn - v)*(v2 + sp2))
         (wD, vD) =  -- choose a more stable (symbolically equiv) version
-          if w1qq >= 0
-          then (w + sp, v * (1 + w / sp))
-          else (w * (1 + v / sn), v + sn)
+          case compare w1qq 0 of
+            GT -> if w >= 0 then (w + sp, v * (1 + w / sp)) else (dp, v * dp / sp)
+            LT -> if w >= 0 then (w * (1 + v / sn), v + sn) else (w * dn / sn, dn)
+            EQ -> (w, v)
         c = atan2 vD wD / v
         arg = 0.5 * log (wD*wD + vD*vD)
     {-# INLINE atanh #-}
     -- atanh q = 0.5 * log ( (1 + q) / (1 - q) )
     atanh (unpackQ# -> (# x, y, z, w #))
       | v2 ==  0  = packQ x y z (atanh w)
-      | w  ==  1  = packQ 0 0 0 (1/0)
-      | w  == -1  = packQ 0 0 0 (-1/0)
-      | otherwise = packQ (x*c) (y*c) (z*c) arg
+      | otherwise = packQ (x*c) (y*c) (z*c) (copysign arg w)
       where
         v2 = (x * x) + (y * y) + (z * z)
         v = sqrt v2
@@ -481,24 +512,26 @@ instance Floating QFloat where
         q2 = w2 + v2
         w' = abs w - 1
         c  = 0.5 * atan2 (2*v) (1 - q2) / v
-        arg = negateUnless (w >= 0)
-            $ 0.25 * (log (1 + q2 + 2 * abs w) - log (v2 + w'*w'))
+        arg = if w' == 0
+              then (1/0)
+              else 0.25 * (log (1 + q2 + 2 * abs w) - log (v2 + w'*w'))
+
 
 -- If q is negative real, provide a fallback axis to align log.
-log' :: Vec3f -> QFloat -> QFloat
+log' :: Vector Float 3 -> QFloat -> QFloat
 log' r (unpackQ# -> (# x, y, z, w #))
   = case (x * x) + (y * y) + (z * z) of
     0.0 | w >= 0
-           -> packQ 0.0 0.0 0.0 (log w)
+           -> packQ 0 0 0 (log w)
         | Vec3 rx ry rz <- r
-           ->  packQ (pi*rx) (pi*ry) (pi*rz) (log (negate w))
+           ->  packQ (M_PI*rx) (M_PI*ry) (M_PI*rz) (log (negate w))
     mv2 -> case (# mv2 + w * w, sqrt mv2 #) of
       (# q2, mv #) -> case atan2 mv w / mv of
         l -> packQ (x * l) (y * l) (z * l) (0.5 * log q2)
 
 
 -- If q is negative real, provide a fallback axis to align sqrt.
-sqrt' :: Vec3f -> QFloat -> QFloat
+sqrt' :: Vector Float 3 -> QFloat -> QFloat
 sqrt' r (unpackQ# -> (# x, y, z, w #))
   | v2 == 0 && w >= 0
     = packQ x y z (sqrt w)

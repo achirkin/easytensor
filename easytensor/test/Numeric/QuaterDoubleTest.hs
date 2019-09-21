@@ -5,7 +5,6 @@ module Numeric.QuaterDoubleTest (runTests) where
 import Numeric.Arbitraries
 import Numeric.Basics
 import Numeric.Quaternion
-import Numeric.Scalar
 import Numeric.Vector
 import Test.QuickCheck
 
@@ -52,7 +51,7 @@ prop_RotScale q v = fromVecNum (rotScale q v) 0 =~= q * fromVecNum v 0 * conjuga
 prop_GetRotScale :: Vector T 3 -> Vector T 3 -> Property
 prop_GetRotScale a b
     = normL2 a * ab > M_EPS * normL2 b
-      ==> approxEq (recip $ unScalar ab) b (rotScale q a)
+      ==> approxEq (recip ab) b (rotScale q a)
   where
     q = getRotScale a b
     -- when a and b are almost opposite, precision of getRotScale suffers a lot
@@ -130,14 +129,16 @@ prop_SqrtSqr :: Quater T -> Property
 prop_SqrtSqr q = approxEq (qSpan q) q $ sqrt q * sqrt q
 
 prop_SinCos :: Quater T -> Property
-prop_SinCos q = approxEq (qSpan s `max` qSpan c) 1 $ c * c + s * s
+prop_SinCos q' = approxEq (qSpan s `max` qSpan c) 1 $ c * c + s * s
   where
+    q = signum q' -- avoid exploding exponents
     s = sin q
     c = cos q
 
 prop_SinhCosh :: Quater T -> Property
-prop_SinhCosh q = approxEq (qSpan s `max` qSpan c) 1 $ c * c - s * s
+prop_SinhCosh q' = approxEq (qSpan s `max` qSpan c) 1 $ c * c - s * s
   where
+    q = signum q' -- avoid exploding exponents
     s = sinh q
     c = cosh q
 

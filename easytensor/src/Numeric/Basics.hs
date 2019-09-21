@@ -144,14 +144,21 @@ class (Epsilon a, RealExtras a, RealFloat a) => RealFloatExtras a where
         an = scaleFloat (negate ea) a
         bn = scaleFloat (negate ea) b
     {-# INLINE hypot #-}
+    -- | Maximum finite number representable by this FP type.
+    maxFinite :: a
 
 instance RealFloatExtras Float where
     hypot = c'hypotf
     {-# INLINE hypot #-}
+    maxFinite = 3.40282347e+38
+    {-# INLINE maxFinite #-}
+
 
 instance RealFloatExtras Double where
     hypot = c'hypotd
     {-# INLINE hypot #-}
+    maxFinite = 1.7976931348623157e+308
+    {-# INLINE maxFinite #-}
 
 foreign import ccall unsafe "hypot"  c'hypotd :: Double -> Double -> Double
 foreign import ccall unsafe "hypotf" c'hypotf :: Float -> Float -> Float
