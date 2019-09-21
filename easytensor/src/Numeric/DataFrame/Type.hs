@@ -1517,6 +1517,7 @@ instance ( RealFloatExtras (DataFrame t ('[] :: [Nat]))
          , Eq t
          ) => RealFloatExtras (DataFrame (t :: Type) ('[] :: [XNat])) where
     hypot (XFrame x) (XFrame y) = XFrame (hypot x y)
+    maxFinite = XFrame maxFinite
 
 
 
