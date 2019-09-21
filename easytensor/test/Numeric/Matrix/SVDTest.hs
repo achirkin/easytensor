@@ -36,7 +36,7 @@ validateSVD extraTolerance x s@SVD {..}
         , "m': " ++ show x'
         , "svd:" ++ show s
         ]
-      ) (approxEq (nm * nm * extraTolerance) x x')
+      ) (approxEq (S $ nm * nm * extraTolerance) x x')
     .&&.
     counterexample
       (unlines
