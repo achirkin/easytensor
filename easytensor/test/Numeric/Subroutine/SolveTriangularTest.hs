@@ -64,7 +64,7 @@ testSolveUpperTriangularR r b
             , "b: " ++ show b
             , "Rx:" ++ show (r %* x)
             ]
-          ) (approxEq (unScalar $ maxElem r) b (r %* x))
+          ) (approxEq (maxElem r) b (r %* x))
 testSolveUpperTriangularR _ _ = error "impossible pattern"
 
 prop_SolveUpperTriangularR :: Property
@@ -116,7 +116,7 @@ testSolveUpperTriangularL b r
               , "b: " ++ show b
               , "xR:" ++ show (x %* r)
               ]
-            ) (approxEq (unScalar $ maxElem r) b (x %* r))
+            ) (approxEq (maxElem r) b (x %* r))
 testSolveUpperTriangularL _ _ = error "impossible pattern"
 
 prop_SolveUpperTriangularL :: Property
@@ -164,7 +164,7 @@ testSolveLowerTriangularR l b
             , "b: " ++ show b
             , "Lx:" ++ show (l %* x)
             ]
-          ) (approxEq (unScalar $ maxElem l) b (l %* x))
+          ) (approxEq (maxElem l) b (l %* x))
 testSolveLowerTriangularR _ _ = error "impossible pattern"
 
 prop_SolveLowerTriangularR :: Property
@@ -218,7 +218,7 @@ testSolveLowerTriangularL b l
               , "b: " ++ show b
               , "xL:" ++ show (x %* l)
               ]
-            ) (approxEq (unScalar $ maxElem l) b (x %* l))
+            ) (approxEq (maxElem l) b (x %* l))
 testSolveLowerTriangularL _ _ = error "impossible pattern"
 
 prop_SolveLowerTriangularL :: Property

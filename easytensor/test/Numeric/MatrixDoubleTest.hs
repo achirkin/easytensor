@@ -13,7 +13,6 @@ module Numeric.MatrixDoubleTest (runTests) where
 import Data.Fixed
 import Numeric.Arbitraries
 import Numeric.DataFrame
-import Numeric.Dimensions
 import Test.QuickCheck
 
 type TestElem = Double
@@ -22,50 +21,33 @@ dropW :: (SubSpace t '[3] '[] '[3], SubSpace t '[4] '[] '[4])
       => Vector t 4 -> Vector t 3
 dropW (Vec4 x y z _) = Vec3 x y z
 
--- | \( {|| A ||}_{\Infty} = \max_{0 \leq i < n} \sum_{j = 0}^{m} | a_{ij} | \)
---     is useful for bounding numeric errors of matrix algorithms.
-matNormPInf :: forall t (n :: Nat) (m :: Nat)
-             . (KnownDim n, KnownDim m, PrimBytes t, Ord t, Num t)
-            => Matrix t n m -> Scalar t
-matNormPInf = ewfoldl @t @'[n] @'[m]
-      (\a -> max a . ewfoldl @t @'[m] @'[] (\e -> (e+) . abs) 0) 0
-
 prop_detTranspose :: SomeSquareMatrix AnyMatrix TestElem -> Property
-prop_detTranspose (SSM m) = counterexample
+prop_detTranspose (SSM m') = counterexample
     (unlines
       [ "Failed det/transpose:"
       , "m:  " ++ show m
       , "mT: " ++ show (transpose m)
-      , show a ++ " /= " ++ show b
-        ++ " (tolerance: " ++ show mag ++ ")."
       ]
-    ) $ abs (a - b) <= mag
+    ) $ a =~= b
   where
+    mm = recip $ maxElem m' `max` 1
+    m = ewmap (*mm) m'
     a = det m
     b = det $ transpose m
-    nw = (case dims `inSpaceOf` m of dn :* _ -> dimVal dn) :: Word
-    n4 = fromIntegral nw ^ (4 :: Int)
-    mag = M_EPS * n4 * matNormPInf m ^ nw
 
 prop_inverse :: SomeSquareMatrix NonSingular TestElem -> Property
 prop_inverse (SSM m) = check (m %* mi) .&&. check (mi %* m)
   where
     mi = inverse m
-    nw = (case dims `inSpaceOf` m of dn :* _ -> dimVal dn) :: Word
-    n4 = fromIntegral nw ^ (4 :: Int)
-    mag = M_EPS * n4 * matNormPInf m
+    mag = maxElem m `max` maxElem mi `max` 1
     check a = counterexample
       ( unlines
         [ "Failed inverse:"
         , "  m:    " ++ show m
         , "  mi:   " ++ show mi
         , "  eye': " ++ show a
-        , "    error:     " ++ show err
-        , "    tolerance: " ++ show mag
         ]
-      ) $ err <= mag
-      where
-        err = maxElem (a - eye)
+      ) $ approxEq mag a eye
 
 prop_translate3vs4 :: Vector TestElem 4 -> Bool
 prop_translate3vs4 v = translate4 v == translate3 (dropW v)

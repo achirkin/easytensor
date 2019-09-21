@@ -9,12 +9,14 @@
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE PartialTypeSignatures     #-}
 {-# LANGUAGE PolyKinds                 #-}
+{-# LANGUAGE QuasiQuotes               #-}
 {-# LANGUAGE RankNTypes                #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TemplateHaskell           #-}
 {-# LANGUAGE TypeApplications          #-}
 {-# LANGUAGE TypeOperators             #-}
 {-# LANGUAGE UndecidableInstances      #-}
-{-# OPTIONS_GHC -fno-warn-orphans  #-}
+{-# OPTIONS_GHC -fno-warn-orphans      #-}
 -- | Provide instance of Arbitrary for all DataFrame types.
 --   Also, this module is an example of fancy type inference and DataFrame
 --   traversals with monadic actions.
@@ -23,9 +25,13 @@ module Numeric.Arbitraries where
 import Test.QuickCheck
 
 import           Control.Monad.Fail
+import           Data.Int
 import           Data.Kind            (Type)
 import           Data.List            (inits, tails)
 import           Data.Semigroup       hiding (All)
+import           Data.Word
+import           Language.Haskell.TH  (ExpQ, Q, TypeQ)
+import qualified Language.Haskell.TH  as TH
 import           Numeric.DataFrame
 import           Numeric.Dimensions
 import           Numeric.Quaternion
@@ -38,16 +44,192 @@ maxDims = 5
 
 -- | Some tests are rather slow when we have too many elements
 maxTotalDim :: Word
-maxTotalDim = 1000
+maxTotalDim = 400
 
 -- | Maximum value of @Dim (XN _)@
 maxDimSize :: Word
-maxDimSize = 50
+maxDimSize = 30
 
 -- | Odds of using `fromScalar` constructor instead of element-by-element.
 --   Interpret as "one to fromScalarChanceFactor"
 fromScalarChanceFactor :: Int
 fromScalarChanceFactor = 5
+
+concatDimsQ :: TypeQ -> TypeQ -> TypeQ
+concatDimsQ as bs = [t| Concat $(as) $(bs) |]
+
+aFewPropVariants :: ExpQ -> ExpQ
+aFewPropVariants = TH.listE . replicate 100
+
+someElemTypeFQ :: Q TypeQ
+someElemTypeFQ = TH.runIO . generate $ elements elemTypesF
+
+someElemTypeIQ :: Q TypeQ
+someElemTypeIQ = TH.runIO . generate $ elements elemTypesI
+
+someElemTypeQ :: Q TypeQ
+someElemTypeQ = TH.runIO . generate . elements $ elemTypesI ++ elemTypesF
+
+elemTypesF :: [TypeQ]
+elemTypesF = [ [t|Float|], [t|Double|] ]
+
+elemTypesI :: [TypeQ]
+elemTypesI =
+  [ [t|Int|],  [t|Int8|],  [t|Int16|],  [t|Int32|],  [t|Int64|]
+  , [t|Word|], [t|Word8|], [t|Word16|], [t|Word32|], [t|Int64|]
+  ]
+
+
+-- | Generate type (n :: Nat) at compile time
+someDimNQ :: Q TypeQ
+someDimNQ = TH.litT . TH.numTyLit . toInteger
+         <$> TH.runIO (generate (chooseDim 1))
+
+-- | Generate type (n :: XNat) at compile time
+someDimXQ :: Q TypeQ
+someDimXQ = fmap pure $ do
+  d <- TH.litT . TH.numTyLit . toInteger
+     <$> TH.runIO (generate (chooseDim 1))
+  TH.runIO (generate arbitrary) >>=
+    \isXN -> if isXN then [t|XN $(d)|] else [t|N $(d)|]
+
+-- | Generate type (N n) at compile time
+someDimXfixedQ :: Q TypeQ
+someDimXfixedQ = fmap pure $ do
+  d <- TH.litT . TH.numTyLit . toInteger
+     <$> TH.runIO (generate (chooseDim 1))
+  [t| N $(d) |]
+
+-- | Generate type (ns :: [k]) at compile time
+someDimsQ :: Q TypeQ
+someDimsQ = do
+  isXNat <- TH.runIO (generate arbitrary)
+  if isXNat then someDimsXQ
+            else someDimsNQ
+
+-- | Generate type (ns :: [Nat]) at compile time
+someDimsNQ :: Q TypeQ
+someDimsNQ = fmap pure $ TH.runIO (removeDims <$> generate arbitrary)
+         >>= \(SomeDims ds) -> wordsToDimsNQ (listDims ds)
+
+-- | Generate type (Map 'N (ns :: [Nat])) at compile time
+someDimsXQfixed :: Q TypeQ
+someDimsXQfixed = fmap pure $ TH.runIO (removeDims <$> generate arbitrary)
+         >>= \(SomeDims ds) -> wordsToDimsXQfixed (listDims ds)
+
+-- | Generate type (Map 'N (ns :: [Nat])) at compile time
+someDimsXQ :: Q TypeQ
+someDimsXQ = fmap pure $ TH.runIO (removeDims <$> generate arbitrary)
+         >>= \(SomeDims ds) -> wordsToDimsXQ(listDims ds)
+
+-- | Generate type (ns :: [k]) at compile time
+someLenAsBsQ :: Int -> Q (TypeQ, TypeQ)
+someLenAsBsQ len = do
+  isXNat <- TH.runIO (generate arbitrary)
+  if isXNat then someLenAsBsXQ len
+            else someLenAsBsNQ len
+
+-- | Generate type (ns :: [k]) at compile time
+someAsBsQ :: Q (TypeQ, TypeQ)
+someAsBsQ = do
+  isXNat <- TH.runIO (generate arbitrary)
+  if isXNat then someAsBsXQ
+            else someAsBsNQ
+
+-- | Generate type (ns :: [k]) at compile time
+someAsBsQfixed :: Q (TypeQ, TypeQ)
+someAsBsQfixed = do
+  isXNat <- TH.runIO (generate arbitrary)
+  if isXNat then someAsBsXQfixed
+            else someAsBsNQ
+
+-- | Generate type (as :: [Nat], bs :: [Nat]) at compile time,
+--   given a fixed length of the first dims (as).
+someLenAsBsNQ :: Int -> Q (TypeQ, TypeQ)
+someLenAsBsNQ len = do
+    (asw, bsw) <- TH.runIO (generate (genConcatDims len))
+    as <- wordsToDimsNQ asw
+    bs <- wordsToDimsNQ bsw
+    return (pure as, pure bs)
+
+-- | Generate type (as :: [XNat], Map 'N bs :: [XNat]) at compile time,
+--   given a fixed length of the first dims (as).
+someLenAsBsXQ :: Int -> Q (TypeQ, TypeQ)
+someLenAsBsXQ len = do
+    (asw, bsw) <- TH.runIO (generate (genConcatDims len))
+    as <- wordsToDimsXQ asw
+    bs <- wordsToDimsXQfixed bsw
+    return (pure as, pure bs)
+
+-- | Generate type (Map 'N as :: [XNat], Map 'N bs :: [XNat]) at compile time,
+--   given a fixed length of the first dims (as).
+someLenAsBsXQfixed :: Int -> Q (TypeQ, TypeQ)
+someLenAsBsXQfixed len = do
+    (asw, bsw) <- TH.runIO (generate (genConcatDims len))
+    as <- wordsToDimsXQfixed asw
+    bs <- wordsToDimsXQfixed bsw
+    return (pure as, pure bs)
+
+-- | Generate type (as :: [Nat], bs :: [Nat]) at compile time.
+someAsBsNQ :: Q (TypeQ, TypeQ)
+someAsBsNQ = TH.runIO (generate (choose (0, fromIntegral maxDims - 1)))
+  >>= someLenAsBsNQ
+
+-- | Generate type (as :: [XNat], Map 'N bs :: [XNat]) at compile time.
+someAsBsXQ :: Q (TypeQ, TypeQ)
+someAsBsXQ = TH.runIO (generate (choose (0, fromIntegral maxDims - 1)))
+  >>= someLenAsBsXQ
+
+-- | Generate type (Map 'N as :: [XNat], Map 'N bs :: [XNat]) at compile time.
+someAsBsXQfixed:: Q (TypeQ, TypeQ)
+someAsBsXQfixed = TH.runIO (generate (choose (0, fromIntegral maxDims - 1)))
+  >>= someLenAsBsXQfixed
+
+
+wordsToDimsNQ :: [Word] -> TypeQ
+wordsToDimsNQ = (\ns -> [t| ($(ns) :: [Nat]) |]) . foldr f TH.promotedNilT
+  where
+    f :: Word -> TypeQ -> TypeQ
+    f w l = let d = TH.litT . TH.numTyLit $ toInteger w
+            in  TH.promotedConsT `TH.appT` d `TH.appT` l
+
+wordsToDimsXQfixed :: [Word] -> TypeQ
+wordsToDimsXQfixed = (\ns -> [t| ($(ns) :: [XNat]) |]) . foldr f TH.promotedNilT
+  where
+    f :: Word -> TypeQ -> TypeQ
+    f w l = let d = TH.litT . TH.numTyLit $ toInteger w
+            in  TH.promotedConsT `TH.appT` [t| N $(d) |] `TH.appT` l
+
+wordsToDimsXQ :: [Word] -> TypeQ
+wordsToDimsXQ = (\ns -> [t| ($(ns) :: [XNat]) |]) . foldr f TH.promotedNilT
+  where
+    f :: Word -> TypeQ -> TypeQ
+    f w l = let d = TH.litT . TH.numTyLit $ toInteger w
+                xd = TH.runIO (generate arbitrary) >>=
+                        \isXN -> if isXN then [t|XN $(d)|] else [t|N $(d)|]
+            in  TH.promotedConsT `TH.appT` xd `TH.appT` l
+
+-- | Generate two lists of Dims as Words, such that the combined list
+--   is under the maxTotalDim limit, but the first list has exactly the given
+--   number of dims.
+genConcatDims :: Int -> Gen ([Word], [Word])
+genConcatDims len
+    = arbitrary >>= (\(SomeDims xs) -> checkLen (listDims xs)) . removeDims
+  where
+    checkLen :: [Word] -> Gen ([Word], [Word])
+    checkLen xs =
+      let td = product xs
+          (as, bs) = splitAt len xs
+          l  = length as
+      in if l == len then pure (as, bs)
+                     else (,) <$> addDims (len - l) (maxTotalDim `quot` td) as
+                              <*> pure bs
+    addDims :: Int -> Word -> [Word] -> Gen [Word]
+    addDims 0 _ xs = pure xs
+    addDims n lim xs = do
+      x <- choose (1, max 1 (min lim maxDimSize))
+      addDims (n-1) (lim `quot` x) (x : xs)
+
 
 -- | Remove dims from a dim list until its totalDim is less than maxTotalDim
 removeDims :: SomeDims -> SomeDims
@@ -81,7 +263,7 @@ reduceDims' l nns@(n :* ns)
 --   the biggest element.
 maxElem :: (SubSpace t ds '[] ds, Ord t, Num t)
         => DataFrame t (ds :: [Nat]) -> Scalar t
-maxElem = ewfoldl (\a -> max a . abs) 0
+maxElem = ewfoldr' (max . abs) 0
 
 rotateList :: [a] -> [[a]]
 rotateList xs = init (zipWith (++) (tails xs) (inits xs))
@@ -107,7 +289,7 @@ instance Approx Double Double where
       ) $ err <= tol
       where
         err = abs (a - b)
-        mel = max a b
+        mel = abs a `max` abs b `max` 1
         tol = M_EPS*mel*c
 
 instance Approx Float Float where
@@ -121,7 +303,7 @@ instance Approx Float Float where
       ) $ err <= tol
       where
         err = abs (a - b)
-        mel = max a b
+        mel = abs a `max` abs b `max` 1
         tol = M_EPS*mel*c
 
 instance MonadFail Gen where fail = error
@@ -199,8 +381,23 @@ instance (Arbitrary t, PrimBytes t, Num t, Ord t, Dimensions ds)
               closest2 x b = if x <= b * 2 then b else closest2 x (b*2)
 
 instance (RealFloatExtras t, Show t, Dimensions ds)
-       => Approx t (DataFrame t (ds :: [Nat])) where
-    approxEq = approxEqDF
+       => Approx (DataFrame t ('[] :: [Nat])) (DataFrame t (ds :: [Nat])) where
+    approxEq (S t) = approxEqDF t
+
+instance (RealFloatExtras t, Show t)
+       => Approx (DataFrame t ('[] :: [XNat])) (DataFrame t (ds :: [XNat])) where
+    approxEq (XFrame (S t)) (XFrame a) (XFrame b) = case sameDims da db of
+        Just Dict -> approxEqDF t a b
+        Nothing -> counterexample
+          (unlines
+            [ "  DataFrame approxEq failed [XNat] due to different dims:"
+            , "    dims a:  "   ++ show da
+            , "    dims b:  "   ++ show db
+            ]
+          ) False
+      where
+        da = dims `inSpaceOf` a
+        db = dims `inSpaceOf` b
 
 approxEqDF ::
        forall t (ds :: [Nat])
@@ -227,7 +424,7 @@ approxEqDF c a b
       ) $ err <= tol
   where
     err = unScalar $ maxElem (a - b)
-    mel = unScalar $ maxElem a `max` maxElem b
+    mel = unScalar $ maxElem a `max` maxElem b `max` 1
     tol = M_EPS*mel*c
 
 instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
@@ -254,6 +451,17 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
       = (:*:) <$> shrink at <*> shrink ats
     shrink _ = []
 
+-- | Generate a random word not smaller than the given number, and not bigger
+--   than maxDimSize. Also tend to generate smaller values more often to have
+--   a chance to pack more dims within maxTotalDim.
+chooseDim :: Word -> Gen Word
+chooseDim lowLim = f <$> choose (0, maxDimSize)
+  where
+    l = realToFrac lowLim :: Double
+    f :: Word -> Word
+    f w = let x = realToFrac w :: Double
+              n = realToFrac maxDimSize :: Double
+          in round $ l + max 0 (n - l) * (x / n) ** 3
 
 instance KnownDim a => Arbitrary (Dim (N a)) where
     arbitrary = return $ Dn (dim @a)
@@ -261,7 +469,7 @@ instance KnownDim a => Arbitrary (Dim (N a)) where
 
 instance KnownDim m => Arbitrary (Dim (XN m)) where
     arbitrary = do
-      dimN <- choose (dimVal' @m, maxDims)
+      dimN <- chooseDim $ dimVal' @m
       case constrainDim @(XN m) (someDimVal dimN) of
         Nothing -> error "impossible argument"
         Just d  -> return d
@@ -270,7 +478,7 @@ instance KnownDim m => Arbitrary (Dim (XN m)) where
 instance Arbitrary SomeDims where
     arbitrary = do
       dimN <- choose (0, maxDims) :: Gen Word
-      wdims <- mapM (\_ -> choose (2, maxDimSize) :: Gen Word) [1..dimN]
+      wdims <- mapM (\_ -> chooseDim 1) [1..dimN]
       return $ someDimsVal wdims
     shrink (SomeDims U)         = []
     shrink (SomeDims (_ :* ds)) = [SomeDims ds]
@@ -332,6 +540,9 @@ instance KnownDim n => Arbitrary (Idx (n :: Nat)) where
 instance KnownDim n => Arbitrary (Idx (N n)) where
     arbitrary = elements [0..]
 
+instance KnownDim n => Arbitrary (Idx (XN n)) where
+    arbitrary = elements [0..]
+
 instance Dimensions ns => Arbitrary (Idxs (ns :: [Nat])) where
     arbitrary = go (dims @ns)
       where
@@ -339,14 +550,14 @@ instance Dimensions ns => Arbitrary (Idxs (ns :: [Nat])) where
         go U         = pure U
         go (D :* bs) = (:*) <$> arbitrary <*> go bs
 
-instance Dimensions ns => Arbitrary (Idxs (ns :: [XNat])) where
-    arbitrary = withKnownXDims @ns $ go (dims @ns)
+instance (BoundedDims ns, KnownXNatTypes ns) => Arbitrary (Idxs (ns :: [XNat])) where
+    arbitrary = go (minimalDims @ns)
       where
         go :: forall (bs :: [XNat])
-            . bs ~ Map 'N (DimsBound bs)
-           => Dims bs -> Gen (Idxs bs)
+            . (BoundedDims bs, KnownXNatTypes bs) => Dims bs -> Gen (Idxs bs)
         go U            = pure U
         go (Dn D :* bs) = (:*) <$> arbitrary <*> go bs
+        go (Dx D :* bs) = (:*) <$> arbitrary <*> go bs
 
 
 instance (RepresentableList xs, All Arbitrary xs) => Arbitrary (ST.Tuple xs) where
