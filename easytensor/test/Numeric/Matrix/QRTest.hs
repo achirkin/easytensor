@@ -144,6 +144,58 @@ prop_qr (XFrame x)
 prop_qr _ = property False
 
 
+testQRSolve :: forall t n m
+             . (MatrixQR t n m, Show t, RealFloatExtras t)
+            => Matrix t n m -> Vector t n -> Property
+testQRSolve a b =
+    counterexample
+      (unlines
+        [ "failed a' %* (a  %* xr - b) =~= 0"
+        , "a:  " ++ show a
+        , "b:  " ++ show b
+        , "xr: " ++ show xr
+        , "zeroR: " ++ show zeroR
+        , "zeroL: " ++ show zeroL
+        ]
+      ) (nonDeficient ==> approxEq mag zeroR 0)
+    .&&.
+    counterexample
+      (unlines
+        [ "failed (xl %* a' - b) %* a =~= 0"
+        , "a': " ++ show a'
+        , "b:  " ++ show b
+        , "xl: " ++ show xl
+        ]
+      ) (nonDeficient ==> approxEq mag zeroL 0)
+    .&&.
+    counterexample
+      (unlines
+        [ "failed xr =~= xl"
+        , "a': " ++ show a'
+        , "b:  " ++ show b
+        , "xl: " ++ show xl
+        ]
+      ) (approxEq mag xr xl)
+  where
+    qrr = qrR (qr a)
+    nonDeficient =
+      foldl (\r i -> r && abs (qrr ! i ! i) > M_EPS * mag) True
+        [0 .. min (dimVal' @n) (dimVal' @m) - 1]
+    nm = totalDim (dims `inSpaceOf` a)
+    mag = max 1 (maxElem a `max` maxElem b) * fromIntegral (nm*nm)
+    a' = transpose a
+    xr = qrSolveR a  b
+    xl = qrSolveL a' b
+    zeroR = a' %* (a  %* xr - b)
+    zeroL = (xl %* a' - b) %* a
+
+
+prop_qrSolve :: Dim (XN 1) -> Dim (XN 1) -> Property
+prop_qrSolve (Dx (_ :: Dim n)) (Dx (_ :: Dim m)) = property $ do
+  a <- arbitrary @(DataFrame Double '[n,m])
+  b <- arbitrary @(DataFrame Double '[n])
+  return $ testQRSolve a b
+
 return []
 runTests :: Int -> IO Bool
 runTests n = $forAllProperties
