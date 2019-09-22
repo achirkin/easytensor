@@ -13,6 +13,7 @@ module Numeric.MatrixDoubleTest (runTests) where
 import Data.Fixed
 import Numeric.Arbitraries
 import Numeric.DataFrame
+import Numeric.Dimensions
 import Test.QuickCheck
 
 type TestElem = Double
@@ -28,8 +29,10 @@ prop_detTranspose (SSM m') = counterexample
       , "m:  " ++ show m
       , "mT: " ++ show (transpose m)
       ]
-    ) $ a =~= b
+    ) $ approxEq mag a b
   where
+    n2 = totalDim (dims `inSpaceOf` m)
+    mag = fromIntegral (n2*n2)
     mm = recip $ maxElem m' `max` 1
     m = ewmap (*mm) m'
     a = det m
@@ -38,8 +41,10 @@ prop_detTranspose (SSM m') = counterexample
 prop_inverse :: SomeSquareMatrix NonSingular TestElem -> Property
 prop_inverse (SSM m) = check (m %* mi) .&&. check (mi %* m)
   where
-    mi = inverse m
+    n2 = totalDim (dims `inSpaceOf` m)
     mag = maxElem m `max` maxElem mi `max` 1
+        * fromIntegral (n2*n2)
+    mi = inverse m
     check a = counterexample
       ( unlines
         [ "Failed inverse:"
