@@ -20,6 +20,7 @@ module Numeric.Matrix.Bidiagonal
 import Control.Monad
 import Control.Monad.ST
 import Data.Kind
+import Numeric.Basics
 import Numeric.DataFrame.ST
 import Numeric.DataFrame.SubSpace
 import Numeric.DataFrame.Type
@@ -81,7 +82,7 @@ The first returned number
  -}
 bidiagonalHouseholder ::
        forall (t :: Type) (n :: Nat) (m :: Nat)
-     . (PrimBytes t, Floating t, Ord t, KnownDim n, KnownDim m)
+     . (PrimBytes t, Ord t, Epsilon t, KnownDim n, KnownDim m)
     => Matrix t n m
     -> BiDiag t n m
 bidiagonalHouseholder a = runST $ do

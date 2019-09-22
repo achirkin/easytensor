@@ -20,6 +20,7 @@ module Numeric.Matrix.QR
 import Control.Monad
 import Control.Monad.ST
 import Data.Kind
+import Numeric.Basics
 import Numeric.DataFrame.ST
 import Numeric.DataFrame.SubSpace
 import Numeric.DataFrame.Type
@@ -65,14 +66,14 @@ deriving instance ( Show t, PrimBytes t
                   , KnownDim n, KnownDim m) => Show (LQ t n m)
 
 
-class (PrimBytes t, Floating t, Ord t, KnownDim n, KnownDim m)
+class (PrimBytes t, Ord t, Epsilon t, KnownDim n, KnownDim m)
       => MatrixQR t (n :: Nat) (m :: Nat) where
     -- | Compute QR factorization
     qr :: Matrix t n m -> QR t n m
     -- | Compute LQ factorization
     lq :: Matrix t n m -> LQ t n m
 
-instance (PrimBytes t, Floating t, Ord t, KnownDim n, KnownDim m)
+instance (PrimBytes t, Ord t, Epsilon t, KnownDim n, KnownDim m)
       => MatrixQR t (n :: Nat) (m :: Nat) where
     qr a
       | lim == 0 = QR undefined undefined 1

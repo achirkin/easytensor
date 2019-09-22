@@ -51,10 +51,11 @@ validateQR x q@QR {..} =
         , "m:"   ++ show x
         ]
       ) (getAll $ iwfoldMap @t @'[n,m]
-            (\(Idx i :* Idx j :* U) a -> All (j >= i || a == 0))
+            (\(Idx i :* Idx j :* U) a -> All (j >= i || a <= tol))
             qrR
         )
   where
+    tol = M_EPS * max 1 (maxElem x)
     x'  = qrQ %* qrR
 
 validateLQ :: forall (t :: Type) (n :: Nat) (m :: Nat)
@@ -87,10 +88,11 @@ validateLQ x q@LQ {..} =
         , "m:"  ++ show x
         ]
       ) (getAll $ iwfoldMap @t @'[n,m]
-            (\(Idx i :* Idx j :* U) a -> All (j <= i || a == 0))
+            (\(Idx i :* Idx j :* U) a -> All (j <= i || a <= tol))
             lqL
         )
   where
+    tol = M_EPS * max 1 (maxElem x)
     x'  = lqL %* lqQ
 
 manualMats :: [DataFrame Double '[XN 1, XN 1]]
