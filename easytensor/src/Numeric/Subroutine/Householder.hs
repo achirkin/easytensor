@@ -19,6 +19,7 @@ module Numeric.Subroutine.Householder
 import Control.Monad
 import Control.Monad.ST
 import Data.Kind
+import Numeric.Basics
 import Numeric.DataFrame.ST
 import Numeric.DataFrame.Type
 import Numeric.Dimensions
@@ -52,7 +53,7 @@ import Numeric.Scalar.Internal
  -}
 householderReflectionInplaceL ::
        forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat)
-     . (PrimBytes t, Floating t, Ord t, KnownDim n, KnownDim m)
+     . (PrimBytes t, Ord t, Epsilon t, KnownDim n, KnownDim m)
     => STDataFrame s t '[n] -- ^ Temporary buffer for a Householder axis vector
     -> STDataFrame s t '[n,n]  -- ^ Current state of \(P^\intercal\)
     -> STDataFrame s t '[n,m]  -- ^ Current state of \(R\)
@@ -67,7 +68,7 @@ householderReflectionInplaceL u p r (Idx i :* Idx j :* U)
 
 householderReflectionInplaceL' ::
        forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat)
-     . (PrimBytes t, Floating t, Ord t)
+     . (PrimBytes t, Epsilon t, Ord t)
     => STDataFrame s t '[n] -- ^ Temporary buffer for a Householder axis vector
     -> STDataFrame s t '[n,n]  -- ^ \(P^\intercal\)
     -> STDataFrame s t '[n,m]  -- ^ \(R\)
@@ -81,7 +82,7 @@ householderReflectionInplaceL' uPtr pPtr rPtr n m k l = do
     alpha <- getAlphaAndUpdateU
     u2 <- getU2
     -- u2 == 0 means the column is already zeroed
-    if (u2 /= 0)
+    if u2 > M_EPS
     then do
       let c = 2 / u2 -- a mult constant for updating matrices
       -- update R
@@ -99,7 +100,11 @@ householderReflectionInplaceL' uPtr pPtr rPtr n m k l = do
     getAlphaAndUpdateU :: ST s (Scalar t)
     getAlphaAndUpdateU = do
       alpha' <- sqrt . fst <$> nTimesM n'
-        (\(r, off) -> (\x -> (r + x*x, off + m)) <$> readDataFrameOff rPtr off) (0, rOff0)
+        (\(r, off) -> do
+          x <- readDataFrameOff rPtr off
+          when (abs x <= M_EPS) $ writeDataFrameOff rPtr off 0
+          return (r + x*x, off + m)
+        ) (0, rOff0)
       x0 <- readDataFrameOff rPtr rOff0
       let alpha = if x0 >= 0 then negate alpha' else alpha'
       -- update (lower part of) u
@@ -164,7 +169,7 @@ householderReflectionInplaceL' uPtr pPtr rPtr n m k l = do
  -}
 householderReflectionInplaceR ::
        forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat)
-     . (PrimBytes t, Floating t, Ord t, KnownDim n, KnownDim m)
+     . (PrimBytes t, Ord t, Epsilon t, KnownDim n, KnownDim m)
     => STDataFrame s t '[m] -- ^ Temporary buffer for a Householder axis vector
     -> STDataFrame s t '[m,m]  -- ^ Current state of \(P^\intercal\)
     -> STDataFrame s t '[n,m]  -- ^ Current state of \(R\)
@@ -179,7 +184,7 @@ householderReflectionInplaceR u p r (Idx i :* Idx j :* U)
 
 householderReflectionInplaceR' ::
        forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat)
-     . (PrimBytes t, Floating t, Ord t)
+     . (PrimBytes t, Epsilon t, Ord t)
     => STDataFrame s t '[m] -- ^ Temporary buffer for a Householder axis vector
     -> STDataFrame s t '[m,m]  -- ^ \(P^\intercal\)
     -> STDataFrame s t '[n,m]  -- ^ \(R\)
@@ -193,7 +198,7 @@ householderReflectionInplaceR' uPtr pPtr rPtr n m k l = do
     alpha <- getAlphaAndUpdateU
     u2 <- getU2
     -- u2 == 0 means the column is already zeroed
-    if (u2 /= 0)
+    if u2 > M_EPS
     then do
       let c = 2 / u2 -- a mult constant for updating matrices
       -- update R
@@ -211,7 +216,11 @@ householderReflectionInplaceR' uPtr pPtr rPtr n m k l = do
     getAlphaAndUpdateU :: ST s (Scalar t)
     getAlphaAndUpdateU = do
       alpha' <- sqrt . fst <$> nTimesM m'
-        (\(r, off) -> (\x -> (r + x*x, off + 1)) <$> readDataFrameOff rPtr off) (0, rOff0)
+        (\(r, off) -> do
+          x <- readDataFrameOff rPtr off
+          when (abs x <= M_EPS) $ writeDataFrameOff rPtr off 0
+          return (r + x*x, off + 1)
+        ) (0, rOff0)
       x0 <- readDataFrameOff rPtr rOff0
       let alpha = if x0 >= 0 then negate alpha' else alpha'
       -- update (lower part of) u
