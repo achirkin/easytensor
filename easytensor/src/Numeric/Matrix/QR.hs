@@ -13,7 +13,7 @@
 module Numeric.Matrix.QR
   ( QR (..), LQ (..), MatrixQR (..)
   , detViaQR, inverseViaQR
-  , qrSolveR
+  , qrSolveR, qrSolveL
   ) where
 
 
@@ -174,6 +174,58 @@ qrSolveR a b = case compareDim dn dm of
     (transpose lqQ %*) <$> unsafeFreezeDataFrame xPtr
       -- NB: make a stateful product for transposed mat
   _ -> error "qrSolveR: impossible pattern"
+  where
+    dn = dim @n
+    dm = dim @m
+
+
+{- |
+Compute a QR or LQ decomposition of matrix \( A : n \times m \),
+and solve a system of linear equations \( xA = b \).
+
+If \( n <= m \) LQ decomposition is used;
+if \( n < m \) this function solves linear least squares problem.
+If \( n > m \) (underdetermined system) QR decomposition is used
+  to yield a minimum norm solution.
+ -}
+qrSolveL ::
+       forall t (n :: Nat) (m :: Nat) (ds :: [Nat])
+     . (MatrixQR t n m, Dimensions ds)
+    => Matrix t n m -> DataFrame t (ds +: m) -> DataFrame t (ds +: n)
+qrSolveL a b
+  | Dims <- Snoc (dims @ds) dn
+  , Dims <- Snoc (dims @ds) dm
+  , Dict <- Dict @(SnocList ds n _) -- remind GHC that we have (ds +: n)
+  , Dict <- Dict @(SnocList ds m _) -- remind GHC that we have (ds +: m)
+    = case compareDim dn dm of
+  SEQ | Dict <- (unsafeCoerce (Dict @(m ~ m)) :: Dict (m ~ n))
+        -> runST $ do
+    let LQ {..} = lq a
+    xPtr <- thawDataFrame (b %* transpose lqQ) -- NB: make a stateful product for transposed mat
+    solveLowerTriangularL xPtr lqL
+    unsafeFreezeDataFrame xPtr
+  SGT | Dict <- unsafeCoerce (Dict @(m <= m)) :: Dict (m <= n)
+      , Dict <- unsafeCoerce (Dict @(n ~ n)) :: Dict ((m + (n - m)) ~ n)
+      , D <- minusDim dn dm
+        -> runST $ do
+    let QR {..} = qr a
+    xPtr <- thawDataFrame b
+    solveUpperTriangularL xPtr qrR
+    ewmap @t @ds @'[n] (\x -> qrQ %* appendDF x (0 :: DataFrame t '[n - m]))
+      <$> unsafeFreezeDataFrame xPtr
+  SLT | Dict <- unsafeCoerce (Dict @(m <= m)) :: Dict (n <= m)
+      , Dict <- unsafeCoerce (Dict @(n ~ n)) :: Dict ((((m - n) + 1) + n) ~ (m + 1))
+      , D <- minusDim dm dn `plusDim` D1
+        -> runST $ do
+    let LQ {..} = lq a
+        i0 :: Idx (m - n + 1)
+        i0 = Idx 0
+    xPtr <- thawDataFrame (b %* transpose lqQ) -- NB: make a stateful product for transposed mat
+    solveLowerTriangularL xPtr lqL
+    ewmap @t @ds @'[n] (sslice i0)
+      <$> unsafeFreezeDataFrame xPtr
+  _ -> error "qrSolveL/compareDim: impossible pattern"
+  | otherwise = error "qrSolveL: impossible pattern"
   where
     dn = dim @n
     dm = dim @m
