@@ -30,14 +30,14 @@ validateBidiagonal :: forall (t :: Type) (n :: Nat) (m :: Nat)
 validateBidiagonal a BiDiag {..} =
     counterexample
       (unlines
-        [ "failed a ~==~ u %* b %* transpose v:"
+        [ "failed a =~= u %* b %* transpose v:"
         , "a:  " ++ show a
         , "a': " ++ show a'
         , "u:  "   ++ show u
         , "b:  "   ++ show b
         , "v:  "   ++ show v
         ]
-      ) (a =~= a')
+      ) (approxEq mag a a')
     .&&.
     counterexample
       (unlines
@@ -47,7 +47,7 @@ validateBidiagonal a BiDiag {..} =
         , "b: "   ++ show b
         , "v: "   ++ show v
         ]
-      ) (eye =~= u %* transpose u)
+      ) (approxEq mag eye (u %* transpose u))
     .&&.
     counterexample
       (unlines
@@ -57,7 +57,7 @@ validateBidiagonal a BiDiag {..} =
         , "b: "  ++ show b
         , "v: "  ++ show v
         ]
-      ) (eye =~= v %* transpose v)
+      ) (approxEq mag eye (v %* transpose v))
     .&&.
     counterexample
       (unlines
@@ -80,7 +80,7 @@ validateBidiagonal a BiDiag {..} =
         , "bdUDet: " ++ show bdUDet
         , "det u:  " ++ show (det u)
         ]
-      ) (bdUDet =~= det u)
+      ) (approxEq mag bdUDet (det u))
     .&&.
     counterexample
       (unlines
@@ -90,8 +90,9 @@ validateBidiagonal a BiDiag {..} =
         , "bdVDet: " ++ show bdVDet
         , "det v:  " ++ show (det v)
         ]
-      ) (bdVDet =~= det v)
+      ) (approxEq mag bdVDet (det v))
   where
+    mag = fromIntegral (totalDim $ dims `inSpaceOf` a) :: Scalar t
     a'  = u %* b %* transpose v
     b = biDiag dims bdAlpha bdBeta
     u = bdU
