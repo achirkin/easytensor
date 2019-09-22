@@ -119,15 +119,17 @@ prop_rotateEuler pitch yaw roll =
 
 prop_lookAt :: Vector TestElem 3 -> Vector TestElem 3 -> Vector TestElem 3 -> Property
 prop_lookAt up cam foc =
-  (apart cam foc && apart up cam) ==>
+  (normL2 (cam - foc) > M_EPS && apart up zb && apart zb xb) ==>
   conjoin [
-    (normalized . fromHom $ toHomPoint foc %* m) =~= vec3 0 0 (-1),
-    fromHom (toHomPoint cam %* m) =~= 0,
-    fromHom (toHomVector xb %* m) =~= vec3 1 0 0,
-    fromHom (toHomVector yb %* m) =~= vec3 0 1 0,
-    fromHom (toHomVector zb %* m) =~= vec3 0 0 1
+    (normalized . fromHom $ toHomPoint foc %* m) `aeq` vec3 0 0 (-1),
+    fromHom (toHomPoint cam %* m) `aeq` 0,
+    fromHom (toHomVector xb %* m) `aeq` vec3 1 0 0,
+    fromHom (toHomVector yb %* m) `aeq` vec3 0 1 0,
+    fromHom (toHomVector zb %* m) `aeq` vec3 0 0 1
   ]
   where
+    aeq :: Vector TestElem 3 -> Vector TestElem 3 -> Property
+    aeq = approxEq 10
     apart :: Vector TestElem 3 -> Vector TestElem 3 -> Bool
     apart a b = normL2 (cross a b) > 0.1 * abs (dot a b)
     m = lookAt up cam foc
