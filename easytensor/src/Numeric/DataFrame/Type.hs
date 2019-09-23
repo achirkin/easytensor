@@ -81,10 +81,9 @@ import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
 import qualified Numeric.ProductOrd.Partial           as Partial
 import           Numeric.TypedList                    (typeables)
 
-import {-# SOURCE #-} Numeric.DataFrame.Internal.Backend  (DFBackend,
-                                                           KnownBackend)
-import {-# SOURCE #-} qualified Numeric.DataFrame.Internal.Backend  as Backend
-import           Numeric.DataFrame.Internal.BackendI ()
+import           Numeric.DataFrame.Internal.BackendI (DFBackend, KnownBackend)
+import qualified Numeric.DataFrame.Internal.BackendI as Backend
+
 
 
 -- | Keep data in a primitive data frame

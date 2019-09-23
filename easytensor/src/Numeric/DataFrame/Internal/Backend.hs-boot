@@ -16,7 +16,7 @@
 #endif
 
 module Numeric.DataFrame.Internal.Backend
-  ( DFBackend, Backend (..), BackendFamily, KnownBackend ()
+  ( Backend (..), BackendFamily, KnownBackend ()
   , inferKnownBackend, inferPrimElem
     -- * Auto-deriving instances
   , inferEq, inferOrd
@@ -37,24 +37,12 @@ import qualified Numeric.ProductOrd.Partial           as Partial
 import {-# SOURCE #-} Numeric.DataFrame.Internal.Backend.Family (BackendFamily)
 import {-# SOURCE #-} qualified Numeric.DataFrame.Internal.Backend.Family as Impl
                                                                                    (KnownBackend)
-import {-# SOURCE #-} Numeric.DataFrame.Internal.BackendI       (I)
 
--- | Implementation behind the DataFrame
-type DFBackend (t :: Type) (ds :: [Nat]) = Backend I t ds (BackendFamily t ds)
-
--- | Backend resolver:
---   Use this constraint to find any class instances defined for all DataFrame implementations,
---   e.g. @Num@, @PrimBytes@, etc.
 class Impl.KnownBackend t ds (BackendFamily t ds)
    => KnownBackend (t :: Type) (ds :: [Nat])
 instance Impl.KnownBackend t ds (BackendFamily t ds)
    => KnownBackend (t :: Type) (ds :: [Nat])
 
--- | A newtype wrapper for all DataFrame implementations.
---   I need two layers of wrappers to provide default overlappable instances to
---   all type classes using KnownBackend mechanics.
---   Type arguments are redundant here;
---   nevertheless, they improve readability of error messages.
 newtype Backend (i :: Type) (t :: Type) (ds :: [Nat]) (backend :: Type)
     = Backend { _getBackend :: backend }
 type role Backend phantom phantom phantom representational
@@ -65,61 +53,61 @@ inferKnownBackend
   => Dict (KnownBackend t ds)
 
 inferPrimElem
-  :: forall (t :: Type) (d :: Nat) (ds :: [Nat])
+  :: forall (t :: Type) (d :: Nat) (ds :: [Nat]) (i :: Type)
    . KnownBackend t (d ': ds)
-  => DFBackend t (d ': ds) -> Dict (PrimBytes t)
+  => Backend i t (d ': ds) (BackendFamily t (d ': ds)) -> Dict (PrimBytes t)
 
 inferEq
-  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type) (i :: Type)
    . (Eq t, Impl.KnownBackend t ds b)
-  => Dict (Eq (Backend I t ds b))
+  => Dict (Eq (Backend i t ds b))
 
 inferOrd
-  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type) (i :: Type)
    . (Ord t, Impl.KnownBackend t ds b)
-  => Dict (Ord (Backend I t ds b))
+  => Dict (Ord (Backend i t ds b))
 
 inferProductOrder
-  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type) (i :: Type)
    . (Ord t, Impl.KnownBackend t ds b)
-  => Dict (ProductOrder (Backend I t ds b))
+  => Dict (ProductOrder (Backend i t ds b))
 
 inferPONonTransitive
-  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type) (i :: Type)
    . (Ord t, Impl.KnownBackend t ds b)
-  => Dict (Ord (NonTransitive.ProductOrd (Backend I t ds b)))
+  => Dict (Ord (NonTransitive.ProductOrd (Backend i t ds b)))
 
 inferPOPartial
-  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type) (i :: Type)
    . (Ord t, Impl.KnownBackend t ds b)
-  => Dict (Ord (Partial.ProductOrd (Backend I t ds b)))
+  => Dict (Ord (Partial.ProductOrd (Backend i t ds b)))
 
 inferBounded
-  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type) (i :: Type)
    . (Bounded t, Impl.KnownBackend t ds b)
-  => Dict (Bounded (Backend I t ds b))
+  => Dict (Bounded (Backend i t ds b))
 
 inferNum
-  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type) (i :: Type)
    . (Num t, Impl.KnownBackend t ds b)
-  => Dict (Num (Backend I t ds b))
+  => Dict (Num (Backend i t ds b))
 
 inferFractional
-  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type) (i :: Type)
    . (Fractional t, Impl.KnownBackend t ds b)
-  => Dict (Fractional (Backend I t ds b))
+  => Dict (Fractional (Backend i t ds b))
 
 inferFloating
-  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type) (i :: Type)
    . (Floating t, Impl.KnownBackend t ds b)
-  => Dict (Floating (Backend I t ds b))
+  => Dict (Floating (Backend i t ds b))
 
 inferPrimBytes
-  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type) (i :: Type)
    . (PrimBytes t, Dimensions ds, Impl.KnownBackend t ds b)
-  => Dict (PrimBytes (Backend I t ds b))
+  => Dict (PrimBytes (Backend i t ds b))
 
 inferPrimArray
-  :: forall (t :: Type) (ds :: [Nat]) (b :: Type)
+  :: forall (t :: Type) (ds :: [Nat]) (b :: Type) (i :: Type)
    . (PrimBytes t, Impl.KnownBackend t ds b)
-  => Dict (PrimArray t (Backend I t ds b))
+  => Dict (PrimArray t (Backend i t ds b))

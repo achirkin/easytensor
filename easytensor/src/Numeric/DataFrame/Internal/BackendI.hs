@@ -7,31 +7,54 @@
 {-# LANGUAGE TypeApplications      #-}
 #if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
 {-# LANGUAGE FlexibleInstances     #-}
-{-# OPTIONS_GHC -fdefer-type-errors #-}
-{-# OPTIONS_GHC -fno-warn-deferred-type-errors #-}
 {-# OPTIONS_GHC -fno-warn-missing-methods #-}
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 {-# OPTIONS_GHC -fno-warn-simplifiable-class-constraints #-}
 #else
 {-# OPTIONS_GHC -fplugin Data.Constraint.Deriving #-}
 #endif
+{-
+The purpose of this module is to provide incoherent instances of common type classes
+for the type @Backend@.
+It imports @Backend.hs-boot@ module and thus does not depend on the actual
+implementation of @BackendFamily@.
+Import this module instead of @Backend.hs-boot@ in the places that must not depend
+on @BackendFamily@, such as @Numeric.DataFrame.Type@.
 
+By design the import chain is as follows:
+
+NDI.Backend.Family.hs-boot            NDI.Backend.Family
+         \                                   |
+    NDI.Backend.hs-boot               NDI.Backend (instances only)
+          \                                 /
+     NDI.BackendI                          /
+            \                             /
+    Numeric.DataFrame.Type               /
+                    \                   /
+                     \                 /
+                     Numeric.DataFrame
+
+ -}
 module Numeric.DataFrame.Internal.BackendI
-  ( I
+  ( DFBackend, Backend (..), Backend.BackendFamily, Backend.KnownBackend ()
+  , Backend.inferKnownBackend, Backend.inferPrimElem
+#if !defined(__HADDOCK__) && !defined(__HADDOCK_VERSION__)
   , inferEq, inferOrd
   , inferProductOrder, inferPONonTransitive, inferPOPartial
   , inferBounded, inferNum
   , inferFractional, inferFloating
   , inferPrimBytes, inferPrimArray
+#endif
   ) where
 
 
-
-import           Data.Constraint.Deriving             (OverlapMode (..),
-                                                       ToInstance (..))
+#if !defined(__HADDOCK__) && !defined(__HADDOCK_VERSION__)
+import Data.Constraint          (Dict)
+import Data.Constraint.Deriving (OverlapMode (..), ToInstance (..))
+#endif
 import           Data.Kind                            (Type)
 import           Numeric.DataFrame.Internal.PrimArray (PrimArray)
-import           Numeric.Dimensions                   (Dict, Dimensions, Nat)
+import           Numeric.Dimensions                   (Dimensions, Nat)
 import           Numeric.PrimBytes                    (PrimBytes)
 import           Numeric.ProductOrd                   (ProductOrder)
 import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
@@ -43,6 +66,9 @@ import {-# SOURCE #-} qualified Numeric.DataFrame.Internal.Backend.Family as Imp
 
 
 
+-- | Implementation behind the DataFrame
+type DFBackend (t :: Type) (ds :: [Nat]) = Backend I t ds (Impl.BackendFamily t ds)
+
 {- | The instance keeper for the `Backend` type.
 
   Using this data as a tag to the `Backend` type allows to define `Backend` instances
@@ -51,6 +77,10 @@ import {-# SOURCE #-} qualified Numeric.DataFrame.Internal.Backend.Family as Imp
  -}
 data I
 
+
+
+-- The instances below are bumb stubs needed only to compile haddock
+#if !defined(__HADDOCK__) && !defined(__HADDOCK_VERSION__)
 
 {-# ANN inferEq (ToInstance Incoherent) #-}
 inferEq
@@ -129,10 +159,7 @@ inferPrimArray
   => Dict (PrimArray t (Backend I t ds b))
 inferPrimArray = Backend.inferPrimArray @t @ds @b
 
-
-
--- The instances below are bumb stubs needed only to compile haddock
-#if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
+#else
 
 instance
     forall (t :: Type) (ds :: [Nat]) (b :: Type)

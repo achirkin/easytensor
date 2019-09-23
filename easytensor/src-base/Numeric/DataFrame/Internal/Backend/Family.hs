@@ -68,10 +68,6 @@ type family BackendFamily (t :: Type) (ds :: [Nat]) = (v :: Type) | v -> t ds wh
     BackendFamily Double '[4]   = DoubleX4
     BackendFamily t       ds    = ArrayBase t ds
 
--- | Promise that we are sure the backend is ArrayBase.
-unsafeDefault :: forall t ds . Dict (BackendFamily t ds ~ ArrayBase t ds)
-unsafeDefault = unsafeCoerce# (Dict @(ArrayBase t ds ~ ArrayBase t ds))
-
 -- | Singleton type used to determine the currently used DataFrame backend;
 --   establishes a good bijection @b <~> t ds@ (better than just using @BackendFamily@ everywhere).
 data BackendSing (t :: Type) (ds :: [Nat]) (backend :: Type) where
@@ -125,6 +121,10 @@ instance {-# INCOHERENT #-}
       (D4 :* U, PTagDouble) -> BD4
       _                     -> case unsafeDefault @t @ds of Dict -> BPB
     {-# INLINE bSing #-}
+
+-- | Promise that we are sure the backend is ArrayBase.
+unsafeDefault :: forall t ds . Dict (BackendFamily t ds ~ ArrayBase t ds)
+unsafeDefault = unsafeCoerce# (Dict @(ArrayBase t ds ~ ArrayBase t ds))
 #endif
 
 -- | Find an instance of `KnownBackend` class using `PrimBytes` and `Dimensions`.
