@@ -84,7 +84,7 @@ manualMats = join
       , mkM D2 <$> variants [3, 1, -2, 0]
       ]
   where
-    mkM :: Dim n -> [t] -> SomeSquareMatrix AnyMatrix t
+    mkM :: Dim (n :: Nat) -> [t] -> SomeSquareMatrix AnyMatrix t
     mkM (d@D :: Dim n) = SSM . fromFlatList (d :* d :* U) 0
     mkM _              = error "manualMats: bad dims"
     variants :: Num a => [a] -> [[a]]

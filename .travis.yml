@@ -19,8 +19,12 @@ matrix:
     env: PFLAGS="--flags=unsafeindices"
   - ghc: "8.8"
     env: PFLAGS="--flags=-unsafeindices"
+  - ghc: "head"
+    env: PFLAGS="--flags=unsafeindices"
+  - ghc: "head"
+    env: PFLAGS="--flags=-unsafeindices"
   allow_failures:
-  - ghc: "8.8"
+  - ghc: "head"
 
 before_install:
   - printf "packages\u3A \u2A/\u2A.cabal\n" > cabal.project

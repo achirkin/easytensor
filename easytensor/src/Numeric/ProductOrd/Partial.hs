@@ -35,8 +35,6 @@ import Data.Coerce
 import Data.Data
 import Data.Foldable
 import Data.Kind         (Type)
-import Data.Monoid       as Mon (Monoid (..))
-import Data.Semigroup    as Sem (Semigroup (..))
 import Foreign.Storable  (Storable)
 import GHC.Generics
 
