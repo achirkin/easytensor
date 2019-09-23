@@ -92,8 +92,8 @@ prop_UnitQ q
 
 
 prop_ExpLog :: Quater T -> Property
-prop_ExpLog q | square q < M_EPS = log (exp q) =~= q
-              | otherwise = exp (log q) =~= q
+prop_ExpLog q | square q < M_EPS = approxEq (qSpan q) q $ log (exp q)
+              | otherwise        = approxEq (qSpan q) q $ exp (log q)
 
 prop_SinAsin :: Quater T -> Property
 prop_SinAsin q = approxEq (qSpan q `max` qSpan q') q $ sin q'
