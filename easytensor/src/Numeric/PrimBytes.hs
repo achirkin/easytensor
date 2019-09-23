@@ -90,7 +90,6 @@ import           GHC.Exts
 import           GHC.Generics
 import           GHC.Int
 import           GHC.IO               (IO (..))
-import           GHC.Ptr              (Ptr (..))
 import           GHC.Word
 import           Numeric.Dimensions
 import qualified Numeric.Tuple.Lazy   as TL

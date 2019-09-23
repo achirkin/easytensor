@@ -49,8 +49,7 @@ import           Data.Monoid          as Mon (Monoid (..))
 import           Data.Semigroup       as Sem (Semigroup (..))
 import           Data.String          (IsString)
 import           Foreign.Storable     (Storable)
-import           GHC.Base             (Type)
-import           GHC.Exts
+import           GHC.Base             (Type, Any, unsafeCoerce#)
 import           GHC.Generics         (Generic, Generic1)
 import qualified Text.Read            as P
 

@@ -57,9 +57,11 @@ module Numeric.DataFrame.Type
   ) where
 
 
+#if !(MIN_VERSION_base(4,13,0))
+import Data.Proxy (Proxy)
+#endif
 import           Control.Arrow                   (second, (***))
 import           Data.Data
-import           Data.Proxy                      (Proxy)
 import           Data.Semigroup                  hiding (All, Min)
 import           Data.Type.Lits
 import           Data.Void

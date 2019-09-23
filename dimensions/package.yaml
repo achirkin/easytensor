@@ -33,7 +33,7 @@ custom-setup:
 
 dependencies:
   - base >= 4.10 && < 5
-  - constraints-deriving >= 1.1 && < 2
+  - constraints-deriving >= 1.1.1.0 && < 2
 
 library:
   source-dirs: src

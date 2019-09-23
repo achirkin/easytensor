@@ -19,7 +19,6 @@ module Numeric.Matrix.LU
 import Control.Monad
 import Control.Monad.ST
 import Data.Kind
-import Numeric.DataFrame.Contraction        ((%*))
 import Numeric.DataFrame.Internal.PrimArray
 import Numeric.DataFrame.ST
 import Numeric.DataFrame.SubSpace

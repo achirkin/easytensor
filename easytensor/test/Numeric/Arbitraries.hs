@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes       #-}
+{-# LANGUAGE CPP                       #-}
 {-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
@@ -24,7 +25,9 @@ module Numeric.Arbitraries where
 
 import Test.QuickCheck
 
-import           Control.Monad.Fail
+#if !(MIN_VERSION_base(4,13,0))
+import Control.Monad.Fail
+#endif
 import           Data.Int
 import           Data.Kind            (Type)
 import           Data.List            (inits, tails)

@@ -118,7 +118,7 @@ import           Data.Constraint.Bare
 import           Data.Constraint.Deriving
 import           Data.Data                hiding (TypeRep, typeRep,
                                            typeRepTyCon)
-import           Data.Kind                (Constraint, Type)
+import           Data.Kind                (Type)
 import qualified Data.List                (stripPrefix)
 import           Data.Type.List
 import           Data.Type.List.Internal
@@ -817,16 +817,11 @@ withKnownXDims :: forall (ds :: [XNat]) (rep :: RuntimeRep) (r :: TYPE rep)
 withKnownXDims f
   | Dict <- unsafeEqTypes @_ @ds @(Map 'N (DimsBound ds))
     = reifyDims @Nat @(DimsBound ds) dsN
-        (k (WithConstraint f) (dictToBare (inferExactFixedDims @ds dsN)))
+        (withBareConstraint (dictToBare (inferExactFixedDims @ds dsN)) (\_ -> f) ())
   where
     dsN :: Dims (DimsBound ds)
     dsN = unsafeCoerce# (dims @ds)
-    k :: forall (rep' :: RuntimeRep) (r' :: TYPE rep')
-       . WithConstraint (KnownXNatTypes ds, FixedDims ds (DimsBound ds)) r'
-      -> BareConstraint (KnownXNatTypes ds, FixedDims ds (DimsBound ds)) -> r'
-    k = unsafeCoerce#
 {-# INLINE withKnownXDims #-}
-newtype WithConstraint c (r :: TYPE rep) = WithConstraint (c => r)
 
 inferExactFixedDims :: forall (ds :: [XNat]) . ExactDims ds
                     => Dims (DimsBound ds)
