@@ -724,7 +724,7 @@ instance ( ConcatList as bs asbs
                   bd = getBD r
               in  r
       where
-        getBD :: KnownDim bd => DataFrame t (bd ': bs') -> Dim bd
+        getBD :: KnownDim (bd :: Nat) => DataFrame t (bd ': bs') -> Dim bd
         getBD _ = D
         repHead y (CumulDims (_:x:xs)) = CumulDims (y*x:x:xs)
         repHead _ steps                = steps
