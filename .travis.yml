@@ -8,33 +8,49 @@ cache:
 matrix:
   include:
   - ghc: "8.4"
-    env: PFLAGS="--flags=unsafeindices"
+    env: WAY="--flags=unsafeindices --ghc-options=-O0"
   - ghc: "8.4"
-    env: PFLAGS="--flags=-unsafeindices"
+    env: WAY="--flags=-unsafeindices --ghc-options=-O0"
   - ghc: "8.6"
-    env: PFLAGS="--flags=unsafeindices"
+    env: WAY="--flags=unsafeindices --ghc-options=-O0"
   - ghc: "8.6"
-    env: PFLAGS="--flags=-unsafeindices"
+    env: WAY="--flags=-unsafeindices --ghc-options=-O0"
   - ghc: "8.8"
-    env: PFLAGS="--flags=unsafeindices"
+    env: WAY="--flags=unsafeindices --ghc-options=-O0"
   - ghc: "8.8"
-    env: PFLAGS="--flags=-unsafeindices"
+    env: WAY="--flags=-unsafeindices --ghc-options=-O0"
   - ghc: "head"
-    env: PFLAGS="--flags=unsafeindices"
+    env: WAY="--flags=unsafeindices --ghc-options=-O0"
   - ghc: "head"
-    env: PFLAGS="--flags=-unsafeindices"
+    env: WAY="--flags=-unsafeindices --ghc-options=-O0"
+  - ghc: "8.4"
+    env: WAY="--flags=unsafeindices --ghc-options=-O"
+  - ghc: "8.4"
+    env: WAY="--flags=-unsafeindices --ghc-options=-O"
+  - ghc: "8.6"
+    env: WAY="--flags=unsafeindices --ghc-options=-O"
+  - ghc: "8.6"
+    env: WAY="--flags=-unsafeindices --ghc-options=-O"
+  - ghc: "8.8"
+    env: WAY="--flags=unsafeindices --ghc-options=-O"
+  - ghc: "8.8"
+    env: WAY="--flags=-unsafeindices --ghc-options=-O"
+  - ghc: "head"
+    env: WAY="--flags=unsafeindices --ghc-options=-O"
+  - ghc: "head"
+    env: WAY="--flags=-unsafeindices --ghc-options=-O"
   allow_failures:
   - ghc: "head"
 
 before_install:
   - printf "packages\u3A \u2A/\u2A.cabal\n" > cabal.project
-  - until curl -sSL https://github.com/sol/hpack/raw/master/get-hpack.sh | bash; do sleep 1; done
+  - until curl -sSL https://github.com/sol/hpack/raw/master/get-hpack.sh | bash; do sleep 5; done
   - hpack dimensions/package.yaml
   - hpack easytensor/package.yaml
 
 install:
-  - cabal new-build all --ghc-options="-O0" --enable-tests --dependencies-only
+  - cabal new-build all --enable-tests --dependencies-only
 
 script:
-  - cabal new-build all --ghc-options="-O0" --enable-tests $PFLAGS
-  - cabal new-test all --ghc-options="-O0" $PFLAGS
+  - cabal new-build all --enable-tests $WAY
+  - cabal new-test all $WAY
