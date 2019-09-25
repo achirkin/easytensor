@@ -4,7 +4,6 @@
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE UnboxedSums           #-}
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 module Numeric.DataFrame.Internal.Backend.Family.DoubleX4 (DoubleX4 (..)) where
@@ -426,8 +425,8 @@ instance PrimBytes DoubleX4 where
 
 instance PrimArray Double DoubleX4 where
 
-    broadcast = broadcast'
-    {-# INLINE broadcast #-}
+    broadcast# (D# x) = DoubleX4# x x x x
+    {-# INLINE broadcast# #-}
 
     ix# 0# (DoubleX4# a1 _ _ _) = D# a1
     ix# 1# (DoubleX4# _ a2 _ _) = D# a2
@@ -450,8 +449,8 @@ instance PrimArray Double DoubleX4 where
     upd# _ _ _ x                         = x
     {-# INLINE upd# #-}
 
-    arrayContent# = arrayContent'
-    {-# INLINE arrayContent# #-}
+    withArrayContent# _ g x = g (CumulDims [ELEM_N, 1]) 0# (getBytes x)
+    {-# INLINE withArrayContent# #-}
 
     offsetElems _ = 0#
     {-# INLINE offsetElems #-}
@@ -459,29 +458,9 @@ instance PrimArray Double DoubleX4 where
     uniqueOrCumulDims _ = Right (CumulDims [ELEM_N, 1])
     {-# INLINE uniqueOrCumulDims #-}
 
-    fromElems = fromElems'
-    {-# INLINE fromElems #-}
-
-arrayContent' :: DoubleX4 -> (# Double | (# CumulDims, Int#, ByteArray# #) #)
-arrayContent' x = (# | (# CumulDims [4, 1], 0#, getBytes x #) #)
-{-# INLINE [1] arrayContent' #-}
-
-fromElems' :: CumulDims -> Int# -> ByteArray# -> DoubleX4
-fromElems' _ off ba = DoubleX4#
-  (indexDoubleArray# ba off)
-  (indexDoubleArray# ba (off +# 1#))
-  (indexDoubleArray# ba (off +# 2#))
-  (indexDoubleArray# ba (off +# 3#))
-{-# INLINE [1] fromElems' #-}
-
-broadcast' :: Double -> DoubleX4
-broadcast' (D# x) = DoubleX4# x x x x
-{-# INLINE [1] broadcast' #-}
-
-{-# RULES
-"arrayContent+fromElems" forall cd off ba .
-  arrayContent' (fromElems' cd off ba) = (# | (# cd, off, ba #) #)
-
-"arrayContent+broadcast" forall e .
-  arrayContent' (broadcast' e) = (# e | #)
-  #-}
+    fromElems# _ off ba = DoubleX4#
+      (indexDoubleArray# ba off)
+      (indexDoubleArray# ba (off +# 1#))
+      (indexDoubleArray# ba (off +# 2#))
+      (indexDoubleArray# ba (off +# 3#))
+    {-# INLINE fromElems# #-}

@@ -29,8 +29,8 @@ deriving instance Ord t => Ord (NonTransitive.ProductOrd (ScalarBase t))
 deriving instance Ord t => Ord (Partial.ProductOrd (ScalarBase t))
 
 instance PrimBytes t => PrimArray t (ScalarBase t) where
-  broadcast = unsafeCoerce#
-  {-# INLINE broadcast #-}
+  broadcast# = unsafeCoerce#
+  {-# INLINE broadcast# #-}
   ix# _ = unsafeCoerce#
   {-# INLINE ix# #-}
   gen# _ = unsafeCoerce#
@@ -38,14 +38,14 @@ instance PrimBytes t => PrimArray t (ScalarBase t) where
   upd# _ 0# = const . ScalarBase
   upd# _ _  = const id
   {-# INLINE upd# #-}
-  arrayContent# x = (# _unScalarBase x | #)
-  {-# INLINE arrayContent# #-}
+  withArrayContent# f _ x = f (_unScalarBase x)
+  {-# INLINE withArrayContent# #-}
   offsetElems _ = 0#
   {-# INLINE offsetElems #-}
   uniqueOrCumulDims = Left . _unScalarBase
   {-# INLINE uniqueOrCumulDims #-}
-  fromElems _ off ba = indexArray ba off
-  {-# INLINE fromElems #-}
+  fromElems# _ off ba = indexArray ba off
+  {-# INLINE fromElems# #-}
 
 _suppressHlintUnboxedTuplesWarning :: () -> (# (), () #)
 _suppressHlintUnboxedTuplesWarning = undefined

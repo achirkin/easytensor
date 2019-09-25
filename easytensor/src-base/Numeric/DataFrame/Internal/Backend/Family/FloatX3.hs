@@ -4,7 +4,6 @@
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE UnboxedSums           #-}
 {-# LANGUAGE UnboxedTuples         #-}
 {-# LANGUAGE UndecidableInstances  #-}
 module Numeric.DataFrame.Internal.Backend.Family.FloatX3 (FloatX3 (..)) where
@@ -400,8 +399,8 @@ instance PrimBytes FloatX3 where
 
 instance PrimArray Float FloatX3 where
 
-    broadcast = broadcast'
-    {-# INLINE broadcast #-}
+    broadcast# (F# x) = FloatX3# x x x
+    {-# INLINE broadcast# #-}
 
     ix# 0# (FloatX3# a1 _ _) = F# a1
     ix# 1# (FloatX3# _ a2 _) = F# a2
@@ -421,8 +420,8 @@ instance PrimArray Float FloatX3 where
     upd# _ _ _ x                      = x
     {-# INLINE upd# #-}
 
-    arrayContent# = arrayContent'
-    {-# INLINE arrayContent# #-}
+    withArrayContent# _ g x = g (CumulDims [ELEM_N, 1]) 0# (getBytes x)
+    {-# INLINE withArrayContent# #-}
 
     offsetElems _ = 0#
     {-# INLINE offsetElems #-}
@@ -430,28 +429,8 @@ instance PrimArray Float FloatX3 where
     uniqueOrCumulDims _ = Right (CumulDims [ELEM_N, 1])
     {-# INLINE uniqueOrCumulDims #-}
 
-    fromElems = fromElems'
-    {-# INLINE fromElems #-}
-
-arrayContent' :: FloatX3 -> (# Float | (# CumulDims, Int#, ByteArray# #) #)
-arrayContent' x = (# | (# CumulDims [3, 1], 0#, getBytes x #) #)
-{-# INLINE [1] arrayContent' #-}
-
-fromElems' :: CumulDims -> Int# -> ByteArray# -> FloatX3
-fromElems' _ off ba = FloatX3#
-  (indexFloatArray# ba off)
-  (indexFloatArray# ba (off +# 1#))
-  (indexFloatArray# ba (off +# 2#))
-{-# INLINE [1] fromElems' #-}
-
-broadcast' :: Float -> FloatX3
-broadcast' (F# x) = FloatX3# x x x
-{-# INLINE [1] broadcast' #-}
-
-{-# RULES
-"arrayContent+fromElems" forall cd off ba .
-  arrayContent' (fromElems' cd off ba) = (# | (# cd, off, ba #) #)
-
-"arrayContent+broadcast" forall e .
-  arrayContent' (broadcast' e) = (# e | #)
-  #-}
+    fromElems# _ off ba = FloatX3#
+      (indexFloatArray# ba off)
+      (indexFloatArray# ba (off +# 1#))
+      (indexFloatArray# ba (off +# 2#))
+    {-# INLINE fromElems# #-}
