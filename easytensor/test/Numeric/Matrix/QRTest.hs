@@ -157,7 +157,7 @@ testQRSolve a b =
         , "zeroR: " ++ show zeroR
         , "zeroL: " ++ show zeroL
         ]
-      ) (nonDeficient ==> approxEq mag zeroR 0)
+      ) (nonDeficient ==> approxEq mag2 zeroR 0)
     .&&.
     counterexample
       (unlines
@@ -166,7 +166,7 @@ testQRSolve a b =
         , "b:  " ++ show b
         , "xl: " ++ show xl
         ]
-      ) (nonDeficient ==> approxEq mag zeroL 0)
+      ) (nonDeficient ==> approxEq mag2 zeroL 0)
     .&&.
     counterexample
       (unlines
@@ -182,7 +182,8 @@ testQRSolve a b =
       foldl (\r i -> r && abs (qrr ! i ! i) > M_EPS * mag) True
         [0 .. min (dimVal' @n) (dimVal' @m) - 1]
     nm = totalDim (dims `inSpaceOf` a)
-    mag = max 1 (maxElem a `max` maxElem b) * fromIntegral (nm*nm)
+    mag = max 1 (maxElem a `max` maxElem b) * fromIntegral nm
+    mag2 = mag*mag
     a' = transpose a
     xr = qrSolveR a  b
     xl = qrSolveL a' b
