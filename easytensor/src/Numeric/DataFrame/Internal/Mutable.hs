@@ -65,13 +65,13 @@ newDataFrame# ::
        forall (t :: Type) (k :: Type) (ns :: [k]) s
      . (PrimBytes t, Dimensions ns)
     => State# s -> (# State# s, MDataFrame s t ns #)
-newDataFrame# s0
+newDataFrame#
     | steps <- cumulDims $ dims @ns
     , n <- cdTotalDim# steps
       = if isTrue# (n ==# 0#)
-        then (# s0, MDataFrame# 0# steps (error "Empty DataFrame (DF0)") #)
-        else case newByteArray# (n *# byteSize @t undefined) s0 of
-               (# s1, mba #) -> (# s1,  MDataFrame# 0# steps mba #)
+        then \s0 -> (# s0, error "Empty DataFrame (DF0)" #)
+        else \s0 -> case newByteArray# (n *# byteSize @t undefined) s0 of
+                          (# s1, mba #) -> (# s1,  MDataFrame# 0# steps mba #)
 {-# INLINE newDataFrame# #-}
 
 -- | Create a new mutable DataFrame.
@@ -79,15 +79,15 @@ newPinnedDataFrame# ::
        forall (t :: Type) (k :: Type) (ns :: [k]) s
      . (PrimBytes t, Dimensions ns)
     => State# s -> (# State# s, MDataFrame s t ns #)
-newPinnedDataFrame# s0
+newPinnedDataFrame#
     | steps <- cumulDims $ dims @ns
     , n <- cdTotalDim# steps
       = if isTrue# (n ==# 0#)
-        then (# s0, MDataFrame# 0# steps (error "Empty DataFrame (DF0)") #)
-        else case newAlignedPinnedByteArray#
-                    (n *# byteSize @t undefined)
-                    (byteAlign @t undefined) s0 of
-                    (# s1, mba #) -> (# s1,  MDataFrame# 0# steps mba #)
+        then \s0 -> (# s0, error "Empty DataFrame (DF0)" #)
+        else \s0 -> case newAlignedPinnedByteArray#
+                          (n *# byteSize @t undefined)
+                          (byteAlign @t undefined) s0 of
+                          (# s1, mba #) -> (# s1,  MDataFrame# 0# steps mba #)
 {-# INLINE newPinnedDataFrame# #-}
 
 -- | Create a new mutable DataFrame of the same size.
@@ -152,17 +152,16 @@ copyDataFrame# ::
        , ConcatList as (b :+ bs) asbs )
     => Idxs (as +: bi) -> DataFrame t (bd :+ bs) -> MDataFrame s t asbs
     -> State# s -> (# State# s, () #)
-copyDataFrame# ei df (MDataFrame# offM (CumulDims stepsM) arrDest) s
+copyDataFrame# ei df (MDataFrame# offM (CumulDims stepsM) arrDest)
     | elS <- byteSize @t undefined
     , (offDestw, ~(nBs:_)) <- getOffAndSteps (W# (int2Word# offM)) stepsM (listIdxs ei)
     , I# n <- fromIntegral (nBs * dimVal (dim @bd))
     , I# offDest <- fromIntegral offDestw
-    = case arrayContent# df of
-        (# e | #)
-           -> (# fillArray arrDest offDest n e s, () #)
-        (# | (# _, offSrc, arrSrc #) #)
-           -> (# copyByteArray# arrSrc  (offSrc *# elS)
-                                arrDest (offDest *# elS) (n *# elS) s, () #)
+    = withArrayContent
+      (\e s -> (# fillArray arrDest offDest n e s, () #))
+      (\_ offSrc arrSrc s ->
+        (# copyByteArray# arrSrc  (offSrc *# elS)
+                          arrDest (offDest *# elS) (n *# elS) s, () #)) df
 {-# INLINE copyDataFrame# #-}
 
 {-# ANN copyMDataFrame# "HLint: ignore Use camelCase" #-}
@@ -181,13 +180,12 @@ copyMDataFrame# ::
        , ConcatList as (b :+ bs) asbs )
     => Idxs (as +: bi) -> MDataFrame s t (bd :+ bs) -> MDataFrame s t asbs
     -> State# s -> (# State# s, () #)
-copyMDataFrame# ei (MDataFrame# offA stepsA arrA) (MDataFrame# offM stepsM arrM) s
+copyMDataFrame# ei (MDataFrame# offA stepsA arrA) (MDataFrame# offM stepsM arrM)
     | elS <- byteSize @t undefined
     , lenA <- cdTotalDim# stepsA
     , I# i <- cdIx stepsM ei
-    = (# copyMutableByteArray# arrA (offA *# elS)
-                               arrM ((offM +# i) *# elS) (lenA *# elS) s
-       , () #)
+    = \s -> (# copyMutableByteArray# arrA (offA *# elS)
+                               arrM ((offM +# i) *# elS) (lenA *# elS) s, () #)
 {-# INLINE copyMDataFrame# #-}
 
 {-# ANN copyDataFrame'# "HLint: ignore Use camelCase" #-}
@@ -202,17 +200,16 @@ copyDataFrame'# ::
        , ConcatList as bs asbs )
     => Idxs as -> DataFrame t bs -> MDataFrame s t asbs
     -> State# s -> (# State# s, () #)
-copyDataFrame'# ei df (MDataFrame# offM (CumulDims stepsM) arrDest) s
+copyDataFrame'# ei df (MDataFrame# offM (CumulDims stepsM) arrDest)
     | elS <- byteSize @t undefined
     , (offDestw, ~(nBs:_)) <- getOffAndSteps (W# (int2Word# offM)) stepsM (listIdxs ei)
     , I# n <- fromIntegral nBs
     , I# offDest <- fromIntegral offDestw
-    = case arrayContent# df of
-        (# e | #)
-           -> (# fillArray arrDest offDest n e s, () #)
-        (# | (# _, offSrc, arrSrc #) #)
-           -> (# copyByteArray# arrSrc  (offSrc *# elS)
-                                arrDest (offDest *# elS) (n *# elS) s, () #)
+    = withArrayContent
+      (\e s -> (# fillArray arrDest offDest n e s, () #))
+      (\_ offSrc arrSrc s ->
+        (# copyByteArray# arrSrc  (offSrc *# elS)
+                          arrDest (offDest *# elS) (n *# elS) s, () #)) df
 {-# INLINE copyDataFrame'# #-}
 
 {-# ANN copyMDataFrame'# "HLint: ignore Use camelCase" #-}
@@ -225,13 +222,13 @@ copyMDataFrame'# ::
      . (ExactDims bs, PrimBytes t, ConcatList as bs asbs)
     => Idxs as -> MDataFrame s t bs -> MDataFrame s t asbs
     -> State# s -> (# State# s, () #)
-copyMDataFrame'# ei (MDataFrame# offA stepsA arrA) (MDataFrame# offM stepsM arrM) s
+copyMDataFrame'# ei (MDataFrame# offA stepsA arrA) (MDataFrame# offM stepsM arrM)
     | elS <- byteSize @t undefined
     , lenA <- cdTotalDim# stepsA
     , I# i <- cdIx stepsM ei
-    = (# copyMutableByteArray# arrA (offA *# elS)
-                               arrM ((offM +# i) *# elS) (lenA *# elS) s
-       , () #)
+    = \s -> (# copyMutableByteArray#
+                 arrA (offA *# elS)
+                 arrM ((offM +# i) *# elS) (lenA *# elS) s, () #)
 {-# INLINE copyMDataFrame'# #-}
 
 -- | Copy one DataFrame into another mutable DataFrame by offset in
@@ -246,17 +243,17 @@ copyDataFrameOff# ::
        , ConcatList as bs asbs )
     => Int -> DataFrame t bs -> MDataFrame s t asbs
     -> State# s -> (# State# s, () #)
-copyDataFrameOff# (I# off) df (MDataFrame# offM _ arrDest) s
+copyDataFrameOff# (I# off) df (MDataFrame# offM _ arrDest)
     | elS <- byteSize @t undefined
     , offDest <- offM +# off
-    = case arrayContent# df of
-        (# e | #)
-           | I# n <- fromIntegral (totalDim (dims @bs))
-           -> (# fillArray arrDest offDest n e s, () #)
-        (# | (# steps, offSrc, arrSrc #) #)
-           | n <- cdTotalDim# steps
-           -> (# copyByteArray# arrSrc  (offSrc *# elS)
-                                arrDest (offDest *# elS) (n *# elS) s, () #)
+    = withArrayContent
+      (\e s ->
+        (# fillArray arrDest offDest
+              (case totalDim (dims @bs) of W# n -> word2Int# n) e s, () #))
+      (\steps offSrc arrSrc s ->
+        (# copyByteArray# arrSrc  (offSrc *# elS)
+                          arrDest (offDest *# elS)
+                                  (cdTotalDim# steps *# elS) s, () #)) df
 {-# INLINE copyDataFrameOff# #-}
 
 -- | Copy one mutable DataFrame into another mutable DataFrame by offset in
@@ -270,12 +267,12 @@ copyMDataFrameOff# ::
     => Int -> MDataFrame s t bs -> MDataFrame s t asbs
     -> State# s -> (# State# s, () #)
 copyMDataFrameOff# (I# off) (MDataFrame# offA stepsA arrA)
-                            (MDataFrame# offM _      arrM) s
+                            (MDataFrame# offM _      arrM)
     | elS <- byteSize @t undefined
     , lenA <- cdTotalDim# stepsA
-    = (# copyMutableByteArray# arrA (offA *# elS)
-                               arrM ((offM +# off) *# elS) (lenA *# elS) s
-       , () #)
+    = \s -> (# copyMutableByteArray#
+                 arrA (offA *# elS)
+                 arrM ((offM +# off) *# elS) (lenA *# elS) s, () #)
 {-# INLINE copyMDataFrameOff# #-}
 
 -- | Make a mutable DataFrame immutable, without copying.
@@ -298,7 +295,7 @@ freezeDataFrame# ::
     => MDataFrame s t ns -> State# s -> (# State# s, DataFrame t ns #)
 freezeDataFrame# (MDataFrame# offM steps arrM) s0
     | 0# <- cdTotalDim# steps
-      = (# s0, fromElems steps offM (error "Empty DataFrame (DF0)") #)
+      = (# s0, error "Empty DataFrame (DF0)" #)
     | elS  <- byteSize @t undefined
     , n <- cdTotalDim# steps
     , (# s1, mba #) <- newByteArray# (n *# elS) s0
@@ -314,7 +311,7 @@ thawDataFrame# ::
     => DataFrame t ns -> State# s -> (# State# s, MDataFrame s t ns #)
 thawDataFrame# df s0
     | nw == 0
-      = (# s0, MDataFrame# 0# steps (error "Empty DataFrame (DF0)") #)
+      = (# s0, error "Empty DataFrame (DF0)" #)
     | bSize <- case nw of W# w -> byteSize @t undefined *# word2Int# w
     , (# s1, arrM #) <- newByteArray# bSize s0
     , r <- MDataFrame# 0# steps arrM
@@ -333,7 +330,7 @@ thawPinDataFrame# ::
     => DataFrame t ns -> State# s -> (# State# s, MDataFrame s t ns #)
 thawPinDataFrame# df s0
     | nw == 0
-      = (# s0, MDataFrame# 0# steps (error "Empty DataFrame (DF0)") #)
+      = (# s0, error "Empty DataFrame (DF0)" #)
     | bSize <- case nw of W# w -> byteSize @t undefined *# word2Int# w
     , (# s1, arrM #) <- newAlignedPinnedByteArray# bSize (byteAlign @t undefined) s0
     , r <- MDataFrame# 0# steps arrM
@@ -350,16 +347,17 @@ unsafeThawDataFrame# ::
      . (Dimensions ns, PrimArray t (DataFrame t ns))
     => DataFrame t ns
     -> State# s -> (# State# s, MDataFrame s t ns #)
-unsafeThawDataFrame# df s0 = case arrayContent# df of
-  (# _ | #)
-    | steps <- cumulDims (dims @ns)
-    , bSize <- byteSize @t undefined *# cdTotalDim# steps
-    , (# s1, arrM #) <- newByteArray# bSize s0
-    , r <- MDataFrame# 0# steps arrM
-    , (# s2, _ #) <- copyDataFrameOff# 0 df r s1
-    -> (# s2, r #)
-  (# | (# steps, off, ba #) #)
-    -> (# s0, MDataFrame# off steps (unsafeCoerce# ba) #)
+unsafeThawDataFrame# = withArrayContent f g
+  where
+    f :: t -> State# s -> (# State# s, MDataFrame s t ns #)
+    f e s0
+      | steps <- cumulDims (dims @ns)
+      , n <- cdTotalDim# steps
+      , (# s1, arrM #) <- newByteArray# (n *# byteSize @t undefined) s0
+      = (# fillArray arrM 0# n e s1, MDataFrame# 0# steps arrM #)
+    g :: CumulDims -> Int# -> ByteArray# -> State# s -> (# State# s, MDataFrame s t ns #)
+    g steps off ba s0
+      = (# s0, MDataFrame# off steps (unsafeCoerce# ba) #)
 {-# INLINE unsafeThawDataFrame# #-}
 
 -- | Create a new mutable DataFrame and copy content of immutable one in there.
@@ -371,17 +369,19 @@ uncheckedThawDataFrame# ::
        forall (t :: Type) (k :: Type) (ns :: [k]) s
      . PrimArray t (DataFrame t ns)
     => DataFrame t ns -> State# s -> (# State# s, MDataFrame s t ns #)
-uncheckedThawDataFrame# df s0
-  | (# | (# steps, eOff, arrA #) #) <- arrayContent# df
-    = case cdTotalDim# steps of
-        0# -> (# s0, MDataFrame# 0# steps (error "Empty DataFrame (DF0)") #)
-        elems
-         | elS <- byteSize @t undefined
-         , bsize <- elS *# elems
-         , (# s1, arrM #) <- newByteArray# bsize s0
-         , s2 <- copyByteArray# arrA (eOff *# elS) arrM 0# bsize s1
-           -> (# s2, MDataFrame# 0# steps arrM #)
-  | otherwise = error "unexpected arrayContent# - 'fromScalar'."
+uncheckedThawDataFrame# = withArrayContent f g
+  where
+    f :: t -> State# s -> (# State# s, MDataFrame s t ns #)
+    f _ s0 = (# s0, error "unexpected DataFrame - 'fromScalar'" #)
+    g :: CumulDims -> Int# -> ByteArray# -> State# s -> (# State# s, MDataFrame s t ns #)
+    g steps eOff arrA s0 = case cdTotalDim# steps of
+      0# -> (# s0, error "Empty DataFrame (DF0)" #)
+      elems
+       | elS <- byteSize @t undefined
+       , bsize <- elS *# elems
+       , (# s1, arrM #) <- newByteArray# bsize s0
+       , s2 <- copyByteArray# arrA (eOff *# elS) arrM 0# bsize s1
+         -> (# s2, MDataFrame# 0# steps arrM #)
 {-# INLINE uncheckedThawDataFrame# #-}
 
 -- | Write a single element at the specified element offset
@@ -439,6 +439,7 @@ withDataFramePtr# (MDataFrame# off _ mba) k s0
                        `plusAddr#` (off *# byteSize @t undefined)
                      ) s1
     = (# touch# mba s2, r #)
+{-# INLINE withDataFramePtr# #-}
 
 -- | Check if the byte array wrapped by this DataFrame is pinned,
 --   which means cannot be relocated by GC.
@@ -452,6 +453,7 @@ getDataFrameSteps# ::
        forall (t :: Type) (k :: Type) (ns :: [k]) s
      . MDataFrame s t ns -> CumulDims
 getDataFrameSteps# (MDataFrame# _ c _) = c
+{-# INLINE getDataFrameSteps# #-}
 
 -- | Fill a mutable byte array with the same single element
 fillArray :: PrimBytes t

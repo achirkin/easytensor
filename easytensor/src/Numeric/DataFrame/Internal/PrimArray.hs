@@ -1,6 +1,9 @@
 {-# LANGUAGE CPP                    #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE ExplicitForAll         #-}
+{-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE MagicHash              #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
@@ -9,19 +12,25 @@ module Numeric.DataFrame.Internal.PrimArray
   ( PrimArray (..), CumulDims (..)
   , cumulDims, cdTotalDim, cdTotalDim#, cdIx
   , ixOff, unsafeFromFlatList, getSteps, fromSteps
+  , withArrayContent, fromElems, broadcast
   ) where
 
-import Data.Monoid        as Mon (Monoid (..))
-import Data.Semigroup     as Sem (Semigroup (..))
-import GHC.Base           (ByteArray#, Int (..), Int#, Word (..), word2Int#)
+import Data.Monoid    as Mon (Monoid (..))
+import Data.Semigroup as Sem (Semigroup (..))
+import GHC.Base       hiding (foldr)
+ -- (ByteArray#, Int (..), Int#, RuntimeRep (..), Type,
+ --                           Word (..), inline, runRW#, touch#, word2Int#, (+#))
+import GHC.Exts           (TYPE)
 import Numeric.Dimensions
 import Numeric.PrimBytes
+
 
 -- | Given @Dims ns@, @CumulativeDims@ is a list of length @Length ns + 1@;
 --   which cumulative @totalDim@ accumulated on the right.
 --   In particular, its first element is @totalDim ds@,
 --   its last element is always is always @1@.
 newtype CumulDims = CumulDims { unCumulDims :: [Word] }
+  deriving Show
 
 instance Sem.Semigroup CumulDims where
     CumulDims as <> CumulDims bs = CumulDims $ map (head bs *) (init as) ++ bs
@@ -56,9 +65,7 @@ cdIx ~(CumulDims ~(_:steps))
 -- | Try to get @CumulDims@ from an array,
 --   and create it using @Dims@ if failed.
 getSteps :: PrimArray t a => Dims (ns :: [k]) -> a -> CumulDims
-getSteps dds df = case uniqueOrCumulDims df of
-   Left  _  -> cumulDims dds
-   Right ds -> ds
+getSteps dds = withArrayContent (const $ cumulDims dds) (\cd _ _ -> cd)
 {-# INLINE getSteps #-}
 
 -- | Get @Dims@ by "de-accumulating" @CumulDims@.
@@ -75,9 +82,14 @@ fromSteps = someDimsVal . f . unCumulDims
 
 class PrimBytes t => PrimArray t a | a -> t where
     -- | Broadcast element into array
-    broadcast :: t -> a
+    --
+    --   Warning: do not use this function at the call site; use `broadcast`
+    --            instead. Otherwise you will miss some rewrite rules.
+    broadcast# :: t -> a
     -- | Index an array given an offset
     ix# :: Int# -> a -> t
+    ix# i = withArrayContent id (\_ off arr -> indexArray arr (off +# i))
+    {-# INLINE ix# #-}
     -- | Generate an array using an accumulator funtion
     gen# :: CumulDims
             -- ^ Dimensionality of the result array;
@@ -92,17 +104,26 @@ class PrimBytes t => PrimArray t a | a -> t where
             --   types and is not checked at runtime.
          -> Int# -> t -> a -> a
 
-    -- | If the array represented as a single broadcasted value,
-    --   return this value.
-    --   Otherwise, return full array content:
+    -- | If the array is represented as a single broadcasted value, return this
+    --   this value. Otherwise, return the full array content:
     --    @CumulDims@, array offset (elements), byte array with the content.
-    arrayContent# :: a -> (# t | (# CumulDims, Int#, ByteArray# #) #)
+    --
+    --   Warning: never use this function directly. Use `withArrayContent` instead.
+    --            There is a bug in GHC 8.6, such that certain optimizations
+    --            (probably, instance specialization/rewrite rules) break the code,
+    --            which is only observable at runtime. The effect is that the
+    --            content of a `ByteArray#` becomes a garbage. The workaround is
+    --            to use a non-inlinable wrapper to disable these optimizations.
+    --            In addition, the wrapper function has some rewrite rules, which
+    --            can potentially improve performance with other GHC versions.
+    withArrayContent# :: forall (rep :: RuntimeRep) (r :: TYPE rep)
+                       . (t -> r)
+                      -> (CumulDims -> Int# -> ByteArray# -> r)
+                      -> a -> r
 
     -- | Offset of an array as a number of elements
     offsetElems :: a -> Int#
-    offsetElems a = case arrayContent# a of
-      (# _ | #)             -> 0#
-      (# | (# _, o, _ #) #) -> o
+    offsetElems a = withArrayContent (\_ f -> f 0#) (const $ \o _ f -> f o) a (\i -> i)
     {-# INLINE offsetElems #-}
 
     -- | Normally, this returns a cumulative @totalDim@s.
@@ -114,17 +135,24 @@ class PrimBytes t => PrimArray t a | a -> t where
     --   Note, this function returns the only unique element only if it is
     --   a such by construction (there is no equality checks involved).
     uniqueOrCumulDims :: a -> Either t CumulDims
-    uniqueOrCumulDims a = case arrayContent# a of
-      (# x | #)              -> Left x
-      (# | (# cd, _, _ #) #) -> Right cd
+    uniqueOrCumulDims = withArrayContent Left (\cd _ _ -> Right cd)
     {-# INLINE uniqueOrCumulDims #-}
 
-    -- | Get array by its offset and cumulative dims in a ByteArray.
+    -- | Define an array by its offset and cumulative dims in a ByteArray.
     --   Both offset and dims are given in element number (not in bytes).
     --
-    --   It is better to use this function instead of @fromBytes@ to avoid
-    --   recalculating @CumulDims@ for implementations that require it.
-    fromElems :: CumulDims -> Int# -> ByteArray# -> a
+    --   Warning: never use this function directly. Use `fromElems` instead.
+    --            There is a bug in GHC 8.6, such that certain optimizations
+    --            (probably, instance specialization/rewrite rules) break the code,
+    --            which is only observable at runtime. The effect is that the
+    --            content of a `ByteArray#` becomes a garbage. The workaround is
+    --            to use a non-inlinable wrapper to disable these optimizations.
+    --            In addition, the wrapper function has some rewrite rules, which
+    --            can potentially improve performance with other GHC versions.
+    fromElems# :: CumulDims -> Int# -> ByteArray# -> a
+
+{-# WARNING fromElems# "Please, use fromElems instead." #-}
+{-# WARNING withArrayContent# "Please, use withArrayContent instead." #-}
 
 -- | Index array by an integer offset (starting from 0).
 ixOff :: PrimArray t a => Int -> a -> t
@@ -139,11 +167,50 @@ unsafeFromFlatList ds x0 vs = case gen# (cumulDims ds) f vs of (# _, r #) -> r
     f []     = (# [], x0 #)
     f (x:xs) = (# xs, x #)
 
--- The following rules would be good on the implementation side.
--- {-# RULES
--- "arrayContent+fromElems" forall cd off ba .
---   arrayContent# (fromElems cd off ba) = (# | (# cd, off, ba #) #)
+-- | If the array is represented as a single broadcasted value, return this
+--   this value. Otherwise, return the full array content:
+--    @CumulDims@, array offset (elements), byte array with the content.
+withArrayContent :: forall (t :: Type) (a :: Type)
+                           (rep :: RuntimeRep) (r :: TYPE rep)
+                  . PrimArray t a
+                 => (t -> r)
+                 -> (CumulDims -> Int# -> ByteArray# -> r)
+                 -> a -> r
+withArrayContent = withArrayContent#
+#if __GLASGOW_HASKELL__ == 806
+{-# NOINLINE withArrayContent #-}
+#else
+{-# INLINE[1] withArrayContent #-}
+#endif
+
+-- | Define an array by its offset and cumulative dims in a ByteArray.
+--   Both offset and dims are given in element number (not in bytes).
 --
--- "arrayContent+broadcast" forall e .
---   arrayContent# (broadcast e) = (# e | #)
---   #-}
+--   It is better to use this function instead of @fromBytes@ to avoid
+--   recalculating @CumulDims@ for implementations that require it.
+fromElems :: forall (t :: Type) (a :: Type)
+           . PrimArray t a => CumulDims -> Int# -> ByteArray# -> a
+fromElems = fromElems#
+#if __GLASGOW_HASKELL__ == 806
+{-# NOINLINE fromElems #-}
+#else
+{-# INLINE[1] fromElems #-}
+#endif
+
+-- | Broadcast element into array
+broadcast :: forall (t :: Type) (a :: Type)
+           . PrimArray t a => t -> a
+broadcast = broadcast#
+{-# INLINE[1] broadcast #-}
+
+{-# RULES
+
+"withArrayContent/id"
+  withArrayContent broadcast fromElems = id
+
+"withArrayContent+fromElems" forall f g cd off ba .
+  withArrayContent f g (fromElems cd off ba) = g cd off ba
+
+"withArrayContent+broadcast" forall f g e .
+  withArrayContent f g (broadcast e) = f e
+  #-}

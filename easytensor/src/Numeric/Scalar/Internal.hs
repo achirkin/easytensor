@@ -14,7 +14,7 @@ module Numeric.Scalar.Internal
 
 import Data.Type.Lits                       (Nat)
 import GHC.Base                             (unsafeCoerce#)
-import Numeric.DataFrame.Internal.PrimArray (PrimArray (broadcast))
+import Numeric.DataFrame.Internal.PrimArray (PrimArray, broadcast)
 import Numeric.DataFrame.Type               (DataFrame, pattern S)
 
 -- | Alias for zero-dimensional DataFrame

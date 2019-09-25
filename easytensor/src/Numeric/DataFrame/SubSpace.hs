@@ -60,11 +60,10 @@ module Numeric.DataFrame.SubSpace
   , iwfoldl, iwfoldl', iwfoldr, iwfoldr', iwfoldMap
   ) where
 
-import GHC.Exts (Int (..), (+#))
-
 import           Control.Monad
 import           Control.Monad.ST
 import           Data.Kind
+import           GHC.Base                             (Int (..), (+#))
 import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.DataFrame.ST
 import           Numeric.DataFrame.Type
@@ -370,7 +369,7 @@ slice ::
        , bs ~ (b' :+ bs'), KnownDim bd
        , PrimArray t (DataFrame t (bd :+ bs')))
     => Idxs (as +: bi) -> DataFrame t asbs -> DataFrame t (bd :+ bs')
-slice = sliceI @_ @t @as @bs @asbs @bi @bd @b'
+slice = sliceI @_ @t @as @bs @asbs @bi @bd @b' @bs'
 {-# INLINE[1] slice #-}
 
 
@@ -676,8 +675,6 @@ class ( ConcatList as bs asbs
                => (Idxs as -> DataFrame s bs' -> f (DataFrame t bs))
                -> DataFrame s asbs' -> f (DataFrame t asbs)
 
-
-
 instance ( ConcatList as bs asbs
          , SubSpaceCtx t as bs asbs
          ) => SubSpace t (as :: [Nat]) (bs :: [Nat]) (asbs :: [Nat]) where
@@ -685,17 +682,13 @@ instance ( ConcatList as bs asbs
       = ( Dimensions as, Dimensions bs, Dimensions asbs
         , PrimArray t (DataFrame t asbs), PrimArray t (DataFrame t bs))
 
-    joinDataFrameI asbs
+    joinDataFrameI
       | Dict <- inferKnownBackend @(DataFrame t bs) @as
-        = case arrayContent# asbs of
-      (# bs | #) -> ewgenI bs
-      (# | (# steps, off, ba #) #)
-                 -> fromElems (steps `mappend` cumulDims (dims @bs)) off ba
+        = withArrayContent ewgenI
+            (\steps -> fromElems (steps `mappend` cumulDims (dims @bs)))
 
-    indexOffsetI (I# off) asbs = case arrayContent# asbs of
-      (# a | #) -> broadcast a
-      (# | (# steps, off0, ba #) #)
-                -> fromElems (dropPref (dims @as) steps) (off0 +# off) ba
+    indexOffsetI (I# off) = withArrayContent broadcast
+      (\steps off0 -> fromElems (dropPref (dims @as) steps) (off0 +# off))
     {-# INLINE indexOffsetI #-}
 
     updateOffsetI off bs asbs = runST $ do
@@ -707,22 +700,18 @@ instance ( ConcatList as bs asbs
         unsafeFreezeDataFrame asbsM
     {-# INLINE updateOffsetI #-}
 
-    indexI i asbs = case arrayContent# asbs of
-      (# a | #) -> broadcast a
-      (# | (# steps, off0, ba #) #)
-         | I# off <- cdIx steps i
-                -> fromElems (dropPref (dims @as) steps) (off0 +# off) ba
+    indexI i = withArrayContent broadcast
+      (\steps off0 -> fromElems (dropPref (dims @as) steps)
+         (case cdIx steps i of I# off -> off0 +# off))
     {-# INLINE indexI #-}
 
-    sliceI i df = case arrayContent# df of
-      (# a | #)
-           -> broadcast a
-      (# | (# steps, off0, ba #) #)
-         | I# off <- cdIx steps i
-           -> let r = fromElems bsteps (off0 +# off) ba
-                  bsteps = repHead (dimVal bd) (dropPref (dims @as) steps)
-                  bd = getBD r
-              in  r
+    sliceI i = withArrayContent broadcast
+      (\steps off0 ba ->
+        let r = fromElems bsteps (case cdIx steps i of I# off -> off0 +# off) ba
+            bsteps = repHead (dimVal bd) (dropPref (dims @as) steps)
+            bd = getBD r
+        in r
+      )
       where
         getBD :: KnownDim (bd :: Nat) => DataFrame t (bd ': bs') -> Dim bd
         getBD _ = D
@@ -891,12 +880,11 @@ instance ( ConcatList as bs asbs
           \(Dims :: Dims asn) (Dims :: Dims bsn) (Dims :: Dims asbsn) -> case () of
             _ | Dict <- inferKnownBackend @t @bsn
               , Dict <- inferKnownBackend @t @asbsn
-                -> XFrame @_ @t @asbs @asbsn $ case arrayContent# df of
-                    (# XFrame e | #)
-                      -> ewgen @t @asn @bsn @asbsn (unsafeCoerce e)
-                              -- know for sure its DataFrame t bsn
-                    (# | (# steps, off, ba #) #)
-                      -> fromElems (steps `mappend` cumulDims (dims @bs)) off ba
+                -> XFrame @_ @t @asbs @asbsn $ withArrayContent
+                                                -- know for sure its DataFrame t bsn
+                    (\(XFrame e) -> ewgen @t @asn @bsn @asbsn (unsafeCoerce e))
+                    (\steps -> fromElems (steps `mappend` cumulDims (dims @bs)))
+                    df
     {-# INLINE joinDataFrameI #-}
 
     indexOffsetI off (XFrame (df :: DataFrame t asbsN)) =

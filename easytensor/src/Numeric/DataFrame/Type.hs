@@ -213,12 +213,10 @@ instance {-# INCOHERENT #-}
       | i >= dimVal' @d = idxError (dimVal' @d) i
       | otherwise
 #endif
-        = case arrayContent# df of
-          (# e | #)
-              -> broadcast e
-          (# | (# CumulDims ~(_:ss@(s:_)), off0, ba #) #)
-             | I# off <- fromIntegral (s * i)
-              -> fromElems (CumulDims ss) (off0 +# off) ba
+        = withArrayContent broadcast
+           (\(CumulDims ~(_:ss@(s:_))) off0 ->
+               fromElems (CumulDims ss) (case s*i of W# off -> off0 +# word2Int# off)
+           ) df
 
 
 instance IndexFrame ('[] :: [Type]) (d :: Nat) ds where
@@ -907,25 +905,27 @@ unpackDF' :: forall (rep :: RuntimeRep)
                -> Int -> r)
           -> DataFrame t (d ': ds)
           -> r
-unpackDF' k df
+unpackDF' k
   | d :* Dims <- dims @(d ': ds)
   , Dict <- inferKnownBackend @t @(d ': ds)
   , Dict <- inferKnownBackend @t @ds
-    = case arrayContent# df of
-        (# x | #)
-          | e <- broadcast x
-            -> let f :: forall (zr :: RuntimeRep) (z :: TYPE zr)
-                      . (Int -> DataFrame t ds -> z) -> Int -> z
-                   f consume = (`consume` e)
-               in k Dict f 0
-        (# | (# cdims, off, arr #) #)
-          | cd <- CumulDims . tail $ unCumulDims cdims
-          , td <- cdTotalDim# cd
-          , n <- case dimVal d of W# w -> word2Int# w
-            -> let f :: forall (zr :: RuntimeRep) (z :: TYPE zr)
-                      . (Int -> DataFrame t ds -> z) -> Int -> z
-                   f consume (I# o) = consume (I# (o -# td)) (fromElems cd o arr)
-               in k Dict f (I# (off +# td *# (n -# 1#)))
+    = withArrayContent
+    ( \x ->
+      let e = broadcast x
+          f :: forall (zr :: RuntimeRep) (z :: TYPE zr)
+             . (Int -> DataFrame t ds -> z) -> Int -> z
+          f consume = (`consume` e)
+      in k Dict f 0
+    )
+    ( \cdims off arr ->
+      let cd = CumulDims . tail $ unCumulDims cdims
+          td = cdTotalDim# cd
+          n = case dimVal d of W# w -> word2Int# w
+          f :: forall (zr :: RuntimeRep) (z :: TYPE zr)
+             . (Int -> DataFrame t ds -> z) -> Int -> z
+          f consume (I# o) = consume (I# (o -# td)) (fromElems cd o arr)
+      in k Dict f (I# (off +# td *# (n -# 1#)))
+    )
   | otherwise = error "Numeric.DataFrame.Type.unpackDF: impossible args"
 
 
@@ -985,17 +985,20 @@ snocDF
 
 
 -- | Unsafely copy two PrimBytes values into a third one.
-unsafeAppendPB :: (PrimBytes x, PrimBytes y, PrimBytes z)
+unsafeAppendPB :: forall x y z
+                . (PrimBytes x, PrimBytes y, PrimBytes z)
                => x -> y -> z
-unsafeAppendPB x y
-  | sx <- byteSize x
-  = case runRW#
-    ( \s0 -> case newByteArray# (sx +# byteSize y) s0 of
-        (# s1, mba #) -> unsafeFreezeByteArray# mba
-            ( writeBytes mba sx y
-            ( writeBytes mba 0# x s1))
-    ) of (# _, r #) -> fromBytes 0# r
-
+unsafeAppendPB x y = go (byteSize x) (byteSize y)
+  where
+    go :: Int# -> Int# -> z
+    go 0# _  = fromBytes (byteOffset y) (getBytes y)
+    go _  0# = fromBytes (byteOffset x) (getBytes x)
+    go sx sy = case runRW#
+      ( \s0 -> case newByteArray# (sx +# sy) s0 of
+          (# s1, mba #) -> unsafeFreezeByteArray# mba
+              ( writeBytes mba sx y
+              ( writeBytes mba 0# x s1))
+      ) of (# _, r #) -> fromBytes 0# r
 
 -- | Construct a DataFrame from a list of smaller DataFrames.
 --
@@ -1086,6 +1089,7 @@ asDiag x
       ) of (# _, r #) -> fromElems steps 0# r
   | otherwise
     = error "Numeri.DataFrame.Type/asDiag: impossible arguments"
+{-# INLINE asDiag #-}
 
 -- Need this for @packDF'@ to make @Int -> c z@ a proper second-order type
 -- parameterized by the result type.
@@ -1189,13 +1193,14 @@ fromSingleFrame U (S x) = G.M1 . G.M1 $ G.K1 x
 fromSingleFrame (dd@D :* (Dims :: Dims ds')) x
   | Dict <- inferKnownBackend @t @ds
   , Dict <- inferKnownBackend @t @ds'
-    = G.M1 $ case arrayContent# x of
-      (# e | #) -> fillRep @_ @ds' (const $ broadcast e) 0 dd
-      (# | (# cdims, off, arr #) #)
-       | cd <- CumulDims . tail $ unCumulDims cdims
-       , td <- cdTotalDim# cd
-                -> fillRep @_ @ds'
-                   (\(W# i) -> fromElems cd (off +# td *# word2Int# i) arr) 0 dd
+    = G.M1 $ withArrayContent
+        (\e -> fillRep @_ @ds' (const $ broadcast e) 0 dd)
+        (\cdims off arr ->
+           let cd = CumulDims . tail $ unCumulDims cdims
+               td = cdTotalDim# cd
+           in  fillRep @_ @ds'
+                 (\(W# i) -> fromElems cd (off +# td *# word2Int# i) arr) 0 dd
+        ) x
   where
     fillRep :: forall (n :: Nat) (ns :: [Nat])
              . (Word -> DataFrame t ns)
@@ -1251,7 +1256,7 @@ toSingleFrame (dd@D :* (Dims :: Dims ds')) (G.M1 rep)
       where
         d2  = divDim d D2
         d2' = d2 `plusDim` modDim d D2
-
+{-# INLINE toSingleFrame #-}
 
 type family MultiFrameRepNil (ts :: [Type]) :: (Type -> Type) where
     MultiFrameRepNil '[]      = G.C1 ('G.MetaCons "Z" 'G.PrefixI 'False) G.U1
@@ -1425,18 +1430,18 @@ instance ( Dimensions xns
          , PrimArray t (DataFrame t (DimsBound xns))
          , PrimBytes t
          ) => PrimArray t (DataFrame t (xns :: [XNat])) where
-    broadcast
-      = withKnownXDims @xns (XFrame . broadcast @t @(DataFrame t (DimsBound xns)))
+    broadcast#
+      = withKnownXDims @xns (XFrame . broadcast# @t @(DataFrame t (DimsBound xns)))
     ix# i = withKnownXDims @xns (withFixedDF1 (ix# i))
     gen# cd f s0
       | (# s1, (a  :: DataFrame t (DimsBound xns)) #) <- gen# cd f s0
         = (# s1, withKnownXDims @xns (XFrame a) #)
     upd# cd i t = withKnownXDims @xns (withFixedDF1 (XFrame . upd# cd i t))
-    arrayContent# = withKnownXDims @xns (withFixedDF1 arrayContent#)
+    withArrayContent# f g = withKnownXDims @xns (withFixedDF1 (withArrayContent f g))
     offsetElems = withKnownXDims @xns (withFixedDF1 offsetElems)
     uniqueOrCumulDims = withKnownXDims @xns (withFixedDF1 uniqueOrCumulDims)
-    fromElems cd i ba
-     = withKnownXDims @xns (XFrame (fromElems cd i ba :: DataFrame t (DimsBound xns)))
+    fromElems# cd i ba
+      = withKnownXDims @xns (XFrame (fromElems cd i ba :: DataFrame t (DimsBound xns)))
 
 
 -- The following instance only make sense on scalars.
