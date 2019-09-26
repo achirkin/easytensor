@@ -16,6 +16,7 @@ dist
 dist-newstyle
 .ghc.*
 *.cabal
+cabal.project
 
 cabal.config
 *.o
@@ -32,3 +33,4 @@ cabal.config
 *.log
 *.lkshs
 *.lkshw
+testall.sh
