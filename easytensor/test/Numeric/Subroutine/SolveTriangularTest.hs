@@ -72,9 +72,9 @@ prop_SolveUpperTriangularR = property run
   where
     run :: Gen Property
     run = do
-      Dx (m :: Dim m) <- arbitrary :: Gen (Dim (XN 1))
-      Dx (D :: Dim n) <- arbitrary :: Gen (Dim (XN m))
-      justVec         <- arbitrary :: Gen Bool
+      Dx (m@D :: Dim m) <- arbitrary :: Gen (Dim (XN 1))
+      Dx (D   :: Dim n) <- arbitrary :: Gen (Dim (XN m))
+      justVec           <- arbitrary :: Gen Bool
       SomeDims (Dims :: Dims ds)
                       <- if justVec
                          then pure (SomeDims U)
@@ -124,9 +124,9 @@ prop_SolveUpperTriangularL = property run
   where
     run :: Gen Property
     run = do
-      Dx (m :: Dim m) <- arbitrary :: Gen (Dim (XN 1))
-      Dx (D :: Dim n) <- arbitrary :: Gen (Dim (XN m))
-      justVec         <- arbitrary :: Gen Bool
+      Dx (m@D :: Dim m) <- arbitrary :: Gen (Dim (XN 1))
+      Dx (D   :: Dim n) <- arbitrary :: Gen (Dim (XN m))
+      justVec           <- arbitrary :: Gen Bool
       SomeDims (ds@Dims :: Dims ds)
                       <- if justVec
                          then pure (SomeDims U)
@@ -172,8 +172,8 @@ prop_SolveLowerTriangularR = property run
   where
     run :: Gen Property
     run = do
-      Dx (_ :: Dim n) <- arbitrary :: Gen (Dim (XN 1))
-      Dx (_ :: Dim m) <- arbitrary :: Gen (Dim (XN n))
+      Dx (D :: Dim n) <- arbitrary :: Gen (Dim (XN 1))
+      Dx (D :: Dim m) <- arbitrary :: Gen (Dim (XN n))
       justVec         <- arbitrary :: Gen Bool
       SomeDims (Dims :: Dims ds)
                       <- if justVec
@@ -226,9 +226,9 @@ prop_SolveLowerTriangularL = property run
   where
     run :: Gen Property
     run = do
-      Dx (n :: Dim n) <- arbitrary :: Gen (Dim (XN 1))
-      Dx (m :: Dim m) <- arbitrary :: Gen (Dim (XN n))
-      justVec         <- arbitrary :: Gen Bool
+      Dx (n@D :: Dim n) <- arbitrary :: Gen (Dim (XN 1))
+      Dx (m@D :: Dim m) <- arbitrary :: Gen (Dim (XN n))
+      justVec           <- arbitrary :: Gen Bool
       SomeDims (ds@Dims :: Dims ds)
                       <- if justVec
                          then pure (SomeDims U)

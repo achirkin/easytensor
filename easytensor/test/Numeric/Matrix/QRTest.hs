@@ -117,7 +117,7 @@ manualMats = join
   where
     mkM :: Dims ([n,m]) -> [Double] -> DataFrame Double '[XN 1, XN 1]
     mkM ds
-      | Just (XDims ds') <- constrainDims ds :: Maybe (Dims '[XN 1, XN 1])
+      | Just (XDims ds'@Dims) <- constrainDims ds :: Maybe (Dims '[XN 1, XN 1])
         = XFrame . fromFlatList ds' 0
     mkM _ = error "prop_qrSimple: bad dims"
     variants :: Num a => [a] -> [[a]]
@@ -192,7 +192,7 @@ testQRSolve a b =
 
 
 prop_qrSolve :: Dim (XN 1) -> Dim (XN 1) -> Property
-prop_qrSolve (Dx (_ :: Dim n)) (Dx (_ :: Dim m)) = property $ do
+prop_qrSolve (Dx (D :: Dim n)) (Dx (D :: Dim m)) = property $ do
   a <- arbitrary @(DataFrame Double '[n,m])
   b <- arbitrary @(DataFrame Double '[n])
   return $ testQRSolve a b

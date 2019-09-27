@@ -593,9 +593,9 @@ iwzip :: forall t as bs asbs l bsL asbsL r bsR asbsR
      . (SubSpace t as bs asbs, SubSpace l as bsL asbsL, SubSpace r as bsR asbsR)
     => (Idxs as -> DataFrame l bsL -> DataFrame r bsR -> DataFrame t bs)
     -> DataFrame l asbsL -> DataFrame r asbsR -> DataFrame t asbs
-iwzip f dfl dfr = case getDimKind dfl of
-  DimNat -> iwmap (\i x -> f i x (index i dfr)) dfl
-  DimXNat
+iwzip f dfl dfr = case dimKind @(KindOfEl asbs) of
+  DimKNat -> iwmap (\i x -> f i x (index i dfr)) dfl
+  DimKXNat
     | XFrame (_ :: DataFrame l asbsLN) <- dfl
     , XFrame (_ :: DataFrame r asbsRN) <- dfr
     , asbs <- unsafeCoerce -- minimum spans
@@ -613,10 +613,6 @@ iwzip f dfl dfr = case getDimKind dfl of
                                   XFrame r -> unsafeCoerce r
                          )
                        )
-  where
-    getDimKind :: forall (k :: Type) (ns :: [k]) (p :: [k] -> Type)
-                . KnownDimKind k => p ns -> DimKind k
-    getDimKind = const (dimKind @k)
 {-# INLINE iwzip #-}
 
 -- | Operations on DataFrames
@@ -869,7 +865,7 @@ instance ( ConcatList as bs asbs
          ) => SubSpace t (as :: [XNat]) (bs :: [XNat]) (asbs :: [XNat]) where
     type SubSpaceCtx t as bs asbs
       = ( Dimensions bs, PrimBytes t -- , PrimArray t (DataFrame t (DimsBound bs))
-        , KnownXNatTypes as, KnownXNatTypes bs, KnownXNatTypes asbs)
+        , All KnownDimType as, All KnownDimType bs, All KnownDimType asbs)
 
     joinDataFrameI (XFrame (df :: DataFrame (DataFrame t bs) asN)) =
       let as   = XDims (dims @asN) :: Dims as

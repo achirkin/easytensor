@@ -77,7 +77,7 @@ mkXIOFramePat :: forall (t :: Type) (xns :: [XNat])
                . IODataFrame t xns -> XIOFramePat t xns
 mkXIOFramePat df
   | SomeDims ds <- fromSteps (getDataFrameSteps df)
-  , XDims (_ :: Dims ns) <- (unsafeCoerce ds) :: Dims xns
+  , XDims (Dims :: Dims ns) <- (unsafeCoerce ds) :: Dims xns
     = XIOFramePat @t @xns @ns (unsafeCoerce df)
   | otherwise
     = error "XIOFrame pattern: impossible args"

@@ -11,7 +11,7 @@
 -- overwise GHC dies trying to optimize 100 equal funs in each test
 {-# OPTIONS_GHC -O0       #-}
 
-module Numeric.DataFrame.SubSpaceTest where -- (runTests) where
+module Numeric.DataFrame.SubSpaceTest (runTests) where
 
 import Data.Typeable       (typeOf)
 import Numeric.Arbitraries

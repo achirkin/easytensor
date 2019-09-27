@@ -31,12 +31,12 @@ import Unsafe.Coerce
 --
 --   Note: the elements (which are of type @DataFrame t ns@) are compared
 --         lexicographically.
-sort :: forall (k :: Type) (n :: k) (t :: Type) (ns :: [k])
+sort :: forall (t :: Type) n ns
       . ( SortableDataFrame t (n ': ns), Ord t, SortBy n)
      => DataFrame t (n ': ns)
      -> DataFrame t (n ': ns)
-sort df = case dimKind @k of
-    DimNat  -> case uniqueOrCumulDims df of
+sort df = case dimKind @(KindOf n) of
+    DimKNat  -> case uniqueOrCumulDims df of
       Left _ -> df -- all equal, no need for sorting.
       Right steps
         | SomeDims (Dims :: Dims ms) <- fromSteps steps
@@ -44,7 +44,7 @@ sort df = case dimKind @k of
           -> sortBy compare df
         | otherwise
           -> error "sort/DimNat/uniqueOrCumulDims -- impossible pattern"
-    DimXNat
+    DimKXNat
         | XFrame (df' :: DataFrame t ms) <- df
         , D :* Dims <- dims @ms
           -> XFrame (sortBy compare df')
@@ -52,14 +52,14 @@ sort df = case dimKind @k of
           -> error "sort/DimXNat -- impossible pattern"
 
 -- | Sort a @DataFrame@ along the first dimension using given comparison function.
-sortBy :: forall (k :: Type) (n :: k) (t :: Type) (ns :: [k])
+sortBy :: forall (t :: Type) n ns
         . ( SortableDataFrame t (n ': ns)
           , SortBy n)
        => (DataFrame t ns -> DataFrame t ns -> Ordering)
        -> DataFrame t (n ': ns)
        -> DataFrame t (n ': ns)
-sortBy cmp df = case dimKind @k of
-    DimNat
+sortBy cmp df = case dimKind @(KindOf n) of
+    DimKNat
       | Left _ <- uniqueOrCumulDims df -> df -- all equal, no need for sorting.
       | otherwise -> runST $ do
         mdf <- uncheckedThawDataFrame df
@@ -67,7 +67,7 @@ sortBy cmp df = case dimKind @k of
           (\x y -> cmp <$> unsafeFreezeDataFrame x <*> unsafeFreezeDataFrame y)
           mdf
         unsafeFreezeDataFrame mdf
-    DimXNat
+    DimKXNat
       | XFrame dfN <- df
       , D :* Dims <- dims `inSpaceOf` dfN
         -> XFrame (sortBy (\a b -> cmp (XFrame a) (XFrame b)) dfN)
@@ -84,7 +84,7 @@ type family SortableDataFrame (t :: Type) (ns :: [k]) :: Constraint where
       = PrimBytes t
 
 
-class BoundedDim n => SortBy (n :: k) where
+class BoundedDim n => SortBy n where
     -- | Note, "Inplace" here means the input frame is modified.
     --   It does not mean the algorithm does not use extra space (it does use).
     sortByInplace :: PrimBytes t

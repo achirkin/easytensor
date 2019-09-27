@@ -246,11 +246,11 @@ removeDimsAbove z (SomeDims nns@(_ :* ns))
   | otherwise        = SomeDims nns
 
 -- | Reduce individual XN-dims untils its totalDim is less than maxTotalDim
-reduceDims :: (All KnownXNatType xns, BoundedDims xns)
+reduceDims :: (All KnownDimType xns, BoundedDims xns)
            => Dims (xns :: [XNat]) -> Dims (xns :: [XNat])
 reduceDims = reduceDims' 1
 
-reduceDims' :: (All KnownXNatType xns, BoundedDims xns)
+reduceDims' :: (All KnownDimType xns, BoundedDims xns)
             => Word -> Dims (xns :: [XNat]) -> Dims (xns :: [XNat])
 reduceDims' _ U = U
 reduceDims' l nns@(n :* ns)
@@ -518,33 +518,33 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
 
 
 instance ( Arbitrary t, PrimBytes t, Num t, Ord t
-         , Arbitrary (Dims xs), All KnownXNatType xs, BoundedDims xs)
+         , Arbitrary (Dims xs), All KnownDimType xs, BoundedDims xs)
       => Arbitrary (DataFrame t (xs :: [XNat])) where
     arbitrary = do
-      XDims (_ :: Dims ds) <- reduceDims <$> arbitrary @(Dims xs)
+      XDims (Dims :: Dims ds) <- reduceDims <$> arbitrary @(Dims xs)
       XFrame <$> arbitrary @(DataFrame t ds)
     shrink (XFrame df) = XFrame <$> shrink df
 
 instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
          , RepresentableList ts
-         , Arbitrary (Dims xs), All KnownXNatType xs, BoundedDims xs)
+         , Arbitrary (Dims xs), All KnownDimType xs, BoundedDims xs)
       => Arbitrary (DataFrame ts (xs :: [XNat])) where
     arbitrary = do
       ds <- reduceDims <$> arbitrary @(Dims xs)
       case ds of
-        XDims (_ :: Dims ds) -> case inferKnownBackend @ts @ds of
+        XDims (Dims :: Dims ds) -> case inferKnownBackend @ts @ds of
           Dict -> XFrame <$> arbitrary @(DataFrame ts ds)
     shrink (XFrame df) = XFrame <$> shrink df
 
 
 instance KnownDim n => Arbitrary (Idx (n :: Nat)) where
-    arbitrary = elements [0..]
+    arbitrary = Idx <$> choose (minBound, dimVal' @n - 1)
 
 instance KnownDim n => Arbitrary (Idx (N n)) where
-    arbitrary = elements [0..]
+    arbitrary = Idx <$> choose (minBound, dimVal' @n - 1)
 
 instance KnownDim n => Arbitrary (Idx (XN n)) where
-    arbitrary = elements [0..]
+    arbitrary = Idx <$> choose (minBound, dimVal' @n - 1)
 
 instance Dimensions ns => Arbitrary (Idxs (ns :: [Nat])) where
     arbitrary = go (dims @ns)
@@ -553,11 +553,11 @@ instance Dimensions ns => Arbitrary (Idxs (ns :: [Nat])) where
         go U         = pure U
         go (D :* bs) = (:*) <$> arbitrary <*> go bs
 
-instance (BoundedDims ns, KnownXNatTypes ns) => Arbitrary (Idxs (ns :: [XNat])) where
+instance (BoundedDims ns, All KnownDimType ns) => Arbitrary (Idxs (ns :: [XNat])) where
     arbitrary = go (minimalDims @ns)
       where
         go :: forall (bs :: [XNat])
-            . (BoundedDims bs, KnownXNatTypes bs) => Dims bs -> Gen (Idxs bs)
+            . (BoundedDims bs, All KnownDimType bs) => Dims bs -> Gen (Idxs bs)
         go U            = pure U
         go (Dn D :* bs) = (:*) <$> arbitrary <*> go bs
         go (Dx D :* bs) = (:*) <$> arbitrary <*> go bs
