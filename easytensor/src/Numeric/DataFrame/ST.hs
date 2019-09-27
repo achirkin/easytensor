@@ -73,7 +73,7 @@ mkXSTFramePat :: forall s  (t :: Type) (xns :: [XNat])
                . STDataFrame s t xns -> XSTFramePat s t xns
 mkXSTFramePat df
   | SomeDims ds <- fromSteps (getDataFrameSteps df)
-  , XDims (_ :: Dims ns) <- (unsafeCoerce ds) :: Dims xns
+  , XDims (Dims :: Dims ns) <- (unsafeCoerce ds) :: Dims xns
     = XSTFramePat @s @t @xns @ns (unsafeCoerce df)
   | otherwise
     = error "XSTFrame pattern: impossible args"

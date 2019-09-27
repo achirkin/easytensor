@@ -104,7 +104,7 @@ newtype instance DataFrame (ts :: [Type]) (ns :: [Nat])
 --   Pattern-match against its constructor to get a Nat-indexed data frame.
 data instance DataFrame (ts :: l) (xns :: [XNat])
   = forall (ns :: [Nat])
-  . (KnownXNatTypes xns, FixedDims xns ns, Dimensions ns, KnownBackends ts ns)
+  . (All KnownDimType xns, FixedDims xns ns, Dimensions ns, KnownBackends ts ns)
   => XFrame (DataFrame ts ns)
 
 -- | Data frame that has an unknown dimensionality at compile time.
@@ -425,7 +425,7 @@ instance (All Read ts, All PrimBytes ts, RepresentableList ts, Dimensions ds)
     readList = Read.readListDefault
     readListPrec = Read.readListPrecDefault
 
-instance (Read t, PrimBytes t, BoundedDims ds, All KnownXNatType ds)
+instance (Read t, PrimBytes t, BoundedDims ds, All KnownDimType ds)
       => Read (DataFrame (t :: Type) (ds :: [XNat])) where
     readPrec = Read.parens . Read.prec 10 $ do
       Read.lift . Read.expect $ Read.Ident "XFrame"
@@ -434,7 +434,7 @@ instance (Read t, PrimBytes t, BoundedDims ds, All KnownXNatType ds)
     readListPrec = Read.readListPrecDefault
 
 instance ( All Read ts, All PrimBytes ts, RepresentableList ts
-         , BoundedDims ds, All KnownXNatType ds)
+         , BoundedDims ds, All KnownDimType ds)
       => Read (DataFrame (ts :: [Type]) (ds :: [XNat])) where
     readPrec = Read.parens . Read.prec 10 $ do
       Read.lift . Read.expect $ Read.Ident "XFrame"
@@ -492,7 +492,7 @@ For example,
 
  -}
 readPrecBoundedDF :: forall (t :: Type) (ds :: [XNat])
-                   . (Read t, PrimBytes t, KnownXNatTypes ds)
+                   . (Read t, PrimBytes t, All KnownDimType ds)
                   => Dims ds -> Read.ReadPrec (DataFrame t ds)
 -- reading scalar
 readPrecBoundedDF U
@@ -556,7 +556,7 @@ readPrecSomeDF = Read.parens $
     Read.+++
     (lookLex >>= \case
        Read.Ident ('D':'F':s)
-         | Just (Dx (d :: Dim d)) <- (Read.readMaybe ('D':s) :: Maybe SomeDim)
+         | Just (Dx (d@D :: Dim d)) <- (Read.readMaybe ('D':s) :: Maybe SomeDim)
            -> case d of
              D0 | Dict <- inferKnownBackend @t @'[0]
                  -> SomeDataFrame <$> readPrecFixedDF @t (D0 :* U)
@@ -584,7 +584,7 @@ readFixedMultiDF (_ :* ts) ds = Read.parens . Read.prec 6 $ do
     return (x :*: xs)
 
 readBoundedMultiDF :: forall (ts :: [Type]) (ds :: [XNat])
-                    . (All Read ts, All PrimBytes ts, KnownXNatTypes ds)
+                    . (All Read ts, All PrimBytes ts, All KnownDimType ds)
                    => TypeList ts
                    -> Dims ds
                    -> Read.ReadPrec (DataFrame ts ds)
@@ -1021,17 +1021,27 @@ fromListWithDefault d ds = snd $ packDF' f ((,) ds)
 --   Pattern-match against the resulting @XFrame@ to find out its dimensionality.
 --
 --   You must not provide an infinite list as an argument.
-fromList :: forall (t :: Type) (ds :: [Nat])
-          . (PrimBytes t, Dimensions ds)
-         => [DataFrame t ds] -> DataFrame t (XN 0 ': AsXDims ds)
+fromList :: forall (t :: Type) (ds :: [Nat]) (xds :: [XNat])
+          . (PrimBytes t, Dimensions ds, xds ~ Map N ds, ds ~ UnMap N xds)
+         => [DataFrame t ds] -> DataFrame t (XN 0 ': xds)
 fromList xs
     | Dx (D :: Dim n) <- someDimVal . fromIntegral $ length xs
     , Dict <- inferKnownBackend @t @(n ': ds)
-    , ds@(AsXDims (XDims ds')) <- dims @ds
-    , Just Dict <- sameDims ds ds'
+    , Dict <- inferExactFixedDims (dims @ds)
       = XFrame (fromListWithDefault @t @n @ds undefined xs)
     | otherwise
-      = error "Numeri.DataFrame.Type/fromList: impossible arguments"
+      = case Dict @(ds ~ UnMap N xds) of
+          Dict -> -- just make GHC not complain about unused constraints.
+            error "Numeri.DataFrame.Type/fromList: impossible arguments"
+  where
+    inferExactFixedDims :: forall (ns :: [Nat])
+                         . Dims ns
+                        -> Dict ( All KnownDimType (Map N ns)
+                                , FixedDims (Map N ns) ns)
+    inferExactFixedDims U = Dict
+    inferExactFixedDims (_ :* ns')
+      | Dict <- inferExactFixedDims @(Tail ns) ns' = Dict
+
 
 
 -- | Try to convert between @XNat@-indexed DataFrames.
@@ -1039,7 +1049,7 @@ fromList xs
 --   This is useful for imposing restrictions on unknown DataFrames,
 --   e.g. increasing the minimum number of elements.
 constrainDF :: forall (ds :: [XNat]) (ys :: [XNat]) (l :: Type) (ts :: l)
-             . (BoundedDims ds, All KnownXNatType ds)
+             . (BoundedDims ds, All KnownDimType ds)
             => DataFrame ts ys -> Maybe (DataFrame ts ds)
 constrainDF (XFrame (df :: DataFrame ts ns))
   | ns <- dims @ns
@@ -1105,7 +1115,7 @@ instance (Data t, PrimBytes t, Typeable ds)
       U | S x <- v
         -> z S `k` x
       D :* (Dims :: Dims ns)
-        -> case inferTypeableCons @_ @ds of
+        -> case inferTypeableCons @ds of
           Dict ->
             -- PLZ don't ask me how does this work
             unpackDF' (\_ f -> runOff $ packDF'
@@ -1115,7 +1125,7 @@ instance (Data t, PrimBytes t, Typeable ds)
     gunfold k z _ = case typeableDims @ds of
       U      -> k (z S)
       D :* (Dims :: Dims ns)
-        -> case inferTypeableCons @_ @ds of Dict -> packDF' k z
+        -> case inferTypeableCons @ds of Dict -> packDF' k z
     toConstr _ = case typeableDims @ds of
       U      -> scalarFrameConstr
       d :* _ -> singleFrameConstr $ dimVal d
@@ -1130,11 +1140,11 @@ instance (Data t, PrimBytes t, Typeable ds)
 instance (AllFrames Data ts ds, Typeable ts, Typeable ds)
       => Data (DataFrame (ts :: [Type]) (ds :: [Nat])) where
     gfoldl _ z Z = z Z
-    gfoldl k z (x :*: xs) = case inferTypeableCons @Type @ts of
+    gfoldl k z (x :*: xs) = case inferTypeableCons @ts of
       Dict -> z (:*:) `k` x `k` xs
-    gunfold k z _ = case typeables @Type @ts of
+    gunfold k z _ = case typeables @ts of
       U      -> z Z
-      _ :* _ -> case inferTypeableCons @_ @ts of Dict -> k (k (z (:*:)))
+      _ :* _ -> case inferTypeableCons @ts of Dict -> k (k (z (:*:)))
     toConstr Z         = multiFrameZConstr
     toConstr (_ :*: _) = multiFrameConsConstr
     dataTypeOf _ = dataFrameDataType [multiFrameZConstr, multiFrameConsConstr]
@@ -1297,7 +1307,7 @@ withFixedDF1 :: forall (l :: Type) (ts :: l) (xns :: [XNat])
                        (rep :: RuntimeRep) (r :: TYPE rep)
               . xns ~ Map 'N (DimsBound xns)
              => ( forall (ns :: [Nat])
-               . ( KnownXNatTypes xns, FixedDims xns ns
+               . ( All KnownDimType xns, FixedDims xns ns
                  , Dimensions ns
                  , KnownBackends ts ns
                  , ns ~ DimsBound xns
@@ -1313,7 +1323,7 @@ withFixedDF2 :: forall (l :: Type) (ts :: l) (xns :: [XNat])
                        (rep :: RuntimeRep) (r :: TYPE rep)
               . xns ~ Map 'N (DimsBound xns)
              => ( forall (ns :: [Nat])
-               . ( KnownXNatTypes xns, FixedDims xns ns
+               . ( All KnownDimType xns, FixedDims xns ns
                  , Dimensions ns
                  , KnownBackends ts ns
                  , ns ~ DimsBound xns

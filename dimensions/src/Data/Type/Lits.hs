@@ -4,6 +4,7 @@
 {-# LANGUAGE ExplicitForAll         #-}
 {-# LANGUAGE ExplicitNamespaces     #-}
 {-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE PolyKinds              #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators          #-}
@@ -27,6 +28,7 @@
 module Data.Type.Lits
   ( -- * Kinds
     TN.Nat, TL.Symbol
+  , KindOf, KindOfEl
     -- * Linking type and value level
   , TN.KnownNat, TN.natVal, TN.natVal'
   , TL.KnownSymbol, TL.symbolVal, TL.symbolVal'
@@ -132,3 +134,16 @@ type family LE (a :: TN.Nat) (b :: TN.Nat) (r :: Ordering)
           'TL.:<>: 'TL.Text " <= "
           'TL.:<>: 'TL.ShowType b
       ))
+
+
+-- | Get the kind of a given type.
+--   Useful when we don't want to introduce another type parameter into
+--   a type signature (because the kind is determined by the type),
+--   but need to have some constraints on the type's kind.
+type KindOf   (t :: k) = k
+
+-- | Get the kind of a given list type.
+--   Useful when we don't want to introduce another type parameter into
+--   a type signature (because the kind is determined by the type),
+--   but need to have some constraints on the type's kind.
+type KindOfEl (ts :: [k]) = k

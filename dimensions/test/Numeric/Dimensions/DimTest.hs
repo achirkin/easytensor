@@ -64,7 +64,7 @@ prop_minusDim a' b'
   | a <- max a' b'
   , b <- min a' b'
   , xda <- someDimVal a -- this is an unknown (Dim (XN 0))
-  , Dx (db :: Dim b) <- someDimVal b
+  , Dx (db@D :: Dim b) <- someDimVal b
   , Just (Dx da) <- constrainDim @(XN b) xda -- here da >= db
   = a - b == dimVal (minusDim da db)
 prop_minusDim _ _ = False

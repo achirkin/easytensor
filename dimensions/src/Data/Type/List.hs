@@ -38,18 +38,16 @@ module Data.Type.List
   ) where
 
 import Data.Constraint         (Constraint, Dict (..))
-import Data.Kind               (Type)
 import Data.Type.List.Classes
 import Data.Type.List.Families
 import Data.Type.Lits
 import Type.Reflection
 
 -- | Empty list, same as @'[]@.
-type Empty = '[]
+type Empty = ('[] :: [k])
 
 -- | Appending a list, represents an @Op@ counterpart of @(':)@.
-type Cons (a :: k) (as :: [k])
-    = a ': as
+type Cons (a :: k) (as :: [k]) = a ': as
 
 -- | @Take n xs@ returns the prefix of a list of length @max n (length xs)@.
 type family Take (n :: Nat) (xs :: [k]) :: [k] where
@@ -101,7 +99,7 @@ type family Elem (x :: k) (xs :: [k]) :: Constraint where
     Elem x (_ ': xs) = Elem x xs
 
 -- | Given a @Typeable@ list, infer this constraint for its parts.
-inferTypeableCons :: forall (k :: Type) (ys :: [k]) (x :: k) (xs :: [k])
+inferTypeableCons :: forall ys x xs
                    . (Typeable ys, ys ~ (x ': xs))
                   => Dict (Typeable x, Typeable xs)
 inferTypeableCons = case typeRep @ys of

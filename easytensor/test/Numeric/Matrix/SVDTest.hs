@@ -144,7 +144,7 @@ dfs = xs
   where
     mkM :: Dims ([n,m]) -> [Double] -> DataFrame Double '[XN 1, XN 1]
     mkM ds
-      | Just (XDims ds') <- constrainDims ds :: Maybe (Dims '[XN 1, XN 1])
+      | Just (XDims ds'@Dims) <- constrainDims ds :: Maybe (Dims '[XN 1, XN 1])
         = XFrame . fromFlatList ds' 0
     mkM _ = error "prop_qrSimple: bad dims"
     variants :: Num a => [a] -> [[a]]
