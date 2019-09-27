@@ -131,7 +131,7 @@ prop_lookAt up cam foc =
     aeq :: Vector TestElem 3 -> Vector TestElem 3 -> Property
     aeq = approxEq 10
     apart :: Vector TestElem 3 -> Vector TestElem 3 -> Bool
-    apart a b = normL2 (a - b) > M_EPS * (1 + normL2 a + normL2 b)
+    apart a b = normL2 (a - b) > max (2 * sqrt M_EPS) (0.1 * (normL2 a + normL2 b))
     nonColinear :: Vector TestElem 3 -> Vector TestElem 3 -> Bool
     nonColinear a b = normL2 (cross a b) > 0.1 * abs (dot a b)
     m = lookAt up cam foc
