@@ -167,13 +167,13 @@ instance {-# INCOHERENT #-}
           d2ri@D <- pure $ plusDim d2r D1
           Just Dict <- pure $ sameDim (plusDim d D1) (plusDim d2li d2r)
           Just Dict <- pure $ sameDim (plusDim d D1) (plusDim d2ri d2l)
-          let leA = subDataFrameView @t @_ @d @(d - Div d 2 + 1) @(Div d 2) @'[]
+          let leA = subDataFrameView @t @d @(d - Div d 2 + 1) @(Div d 2) @'[]
                                      (Idx 0 :* U) a
-              riA = subDataFrameView @t @_ @d @(Div d 2 + 1) @(d - Div d 2) @'[]
+              riA = subDataFrameView @t @d @(Div d 2 + 1) @(d - Div d 2) @'[]
                                      (Idx (dimVal d2l) :* U) a
-              leB = subDataFrameView @t @_ @d @(d - Div d 2 + 1) @(Div d 2) @'[]
+              leB = subDataFrameView @t @d @(d - Div d 2 + 1) @(Div d 2) @'[]
                                      (Idx 0 :* U) b
-              riB = subDataFrameView @t @_ @d @(Div d 2 + 1) @(d - Div d 2) @'[]
+              riB = subDataFrameView @t @d @(Div d 2 + 1) @(d - Div d 2) @'[]
                                      (Idx (dimVal d2l) :* U) b
           mergeSort d2l leA leB
           mergeSort d2r riA riB
@@ -195,9 +195,9 @@ instance {-# INCOHERENT #-}
               , Just bmji@D <- minusDimM (plusDim dab D1) bmj
               , Just Dict <- sameDim (plusDim dab D1) (plusDim bmji bmj)
               , Just Dict <- sameDim (plusDim db D1) (dj `plusDim` D1 `plusDim` bmj)
-                = Nothing <$ copyMutableDataFrame @t @_ @ab @(ab + 1 - (b - j))
+                = Nothing <$ copyMutableDataFrame @t @ab @(ab + 1 - (b - j))
                                                             @(b - j) (Idx k :* U)
-                    (subDataFrameView @t @_ @b @(j + 1) @(b - j) (Idx j :* U) b) ab
+                    (subDataFrameView @t @b @(j + 1) @(b - j) (Idx j :* U) b) ab
               | j >= dimVal db
               , Dx di@(D :: Dim i) <- someDimVal i
               , D <- plusDim di D1
@@ -206,7 +206,7 @@ instance {-# INCOHERENT #-}
               , Just Dict <- sameDim (plusDim dab D1) (plusDim bmii bmi)
               , Just Dict <- sameDim (plusDim da D1) (di `plusDim` D1 `plusDim` bmi)
                 = Nothing <$ copyMutableDataFrame (Idx k :* U)
-                    (subDataFrameView @t @_ @a @(i + 1) @(a - i) (Idx i :* U) a) ab
+                    (subDataFrameView @t @a @(i + 1) @(a - i) (Idx i :* U) a) ab
               | otherwise
                 = cmp (subDataFrameView' (Idx i :* U) a)
                       (subDataFrameView' (Idx j :* U) b) >>= \case

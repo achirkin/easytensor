@@ -23,31 +23,31 @@ main = do
     seq t1 putStrLn $ "Created DataFrame, elapsed time is " ++ show (diffUTCTime t1 t0)
 
     putStrLn "\nRunning a ewfoldl on scalar elements..."
-    let rezEwf = ewfoldl @Float @DList @'[] (\a x -> return $! fromMaybe x a + fromMaybe 0 a / (x+1)) (Just 1)  df
+    let rezEwf = ewfoldl' @Float @DList @'[] (\a x -> return $! fromMaybe x a + fromMaybe 0 a / (x+1)) (Just 1)  df
     t2 <- rezEwf `seq` getCurrentTime
     seq t2 putStrLn $ "Done; elapsed time = " ++ show (diffUTCTime t2 t1)
     print rezEwf
 
     putStrLn "\nRunning a iwfoldl on scalar elements (not using idx)..."
-    let rezIwf = iwfoldl @Float  @DList @'[] (\_ a x -> a +  a / (x+1)) 1 df
+    let rezIwf = iwfoldl' @Float  @DList @'[] (\_ a x -> a +  a / (x+1)) 1 df
     t3 <- rezIwf `seq` getCurrentTime
     seq t3 putStrLn $ "Done; elapsed time = " ++ show (diffUTCTime t3 t2)
     print rezIwf
 
     putStrLn "\nRunning a iwfoldr on scalar elements (using fromEnum idx)..."
-    let rezIwf2 = iwfoldr @Float @DList @'[] (\i x a -> return $! fromMaybe 0 a + x / ((1+) . fromIntegral $ fromEnum i)) (Just 0) df
+    let rezIwf2 = iwfoldr' @Float @DList @'[] (\i x a -> return $! fromMaybe 0 a + x / ((1+) . fromIntegral $ fromEnum i)) (Just 0) df
     t4 <- rezIwf2 `seq` getCurrentTime
     seq t4 putStrLn $ "Done; elapsed time = " ++ show (diffUTCTime t4 t3)
     print rezIwf2
 
     putStrLn "\nRunning a iwfoldl on scalar elements (enforcing idx)..."
-    let rezIwf3 = iwfoldl @Float @DList @'[] (\i a x -> i `seq` return $! fromMaybe 0 a + fromMaybe x a / (x+1)) (Just 1) df
+    let rezIwf3 = iwfoldl' @Float @DList @'[] (\i a x -> i `seq` return $! fromMaybe 0 a + fromMaybe x a / (x+1)) (Just 1) df
     t5 <- rezIwf3 `seq` getCurrentTime
     seq t5 putStrLn $ "Done; elapsed time = " ++ show (diffUTCTime t5 t4)
     print rezIwf3
 
     putStrLn "\nRunning a ewfoldl on vector4 elements..."
-    let rezEwv1 = ewfoldl @Float @(Init DList) @'[Last DList]
+    let rezEwv1 = ewfoldl' @Float @(Init DList) @'[Last DList]
                           (\a x -> return $! fromMaybe 2 a + fromMaybe 0 a / (1 + iwgen @_ @_ @'[] (\(Idx i:*U) -> x ! (i+1) )) )
                           (Just (3 :: DataFrame Float '[4])) df
     t6 <- rezEwv1 `seq` getCurrentTime
@@ -55,7 +55,7 @@ main = do
     print rezEwv1
 
     putStrLn "\nRunning a ewfoldr on vector3 elements..."
-    let rezEwv2 = ewfoldr @Float @(Init DList) @'[Last DList]
+    let rezEwv2 = ewfoldr' @Float @(Init DList) @'[Last DList]
                           (\x a -> return $! fromMaybe 2 a + fromMaybe 1 a / (1 + iwgen @_ @_ @'[] (\(Idx i:*U) -> x ! (i+1) )))
                           (Just (3 :: DataFrame Float '[3])) df
     t7 <- rezEwv2 `seq` getCurrentTime
@@ -63,7 +63,7 @@ main = do
     print rezEwv2
 
     putStrLn "\nRunning a ewfoldr with matrix products..."
-    let rezEwm = ewfoldr @Float @(Take 3 DList) @(Drop 3 DList)
+    let rezEwm = ewfoldr' @Float @(Take 3 DList) @(Drop 3 DList)
                           (\x a ->  a + x %* (DF5 1 0.5 0.1 0.01 0.001)  )
                           (1 :: DataFrame Float (Init (Drop 3 DList) +: 3)) df
     t8 <- rezEwm `seq` getCurrentTime
@@ -74,4 +74,4 @@ main = do
 
 
     putStrLn "Checking indexes"
-    print $ df .! (2:*1:*1:*3:*1:*U :: Idxs (Take 5 DList))
+    print $ df.!2.!1.!1.!3.!1

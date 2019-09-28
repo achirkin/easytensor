@@ -57,7 +57,7 @@ castDataFrame# ::
        forall (t :: Type) (xns :: [XNat]) (ns :: [Nat]) s
      . FixedDims xns ns
     => MDataFrame s t ns -> MDataFrame s t xns
-castDataFrame# = unsafeCoerce#
+castDataFrame# (MDataFrame# o c a) = MDataFrame# o c a
 {-# INLINE castDataFrame# #-}
 
 -- | Create a new mutable DataFrame.
@@ -111,11 +111,10 @@ subDataFrameView# ::
               (as :: [k]) (bs :: [k]) (asbs :: [k]) s
      . (SubFrameIndexCtx b bi bd, KnownDim bd, ConcatList as (b :+ bs) asbs)
     => Idxs (as +: bi) -> MDataFrame s t asbs -> MDataFrame s t (bd :+ bs)
-subDataFrameView# ei (MDataFrame# offM (CumulDims stepsM) arr)
-    = MDataFrame# (case offA of W# w -> word2Int# w)
-                  (CumulDims (n * dimVal (dim @bd) : stepsA)) arr
+subDataFrameView# ei (MDataFrame# offM stepsM arr)
+    = MDataFrame# (case offA of I# i -> i) stepsA arr
   where
-    (offA, stepsA@(n:_)) = getOffAndSteps (W# (int2Word# offM)) stepsM (listIdxs ei)
+    (offA, stepsA) = getOffAndStepsSub (I# offM) stepsM ei (dim @bd)
 
 -- | View a part of a DataFrame.
 --
@@ -128,14 +127,10 @@ subDataFrameView'# ::
        forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k]) s
      . ConcatList as bs asbs
     => Idxs as -> MDataFrame s t asbs -> MDataFrame s t bs
-subDataFrameView'# ei (MDataFrame# offM (CumulDims stepsM) arr)
-    = MDataFrame# (case offA of W# w -> word2Int# w) (CumulDims stepsA) arr
+subDataFrameView'# ei (MDataFrame# offM stepsM arr)
+    = MDataFrame# (case offA of I# i -> i) stepsA arr
   where
-    (offA, stepsA) = getOffAndSteps (W# (int2Word# offM)) stepsM (listIdxs ei)
-
-getOffAndSteps :: Word -> [Word] -> [Word] -> (Word, [Word])
-getOffAndSteps off steps [] = (off, steps)
-getOffAndSteps off ~(_:steps@(s:_)) (i:ixs) = getOffAndSteps (off + i*s) steps ixs
+    (offA, stepsA) = getOffAndSteps (I# offM) stepsM ei
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
 --
@@ -152,11 +147,11 @@ copyDataFrame# ::
        , ConcatList as (b :+ bs) asbs )
     => Idxs (as +: bi) -> DataFrame t (bd :+ bs) -> MDataFrame s t asbs
     -> State# s -> (# State# s, () #)
-copyDataFrame# ei df (MDataFrame# offM (CumulDims stepsM) arrDest)
+copyDataFrame# ei df (MDataFrame# offM stepsM arrDest)
     | elS <- byteSize @t undefined
-    , (offDestw, ~(nBs:_)) <- getOffAndSteps (W# (int2Word# offM)) stepsM (listIdxs ei)
-    , I# n <- fromIntegral (nBs * dimVal (dim @bd))
-    , I# offDest <- fromIntegral offDestw
+    , (I# offDest, CumulDims ~(nw:_))
+         <- getOffAndStepsSub (I# offM) stepsM ei (dim @bd)
+    , I# n <- fromIntegral nw
     = withArrayContent
       (\e s -> (# fillArray arrDest offDest n e s, () #))
       (\_ offSrc arrSrc s ->
@@ -180,12 +175,14 @@ copyMDataFrame# ::
        , ConcatList as (b :+ bs) asbs )
     => Idxs (as +: bi) -> MDataFrame s t (bd :+ bs) -> MDataFrame s t asbs
     -> State# s -> (# State# s, () #)
-copyMDataFrame# ei (MDataFrame# offA stepsA arrA) (MDataFrame# offM stepsM arrM)
+copyMDataFrame# ei (MDataFrame# offA (CumulDims ~(bn:n:_)) arrA)
+                   (MDataFrame# offM stepsM arrM)
     | elS <- byteSize @t undefined
-    , lenA <- cdTotalDim# stepsA
-    , I# i <- cdIx stepsM ei
+    , I# lenA <- fromIntegral bn
+    , I# i <- cdIxSub stepsM ei (unsafeCoerce# (quot bn n))
     = \s -> (# copyMutableByteArray# arrA (offA *# elS)
-                               arrM ((offM +# i) *# elS) (lenA *# elS) s, () #)
+                                     arrM ((offM +# i) *# elS) (lenA *# elS) s
+             , () #)
 {-# INLINE copyMDataFrame# #-}
 
 {-# ANN copyDataFrame'# "HLint: ignore Use camelCase" #-}
@@ -200,11 +197,10 @@ copyDataFrame'# ::
        , ConcatList as bs asbs )
     => Idxs as -> DataFrame t bs -> MDataFrame s t asbs
     -> State# s -> (# State# s, () #)
-copyDataFrame'# ei df (MDataFrame# offM (CumulDims stepsM) arrDest)
+copyDataFrame'# ei df (MDataFrame# offM stepsM arrDest)
     | elS <- byteSize @t undefined
-    , (offDestw, ~(nBs:_)) <- getOffAndSteps (W# (int2Word# offM)) stepsM (listIdxs ei)
-    , I# n <- fromIntegral nBs
-    , I# offDest <- fromIntegral offDestw
+    , (I# offDest, stepsA) <- getOffAndSteps (I# offM) stepsM ei
+    , n <- cdTotalDim# stepsA
     = withArrayContent
       (\e s -> (# fillArray arrDest offDest n e s, () #))
       (\_ offSrc arrSrc s ->
@@ -283,7 +279,7 @@ unsafeFreezeDataFrame# ::
     -> State# s -> (# State# s, DataFrame t ns #)
 unsafeFreezeDataFrame# (MDataFrame# offM steps arrM) s0
     | 0# <- cdTotalDim# steps
-      = (# s0, fromElems steps offM (unsafeCoerce# arrM) #)
+      = (# s0, error "Empty DataFrame (DF0)" #)
     | (# s1, arrA #) <- unsafeFreezeByteArray# arrM s0
       = (# s1, fromElems steps offM arrA #)
 {-# INLINE unsafeFreezeDataFrame# #-}
