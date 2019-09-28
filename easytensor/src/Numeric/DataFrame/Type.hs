@@ -49,9 +49,9 @@ module Numeric.DataFrame.Type
   , constrainDF, asDiag
     -- * Infer type class instances
   , KnownBackend (), DFBackend, KnownBackends
-  , InferKnownBackend (), inferKnownBackend, inferPrimElem
+  , InferKnownBackend (..), inferPrimElem
     -- * Re-exports
-  , Dim (..), Idx (), XNat (..), N, XN, Dims, Idxs, TypedList (..)
+  , Dim (..), Idx (), Nat, XNat (..), N, XN, Dims, Idxs, TypedList (..)
   , PrimBytes (), bSizeOf, bAlignOf, bFieldOffsetOf
   , PrimArray (), ixOff
   ) where
@@ -147,28 +147,25 @@ type family KnownBackends (ts :: l) (ns :: [Nat]) :: Constraint where
       (KnownBackend t ns, KnownBackends ts ns)
 
 -- | Allow inferring @KnownBackends@ if you know the dimensions and the element types.
-class InferKnownBackend (t :: k) (ds :: [Nat]) where
+class InferKnownBackend t (ds :: [Nat]) where
     -- | Infer @KnownBackends@ if you know the dimensions and the element types.
-    inferKnownBackendI :: Dict (KnownBackends t ds)
+    inferKnownBackend :: Dict (KnownBackends t ds)
 
 instance (PrimBytes t, Dimensions ds) => InferKnownBackend (t :: Type) ds where
-    inferKnownBackendI = Backend.inferKnownBackend @t @ds
+    inferKnownBackend = Backend.inferKnownBackend @t @ds
 
 instance (RepresentableList ts, All PrimBytes ts, Dimensions ds)
       => InferKnownBackend (ts :: [Type]) ds where
-    inferKnownBackendI = go (tList @ts)
+    inferKnownBackend = go (tList @ts)
       where
-        go :: forall ss . All PrimBytes ss => TypeList ss -> Dict (KnownBackends ss ds)
+        go :: forall ss . All PrimBytes ss
+           => TypeList ss -> Dict (KnownBackends ss ds)
         go U = Dict
         go ((_ :: Proxy t) :* ts)
              = case Backend.inferKnownBackend @t @ds of
                  Dict -> case go ts of
                    Dict -> Dict
 
--- | Infer @KnownBackends@ if you know the dimensions and the element types.
-inferKnownBackend :: forall t (ds :: [Nat])
-                   . InferKnownBackend t ds => Dict (KnownBackends t ds)
-inferKnownBackend = inferKnownBackendI @_ @t @ds
 
 -- | All component data frames must satisfy a given constraint.
 type family AllFrames (f :: Type -> Constraint) (ts :: [Type]) (ds :: [Nat])
@@ -178,13 +175,13 @@ type family AllFrames (f :: Type -> Constraint) (ts :: [Type]) (ds :: [Nat])
 
 
 -- | Index one dimension deep into a @DataFrame@.
-class IndexFrame (t :: l) (d :: k) (ds :: [k]) where
-  -- | Index one dimension deep into a @DataFrame@.
-  --
-  --   Note, this function does not provide indexing safety at the type level;
-  --   it throws an error if an index is out of bounds
-  --     (unless @unsafeindices@ package flag is enabled).
-  (!) :: DataFrame t (d ': ds) -> Word -> DataFrame t ds
+class IndexFrame t d ds where
+    -- | Index one dimension deep into a @DataFrame@.
+    --
+    --   Note, this function does not provide indexing safety at the type level;
+    --   it throws an error if an index is out of bounds
+    --     (unless @unsafeindices@ package flag is enabled).
+    (!) :: DataFrame t (d ': ds) -> Word -> DataFrame t ds
 
 #ifndef UNSAFE_INDICES
 idxError :: Word -> Word -> a
@@ -255,14 +252,31 @@ instance (RepresentableList ts, All PrimBytes ts)
           , Dict <- inferKnownBackend @a @ds = Dict
     (!) _ _ = error "IndexFrame: impossible pattern"
 
--- | When slicing a @DataFrame@, the index space is bounded by the size of the
---   original space minus the subframe size.
-type family SubFrameIndexCtx (n :: k) (idxN :: k) (subN :: k) :: Constraint where
+{- |
+This type family describes two strategies for dealing with dimensions when
+slicing a @DataFrame@.
+
+If the original space dimension (@d@) is fixed at compile time
+(@d :: Nat@ or @d ~ N n@), then we enforce the safety of a slicing operation
+with types:
+    the index space is bounded by the size of the original space
+    minus the subframe size.
+
+If the original space dimension (@d@) is not fixed (@d ~ XN m@), then we give up.
+Just let the user do the slicing as easy as possible, and throw an out-of-bounds
+exception at runtime if the index plus the sliced size is greater than the
+original size of the DataFrame.
+ -}
+type family SubFrameIndexCtx (d :: k) (idxN :: k) (subN :: k) :: Constraint where
     SubFrameIndexCtx (n :: Nat) idxN subN
       = (n + 1) ~ (idxN + subN)
-    SubFrameIndexCtx (n :: XNat) idxN subN
-      = ( (DimBound idxN + DimBound subN) ~ (DimBound n + 1)
+    SubFrameIndexCtx (N n) idxN subN
+      = ( (n + 1) ~ (DimBound idxN + DimBound subN)
         , idxN ~ N (DimBound idxN)
+        , subN ~ N (DimBound subN)
+        )
+    SubFrameIndexCtx (XN m) idxN subN
+      = ( idxN ~ XN m
         , subN ~ N (DimBound subN)
         )
 
@@ -1048,10 +1062,10 @@ fromList xs
 --
 --   This is useful for imposing restrictions on unknown DataFrames,
 --   e.g. increasing the minimum number of elements.
-constrainDF :: forall (ds :: [XNat]) (ys :: [XNat]) (l :: Type) (ts :: l)
+constrainDF :: forall (ds :: [XNat]) (ys :: [XNat]) t
              . (BoundedDims ds, All KnownDimType ds)
-            => DataFrame ts ys -> Maybe (DataFrame ts ds)
-constrainDF (XFrame (df :: DataFrame ts ns))
+            => DataFrame t ys -> Maybe (DataFrame t ds)
+constrainDF (XFrame (df :: DataFrame t ns))
   | ns <- dims @ns
   = case constrainDims @ds ns of
       Just (XDims (Dims :: Dims ms))

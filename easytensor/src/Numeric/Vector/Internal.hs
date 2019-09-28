@@ -32,7 +32,6 @@ module Numeric.Vector.Internal
     ) where
 
 import Data.Kind
-import Data.Type.Lits             (Nat)
 import Numeric.DataFrame.SubSpace
 import Numeric.DataFrame.Type
 import Numeric.Scalar.Internal

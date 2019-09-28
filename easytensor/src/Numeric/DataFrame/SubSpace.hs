@@ -13,23 +13,39 @@
 {-# LANGUAGE TypeApplications        #-}
 {-# LANGUAGE TypeFamilies            #-}
 {-# LANGUAGE TypeOperators           #-}
-{-# LANGUAGE UnboxedTuples           #-}
 {-# LANGUAGE UndecidableInstances    #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
-
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
------------------------------------------------------------------------------
--- |
--- Module      :  Numeric.DataFrame.SubSpace
--- Copyright   :  (c) Artem Chirkin
--- License     :  BSD3
---
---
------------------------------------------------------------------------------
+{- |
+Module      :  Numeric.DataFrame.SubSpace
+Copyright   :  (c) Artem Chirkin
+License     :  BSD3
+
+This module provides a flexible interface to manipulate parts of a DataFrame.
+
+==== A note on indexing and slicing
+
+When you index or slice dataframes, the left part of the dimension list
+(@as@ for indexing, plus @b@ for slicing) determines the mechanics of accessing
+sub-dataframes.
+If compiler knows all dimensions at compile time, it can guarantee that the
+operation is safe (provided with valid indices).
+Otherwise, you can get an out-of-bound runtime error.
+
+When all dimensions in the indexing subspace satisfy @d :: Nat@ or @d ~ N n@,
+slicing functions are safe to use, but you need some type-level proof for GHC
+that the indices align.
+
+When any of the dimensions are unknown (@d ~ XN m@), these functions are unsafe
+-- they can yield an out-of-bounds error if you give a bad index.
+But they are easy to use (no type-level proof needed).
+
+ -}
 
 module Numeric.DataFrame.SubSpace
-  ( -- * Class definition
-    SubSpace (SubSpaceCtx)
+  ( -- $indexingSafety
+    -- * Class definition
+    SubSpace (SubSpaceCtx), CanSlice
     -- * Simple interface
     --
     --   All functions in this section are named @sxxx@, where @s@ stands for
@@ -38,7 +54,7 @@ module Numeric.DataFrame.SubSpace
     --   Use these functions if you are tired of @TypeApplications@ or find the
     --   error messages too cryptic.
   , sindexOffset, supdateOffset
-  , sindex, supdate, sslice, supdateSlice
+  , (.!), supdate, sslice, supdateSlice
   , sewgen, siwgen, sewmap, siwmap, sewzip, siwzip
   , selement, selementWise, selementWise_, sindexWise, sindexWise_
   , sewfoldl, sewfoldl', sewfoldr, sewfoldr', sewfoldMap
@@ -51,7 +67,6 @@ module Numeric.DataFrame.SubSpace
     --   or a matrix of vectors, or a 3D array of scalars.
     --   Often, you would need @TypeApplications@ to specify explicitly at least
     --   the indexing subspace (parameter @as@).
-  , (.!)
   , joinDataFrame, indexOffset, updateOffset
   , index, update, slice, updateSlice
   , ewgen, iwgen, ewmap, iwmap, ewzip, iwzip
@@ -92,26 +107,13 @@ supdateOffset = updateOffset @t @'[a] @bs @(a :+ bs)
 {-# INLINE supdateOffset #-}
 
 -- | Get an element by its index in the dataframe.
-sindex ::
+(.!) ::
        forall t a bs
      . SubSpace t '[a] bs (a :+ bs)
-    => Idx a -> DataFrame t (a :+ bs) -> DataFrame t bs
-sindex = index @t @'[a] @bs @(a :+ bs) . (:* U)
-{-# INLINE[1] sindex #-}
-
--- | Get a few contiguous elements.
---
---   In a sense, this is just a more complicated version of `index`.
-sslice ::
-       forall t bi bd b bs
-     . ( SubSpace t '[] (b :+ bs) (b :+ bs)
-       , SubFrameIndexCtx b bi bd
-       , KnownDim bd
-       , PrimArray t (DataFrame t (bd :+ bs)))
-    => Idx bi -> DataFrame t (b :+ bs) -> DataFrame t (bd :+ bs)
-sslice = slice @t @'[] @(b :+ bs) @(b :+ bs) @bi @bd @b . (:* U)
-{-# INLINE[1] sslice #-}
-
+    => DataFrame t (a :+ bs) -> Idx a -> DataFrame t bs
+(.!) x i = index @t @'[a] @bs @(a :+ bs) (i :* U) x
+{-# INLINE (.!) #-}
+infixl 4 .!
 
 -- | Set a new value to an element.
 supdate ::
@@ -120,20 +122,6 @@ supdate ::
     => Idxs '[a] -> DataFrame t bs -> DataFrame t (a :+ bs) -> DataFrame t (a :+ bs)
 supdate = update @t @'[a] @bs @(a :+ bs)
 {-# INLINE[1] supdate #-}
-
--- | Update a few contiguous elements.
---
---   In a sense, this is just a more complicated version of `update`.
-supdateSlice ::
-       forall t bi bd b bs
-     . ( SubSpace t '[] (b :+ bs) (b :+ bs)
-       , SubFrameIndexCtx b bi bd
-       , KnownDim bd
-       , PrimArray t (DataFrame t (bd :+ bs)))
-    => Idx bi -> DataFrame t (bd :+ bs)
-    -> DataFrame t (b :+ bs) -> DataFrame t (b :+ bs)
-supdateSlice = updateSlice @t @'[] @(b :+ bs) @(b :+ bs) @bi @bd @b . (:* U)
-{-# INLINE[1] supdateSlice #-}
 
 -- | Map a function over each element of DataFrame.
 sewmap ::
@@ -359,20 +347,6 @@ index ::
 index = indexI @_ @t @as @bs @asbs
 {-# INLINE[1] index #-}
 
--- | Get a few contiguous elements.
---
---   In a sense, this is just a more complicated version of `index`.
-slice ::
-       forall t as bs asbs bi bd b' bs'
-     . ( SubSpace t as bs asbs
-       , SubFrameIndexCtx b' bi bd
-       , bs ~ (b' :+ bs'), KnownDim bd
-       , PrimArray t (DataFrame t (bd :+ bs')))
-    => Idxs (as +: bi) -> DataFrame t asbs -> DataFrame t (bd :+ bs')
-slice = sliceI @_ @t @as @bs @asbs @bi @bd @b' @bs'
-{-# INLINE[1] slice #-}
-
-
 -- | Set a new value to an element.
 update ::
        forall t as bs asbs
@@ -380,20 +354,6 @@ update ::
     => Idxs as -> DataFrame t bs -> DataFrame t asbs -> DataFrame t asbs
 update = updateI @_ @t @as @bs @asbs
 {-# INLINE[1] update #-}
-
--- | Update a few contiguous elements.
---
---   In a sense, this is just a more complicated version of `update`.
-updateSlice ::
-       forall t as bs asbs bi bd b' bs'
-     . ( SubSpace t as bs asbs
-       , SubFrameIndexCtx b' bi bd
-       , bs ~ (b' :+ bs'), KnownDim bd
-       , PrimArray t (DataFrame t (bd :+ bs')))
-    => Idxs (as +: bi) -> DataFrame t (bd :+ bs')
-    -> DataFrame t asbs -> DataFrame t asbs
-updateSlice = updateSliceI @_ @t @as @bs @asbs @bi @bd @b'
-{-# INLINE[1] updateSlice #-}
 
 -- | Map a function over each element of DataFrame.
 ewmap ::
@@ -555,12 +515,6 @@ element ::
 element i f df = flip (update i) df <$> f (index i df)
 {-# INLINE element #-}
 
--- | Index an element (reverse arguments of `index`)
-(.!) :: SubSpace t as bs asbs
-     => DataFrame t asbs -> Idxs as -> DataFrame t bs
-(.!) = flip index
-{-# INLINE (.!) #-}
-infixl 4 .!
 
 -- | Map each element of the DataFrame to a monoid,
 --    and combine the results.
@@ -615,6 +569,96 @@ iwzip f dfl dfr = case dimKind @(KindOfEl asbs) of
                        )
 {-# INLINE iwzip #-}
 
+-- | DataFrames indexed by Nats and XNats require slightly different sets of
+--   constraints to be sliced.
+--   This family hides the difference, so that I could write one function for
+--   both kinds.
+type family CanSlice (t :: Type) (asbs :: [k])  :: Constraint where
+  CanSlice t (asbs :: [Nat])
+    = ( PrimArray t (DataFrame t asbs), Dimensions asbs )
+  CanSlice t (asbs :: [XNat])
+    = ( )
+
+-- | Get a few contiguous elements.
+--
+--   In a sense, this is just a more complicated version of `index`.
+sslice ::
+       forall t b bi bd bs
+     . ( KnownDimKind (KindOfEl bs)
+       , CanSlice t (b :+ bs)
+       , SubFrameIndexCtx b bi bd, KnownDim bd
+       , PrimArray t (DataFrame t (bd :+ bs)))
+    => Idx bi -> DataFrame t (b :+ bs) -> DataFrame t (bd :+ bs)
+sslice = slice @t @b @bi @bd @'[] @bs @(b :+ bs) . (:* U)
+{-# INLINE[1] sslice #-}
+
+-- | Update a few contiguous elements.
+--
+--   In a sense, this is just a more complicated version of `update`.
+supdateSlice ::
+       forall t b bi bd bs
+     . ( KnownDimKind (KindOfEl bs)
+       , CanSlice t (b :+ bs)
+       , SubFrameIndexCtx b bi bd
+       , KnownDim bd, ExactDims bs
+       , PrimArray t (DataFrame t (bd :+ bs)))
+    => Idx bi -> DataFrame t (bd :+ bs)
+    -> DataFrame t (b :+ bs) -> DataFrame t (b :+ bs)
+supdateSlice = updateSlice @t @b @bi @bd @'[] @bs @(b :+ bs) . (:* U)
+{-# INLINE[1] supdateSlice #-}
+
+-- | Get a few contiguous elements.
+--
+--   In a sense, this is just a more complicated version of `index`.
+slice ::
+       forall (t :: Type) b bi bd as bs asbs
+     . ( KnownDimKind (KindOfEl asbs)
+       , CanSlice t asbs
+       , SubFrameIndexCtx b bi bd, KnownDim bd
+       , ConcatList as (b :+ bs) asbs
+       , PrimArray t (DataFrame t (bd :+ bs)))
+    => Idxs (as +: bi) -> DataFrame t asbs -> DataFrame t (bd :+ bs)
+slice i = case dimKind @(KindOfEl asbs) of
+  DimKNat
+    -> withArrayContent broadcast
+    (\steps off0 ba ->
+      let (off, bsteps) = getOffAndStepsSub (I# off0) steps i (dim @bd)
+      in fromElems bsteps (case off of I# o -> o) ba
+    )
+  DimKXNat
+    -> \(XFrame (df :: DataFrame t asbsN)) -> withArrayContent broadcast
+    (\steps off0 ba ->
+      let (off, bsteps) = getOffAndStepsSub (I# off0) steps i (dim @bd)
+      in fromElems bsteps (case off of I# o -> o) ba
+    ) df
+{-# INLINE[1] slice #-}
+
+-- | Update a few contiguous elements.
+--
+--   In a sense, this is just a more complicated version of `update`.
+updateSlice ::
+       forall (t :: Type) b bi bd as bs asbs
+     . ( KnownDimKind (KindOfEl asbs)
+       , CanSlice t asbs
+       , SubFrameIndexCtx b bi bd
+       , KnownDim bd, ExactDims bs
+       , ConcatList as (b :+ bs) asbs
+       , PrimArray t (DataFrame t (bd :+ bs)))
+    => Idxs (as +: bi) -> DataFrame t (bd :+ bs)
+    -> DataFrame t asbs -> DataFrame t asbs
+updateSlice i bdbsDf asbsDf = case dimKind @(KindOfEl asbs) of
+  DimKNat -> runST $ do
+      asbsM <- thawDataFrame asbsDf
+      copyDataFrame i bdbsDf asbsM
+      unsafeFreezeDataFrame asbsM
+  DimKXNat
+    | (XFrame (asbsDfN :: DataFrame t asbsN)) <- asbsDf -> runST $ do
+      asbsM <- thawDataFrame @t @asbsN asbsDfN
+      copyDataFrame i bdbsDf (castDataFrame @t @asbs asbsM)
+      XFrame <$> unsafeFreezeDataFrame asbsM
+{-# INLINE[1] updateSlice #-}
+
+
 -- | Operations on DataFrames
 --
 -- @as@ is an indexing dimensionality
@@ -636,16 +680,7 @@ class ( ConcatList as bs asbs
     indexOffsetI :: Int -> DataFrame t asbs -> DataFrame t bs
     updateOffsetI :: Int -> DataFrame t bs -> DataFrame t asbs -> DataFrame t asbs
     indexI :: Idxs as -> DataFrame t asbs -> DataFrame t bs
-    sliceI :: forall (bi :: k) (bd :: k) (b' :: k) (bs' :: [k])
-            . ( SubFrameIndexCtx b' bi bd, bs ~ (b' :+ bs'), KnownDim bd
-              , PrimArray t (DataFrame t (bd :+ bs')))
-           => Idxs (as +: bi) -> DataFrame t asbs -> DataFrame t (bd :+ bs')
     updateI :: Idxs as -> DataFrame t bs -> DataFrame t asbs -> DataFrame t asbs
-    updateSliceI :: forall (bi :: k) (bd :: k) (b' :: k) (bs' :: [k])
-                  . ( SubFrameIndexCtx b' bi bd, bs ~ (b' :+ bs'), KnownDim bd
-                    , PrimArray t (DataFrame t (bd :+ bs')))
-                 => Idxs (as +: bi) -> DataFrame t (bd :+ bs')
-                 -> DataFrame t asbs -> DataFrame t asbs
     ewmapI  :: forall s (bs' :: [k]) (asbs' :: [k])
              . SubSpace s as bs' asbs'
             => (DataFrame s bs' -> DataFrame t bs)
@@ -688,10 +723,7 @@ instance ( ConcatList as bs asbs
     {-# INLINE indexOffsetI #-}
 
     updateOffsetI off bs asbs = runST $ do
-        asbsM <- case uniqueOrCumulDims asbs of
-          Left _ | Dict <- inferKnownBackend @t @asbs
-                  -> thawDataFrame asbs
-          Right _ -> uncheckedThawDataFrame asbs
+        asbsM <- thawDataFrame asbs
         copyDataFrameOff off bs asbsM
         unsafeFreezeDataFrame asbsM
     {-# INLINE updateOffsetI #-}
@@ -701,37 +733,11 @@ instance ( ConcatList as bs asbs
          (case cdIx steps i of I# off -> off0 +# off))
     {-# INLINE indexI #-}
 
-    sliceI i = withArrayContent broadcast
-      (\steps off0 ba ->
-        let r = fromElems bsteps (case cdIx steps i of I# off -> off0 +# off) ba
-            bsteps = repHead (dimVal bd) (dropPref (dims @as) steps)
-            bd = getBD r
-        in r
-      )
-      where
-        getBD :: KnownDim (bd :: Nat) => DataFrame t (bd ': bs') -> Dim bd
-        getBD _ = D
-        repHead y (CumulDims (_:x:xs)) = CumulDims (y*x:x:xs)
-        repHead _ steps                = steps
-    {-# INLINE sliceI #-}
-
     updateI i bs asbs = runST $ do
-        asbsM <- case uniqueOrCumulDims asbs of
-          Left _ | Dict <- inferKnownBackend @t @asbs
-                  -> thawDataFrame asbs
-          Right _ -> uncheckedThawDataFrame asbs
+        asbsM <- thawDataFrame asbs
         copyDataFrame' i bs asbsM
         unsafeFreezeDataFrame asbsM
     {-# INLINE updateI #-}
-
-    updateSliceI i bs asbs = runST $ do
-        asbsM <- case uniqueOrCumulDims asbs of
-          Left _ | Dict <- inferKnownBackend @t @asbs
-                  -> thawDataFrame asbs
-          Right _ -> uncheckedThawDataFrame asbs
-        copyDataFrame i bs asbsM
-        unsafeFreezeDataFrame asbsM
-    {-# INLINE updateSliceI #-}
 
     ewmapI (f :: DataFrame s bs' -> DataFrame t bs) (asbs' :: DataFrame s asbs')
       = case uniqueOrCumulDims asbs' of
@@ -864,7 +870,7 @@ instance ( ConcatList as bs asbs
          , SubSpaceCtx t as bs asbs
          ) => SubSpace t (as :: [XNat]) (bs :: [XNat]) (asbs :: [XNat]) where
     type SubSpaceCtx t as bs asbs
-      = ( Dimensions bs, PrimBytes t -- , PrimArray t (DataFrame t (DimsBound bs))
+      = ( Dimensions bs, PrimBytes t
         , All KnownDimType as, All KnownDimType bs, All KnownDimType asbs)
 
     joinDataFrameI (XFrame (df :: DataFrame (DataFrame t bs) asN)) =
@@ -916,31 +922,6 @@ instance ( ConcatList as bs asbs
                Dict -> XFrame (index @t @asn @bsn @asbsn (liftIdxs i) df)
     {-# INLINE indexI #-}
 
-    sliceI ::
-           forall (bi :: XNat) (bd :: XNat) (b' :: XNat) (bs' :: [XNat])
-         . ( SubFrameIndexCtx b' bi bd, bs ~ (b' :+ bs'), KnownDim bd
-           , PrimArray t (DataFrame t (bd :+ bs')))
-        => Idxs (as +: bi) -> DataFrame t asbs -> DataFrame t (bd :+ bs')
-    sliceI i (XFrame (df :: DataFrame t asbsN))
-            | bs@(XDims (_ :* Dims :: Dims bsN)) <- dims @bs
-            , asbs <- XDims (dims @asbsN) :: Dims asbs
-            , as <- dropSufDims bs asbs :: Dims as
-      = withLiftedConcatList @'Nothing @('Just bsN) @('Just asbsN) as bs asbs $
-           \(Dims :: Dims asn) (Dims :: Dims bsn) (Dims :: Dims asbsn)
-             -> withKnownXDim @bd $ case unsafeEqTypes @_ @(Head bsn) @(DimBound b') of
-               Dict
-                | Dict <- inferKnownBackend @t @(DimBound bd ': Tail bsn)
-                , Dict <- inferKnownBackend @t @bsN
-                  -- last indexing Dim (bi) is not checked, but we know it's fixed,
-                  --  so that's fine to unsafeCoerce it.
-                , ii <- unsafeCoerce (liftIdxs i :: Idxs asn)
-                 -> XFrame (slice @t @asn @bsn @asbsn
-                                 @(DimBound bi) @(DimBound bd) @(Head bsn)
-                                 @(Tail bsn) ii df)
-    sliceI _ _ = error "SubSpace[XNat]/sliceI -- impossible pattern"
-    {-# INLINE sliceI #-}
-
-
     updateI i (XFrame (bsDf :: DataFrame t bsN))
               (XFrame (asbsDf :: DataFrame t asbsN)) =
       let bs = dims :: Dims bs
@@ -951,32 +932,6 @@ instance ( ConcatList as bs asbs
            \(Dims :: Dims asn) (Dims :: Dims bsn) (Dims :: Dims asbsn)
              -> XFrame (update @t @asn @bsn @asbsn (liftIdxs i) bsDf asbsDf)
     {-# INLINE updateI #-}
-
-    updateSliceI :: forall (bi :: XNat) (bd :: XNat) (b' :: XNat) (bs' :: [XNat])
-                  . ( SubFrameIndexCtx b' bi bd, bs ~ (b' :+ bs'), KnownDim bd
-                    , PrimArray t (DataFrame t (bd :+ bs')))
-                 => Idxs (as +: bi) -> DataFrame t (bd :+ bs')
-                 -> DataFrame t asbs -> DataFrame t asbs
-    updateSliceI i (XFrame (dbs'Df :: DataFrame t dbs'N))
-                   (XFrame (asbsDf :: DataFrame t asbsN))
-            | bs@(XDims ((_ :: Dim b'N) :* (Dims :: Dims bs'N) :: Dims bsN)) <- dims @bs
-            , (_ :: Dim bdN) :* (_ :: Dims bs'N2) <- dims @dbs'N
-            , asbs <- XDims (dims @asbsN) :: Dims asbs
-            , as <- dropSufDims bs asbs :: Dims as
-      = withLiftedConcatList @'Nothing @('Just bsN) @('Just asbsN) as bs asbs $
-           \(Dims :: Dims asn) (Dims :: Dims bsn) (Dims :: Dims asbsn)
-             -> withKnownXDim @bd $ case unsafeEqTypes @_ @b'N @(DimBound b') of
-               Dict
-                | Dict <- unsafeEqTypes @_ @bs'N @bs'N2
-                , Dict <- inferKnownBackend @t @bsN
-                  -- last indexing Dim (bi) is not checked, but we know it's fixed,
-                  --  so that's fine to unsafeCoerce it.
-                , ii <- unsafeCoerce (liftIdxs i :: Idxs asn)
-                 -> XFrame (updateSlice @t @asn @bsn @asbsn
-                                 @(DimBound bi) @bdN @b'N
-                                 @bs'N ii dbs'Df asbsDf)
-    updateSliceI _ _ _ = error "SubSpace[XNat]/updateSliceI -- impossible pattern"
-    {-# INLINE updateSliceI #-}
 
     ewmapI  :: forall s (bs' :: [XNat]) (asbs' :: [XNat])
              . SubSpace s as bs' asbs'

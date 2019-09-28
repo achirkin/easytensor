@@ -7,14 +7,17 @@
 {-# LANGUAGE MagicHash              #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE PolyKinds              #-}
+{-# LANGUAGE TypeOperators          #-}
 {-# LANGUAGE UnboxedTuples          #-}
 module Numeric.DataFrame.Internal.PrimArray
   ( PrimArray (..), CumulDims (..)
-  , cumulDims, cdTotalDim, cdTotalDim#, cdIx
+  , cumulDims, cdTotalDim, cdTotalDim#, cdIx, cdIxSub
+  , getOffAndSteps, getOffAndStepsSub
   , ixOff, unsafeFromFlatList, getSteps, fromSteps
   , withArrayContent, fromElems, broadcast
   ) where
 
+import Control.Arrow  ((***))
 import Data.Monoid    as Mon (Monoid (..))
 import Data.Semigroup as Sem (Semigroup (..))
 import GHC.Base       hiding (foldr)
@@ -59,8 +62,63 @@ cdTotalDim# ~(CumulDims ~(n:_)) = case n of W# w -> word2Int# w
 --   Note, you can take offset of subspace with CumulDims of larger space
 --     - very convenient!
 cdIx :: CumulDims -> Idxs ns -> Int
-cdIx ~(CumulDims ~(_:steps))
-  = fromIntegral . sum . zipWith (*) steps . listIdxs
+cdIx steps
+  = fromIntegral . fst . getOffAndSteps' 0 0 (unCumulDims steps) . listIdxs
+
+-- | Calculate offset of an Idxs.
+--
+--   Also check if the last index plus dimVal of subN is not bigger than the
+--   corresponding dim inside CumulDims;
+--     throw an out-of-bounds error otherwise
+--       (unless @unsafeindices@ flag is enabled).
+cdIxSub :: CumulDims -> Idxs (ns +: idxN) -> Dim subN -> Int
+cdIxSub steps idxs d
+  = fromIntegral
+  . fst . getOffAndSteps' (dimVal d) 0 (unCumulDims steps) $ listIdxs idxs
+
+-- | Calculate offset of an Idxs and return remaining CumulDims.
+getOffAndSteps :: Int -- ^ Initial offset
+               -> CumulDims -> Idxs ns -> (Int, CumulDims)
+getOffAndSteps off0 steps
+  = (fromIntegral *** CumulDims)
+  . getOffAndSteps' 0 (fromIntegral off0) (unCumulDims steps) . listIdxs
+
+-- | Calculate offset of an Idxs and return remaining CumulDims.
+--
+--   Also check if the last index plus dimVal of subN is not bigger than the
+--   corresponding dim inside CumulDims;
+--     throw an out-of-bounds error otherwise
+--       (unless @unsafeindices@ flag is enabled).
+getOffAndStepsSub :: Int -- ^ Initial offset
+                  -> CumulDims -> Idxs (ns +: idxN)
+                  -> Dim subN -> (Int, CumulDims)
+getOffAndStepsSub off0 steps idxs d
+  = (fromIntegral *** CumulDims)
+  . getOffAndSteps' (dimVal d) (fromIntegral off0) (unCumulDims steps)
+  $ listIdxs idxs
+
+
+getOffAndSteps' :: Word -> Word -> [Word] -> [Word] -> (Word, [Word])
+getOffAndSteps' 0 off steps [] = (off, steps)
+getOffAndSteps' sub off ~(steps@(s:_)) [] = (off, sub*s : steps)
+#ifndef UNSAFE_INDICES
+getOffAndSteps' sub _ ~(bs:(s:_)) [i]
+  | b <- quot bs s
+  , sub > 0 && i + sub > b
+  = errorWithoutStackTrace $
+      "{Calculating SubDataFrame offset}: index " ++ show i ++
+      " and subspace dim " ++ show sub ++
+      " together exceed the original space dim " ++ show b ++ "."
+getOffAndSteps' _ _ ~(bs:(s:_)) (i:_)
+  | b <- quot bs s
+  , i >= b
+  = errorWithoutStackTrace $
+      "{Calculating SubDataFrame offset}: index " ++ show i ++
+      " is outside of the dim bounds (0 <= i < " ++ show b ++ ")."
+#endif
+getOffAndSteps' sub off ~(_:steps@(s:_)) (i:ixs)
+  = getOffAndSteps' sub (off + i*s) steps ixs
+
 
 -- | Try to get @CumulDims@ from an array,
 --   and create it using @Dims@ if failed.
