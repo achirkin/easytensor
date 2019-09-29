@@ -66,6 +66,8 @@ module Numeric.Dimensions.Idx
   , listIdxs, idxsFromWords
   , liftIdxs, unliftIdxs, unsafeUnliftIdxs
   , TypedList ( XIdxs, U, (:*), Empty, Cons, Snoc, Reverse)
+    -- * Checking the index bounds
+  , OutOfDimBounds (..), outOfDimBounds, outOfDimBoundsNoCallStack
 #if !defined(__HADDOCK__) && !defined(__HADDOCK_VERSION__)
   , xnatNInstEnumIdx, xnatXInstEnumIdx, incohInstEnumIdx
   , xnatNInstNumIdx, xnatXInstNumIdx, incohInstNumIdx
@@ -82,6 +84,8 @@ import           GHC.Generics     (Generic)
 import qualified Text.Read        as P
 import           Unsafe.Coerce
 
+import GHC.Exception
+import GHC.Stack
 #ifdef UNSAFE_INDICES
 import GHC.Base (Int (..), Type, Word (..), int2Word#, word2Int#)
 #else
@@ -151,9 +155,7 @@ unsafeIdxFromWord w
   | DimTXNatX <- dimType @d
               = coerce w
   | w < d     = coerce w
-  | otherwise = errorWithoutStackTrace
-      $ "idxFromWord{" ++ showIdxType @d ++ "}: word "
-        ++ show w ++ " is outside of index bounds."
+  | otherwise = outOfDimBoundsNoCallStack "unsafeIdxFromWord" w d Nothing Nothing
   where
     d = dimVal (dimBound @d)
 #endif
@@ -236,14 +238,14 @@ unsafeUnliftIdxs :: forall (ds :: [XNat]) (ns :: [Nat])
 #ifdef UNSAFE_INDICES
 unsafeUnliftIdxs = unsafeCoerce
 #else
-unsafeUnliftIdxs is = case unliftIdxs is of
-  Just is' -> is'
-  Nothing  -> errorWithoutStackTrace
-      $ "unsafeUnliftIdxs{Idxs '" ++ show ds
-        ++ "}: at least one of the elements in an index list "
-        ++ show is ++ " is outside of index bounds."
+unsafeUnliftIdxs is' = unsafeCoerce (zipWith f is ds)
   where
+    f i d | i < d     = i
+          | otherwise = err i d
+    is = listIdxs is'
     ds = listDims (dims @ns)
+    err i d = outOfDimBoundsNoCallStack
+      "unsafeUnliftIdxs" i d Nothing (Just (ds, is))
 #endif
 {-# INLINE unsafeUnliftIdxs #-}
 
@@ -280,7 +282,8 @@ instance KnownDim n => Enum (Idx (n :: Nat)) where
 #else
     succ x@(Idx' i)
       | x < maxBound = coerce (i + 1)
-      | otherwise = succError $ showIdxType @n
+      | otherwise = outOfDimBoundsNoCallStack
+         "Enum.succ{Idx}" (i + 1) (dimVal' @n) Nothing Nothing
 #endif
     {-# INLINE succ #-}
 
@@ -289,7 +292,8 @@ instance KnownDim n => Enum (Idx (n :: Nat)) where
 #else
     pred x@(Idx' i)
       | x > minBound = coerce (i - 1)
-      | otherwise = predError $ showIdxType @n
+      | otherwise = outOfDimBoundsNoCallStack
+         "Enum.pred{Idx}" (-1 :: Int) (dimVal' @n) Nothing Nothing
 #endif
     {-# INLINE pred #-}
 
@@ -298,7 +302,8 @@ instance KnownDim n => Enum (Idx (n :: Nat)) where
 #else
     toEnum i
         | i >= 0 && i' < d = coerce i'
-        | otherwise        = toEnumError (showIdxType @n) i (0, d - 1)
+        | otherwise        = outOfDimBoundsNoCallStack
+           "Enum.toEnum{Idx}" i d Nothing Nothing
       where
         d  = dimVal' @n
         i' = fromIntegral i
@@ -310,7 +315,7 @@ instance KnownDim n => Enum (Idx (n :: Nat)) where
 #else
     fromEnum (Idx' x@(W# w#))
         | x <= maxIntWord = I# (word2Int# w#)
-        | otherwise       = fromEnumError (showIdxType @n) x
+        | otherwise       = fromEnumError "Idx" x
         where
           maxIntWord = W# (case maxInt of I# i -> int2Word# i)
 #endif
@@ -335,12 +340,11 @@ instance KnownDim n => Num (Idx (n :: Nat)) where
 #ifdef UNSAFE_INDICES
     (+) = coerce ((+) :: Word -> Word -> Word)
 #else
-    (Idx' a@(W# a#)) + b@(Idx' (W# b#))
+    (Idx' a@(W# a#)) + (Idx' b@(W# b#))
         | ovf || r >= d
-          = errorWithoutStackTrace
-          $ "Num.(+){" ++ showIdxType @n ++ "}: sum of "
-            ++ show a ++ " and " ++ show b
-            ++ " is outside of index bounds."
+          = outOfDimBoundsNoCallStack
+              ("Num.(" ++ show a ++ " + " ++ show b ++ "){Idx}")
+              (toInteger a + toInteger b) d Nothing Nothing
         | otherwise = coerce r
       where
         (ovf, r) = case plusWord2# a# b# of
@@ -354,10 +358,9 @@ instance KnownDim n => Num (Idx (n :: Nat)) where
 #else
     (Idx' a) - (Idx' b)
         | b > a
-          = errorWithoutStackTrace
-          $ "Num.(-){" ++ showIdxType @n ++ "}: difference of "
-            ++ show a ++ " and " ++ show b
-            ++ " is negative."
+          = outOfDimBoundsNoCallStack
+              ("Num.(" ++ show a ++ " - " ++ show b ++ "){Idx}")
+              (toInteger a - toInteger b) (dimVal' @n) Nothing Nothing
         | otherwise = coerce (a - b)
 #endif
     {-# INLINE (-) #-}
@@ -365,12 +368,11 @@ instance KnownDim n => Num (Idx (n :: Nat)) where
 #ifdef UNSAFE_INDICES
     (*) = coerce ((*) :: Word -> Word -> Word)
 #else
-    (Idx' a@(W# a#)) * b@(Idx' (W# b#))
+    (Idx' a@(W# a#)) * (Idx' b@(W# b#))
         | ovf || r >= d
-          = errorWithoutStackTrace
-          $ "Num.(*){" ++ showIdxType @n ++ "}: product of "
-            ++ show a ++ " and " ++ show b
-            ++ " is outside of index bounds."
+          = outOfDimBoundsNoCallStack
+              ("Num.(" ++ show a ++ " * " ++ show b ++ "){Idx}")
+              (toInteger a * toInteger b) d Nothing Nothing
         | otherwise = coerce r
       where
         (ovf, r) = case timesWord2# a# b# of
@@ -379,8 +381,13 @@ instance KnownDim n => Num (Idx (n :: Nat)) where
 #endif
     {-# INLINE (*) #-}
 
-    negate = errorWithoutStackTrace
-           $ "Num.(*){" ++ showIdxType @n ++ "}: cannot negate index."
+#ifdef UNSAFE_INDICES
+    negate = id
+#else
+    negate (Idx' 0) = Idx' 0
+    negate (Idx' i) = outOfDimBoundsNoCallStack
+        "Num.negate{Idx}" (- toInteger i) (dimVal' @n) Nothing Nothing
+#endif
     {-# INLINE negate #-}
     abs = id
     {-# INLINE abs #-}
@@ -391,12 +398,12 @@ instance KnownDim n => Num (Idx (n :: Nat)) where
     fromInteger = coerce (fromInteger :: Integer -> Word)
 #else
     fromInteger i
-      | i >= 0 && i < d = Idx' $ fromInteger i
-      | otherwise       = errorWithoutStackTrace
-                        $ "Num.fromInteger{" ++ showIdxType @n ++ "}: integer "
-                        ++ show i ++ " is outside of index bounds."
+      | i >= 0 && i < toInteger d
+                  = Idx' (fromInteger i)
+      | otherwise = outOfDimBoundsNoCallStack
+          "Num.fromInteger{Idx}" i d Nothing Nothing
       where
-        d = toInteger $ dimVal' @n
+        d =  dimVal' @n
 #endif
     {-# INLINE fromInteger #-}
 
@@ -690,11 +697,121 @@ instance Dimensions ds => Enum (Idxs ds) where
     {-# INLINE enumFromThenTo #-}
 
 
-
--- | Show type of Idx (for displaying nice errors).
-showIdxType :: forall x . BoundedDim x => String
-showIdxType = "Idx " ++ show (dimVal (dimBound @x))
-
 -- | Show type of Idxs (for displaying nice errors).
 showIdxsType :: Dims ns -> String
 showIdxsType ds = "Idxs '" ++ show (listDims ds)
+
+-- | Throw an `OutOfDimBounds` exception without CallStack attached.
+outOfDimBoundsNoCallStack ::
+       Integral i
+    => String  -- ^ Label (e.g. function name)
+    -> i       -- ^ Bad index
+    -> Word    -- ^ Target dim
+    -> Maybe Word -- ^ SubSpace Dim, if applicable.
+    -> Maybe ([Word], [Word]) -- ^ Larger picture: Dims and Idxs
+    -> a
+outOfDimBoundsNoCallStack s i d msubd dimsCtx
+  = throw OutOfDimBounds
+  { oodIdx       = toInteger i
+  , oodDim       = d
+  , oodSubDim    = msubd
+  , oodDimsCtx   = dimsCtx
+  , oodName      = s
+  , oodCallStack = Nothing
+  }
+
+-- | Throw an `OutOfDimBounds` exception.
+outOfDimBounds ::
+       (HasCallStack, Integral i)
+    => String  -- ^ Label (e.g. function name)
+    -> i       -- ^ Bad index
+    -> Word    -- ^ Target dim
+    -> Maybe Word -- ^ SubSpace Dim, if applicable.
+    -> Maybe ([Word], [Word]) -- ^ Larger picture: Dims and Idxs
+    -> a
+outOfDimBounds s i d msubd dimsCtx
+  = throw OutOfDimBounds
+  { oodIdx       = toInteger i
+  , oodDim       = d
+  , oodSubDim    = msubd
+  , oodDimsCtx   = dimsCtx
+  , oodName      = s
+  , oodCallStack = Just callStack
+  }
+
+{- |
+Typically, this exception can occur in the following cases:
+
+  * Converting from integral values to @Idx d@ when @d ~ N n@ or @d :: Nat@.
+  * Using @Enum@ and @Num@ when @d ~ N n@ or @d :: Nat@.
+  * Converting from @Idx (XN m :: XNat)@ to @Idx (n :: Nat)@.
+  * Indexing or slicing data using  @Idx (XN m :: XNat)@.
+
+If you are mad and want to avoid any overhead related to bounds checking and the
+related error handling, you can turn on the @unsafeindices@ flag to remove all of
+this from the library at once.
+ -}
+data OutOfDimBounds
+  = OutOfDimBounds
+  { oodIdx       :: Integer
+    -- ^ A value that should have been a valid `Idx`
+  , oodDim       :: Word
+    -- ^ A runtime value of a `Dim`
+  , oodSubDim    :: Maybe Word
+    -- ^ When used for slicing, this should have satisfied
+    --   @oodIdx + oodSubDim <= oodDim@.
+  , oodDimsCtx   :: Maybe ([Word], [Word])
+    -- ^ If available, contains (Dims xns, Idxs xns).
+  , oodName      :: String
+    -- ^ Short location of the error description, typically a function name.
+  , oodCallStack :: Maybe CallStack
+    -- ^ Function call stack, if available.
+    --   Note, this field is ignored in the `Eq` and `Ord` instances.
+  }
+
+-- | Note, this instance ignores `oodCallStack`
+instance Eq OutOfDimBounds where
+  (==) a b = and
+    [ (==) (oodIdx a) (oodIdx b)
+    , (==) (oodDim a) (oodDim b)
+    , (==) (oodSubDim a) (oodSubDim b)
+    , (==) (oodDimsCtx a) (oodDimsCtx b)
+    , (==) (oodName a) (oodName b)
+    ]
+
+-- | Note, this instance ignores `oodCallStack`
+instance Ord OutOfDimBounds where
+  compare a b = mconcat
+    [ compare (oodIdx a) (oodIdx b)
+    , compare (oodDim a) (oodDim b)
+    , compare (oodSubDim a) (oodSubDim b)
+    , compare (oodDimsCtx a) (oodDimsCtx b)
+    , compare (oodName a) (oodName b)
+    ]
+
+instance Show OutOfDimBounds where
+  showsPrec p e = addLoc errStr
+    where
+      addLoc s
+        = let someE = case oodCallStack e of
+                Nothing -> errorCallException s
+                Just st -> errorCallWithCallStackException s st
+              errc :: ErrorCall
+              errc = case fromException someE of
+                Nothing -> ErrorCall s
+                Just ec -> ec
+          in  showsPrec p errc
+      errStr = oodName e ++ ": " ++ errContent ++ errCtx
+      errContent = case oodSubDim e of
+        Nothing -> "index " ++ show (oodIdx e) ++
+                   " is outside of Dim bounds (0 <= i < " ++ show (oodDim e) ++ ")"
+        Just sd -> "index " ++ show (oodIdx e) ++
+                   " and subspace dim " ++ show sd ++
+                   " together exceed the original space dim " ++ show (oodDim e)
+      errCtx = case oodDimsCtx e of
+        Nothing -> "."
+        Just (ds, is)
+            -> ";\n  dims: " ++ (case someDimsVal ds of SomeDims x -> show x)
+            ++  "\n  idxs: " ++ show (unsafeCoerce is :: Idxs ns)
+
+instance Exception OutOfDimBounds

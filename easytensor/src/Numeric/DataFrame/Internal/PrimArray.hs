@@ -99,26 +99,31 @@ getOffAndStepsSub off0 steps idxs d
 
 
 getOffAndSteps' :: Word -> Word -> [Word] -> [Word] -> (Word, [Word])
-getOffAndSteps' 0 off steps [] = (off, steps)
-getOffAndSteps' sub off ~(steps@(s:_)) [] = (off, sub*s : steps)
+getOffAndSteps' sub0 off0 steps0 is0 = go sub0 off0 steps0 is0
+  where
 #ifndef UNSAFE_INDICES
-getOffAndSteps' sub _ ~(bs:(s:_)) [i]
-  | b <- quot bs s
-  , sub > 0 && i + sub > b
-  = errorWithoutStackTrace $
-      "{Calculating SubDataFrame offset}: index " ++ show i ++
-      " and subspace dim " ++ show sub ++
-      " together exceed the original space dim " ++ show b ++ "."
-getOffAndSteps' _ _ ~(bs:(s:_)) (i:_)
-  | b <- quot bs s
-  , i >= b
-  = errorWithoutStackTrace $
-      "{Calculating SubDataFrame offset}: index " ++ show i ++
-      " is outside of the dim bounds (0 <= i < " ++ show b ++ ")."
+    ds0 = case fromSteps (CumulDims steps0) of SomeDims x -> listDims x
 #endif
-getOffAndSteps' sub off ~(_:steps@(s:_)) (i:ixs)
-  = getOffAndSteps' sub (off + i*s) steps ixs
-
+    go :: Word -> Word -> [Word] -> [Word] -> (Word, [Word])
+    go 0 off steps [] = (off, steps)
+    go sub off ~(steps@(s:_)) [] = (off, sub*s : steps)
+#ifndef UNSAFE_INDICES
+    go sub _ ~(bs:(s:_)) [i]
+      | b <- quot bs s
+      , sub > 0 && i + sub > b
+      = outOfDimBoundsNoCallStack
+          "{Calculating SubDataFrame offset}"
+          i b (Just sub) (Just (ds0, is0))
+    go _ _ ~(bs:(s:_)) (i:_)
+      | b <- quot bs s
+      , i >= b
+      = outOfDimBoundsNoCallStack
+          "{Calculating SubDataFrame offset}"
+          i b Nothing (Just (ds0, is0))
+#endif
+    go sub off ~(_:steps@(s:_)) (i:ixs)
+      = go sub (off + i*s) steps ixs
+{-# INLINE getOffAndSteps' #-}
 
 -- | Try to get @CumulDims@ from an array,
 --   and create it using @Dims@ if failed.
