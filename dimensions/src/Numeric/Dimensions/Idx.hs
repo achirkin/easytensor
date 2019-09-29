@@ -50,10 +50,10 @@
 -- In other words:
 --
 --   * @(d :: Nat) || (d ~ N n) =>@ using @Idx d@ to index data is always safe,
---     but creating an index using unsafe functions can yield a runtime
---     out-of-bounds error.
---   * @(d ~ XN m) =>@ using @Idx d@ to index data can result in a runtime
---     out-of-bounds error, but you can safely manipulate the index itself
+--     but creating an index using unsafe functions can yield an `OutOfDimBounds`
+--     exception at runtime.
+--   * @(d ~ XN m) =>@ using @Idx d@ to index data can result in an `OutOfDimBounds`
+--     exception, but you can safely manipulate the index itself
 --     using familiar interfaces, such as @Enum@, @Num@, etc; as if @Idx d@
 --     was a plain synonym to @Word@.
 --
@@ -112,8 +112,8 @@ import Numeric.TypedList      (typedListReadPrec, typedListShowsPrec)
 That is, using @Idx (n :: Nat)@ or @Idx (N n)@ is guaranteed to be safe by the
 type system.
 But an index of type @Idx (XN m)@ can have any value, and using it may yield
-a runtime error -- just the same as a generic @index@ function that take a plain
-@Int@ or @Word@ as an argument.
+an `OutOfDimBounds` exception -- just the same as a generic @index@ function that
+takes a plain @Int@ or @Word@ as an argument.
 Thus, if you have data indexed by @(XN m)@, I would suggest to use @lookup@-like
 functions that return @Maybe@. You're warned.
 
@@ -128,10 +128,10 @@ Converting from `Idx` to `Word` is always safe.
 
 Converting from `Word` to `Idx` generally is unsafe:
 
-  * @(k ~ Nat)  =>@ if @w >= d@, it fails with an outside of the bounds error.
-  * @(d ~ N n)  =>@ if @w >= n@, it fails with an outside of the bounds error.
+  * @(k ~ Nat)  =>@ if @w >= d@, it fails with an `OutOfDimBounds` exception.
+  * @(d ~ N n)  =>@ if @w >= n@, it fails with an `OutOfDimBounds` exception.
   * @(d ~ XN m) =>@ the constructor always succeeds, but using the result for
-      indexing may fail with an outside of the bounds error later.
+      indexing may fail with an `OutOfDimBounds` exception later.
 
 If @unsafeindices@ flag it turned on, this function always succeeds.
  -}
@@ -142,7 +142,7 @@ pattern Idx w <- Idx' w
 {-# COMPLETE Idx #-}
 
 -- | Type-level dimensional indexing with arbitrary Word values inside.
---   Most of the operations on it require `Dimensions` constraint,
+--   Most of the operations on it require `Dimensions` or `BoundedDims` constraint,
 --   because the @Idxs@ itself does not store info about dimension bounds.
 type Idxs = (TypedList Idx :: [k] -> Type)
 
@@ -205,7 +205,7 @@ idxsFromWords = unsafeCoerce . go (listDims (dimsBound @ds))
 
 -- | Transform between @Nat@-indexed and @XNat@-indexed @Idxs@.
 --
---   Note, this pattern is not @COMPLETE@ match, because converting from @XNat@
+--   Note, this pattern is not a @COMPLETE@ match, because converting from @XNat@
 --   to @Nat@ indexed @Idxs@ may fail (see `unliftIdxs`).
 pattern XIdxs :: forall (ds :: [XNat]) (ns :: [Nat])
                . (FixedDims ds ns, Dimensions ns) => Idxs ns -> Idxs ds
@@ -232,7 +232,7 @@ unliftIdxs (Idx' i :* is)
 {-# INLINE unliftIdxs #-}
 
 -- | Coerce a @XNat@-indexed list of indices into a @Nat@-indexed one.
---   Can throw an out-of-bounds error unless @unsafeindices@ flag is active.
+--   Can throw an `OutOfDimBounds` exception unless @unsafeindices@ flag is active.
 unsafeUnliftIdxs :: forall (ds :: [XNat]) (ns :: [Nat])
                   . (FixedDims ds ns, Dimensions ns) => Idxs ds -> Idxs ns
 #ifdef UNSAFE_INDICES
@@ -701,7 +701,7 @@ instance Dimensions ds => Enum (Idxs ds) where
 showIdxsType :: Dims ns -> String
 showIdxsType ds = "Idxs '" ++ show (listDims ds)
 
--- | Throw an `OutOfDimBounds` exception without CallStack attached.
+-- | Throw an `OutOfDimBounds` exception without the CallStack attached.
 outOfDimBoundsNoCallStack ::
        Integral i
     => String  -- ^ Label (e.g. function name)
