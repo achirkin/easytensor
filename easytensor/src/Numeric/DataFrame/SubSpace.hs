@@ -29,14 +29,14 @@ When you index or slice dataframes, the left part of the dimension list
 sub-dataframes.
 If compiler knows all dimensions at compile time, it can guarantee that the
 operation is safe (provided with valid indices).
-Otherwise, you can get an out-of-bound runtime error.
+Otherwise, you can get an `OutOfDimBounds` exception at runtime.
 
 When all dimensions in the indexing subspace satisfy @d :: Nat@ or @d ~ N n@,
 slicing functions are safe to use, but you need some type-level proof for GHC
 that the indices align.
 
 When any of the dimensions are unknown (@d ~ XN m@), these functions are unsafe
--- they can yield an out-of-bounds error if you give a bad index.
+-- they can yield an `OutOfDimBounds` exception if you give a bad index.
 But they are easy to use (no type-level proof needed).
 
  -}
@@ -87,6 +87,9 @@ import           Unsafe.Coerce
 
 -- | Unsafely get a sub-dataframe by its primitive element offset.
 --   The offset is not checked to be aligned to the space structure or for bounds.
+--
+--   Warning: this function is utterly unsafe -- it does not even throw an exception if
+--            the offset is too big; you just get an undefined behavior.
 sindexOffset ::
        forall t a bs
      . SubSpace t '[a] bs (a :+ bs)
@@ -97,6 +100,9 @@ sindexOffset = indexOffset @t @'[a] @bs @(a :+ bs)
 
 -- | Unsafely update a sub-dataframe by its primitive element offset.
 --   The offset is not checked to be aligned to the space structure or for bounds.
+--
+--   Warning: this function is utterly unsafe -- it does not even throw an exception if
+--            the offset is too big; you just get an undefined behavior.
 supdateOffset ::
        forall t a bs
      . SubSpace t '[a] bs (a :+ bs)
@@ -106,6 +112,10 @@ supdateOffset = updateOffset @t @'[a] @bs @(a :+ bs)
 {-# INLINE supdateOffset #-}
 
 -- | Get an element by its index in the dataframe.
+--
+--   If (@a ~ XN m@) then this function is unsafe and can throw
+--   an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 (.!) ::
        forall t a bs
      . SubSpace t '[a] bs (a :+ bs)
@@ -115,6 +125,10 @@ supdateOffset = updateOffset @t @'[a] @bs @(a :+ bs)
 infixl 4 .!
 
 -- | Set a new value to an element.
+--
+--   If (@a ~ XN m@) then this function is unsafe and can throw
+--   an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 supdate ::
        forall t a bs
      . SubSpace t '[a] bs (a :+ bs)
@@ -265,6 +279,10 @@ sindexWise_ f = indexWise_ @t @'[a] @bs @(a :+ bs) @f @b (\(i :* U) -> f i)
 {-# INLINE sindexWise_ #-}
 
 -- | Apply a functor over a single element (simple lens)
+--
+--   If (@a ~ XN m@) then this function is unsafe and can throw
+--   an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 selement ::
        forall t a bs f
      . (SubSpace t '[a] bs (a :+ bs), Applicative f)
@@ -320,6 +338,9 @@ joinDataFrame = joinDataFrameI @_ @t @as @bs @asbs
 
 -- | Unsafely get a sub-dataframe by its primitive element offset.
 --   The offset is not checked to be aligned to the space structure or for bounds.
+--
+--   Warning: this function is utterly unsafe -- it does not even throw an exception if
+--            the offset is too big; you just get an undefined behavior.
 indexOffset ::
        forall t as bs asbs
      . SubSpace t as bs asbs
@@ -330,6 +351,9 @@ indexOffset = indexOffsetI @_ @t @as @bs @asbs
 
 -- | Unsafely update a sub-dataframe by its primitive element offset.
 --   The offset is not checked to be aligned to the space structure or for bounds.
+--
+--   Warning: this function is utterly unsafe -- it does not even throw an exception if
+--            the offset is too big; you just get an undefined behavior.
 updateOffset ::
        forall t as bs asbs
      . SubSpace t as bs asbs
@@ -339,6 +363,10 @@ updateOffset = updateOffsetI @_ @t @as @bs @asbs
 {-# INLINE[1] updateOffset #-}
 
 -- | Get an element by its index in the dataframe.
+--
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 index ::
        forall t as bs asbs
      . SubSpace t as bs asbs
@@ -347,6 +375,10 @@ index = indexI @_ @t @as @bs @asbs
 {-# INLINE[1] index #-}
 
 -- | Set a new value to an element.
+--
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 update ::
        forall t as bs asbs
      . SubSpace t as bs asbs
@@ -505,6 +537,10 @@ indexWise_ f = iwfoldr (\i -> (*>) . f i) (pure ())
 {-# INLINE indexWise_ #-}
 
 -- | Apply a functor over a single element (simple lens)
+--
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 element ::
        forall t as bs asbs f
      . (SubSpace t as bs asbs, Applicative f)
@@ -578,7 +614,11 @@ type family CanSlice (t :: Type) (asbs :: [k])  :: Constraint where
 
 -- | Get a few contiguous elements.
 --
---   In a sense, this is just a more complicated version of `index`.
+--   In a sense, this is just a more complicated version of `sindex`.
+--
+--   If (@b ~ XN m@) then this function is unsafe and can throw
+--   an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 sslice ::
        forall t b bi bd bs
      . ( KnownDimKind (KindOfEl bs)
@@ -591,7 +631,11 @@ sslice = slice @t @b @bi @bd @'[] @bs @(b :+ bs) . (:* U)
 
 -- | Update a few contiguous elements.
 --
---   In a sense, this is just a more complicated version of `update`.
+--   In a sense, this is just a more complicated version of `supdate`.
+--
+--   If (@b ~ XN m@) then this function is unsafe and can throw
+--   an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 supdateSlice ::
        forall t b bi bd bs
      . ( KnownDimKind (KindOfEl bs)
@@ -607,6 +651,10 @@ supdateSlice = updateSlice @t @b @bi @bd @'[] @bs @(b :+ bs) . (:* U)
 -- | Get a few contiguous elements.
 --
 --   In a sense, this is just a more complicated version of `index`.
+--
+--   If any of the dims in @as@ or @b@ is unknown (@a ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 slice ::
        forall (t :: Type) b bi bd as bs asbs
      . ( KnownDimKind (KindOfEl asbs)
@@ -633,6 +681,10 @@ slice i = case dimKind @(KindOfEl asbs) of
 -- | Update a few contiguous elements.
 --
 --   In a sense, this is just a more complicated version of `update`.
+--
+--   If any of the dims in @as@ or @b@ is unknown (@a ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 updateSlice ::
        forall (t :: Type) b bi bd as bs asbs
      . ( KnownDimKind (KindOfEl asbs)
