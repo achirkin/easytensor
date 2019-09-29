@@ -193,8 +193,8 @@ class IndexFrame t d ds where
     -- | Index one dimension deep into a @DataFrame@.
     --
     --   Note, this function does not provide indexing safety at the type level;
-    --   it throws an error if an index is out of bounds
-    --     (unless @unsafeindices@ package flag is enabled).
+    --   it throws an `OutOfDimBounds` exception if an index is out of bounds
+    --   (unless @unsafeindices@ package flag is enabled, which is even more dangerous).
     (!) :: DataFrame t (d ': ds) -> Word -> DataFrame t ds
 
 instance (PrimArray t (DataFrame t '[d]), KnownDim d)
@@ -272,7 +272,7 @@ with types:
     minus the subframe size.
 
 If the original space dimension (@d@) is not fixed (@d ~ XN m@), then we give up.
-Just let the user do the slicing as easy as possible, and throw an out-of-bounds
+Just let the user do the slicing as easy as possible, and throw an `OutOfDimBounds`
 exception at runtime if the index plus the sliced size is greater than the
 original size of the DataFrame.
  -}
