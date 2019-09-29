@@ -224,10 +224,10 @@ unsafeBareSnocList :: forall (k :: Type) (as :: [k]) (z :: k) (bs :: [k])
 unsafeBareSnocList = runMagic m
   where
     m :: SnocListCtx as z bs =-> BareConstraint (SnocList as z bs)
-    m | Dict <- unsafeEqTypes @_ @bs @(Snoc as z)
-      , Dict <- unsafeEqTypes @_ @as @(Init bs)
-      , Dict <- unsafeEqTypes @_ @z @(Last bs)
-      , Dict <- unsafeEqTypes @_ @bs @(Concat as '[z])
+    m | Dict <- unsafeEqTypes @bs @(Snoc as z)
+      , Dict <- unsafeEqTypes @as @(Init bs)
+      , Dict <- unsafeEqTypes @z @(Last bs)
+      , Dict <- unsafeEqTypes @bs @(Concat as '[z])
       , Dict <- inferConcat @as @'[z] @bs
       = Magic (dictToBare $ defineSnocList @k @as @z @bs)
 
@@ -240,8 +240,8 @@ unsafeBareReverseList = runMagic . runMagic m
     m :: ReverseList bs as
       =-> ReverseListCtx as bs
       =-> BareConstraint (ReverseList as bs)
-    m | Dict <- unsafeEqTypes @_ @as @(Reverse bs)
-      , Dict <- unsafeEqTypes @_ @bs @(Reverse as)
+    m | Dict <- unsafeEqTypes @as @(Reverse bs)
+      , Dict <- unsafeEqTypes @bs @(Reverse as)
       = Magic (Magic (dictToBare $ defineReverseList @k @as @bs))
 
 unsafeBareConcatList ::
@@ -254,9 +254,9 @@ unsafeBareConcatList = runMagic . runMagic m
     m :: ConcatListCtx1 as bs asbs
       =-> ConcatListCtx2 as bs asbs (bs == asbs)
       =-> BareConstraint (ConcatList as bs asbs)
-    m | Dict <- unsafeEqTypes @_ @as @(StripSuffix bs asbs)
-      , Dict <- unsafeEqTypes @_ @bs @(StripPrefix as asbs)
-      , Dict <- unsafeEqTypes @_ @asbs @(Concat as bs)
+    m | Dict <- unsafeEqTypes @as @(StripSuffix bs asbs)
+      , Dict <- unsafeEqTypes @bs @(StripPrefix as asbs)
+      , Dict <- unsafeEqTypes @asbs @(Concat as bs)
       = Magic (Magic (dictToBare $ defineConcatList @k @as @bs @asbs))
 
 
@@ -285,7 +285,7 @@ unsafeBareReverseListCtx
          , ReverseList (Tail as) (Init bs)
          )
       => Dict (ReverseListCtx as bs)
-    f | Dict <- unsafeEqTypes @_ @(Head as) @(Last bs)
+    f | Dict <- unsafeEqTypes @(Head as) @(Last bs)
       = unsafeCoerce (
             Dict @( bs ~ bs
                   , ReverseList (Tail as) (Init bs)
@@ -375,9 +375,9 @@ consInstSnocList :: forall (k :: Type) (as :: [k]) (z :: k) (bs :: [k]) (a :: k)
                   . SnocList as z (b ': bs)
                  => Dict (SnocList (a ': as) z (a ': b ': bs))
 consInstSnocList
-  | Dict <- unsafeEqTypes @_ @(a ': b ': bs) @(Snoc (a ': as) z)
-  , Dict <- unsafeEqTypes @_ @(a ': as) @(Init (a ': b ': bs))
-  , Dict <- unsafeEqTypes @_ @z @(Last (a ': b ': bs))
+  | Dict <- unsafeEqTypes @(a ': b ': bs) @(Snoc (a ': as) z)
+  , Dict <- unsafeEqTypes @(a ': as) @(Init (a ': b ': bs))
+  , Dict <- unsafeEqTypes @z @(Last (a ': b ': bs))
   , Dict <- consInstConcatList @_ @as @'[z] @(b ': bs) @a
     = defineSnocList @k @(a ': as) @z @(a ': b ': bs)
 
@@ -408,8 +408,8 @@ consInstReverseList = bareToDict d
     m = Magic f
     f :: ReverseList (b ': bs) (a ': as)
       => BareConstraint (ReverseList (a ': as) (b ': bs))
-    f | Dict <- unsafeEqTypes @_ @(a ': as) @(Reverse (b ': bs))
-      , Dict <- unsafeEqTypes @_ @(b ': bs) @(Reverse (a ': as))
+    f | Dict <- unsafeEqTypes @(a ': as) @(Reverse (b ': bs))
+      , Dict <- unsafeEqTypes @(b ': bs) @(Reverse (a ': as))
       = dictToBare $ defineReverseList
 
     {- Since both classes, ReverseList and SnocList actually bear no runtime references
@@ -442,7 +442,7 @@ incohInstConcatList = bareToDict $ unsafeIncohBareConcatList @k @as @'[] @as
 nilInstConcatList :: forall (k :: Type) (bs :: [k])
                     . Dict (ConcatList '[] bs bs)
 nilInstConcatList
-  | Dict <- unsafeEqTypes @_ @(bs == bs) @'True
+  | Dict <- unsafeEqTypes @(bs == bs) @'True
     = defineConcatList @k @'[] @bs @bs
 
 -- instance ConcatList  as bs asbs => ConcatList (a ': as) bs (a ': asbs)
@@ -451,10 +451,10 @@ consInstConcatList :: forall (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k]) (
                     . ConcatList as bs asbs
                    => Dict (ConcatList (a ': as) bs (a ': asbs))
 consInstConcatList
-  | Dict <- unsafeEqTypes @_ @(bs == (a ': asbs)) @'False
-  , Dict <- unsafeEqTypes @_ @(a ': as)   @(StripSuffix bs (a ': asbs))
-  , Dict <- unsafeEqTypes @_ @bs          @(StripPrefix (a ': as) (a ': asbs))
-  , Dict <- unsafeEqTypes @_ @(a ': asbs) @(Concat (a ': as) bs)
+  | Dict <- unsafeEqTypes @(bs == (a ': asbs)) @'False
+  , Dict <- unsafeEqTypes @(a ': as)   @(StripSuffix bs (a ': asbs))
+  , Dict <- unsafeEqTypes @bs          @(StripPrefix (a ': as) (a ': asbs))
+  , Dict <- unsafeEqTypes @(a ': asbs) @(Concat (a ': as) bs)
     = let x :: ConcatList (Init (a : as)) (Last (a : as) : bs) (a : asbs)
             => Dict (ConcatList (a ': as) bs (a ': asbs))
           x = defineConcatList @k @(a ': as) @bs @(a ': asbs)

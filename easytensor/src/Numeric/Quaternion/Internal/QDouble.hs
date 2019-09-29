@@ -22,7 +22,6 @@ import           Numeric.DataFrame.Internal.PrimArray
 import qualified Numeric.DataFrame.ST                 as ST
 import           Numeric.DataFrame.Type
 import           Numeric.Quaternion.Internal
-import           Numeric.Scalar.Internal
 import           Numeric.Vector.Internal
 
 type QDouble = Quater Double

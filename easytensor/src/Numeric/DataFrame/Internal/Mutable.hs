@@ -46,6 +46,7 @@ import Numeric.DataFrame.Internal.PrimArray
 import Numeric.DataFrame.Type
 import Numeric.Dimensions
 import Numeric.PrimBytes
+import Unsafe.Coerce
 
 -- | Mutable DataFrame type.
 --   Keeps element offset, number of elements, and a mutable byte storage
@@ -179,7 +180,7 @@ copyMDataFrame# ei (MDataFrame# offA (CumulDims ~(bn:n:_)) arrA)
                    (MDataFrame# offM stepsM arrM)
     | elS <- byteSize @t undefined
     , I# lenA <- fromIntegral bn
-    , I# i <- cdIxSub stepsM ei (unsafeCoerce# (quot bn n))
+    , I# i <- cdIxSub stepsM ei (unsafeCoerce (quot bn n))
     = \s -> (# copyMutableByteArray# arrA (offA *# elS)
                                      arrM ((offM +# i) *# elS) (lenA *# elS) s
              , () #)

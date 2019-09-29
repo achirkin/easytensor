@@ -17,6 +17,7 @@
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE ViewPatterns               #-}
 #if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
 {-# LANGUAGE StandaloneDeriving         #-}
 #else
@@ -63,6 +64,8 @@ module Numeric.Dimensions.Idx
     Idx (Idx), Idxs
   , idxFromWord, idxToWord
   , listIdxs, idxsFromWords
+  , liftIdxs, unliftIdxs, unsafeUnliftIdxs
+  , TypedList ( XIdxs, U, (:*), Empty, Cons, Snoc, Reverse)
 #if !defined(__HADDOCK__) && !defined(__HADDOCK_VERSION__)
   , xnatNInstEnumIdx, xnatXInstEnumIdx, incohInstEnumIdx
   , xnatNInstNumIdx, xnatXInstNumIdx, incohInstNumIdx
@@ -77,12 +80,13 @@ import           Foreign.Storable (Storable)
 import           GHC.Enum
 import           GHC.Generics     (Generic)
 import qualified Text.Read        as P
+import           Unsafe.Coerce
 
 #ifdef UNSAFE_INDICES
-import GHC.Base (Int (..), Type, Word (..), int2Word#, unsafeCoerce#, word2Int#)
+import GHC.Base (Int (..), Type, Word (..), int2Word#, word2Int#)
 #else
 import GHC.Base (Int (..), Type, Word (..), int2Word#, maxInt, plusWord2#,
-                 timesWord2#, unsafeCoerce#, word2Int#)
+                 timesWord2#, word2Int#)
 #endif
 
 #if !defined(__HADDOCK__) && !defined(__HADDOCK_VERSION__)
@@ -179,7 +183,7 @@ idxToWord = coerce
 
 -- | /O(1)/ Convert @Idxs xs@ to a plain list of words.
 listIdxs :: forall ds . Idxs ds -> [Word]
-listIdxs = unsafeCoerce#
+listIdxs = unsafeCoerce
 {-# INLINE listIdxs #-}
 
 -- | /O(n)/ Convert a plain list of words into an @Idxs@, while checking
@@ -188,7 +192,7 @@ listIdxs = unsafeCoerce#
 --   Same as with `idxFromWord`, it is always safe to use the resulting index,
 --     but you cannot index stuff outside of the @DimsBound ds@ this way.
 idxsFromWords :: forall ds . BoundedDims ds => [Word] -> Maybe (Idxs ds)
-idxsFromWords = unsafeCoerce# . go (listDims (dimsBound @ds))
+idxsFromWords = unsafeCoerce . go (listDims (dimsBound @ds))
   where
     go :: [Word] -> [Word] -> Maybe [Word]
     go [] [] = Just []
@@ -196,6 +200,52 @@ idxsFromWords = unsafeCoerce# . go (listDims (dimsBound @ds))
       | i < d = (i:) <$> go ds is
     go _ _   = Nothing
 
+
+-- | Transform between @Nat@-indexed and @XNat@-indexed @Idxs@.
+--
+--   Note, this pattern is not @COMPLETE@ match, because converting from @XNat@
+--   to @Nat@ indexed @Idxs@ may fail (see `unliftIdxs`).
+pattern XIdxs :: forall (ds :: [XNat]) (ns :: [Nat])
+               . (FixedDims ds ns, Dimensions ns) => Idxs ns -> Idxs ds
+pattern XIdxs ns <- (unliftIdxs -> Just ns)
+  where
+    XIdxs = liftIdxs
+
+-- | @O(1)@ Coerce a @Nat@-indexed list of indices into a @XNat@-indexed one.
+--   This function does not need any runtime checks and thus runs in constant time.
+liftIdxs :: forall (ds :: [XNat]) (ns :: [Nat])
+         . FixedDims ds ns => Idxs ns -> Idxs ds
+liftIdxs = unsafeCoerce
+{-# INLINE liftIdxs #-}
+
+-- | @O(n)@ Coerce a @XNat@-indexed list of indices into a @Nat@-indexed one.
+--   This function checks if an index is within Dim bounds for every dimension.
+unliftIdxs :: forall (ds :: [XNat]) (ns :: [Nat])
+            . (FixedDims ds ns, Dimensions ns) => Idxs ds -> Maybe (Idxs ns)
+unliftIdxs U = Just U
+unliftIdxs (Idx' i :* is)
+  | d :* Dims <- dims @ns
+  , i < dimVal d = (Idx' i :*) <$> unliftIdxs is
+  | otherwise    = Nothing
+{-# INLINE unliftIdxs #-}
+
+-- | Coerce a @XNat@-indexed list of indices into a @Nat@-indexed one.
+--   Can throw an out-of-bounds error unless @unsafeindices@ flag is active.
+unsafeUnliftIdxs :: forall (ds :: [XNat]) (ns :: [Nat])
+                  . (FixedDims ds ns, Dimensions ns) => Idxs ds -> Idxs ns
+#ifdef UNSAFE_INDICES
+unsafeUnliftIdxs = unsafeCoerce
+#else
+unsafeUnliftIdxs is = case unliftIdxs is of
+  Just is' -> is'
+  Nothing  -> errorWithoutStackTrace
+      $ "unsafeUnliftIdxs{Idxs '" ++ show ds
+        ++ "}: at least one of the elements in an index list "
+        ++ show is ++ " is outside of index bounds."
+  where
+    ds = listDims (dims @ns)
+#endif
+{-# INLINE unsafeUnliftIdxs #-}
 
 
 instance BoundedDim d => Read (Idx d) where
@@ -377,13 +427,13 @@ deriving instance BoundedDim d => Num (Idx d)
 xnatNInstEnumIdx ::
        forall (n :: Nat)
      . KnownDim n => Dict (Enum (Idx (N n)))
-xnatNInstEnumIdx = unsafeCoerce# (Dict @(Enum (Idx n)))
+xnatNInstEnumIdx = unsafeCoerce (Dict @(Enum (Idx n)))
 
 {-# ANN xnatXInstEnumIdx (ToInstance NoOverlap) #-}
 xnatXInstEnumIdx ::
        forall (m :: Nat)
      . Dict (Enum (Idx (XN m)))
-xnatXInstEnumIdx = unsafeCoerce# (Dict @(Enum Word))
+xnatXInstEnumIdx = unsafeCoerce (Dict @(Enum Word))
 
 {-# ANN incohInstEnumIdx (ToInstance Incoherent) #-}
 incohInstEnumIdx ::
@@ -398,13 +448,13 @@ incohInstEnumIdx = case dimType @d of
 xnatNInstNumIdx ::
        forall (n :: Nat)
      . KnownDim n => Dict (Num (Idx (N n)))
-xnatNInstNumIdx = unsafeCoerce# (Dict @(Num (Idx n)))
+xnatNInstNumIdx = unsafeCoerce (Dict @(Num (Idx n)))
 
 {-# ANN xnatXInstNumIdx (ToInstance NoOverlap) #-}
 xnatXInstNumIdx ::
        forall (m :: Nat)
      . Dict (Num (Idx (XN m)))
-xnatXInstNumIdx = unsafeCoerce# (Dict @(Num Word))
+xnatXInstNumIdx = unsafeCoerce (Dict @(Num Word))
 
 {-# ANN incohInstNumIdx (ToInstance Incoherent) #-}
 incohInstNumIdx ::
@@ -462,7 +512,7 @@ instIntegralIdx
 #endif
 
 instance Eq (Idxs (xs :: [k])) where
-    (==) = unsafeCoerce# ((==) :: [Word] -> [Word] -> Bool)
+    (==) = unsafeCoerce ((==) :: [Word] -> [Word] -> Bool)
     {-# INLINE (==) #-}
 
 -- | Compare indices by their importance in lexicorgaphic order
@@ -479,7 +529,7 @@ instance Eq (Idxs (xs :: [k])) where
 --   > sort == sortOn fromEnum
 --
 instance Ord (Idxs (xs :: [k])) where
-    compare = unsafeCoerce# (compare :: [Word] -> [Word] -> Ordering)
+    compare = unsafeCoerce (compare :: [Word] -> [Word] -> Ordering)
     {-# INLINE compare #-}
 
 instance Show (Idxs (xs :: [k])) where
@@ -559,7 +609,7 @@ instance Dimensions ds => Enum (Idxs ds) where
         f (d, i) (td, off) = (d * td, off + td * i)
     {-# INLINE fromEnum #-}
 
-    enumFrom = unsafeCoerce# go True (dims @ds)
+    enumFrom = unsafeCoerce go True (dims @ds)
       where
         go :: Bool -> [Word] -> [Word] -> [[Word]]
         go b (d:ds) (i:is) =
@@ -569,7 +619,7 @@ instance Dimensions ds => Enum (Idxs ds) where
         go _ _ _  = [[]]
     {-# INLINE enumFrom #-}
 
-    enumFromTo = unsafeCoerce# go True True (dims @ds)
+    enumFromTo = unsafeCoerce go True True (dims @ds)
       where
         go :: Bool -> Bool -> [Word] -> [Word] -> [Word] -> [[Word]]
         go bl bu (d:ds) (x:xs) (y:ys) =
@@ -609,7 +659,7 @@ instance Dimensions ds => Enum (Idxs ds) where
                         (0, is') -> repeatStep is'
                         _        -> []
                       else []
-              in unsafeCoerce# (repeatStep allX0s)
+              in unsafeCoerce (repeatStep allX0s)
         LT -> let (_, allDXs) = idxMinus allDs allX1s allX0s
                   repeatStep is
                     = if is >= allYs
@@ -617,7 +667,7 @@ instance Dimensions ds => Enum (Idxs ds) where
                         (0, is') -> repeatStep is'
                         _        -> []
                       else []
-              in unsafeCoerce# (repeatStep allX0s)
+              in unsafeCoerce (repeatStep allX0s)
       where
         allDs  = listDims $ dims @ds
         allX0s = listIdxs x0

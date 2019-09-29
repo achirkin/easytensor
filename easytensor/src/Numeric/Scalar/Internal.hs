@@ -11,11 +11,8 @@ module Numeric.Scalar.Internal
     , pattern S
     ) where
 
-
-import Data.Type.Lits                       (Nat)
-import GHC.Base                             (unsafeCoerce#)
-import Numeric.DataFrame.Internal.PrimArray (PrimArray, broadcast)
-import Numeric.DataFrame.Type               (DataFrame, pattern S)
+import Numeric.DataFrame.Internal.PrimArray (broadcast)
+import Numeric.DataFrame.Type
 
 -- | Alias for zero-dimensional DataFrame
 type Scalar t = DataFrame t ('[] :: [Nat])
@@ -23,18 +20,6 @@ type Scf   = Scalar Float
 type Scd   = Scalar Double
 type Sci   = Scalar Int
 type Scw   = Scalar Word
-
--- | Convert scalar back to ordinary type
-unScalar :: Scalar t -> t
--- rely on that Scalar is just two times newtype alias to t
-unScalar = unsafeCoerce#
-{-# INLINE unScalar #-}
-
--- | Convert any type to scalar wrapper
-scalar :: t -> Scalar t
--- rely on that Scalar is just two times newtype alias to t
-scalar = unsafeCoerce#
-{-# INLINE scalar #-}
 
 -- | Broadcast scalar value onto a whole data frame
 fromScalar :: PrimArray t (DataFrame t ds)

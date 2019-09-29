@@ -9,7 +9,7 @@
 module Numeric.DataFrame.Internal.Backend.Family.ScalarBase (ScalarBase (..)) where
 
 
-import           GHC.Base
+import           Data.Coerce
 import           Numeric.Basics
 import           Numeric.DataFrame.Internal.PrimArray
 import           Numeric.PrimBytes
@@ -29,11 +29,11 @@ deriving instance Ord t => Ord (NonTransitive.ProductOrd (ScalarBase t))
 deriving instance Ord t => Ord (Partial.ProductOrd (ScalarBase t))
 
 instance PrimBytes t => PrimArray t (ScalarBase t) where
-  broadcast# = unsafeCoerce#
+  broadcast# = coerce
   {-# INLINE broadcast# #-}
-  ix# _ = unsafeCoerce#
+  ix# _ = coerce
   {-# INLINE ix# #-}
-  gen# _ = unsafeCoerce#
+  gen# _ = coerce
   {-# INLINE gen# #-}
   upd# _ 0# = const . ScalarBase
   upd# _ _  = const id

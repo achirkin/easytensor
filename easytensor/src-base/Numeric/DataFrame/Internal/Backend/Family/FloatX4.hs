@@ -19,6 +19,7 @@ import           Numeric.PrimBytes
 import           Numeric.ProductOrd
 import qualified Numeric.ProductOrd.NonTransitive     as NonTransitive
 import qualified Numeric.ProductOrd.Partial           as Partial
+import           Unsafe.Coerce                        (unsafeCoerce)
 
 
 data FloatX4 = FloatX4# Float# Float# Float# Float#
@@ -483,13 +484,13 @@ instance PrimArray Float FloatX4 where
 --------------------------------------------------------------------------------
 
 getIdxOffset :: Idxs '[4] -> Int#
-getIdxOffset is = case unsafeCoerce# is of
+getIdxOffset is = case unsafeCoerce is of
   ~[w] -> case w of W# i -> word2Int# i
 {-# INLINE getIdxOffset #-}
 
 
 {-# RULES
 "index/FloatX4" forall i . index @Float @'[4] @'[] @'[4] i
-  = unsafeCoerce# (ix# @Float @FloatX4 (getIdxOffset i))
+  = unsafeCoerce (ix# @Float @FloatX4 (getIdxOffset i))
 
   #-}
