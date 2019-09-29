@@ -88,7 +88,7 @@ module Numeric.Dimensions.Dim
     -- * @Dims@: a list of dimensions
   , Dims, SomeDims (..), Dimensions (..), withKnownXDims
   , BoundedDims (..), DimsBound, minimalDims
-  , ExactDims, FixedDims
+  , ExactDims, FixedDims, inferFixedDims, inferExactFixedDims
   , TypedList ( Dims, XDims, KnownDims
               , U, (:*), Empty, TypeList, Cons, Snoc, Reverse)
   , typeableDims, inferTypeableDims
@@ -119,14 +119,14 @@ import qualified Data.List                (stripPrefix)
 import           Data.Type.List
 import           Data.Type.List.Internal
 import           Data.Type.Lits
-import           GHC.Exts                 (Proxy#, RuntimeRep, TYPE, proxy#,
-                                           unsafeCoerce#)
+import           GHC.Exts                 (Proxy#, RuntimeRep, TYPE, proxy#)
 import qualified GHC.Generics             as G
 import           Numeric.Natural          (Natural)
 import           Numeric.TypedList
 import qualified Text.Read                as Read
 import qualified Text.Read.Lex            as Read
 import           Type.Reflection
+import           Unsafe.Coerce            (unsafeCoerce)
 
 -- | Either known or unknown at compile-time natural number
 data XNat = XN Nat | N Nat
@@ -435,7 +435,7 @@ withKnownXDim :: forall (d :: XNat) (rep :: RuntimeRep) (r :: TYPE rep)
                  , KnownDimType d, FixedDim d (DimBound d)) => r)
               -> r
 withKnownXDim
-  | Dict <- unsafeEqTypes @_ @d @(N (DimBound d))
+  | Dict <- unsafeEqTypes @d @(N (DimBound d))
     = reifyDim @Nat @(DimBound d) (coerce (dim @d))
 {-# INLINE withKnownXDim #-}
 
@@ -468,7 +468,7 @@ relax = coerce
 sameDim :: forall (x :: Nat) (y :: Nat)
          . Dim x -> Dim y -> Maybe (Dict (x ~ y))
 sameDim (DimSing a) (DimSing b)
-  | a == b    = Just (unsafeCoerceDict @(x ~ x) Dict)
+  | a == b    = Just (unsafeEqTypes @x @y)
   | otherwise = Nothing
 {-# INLINE sameDim #-}
 
@@ -502,9 +502,9 @@ compareDim :: forall (a :: Nat) (b :: Nat)
             . Dim a -> Dim b -> SOrdering (CmpNat a b)
 compareDim a b
   = case coerce (compare :: Word -> Word -> Ordering) a b of
-    LT -> unsafeCoerce# SLT
-    EQ -> unsafeCoerce# SEQ
-    GT -> unsafeCoerce# SGT
+    LT -> unsafeCoerce SLT
+    EQ -> unsafeCoerce SEQ
+    GT -> unsafeCoerce SGT
 {-# INLINE compareDim #-}
 
 -- | Ordering of dimension values.
@@ -747,7 +747,7 @@ pattern Dims <- (patDims (dimKind @(KindOfEl ds)) -> PatNats)
 pattern XDims :: PLEASE_STYLISH_HASKELL
 pattern XDims ns <- (patDims (dimKind @(KindOfEl ds)) -> PatXNats ns)
   where
-    XDims ns = unsafeCoerce# ns
+    XDims = unsafeCastTL
 #undef PLEASE_STYLISH_HASKELL
 
 {-# COMPLETE Dims #-}
@@ -813,20 +813,13 @@ withKnownXDims :: forall (ds :: [XNat]) (rep :: RuntimeRep) (r :: TYPE rep)
                    , All KnownDimType ds, FixedDims ds (DimsBound ds)) => r)
                -> r
 withKnownXDims f
-  | Dict <- unsafeEqTypes @_ @ds @(Map 'N (DimsBound ds))
+  | Dict <- unsafeEqTypes @ds @(Map 'N (DimsBound ds))
     = reifyDims @Nat @(DimsBound ds) dsN
         (withBareConstraint (dictToBare (inferExactFixedDims @ds dsN)) (\_ -> f) ())
   where
     dsN :: Dims (DimsBound ds)
-    dsN = unsafeCoerce# (dims @ds)
+    dsN = unsafeCastTL (dims @ds)
 {-# INLINE withKnownXDims #-}
-
-inferExactFixedDims :: forall (ds :: [XNat]) . ExactDims ds
-                    => Dims (DimsBound ds)
-                    -> Dict (All KnownDimType ds, FixedDims ds (DimsBound ds))
-inferExactFixedDims U = Dict
-inferExactFixedDims (_ :* ns)
-  | Dict <- inferExactFixedDims @(Tail ds) ns = Dict
 
 -- | Minimal or exact bound of @Dims@.
 --   This is a plural form of `DimBound`.
@@ -879,7 +872,7 @@ class ( KnownDimKind (KindOfEl ds), All BoundedDim ds, RepresentableList ds
 --   the type signature of @Dims ds@
 --   (this is the exact @dims@ for @Nat@s and the minimal bound for @XNat@s).
 minimalDims :: forall ds . BoundedDims ds => Dims ds
-minimalDims = unsafeCoerce# (dimsBound @ds)
+minimalDims = unsafeCastTL (dimsBound @ds)
 
 
 {-# ANN defineBoundedDims ClassDict #-}
@@ -918,11 +911,11 @@ incohInstBoundedDims' ds Dict = case dimsBound' of
     _ -> error "incohInstBoundedDims': impossible pattern"
   where
     dimsBound' :: Dims (DimsBound ds)
-    dimsBound' = unsafeCoerce# ds
+    dimsBound' = unsafeCastTL ds
     constrainDims' :: forall (l :: Type) (ys :: [l]) . Dims ys -> Maybe (Dims ds)
     constrainDims' ys
       | listDims ys == listDims dimsBound'
-                  = Just (unsafeCoerce# ys)
+                  = Just (unsafeCastTL ys)
       | otherwise = Nothing
 
 #if defined(__HADDOCK__) || defined(__HADDOCK_VERSION__)
@@ -948,14 +941,12 @@ instance (BoundedDim n, BoundedDims ns) => BoundedDims ((n ': ns) :: [XNat]) whe
 typeableDims :: forall (ds :: [Nat]) . Typeable ds => Dims ds
 typeableDims = case typeRep @ds of
     App (App _ (tx :: TypeRep (n :: k1))) (txs :: TypeRep (ns :: k2))
-      -> case unsafeCoerceDict @(Nat ~ Nat, [Nat] ~ [Nat])
-                               @(Nat ~ k1 , [Nat] ~ k2) Dict of
-          Dict -> case unsafeCoerceDict @(ds ~ ds)
-                                        @(ds ~ (n ': ns)) Dict of
-            Dict -> withTypeable tx (typeableDim @n)
-                 :* withTypeable txs (typeableDims @ns)
+      | Dict <- unsafeEqTypes @k1 @Nat
+      , Dict <- unsafeEqTypes @k2 @[Nat]
+      , Dict <- unsafeEqTypes @ds @(n ': ns)
+      -> withTypeable tx (typeableDim @n) :* withTypeable txs (typeableDims @ns)
     Con _
-      -> unsafeCoerce# U
+      -> unsafeCoerce U
     r -> error ("typeableDims -- impossible typeRep: " ++ show r)
 {-# INLINE typeableDims #-}
 
@@ -973,13 +964,13 @@ inferTypeableDims ((D :: Dim d) :* ds)
 --   Note, for @XNat@-indexed list it returns actual content dimensions,
 --   not the constraint numbers (@XN m@)
 listDims :: forall xs . Dims xs -> [Word]
-listDims = unsafeCoerce#
+listDims = unsafeCoerce
 {-# INLINE listDims #-}
 
 -- | Convert a plain haskell list of dimension sizes into an unknown
 --   type-level dimensionality  @O(1)@.
 someDimsVal :: [Word] -> SomeDims
-someDimsVal = SomeDims . unsafeCoerce#
+someDimsVal = SomeDims . unsafeCoerce
 {-# INLINE someDimsVal #-}
 
 -- | Product of all dimension sizes @O(Length xs)@.
@@ -998,7 +989,7 @@ totalDim' = totalDim (dims @xs)
 stripPrefixDims :: forall (xs :: [Nat]) (ys :: [Nat])
                  . Dims xs -> Dims ys
                 -> Maybe (Dims (StripPrefix xs ys))
-stripPrefixDims = unsafeCoerce# (Data.List.stripPrefix :: [Word] -> [Word] -> Maybe [Word])
+stripPrefixDims = unsafeCoerce (Data.List.stripPrefix :: [Word] -> [Word] -> Maybe [Word])
 {-# INLINE stripPrefixDims #-}
 
 -- | Drop the given suffix from a Dims list.
@@ -1007,7 +998,7 @@ stripPrefixDims = unsafeCoerce# (Data.List.stripPrefix :: [Word] -> [Word] -> Ma
 stripSuffixDims :: forall (xs :: [Nat]) (ys :: [Nat])
                  . Dims xs -> Dims ys
                 -> Maybe (Dims (StripSuffix xs ys))
-stripSuffixDims = unsafeCoerce# stripSuf
+stripSuffixDims = unsafeCoerce stripSuf
   where
     stripSuf :: [Word] -> [Word] -> Maybe [Word]
     stripSuf suf whole = go pref whole
@@ -1027,7 +1018,7 @@ sameDims :: forall (as :: [Nat]) (bs :: [Nat])
           . Dims as -> Dims bs -> Maybe (Dict (as ~ bs))
 sameDims as bs
   | listDims as == listDims bs
-    = Just (unsafeCoerceDict @(as ~ as) Dict)
+    = Just (unsafeEqTypes @as @bs)
   | otherwise = Nothing
 {-# INLINE sameDims #-}
 
@@ -1048,12 +1039,63 @@ inSpaceOf = const
 {-# INLINE inSpaceOf #-}
 
 -- | Constrain @Nat@ dimensions hidden behind @XNat@s.
+--   This is a link connecting the two types of type-level dims;
+--   you often need it to convert @Dims@, @Idxs@, and data.
 type family FixedDims (xns::[XNat]) (ns :: [Nat]) :: Constraint where
     FixedDims '[] ns = (ns ~ '[])
     FixedDims (xn ': xns) ns
       = ( ns ~ (Head ns ': Tail ns)
         , FixedDim xn (Head ns)
         , FixedDims xns (Tail ns))
+
+-- | Try to instantiate the `FixedDims` constraint given two @Dims@ lists.
+--
+--   The first @Dims@ is assumed to be the output of @minimalDims@,
+--   i.e. @listDims xns == toList (listDims xns)@.
+--
+--   If you input a list that is not equal to its type-level @DimsBound@,
+--   you will just have a lower chance to get @Just Dict@ result.
+inferFixedDims :: forall (xns :: [XNat]) (ns :: [Nat])
+                . All KnownDimType xns
+               => Dims xns -> Dims ns -> Maybe (Dict (FixedDims xns ns))
+inferFixedDims U U = Just Dict
+inferFixedDims (Dx (a :: Dim n) :* xns) (b :* ns)
+  | Dict <- unsafeEqTypes @n @(DimBound (Head xns))
+  , Just Dict <- lessOrEqDim a b
+  , Just Dict <- inferFixedDims xns ns
+    = Just Dict
+inferFixedDims (Dn a :* xns) (b :* ns)
+  | Just Dict <- sameDim a b
+  , Just Dict <- inferFixedDims xns ns
+    = Just Dict
+inferFixedDims _ _ = Nothing
+
+-- | A very unsafe function that bypasses all type-level checks and constructs
+--   the evidence from nothing.
+unsafeInferFixedDims :: forall (xns :: [XNat]) (ns :: [Nat])
+                      . Dims ns -> Dict (FixedDims xns ns)
+unsafeInferFixedDims U
+  | Dict <- unsafeEqTypes @xns @'[] = Dict
+unsafeInferFixedDims ((D :: Dim n) :* ns)
+    {-
+    Very unsafe operation.
+    I rely here on the fact that FixedDim xn n has the same
+    runtime rep as a single type equality.
+    If that changes, then the code is broke.
+     -}
+  | Dict <- unsafeEqTypes @xns @(N n ': Tail xns)
+  , Dict <- unsafeInferFixedDims @(Tail xns) ns = Dict
+{-# INLINE unsafeInferFixedDims #-}
+
+-- | Infer `FixedDims` if you know that all of dims are exact (@d ~ N n@).
+--   This function is totally safe and faithful.
+inferExactFixedDims :: forall (ds :: [XNat]) . ExactDims ds
+                    => Dims (DimsBound ds)
+                    -> Dict (All KnownDimType ds, FixedDims ds (DimsBound ds))
+inferExactFixedDims U = Dict
+inferExactFixedDims (_ :* ns)
+  | Dict <- inferExactFixedDims @(Tail ds) ns = Dict
+{-# INLINE inferExactFixedDims #-}
 
 instance Typeable d => Data (Dim (d :: Nat)) where
     gfoldl _ = id
@@ -1093,9 +1135,9 @@ instance Eq (Dims (ds :: [Nat])) where
     {-# INLINE (/=) #-}
 
 instance Eq (Dims (ds :: [XNat])) where
-    (==) = unsafeCoerce# ((==) :: [Word] -> [Word] -> Bool)
+    (==) = unsafeCoerce ((==) :: [Word] -> [Word] -> Bool)
     {-# INLINE (==) #-}
-    (/=) = unsafeCoerce# ((/=) :: [Word] -> [Word] -> Bool)
+    (/=) = unsafeCoerce ((/=) :: [Word] -> [Word] -> Bool)
     {-# INLINE (/=) #-}
 
 instance Eq SomeDims where
@@ -1117,7 +1159,7 @@ instance Ord (Dims (ds :: [Nat])) where
     {-# INLINE compare #-}
 
 instance Ord (Dims (ds :: [XNat])) where
-    compare = unsafeCoerce# (compare :: [Word] -> [Word] -> Ordering)
+    compare = unsafeCoerce (compare :: [Word] -> [Word] -> Ordering)
     {-# INLINE compare #-}
 
 instance Ord SomeDims where
@@ -1166,18 +1208,18 @@ instance Read SomeDims where
 --   in https://www.schoolofhaskell.com/user/thoughtpolice/using-reflection
 reifyDim :: forall (k :: Type) (d :: k) (rep :: RuntimeRep) (r :: TYPE rep)
           . Dim d -> (KnownDim d => r) -> r
-reifyDim d k = unsafeCoerce# (MagicDim k :: MagicDim d r) d
+reifyDim d k = unsafeCoerce (MagicDim k :: MagicDim d r) d
 {-# INLINE reifyDim #-}
 newtype MagicDim (d :: k) (r :: TYPE rep) = MagicDim (KnownDim d => r)
 
 reifyNat :: forall (r :: Type) (d :: Nat) . Natural -> (KnownNat d => r) -> r
-reifyNat d k = unsafeCoerce# (MagicNat k :: MagicNat d r) d
+reifyNat d k = unsafeCoerce (MagicNat k :: MagicNat d r) d
 {-# INLINE reifyNat #-}
 newtype MagicNat (d :: Nat) (r :: Type) = MagicNat (KnownNat d => r)
 
 reifyDims :: forall (k :: Type) (ds :: [k]) (rep :: RuntimeRep) (r :: TYPE rep)
            . Dims ds -> (Dimensions ds => r) -> r
-reifyDims ds k = unsafeCoerce# (MagicDims k :: MagicDims ds r) ds
+reifyDims ds k = unsafeCoerce (MagicDims k :: MagicDims ds r) ds
 {-# INLINE reifyDims #-}
 newtype MagicDims (ds :: [k]) (r :: TYPE rep) = MagicDims (Dimensions ds => r)
 
@@ -1206,23 +1248,8 @@ patDims DimKNat  ds = reifyDims ds PatNats
 patDims DimKXNat ds = withBareConstraint
     (dictToBare (unsafeInferFixedDims @ds ds')) (PatXNats ds')
   where
-    ds' = unsafeCoerce# ds -- convert to *some* [Nat]
+    ds' = unsafeCastTL ds -- convert to *some* [Nat]
 {-# INLINE patDims #-}
-
-{-
-Very unsafe operation.
-I rely here on the fact that FixedDim xn n has the same
-runtime rep as a single type equality.
-If that changes, then the code is broke.
- -}
-unsafeInferFixedDims :: forall (xns :: [XNat]) (ns :: [Nat])
-                      . Dims ns -> Dict (FixedDims xns ns)
-unsafeInferFixedDims U
-  | Dict <- unsafeEqTypes @_ @xns @'[] = Dict
-unsafeInferFixedDims ((D :: Dim n) :* ns)
-  | Dict <- unsafeEqTypes @_ @xns @(N n ': Tail xns)
-  , Dict <- unsafeInferFixedDims @(Tail xns) ns = Dict
-{-# INLINE unsafeInferFixedDims #-}
 
 {-
 I know that Dimensions can be either Nats or N-known XNats.
@@ -1238,7 +1265,7 @@ inferAllBoundedDims = go
     reifyBoundedDim = case dimKind @k of
       DimKNat -> \d -> reifyDim d Dict
       DimKXNat
-        | Dict <- unsafeEqTypes @_ @d @(N (DimBound d))
+        | Dict <- unsafeEqTypes @d @(N (DimBound d))
               -> \d -> reifyDim (coerce d :: Dim (DimBound d)) Dict
     go :: forall (xs :: [k]) . Dims xs
        -> Dict (All BoundedDim xs, RepresentableList xs)
@@ -1261,4 +1288,7 @@ patKDims (D :* ns) = case patKDims ns of
 
 unsafeCoerceDict :: forall (a :: Constraint) (b :: Constraint)
                   . Dict a -> Dict b
-unsafeCoerceDict = unsafeCoerce#
+unsafeCoerceDict = unsafeCoerce
+
+unsafeCastTL :: TypedList f (xs :: [k]) -> TypedList g (ys :: [l])
+unsafeCastTL = unsafeCoerce

@@ -49,9 +49,10 @@ import           Data.Monoid          as Mon (Monoid (..))
 import           Data.Semigroup       as Sem (Semigroup (..))
 import           Data.String          (IsString)
 import           Foreign.Storable     (Storable)
-import           GHC.Base             (Type, Any, unsafeCoerce#)
+import           GHC.Base             (Type, Any)
 import           GHC.Generics         (Generic, Generic1)
 import qualified Text.Read            as P
+import           Unsafe.Coerce        (unsafeCoerce)
 
 import Data.Type.List
 import Numeric.TypedList
@@ -156,32 +157,32 @@ infixr 5 :!
 
 -- | Grow a tuple on the left O(1).
 (*$) :: x -> Tuple xs -> Tuple (x :+ xs)
-(*$) x xs = unsafeCoerce# (unsafeCoerce# x : unsafeCoerce# xs :: [Any])
+(*$) x xs = unsafeCoerce (unsafeCoerce x : unsafeCoerce xs :: [Any])
 {-# INLINE (*$) #-}
 infixr 5 *$
 
 -- | Grow a tuple on the left while evaluating arguments to WHNF O(1).
 (*!) :: x -> Tuple xs -> Tuple (x :+ xs)
-(*!) !x !xs = let !r = unsafeCoerce# x : unsafeCoerce# xs :: [Any]
-              in unsafeCoerce# r
+(*!) !x !xs = let !r = unsafeCoerce x : unsafeCoerce xs :: [Any]
+              in unsafeCoerce r
 {-# INLINE (*!) #-}
 infixr 5 *!
 
 -- | Grow a tuple on the right.
 --   Note, it traverses an element list inside O(n).
 ($*) :: Tuple xs -> x -> Tuple (xs +: x)
-($*) xs x = unsafeCoerce# (unsafeCoerce# xs ++ [unsafeCoerce# x] :: [Any])
+($*) xs x = unsafeCoerce (unsafeCoerce xs ++ [unsafeCoerce x] :: [Any])
 {-# INLINE ($*) #-}
 infixl 5 $*
 
 -- | Grow a tuple on the right while evaluating arguments to WHNF.
 --   Note, it traverses an element list inside O(n).
 (!*) :: Tuple xs -> x -> Tuple (xs +: x)
-(!*) !xs !x = let !r = go (unsafeCoerce# x) (unsafeCoerce# xs) :: [Any]
+(!*) !xs !x = let !r = go (unsafeCoerce x) (unsafeCoerce xs) :: [Any]
                   go :: Any -> [Any] -> [Any]
                   go z []       = z `seq` [z]
                   go z (y : ys) = y `seq` y : go z ys
-              in unsafeCoerce# r
+              in unsafeCoerce r
 {-# INLINE (!*) #-}
 infixl 5 !*
 

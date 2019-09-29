@@ -23,7 +23,6 @@ import Numeric.DataFrame.Internal.PrimArray
 import Numeric.DataFrame.ST
 import Numeric.DataFrame.Type
 import Numeric.Dimensions
-import Numeric.Scalar.Internal
 
 
 {- |

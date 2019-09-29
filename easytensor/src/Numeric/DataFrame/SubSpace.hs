@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes     #-}
-{-# LANGUAGE CPP                     #-}
 {-# LANGUAGE DataKinds               #-}
 {-# LANGUAGE FlexibleContexts        #-}
 {-# LANGUAGE FlexibleInstances       #-}
@@ -561,10 +560,8 @@ iwzip f dfl dfr = case dimKind @(KindOfEl asbs) of
             _ | Dict <- inferKnownBackend @t @asbsn
               , Dict <- inferKnownBackend @t @bsn
              -> XFrame (iwgen @t @asn @bsn @asbsn
-                         (\i -> case f (unsafeCoerce i)
-                                       (index (unsafeCoerce i) dfl)
-                                       (index (unsafeCoerce i) dfr) of
-                                  XFrame r -> unsafeCoerce r
+                         (\iN -> let i = liftIdxs iN
+                                 in  unliftXFrame (f i (index i dfl) (index i dfr))
                          )
                        )
 {-# INLINE iwzip #-}
@@ -870,7 +867,7 @@ instance ( ConcatList as bs asbs
          , SubSpaceCtx t as bs asbs
          ) => SubSpace t (as :: [XNat]) (bs :: [XNat]) (asbs :: [XNat]) where
     type SubSpaceCtx t as bs asbs
-      = ( Dimensions bs, PrimBytes t
+      = ( Dimensions bs, PrimBytes t, ExactDims bs
         , All KnownDimType as, All KnownDimType bs, All KnownDimType asbs)
 
     joinDataFrameI (XFrame (df :: DataFrame (DataFrame t bs) asN)) =
@@ -884,7 +881,7 @@ instance ( ConcatList as bs asbs
               , Dict <- inferKnownBackend @t @asbsn
                 -> XFrame @_ @t @asbs @asbsn $ withArrayContent
                                                 -- know for sure its DataFrame t bsn
-                    (\(XFrame e) -> ewgen @t @asn @bsn @asbsn (unsafeCoerce e))
+                    (ewgen @t @asn @bsn @asbsn . unliftXFrame)
                     (\steps -> fromElems (steps `mappend` cumulDims (dims @bs)))
                     df
     {-# INLINE joinDataFrameI #-}
@@ -919,7 +916,7 @@ instance ( ConcatList as bs asbs
                               as bs asbs $
            \(Dims :: Dims asn) (Dims :: Dims bsn) (Dims :: Dims asbsn)
              -> case inferKnownBackend @t @bsn of
-               Dict -> XFrame (index @t @asn @bsn @asbsn (liftIdxs i) df)
+               Dict -> XFrame (index @t @asn @bsn @asbsn (unsafeUnliftIdxs i) df)
     {-# INLINE indexI #-}
 
     updateI i (XFrame (bsDf :: DataFrame t bsN))
@@ -930,7 +927,7 @@ instance ( ConcatList as bs asbs
       in withLiftedConcatList @'Nothing @('Just bsN) @('Just asbsN)
                               as bs asbs $
            \(Dims :: Dims asn) (Dims :: Dims bsn) (Dims :: Dims asbsn)
-             -> XFrame (update @t @asn @bsn @asbsn (liftIdxs i) bsDf asbsDf)
+             -> XFrame (update @t @asn @bsn @asbsn (unsafeUnliftIdxs i) bsDf asbsDf)
     {-# INLINE updateI #-}
 
     ewmapI  :: forall s (bs' :: [XNat]) (asbs' :: [XNat])
@@ -954,7 +951,7 @@ instance ( ConcatList as bs asbs
              | Dict <- inferKnownBackend @t @bsn
              , Dict <- inferKnownBackend @s @bsn'
              -> XFrame (ewmap @t @asn @bsn @asbsn @s @bsn' @asbsn'
-                        (\x -> case f (XFrame x) of XFrame y -> unsafeCoerce y) df)
+                        (unliftXFrame . f . XFrame) df)
     {-# INLINE ewmapI #-}
 
     iwmapI  :: forall s (bs' :: [XNat]) (asbs' :: [XNat])
@@ -977,8 +974,7 @@ instance ( ConcatList as bs asbs
              , Dict <- inferKnownBackend @t @bsn
              , Dict <- inferKnownBackend @s @bsn'
                -> XFrame (iwmap @t @asn @bsn @asbsn @s @bsn' @asbsn'
-                           (\i x -> case f (unsafeCoerce i) (XFrame x) of
-                                      XFrame y -> unsafeCoerce y) df)
+                           (\i x -> unliftXFrame (f (liftIdxs i) (XFrame x))) df)
     {-# INLINE iwmapI #-}
 
 
@@ -1000,9 +996,7 @@ instance ( ConcatList as bs asbs
           \(Dims :: Dims asn) (Dims :: Dims bsn) (Dims :: Dims asbsn) -> case () of
             _ | Dict <- inferKnownBackend @t @asbsn
               , Dict <- inferKnownBackend @t @bsn
-                 -> XFrame (iwgen @t @asn @bsn @asbsn
-                     (\i -> case f (unsafeCoerce i) of
-                              XFrame y -> unsafeCoerce y))
+                 -> XFrame (iwgen @t @asn @bsn @asbsn (unliftXFrame . f . liftIdxs))
     {-# INLINE iwgenI #-}
 
     ewfoldlI f x0 (XFrame (df :: DataFrame s asbsN)) =
@@ -1023,7 +1017,7 @@ instance ( ConcatList as bs asbs
           \(Dims :: Dims asn) (Dims :: Dims bsn) (Dims :: Dims asbsn) ->
            case inferKnownBackend @t @bsn of
              Dict -> iwfoldl @t @asn @bsn @asbsn
-                       (\i b x -> f (unsafeCoerce i) b (XFrame x)) x0 df
+                       (\i b x -> f (liftIdxs i) b (XFrame x)) x0 df
     {-# INLINE iwfoldlI #-}
 
     ewfoldrI f x0 (XFrame (df :: DataFrame s asbsN)) =
@@ -1044,7 +1038,7 @@ instance ( ConcatList as bs asbs
           \(Dims :: Dims asn) (Dims :: Dims bsn) (Dims :: Dims asbsn) ->
            case inferKnownBackend @t @bsn of
              Dict -> iwfoldr @t @asn @bsn @asbsn
-                       (\i x -> f (unsafeCoerce i) (XFrame x)) x0 df
+                       (\i x -> f (liftIdxs i) (XFrame x)) x0 df
     {-# INLINE iwfoldrI #-}
 
     indexWiseI :: forall s (bs' :: [XNat]) (asbs' :: [XNat]) f
@@ -1068,24 +1062,9 @@ instance ( ConcatList as bs asbs
              , Dict <- inferKnownBackend @s @bsn'
                -> XFrame <$>
                          (indexWise @t @asn @bsn @asbsn @s @bsn' @asbsn'
-                           (\i x -> (\(XFrame y) -> unsafeCoerce y)
-                                     <$> f (unsafeCoerce i) (XFrame x)
-                           ) df
+                           (\i x -> unliftXFrame <$> f (liftIdxs i) (XFrame x)) df
                          )
     {-# INLINE indexWiseI #-}
-
-
-liftIdxs :: forall (ds :: [Nat]) (xds :: [XNat])
-          . Dimensions ds => Idxs xds -> Idxs ds
-liftIdxs ixs
-#ifndef UNSAFE_INDICES
-  | or $ zipWith (>=) (listIdxs ixs) (listDims (dims @ds)) = errorWithoutStackTrace
-    $ "SubSpace/liftIdxs: index "
-      ++ show ixs ++ " is outside of DataFrame bounds (Dims (" ++ show (dims @ds) ++ ")."
-  | otherwise
-#endif
-    = unsafeCoerce ixs
-{-# INLINABLE liftIdxs #-}
 
 dropSufDims :: ConcatList as bs asbs
             => Dims bs -> Dims asbs -> Dims as
@@ -1132,6 +1111,11 @@ withLiftedConcatList (XDims (asn :: Dims asn))
   , Dict <- unsafeCoerce (Dict @(asbsn ~ asbsn)) :: Dict (MayEq asbsm asbsn)
   , Dict <- inferConcat @asn @bsn @asbsn = k asn bsn asbsn
 
+unliftXFrame :: forall (t :: Type) (xns :: [XNat]) (ns :: [Nat])
+              . (ExactDims xns, FixedDims xns ns)
+             => DataFrame t xns -> DataFrame t ns
+unliftXFrame (XFrame x) = unsafeCoerce x
+{-# INLINE unliftXFrame #-}
 
 unsafeEqTypes :: forall k (a :: k) (b :: k)
                . Dict (a ~ b)

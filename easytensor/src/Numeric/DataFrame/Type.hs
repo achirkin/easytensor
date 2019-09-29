@@ -41,6 +41,7 @@ module Numeric.DataFrame.Type
   , DataFrame ( SingleFrame, MultiFrame, XFrame, (:*:), Z
               , S, DF2, DF3, DF4, DF5, DF6, DF7, DF8, DF9)
 #endif
+  , scalar, unScalar
   , IndexFrame (..), SubFrameIndexCtx
     -- * Flexible assembling and disassembling
   , PackDF, packDF, unpackDF
@@ -73,6 +74,7 @@ import           GHC.Ptr                         (Ptr (..))
 import qualified Text.ParserCombinators.ReadPrec as Read
 import qualified Text.Read                       as Read
 import qualified Text.Read.Lex                   as Read
+import           Unsafe.Coerce
 
 import           Numeric.Basics
 import           Numeric.DataFrame.Internal.PrimArray
@@ -138,6 +140,18 @@ pattern Z :: forall (xs :: [Type]) (ns :: [Nat])
            . () => (xs ~ '[]) => DataFrame xs ns
 pattern Z = MultiFrame U
 
+-- | Convert a scalar back to an ordinary type
+unScalar :: DataFrame t ('[] :: [Nat]) -> t
+-- rely on that Scalar is just two times newtype alias to t
+unScalar = unsafeCoerce
+{-# INLINE unScalar #-}
+
+-- | Convert any type to a scalar wrapper
+scalar :: t -> DataFrame t ('[] :: [Nat])
+-- rely on that Scalar is just two times newtype alias to t
+scalar = unsafeCoerce
+{-# INLINE scalar #-}
+
 -- | I use this kind-polymorphic constraint to generalize @XFrame@ and @SomeDataFrame@
 --   over @SingleFrame@ and @MultiFrame@.
 type family KnownBackends (ts :: l) (ns :: [Nat]) :: Constraint where
@@ -198,7 +212,7 @@ instance (PrimArray t (DataFrame t '[d]), KnownDim d)
       | i >= dimVal' @d = idxError (dimVal' @d) i
       | otherwise
 #endif
-        = unsafeCoerce# (ixOff (fromIntegral i) df)
+        = S (ixOff (fromIntegral i) df)
 
 instance {-# INCOHERENT #-}
          ( PrimArray t (DataFrame t (d ': ds))
@@ -388,7 +402,7 @@ instance ( Show t
          ) => Show (DataFrame (t :: Type) (ds :: [Nat])) where
     showsPrec p x = case dims @ds of
       U       -> showParen (p >= 10)
-        $ showString "S " . showsPrec 10 (unsafeCoerce# x :: t)
+        $ showString "S " . showsPrec 10 (unScalar x)
       D0 :* _ -> showString "DF0"
       d  :* _ -> showParen (p >= 10)
         $ unpackDF' ( \Dict f ->
@@ -681,9 +695,9 @@ fromFlatList = unsafeFromFlatList
 -- | A scalar DataFrame is just a newtype wrapper on a value.
 pattern S :: forall (t :: Type) . t -> DataFrame t ('[] :: [Nat])
 -- rely on that Scalar is just two times newtype alias to t
-pattern S x <- (unsafeCoerce# -> x)
+pattern S x <- (unScalar -> x)
   where
-    S = unsafeCoerce#
+    S = scalar
 {-# COMPLETE S #-}
 
 
@@ -1041,22 +1055,13 @@ fromList :: forall (t :: Type) (ds :: [Nat]) (xds :: [XNat])
 fromList xs
     | Dx (D :: Dim n) <- someDimVal . fromIntegral $ length xs
     , Dict <- inferKnownBackend @t @(n ': ds)
+    , Dict <- unsafeEqTypes @_ @ds @(DimsBound xds)
     , Dict <- inferExactFixedDims (dims @ds)
       = XFrame (fromListWithDefault @t @n @ds undefined xs)
     | otherwise
       = case Dict @(ds ~ UnMap N xds) of
           Dict -> -- just make GHC not complain about unused constraints.
             error "Numeri.DataFrame.Type/fromList: impossible arguments"
-  where
-    inferExactFixedDims :: forall (ns :: [Nat])
-                         . Dims ns
-                        -> Dict ( All KnownDimType (Map N ns)
-                                , FixedDims (Map N ns) ns)
-    inferExactFixedDims U = Dict
-    inferExactFixedDims (_ :* ns')
-      | Dict <- inferExactFixedDims @(Tail ns) ns' = Dict
-
-
 
 -- | Try to convert between @XNat@-indexed DataFrames.
 --
@@ -1329,7 +1334,7 @@ withFixedDF1 :: forall (l :: Type) (ts :: l) (xns :: [XNat])
                  ) => DataFrame ts ns -> r
               ) -> DataFrame ts xns -> r
 withFixedDF1 f (XFrame (df :: DataFrame ts ds))
-  | Dict <- unsafeCoerce# (Dict @(ds ~ ds)) :: Dict (ds ~ DimsBound xns)
+  | Dict <- unsafeEqTypes @_ @ds @(DimsBound xns)
     = f df
 {-# INLINE withFixedDF1 #-}
 
@@ -1345,8 +1350,8 @@ withFixedDF2 :: forall (l :: Type) (ts :: l) (xns :: [XNat])
                  ) => DataFrame ts ns -> DataFrame ts ns -> r
               ) -> DataFrame ts xns -> DataFrame ts xns -> r
 withFixedDF2 f (XFrame (a :: DataFrame ts as)) (XFrame (b :: DataFrame ts bs))
-  | Dict <- unsafeCoerce# (Dict @(as ~ as, bs ~ bs))
-               :: Dict (as ~ DimsBound xns, bs ~ DimsBound xns)
+  | Dict <- unsafeEqTypes @_ @as @(DimsBound xns)
+  , Dict <- unsafeEqTypes @_ @bs @(DimsBound xns)
     = f a b
 {-# INLINE withFixedDF2 #-}
 
@@ -1552,4 +1557,4 @@ instance ( RealFloatExtras (DataFrame t ('[] :: [Nat]))
 
 
 unsafeEqTypes :: forall k (a :: k) (b :: k) . Dict (a ~ b)
-unsafeEqTypes = unsafeCoerce# (Dict :: Dict (a ~ a))
+unsafeEqTypes = unsafeCoerce (Dict :: Dict (a ~ a))

@@ -53,6 +53,6 @@ runMagic = unsafeCoerce
 {-# NOINLINE runMagic #-}
 
 
-unsafeEqTypes :: forall k (a :: k) (b :: k)
+unsafeEqTypes :: forall a b
                . Dict (a ~ b)
 unsafeEqTypes = unsafeCoerce (Dict :: Dict (a ~ a))
