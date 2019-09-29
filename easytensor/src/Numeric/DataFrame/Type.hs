@@ -197,19 +197,13 @@ class IndexFrame t d ds where
     --     (unless @unsafeindices@ package flag is enabled).
     (!) :: DataFrame t (d ': ds) -> Word -> DataFrame t ds
 
-#ifndef UNSAFE_INDICES
-idxError :: Word -> Word -> a
-idxError d i = errorWithoutStackTrace
-  $ "IndexFrame: index "
-    ++ show i ++ " is outside of DataFrame bounds (Dims (" ++ show d ++ " ': ds)."
-#endif
-
 instance (PrimArray t (DataFrame t '[d]), KnownDim d)
       => IndexFrame (t :: Type) (d :: Nat) '[] where
     {-# INLINE (!) #-}
     (!) df i
 #ifndef UNSAFE_INDICES
-      | i >= dimVal' @d = idxError (dimVal' @d) i
+      | i >= dimVal' @d = outOfDimBoundsNoCallStack "IndexFrame.(!)"
+                            i (dimVal' @d) Nothing Nothing
       | otherwise
 #endif
         = S (ixOff (fromIntegral i) df)
@@ -221,7 +215,8 @@ instance {-# INCOHERENT #-}
     {-# INLINE (!) #-}
     (!) df i
 #ifndef UNSAFE_INDICES
-      | i >= dimVal' @d = idxError (dimVal' @d) i
+      | i >= dimVal' @d = outOfDimBoundsNoCallStack "IndexFrame.(!)"
+                            i (dimVal' @d) Nothing Nothing
       | otherwise
 #endif
         = withArrayContent broadcast
