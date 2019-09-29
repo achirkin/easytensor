@@ -425,9 +425,9 @@ types = Numeric.TypedList.map (const Proxy)
 --
 typeables :: forall xs . Typeable xs => TypeList xs
 typeables = case R.typeRep @xs of
-    R.App (R.App _ (_ :: R.TypeRep (n :: k1))) (txs :: R.TypeRep (ns :: k2))
-      | Dict <- unsafeEqTypes @k1 @(KindOfEl xs)
-      , Dict <- unsafeEqTypes @k2 @(KindOf xs)
+    R.App (R.App _ (_ :: R.TypeRep (n :: k))) (txs :: R.TypeRep (ns :: ks))
+      | Dict <- unsafeCoerce (Dict @(k ~ k, ks ~ ks))
+                  :: Dict (k ~ KindOfEl xs, ks ~ KindOf xs)
       , Dict <- unsafeEqTypes @xs @(n ': ns)
       -> Proxy @n :* R.withTypeable txs (typeables @ns)
     R.Con _
