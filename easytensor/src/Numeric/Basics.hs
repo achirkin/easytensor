@@ -1,5 +1,7 @@
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE ViewPatterns    #-}
+{-# LANGUAGE ConstraintKinds  #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PatternSynonyms  #-}
+{-# LANGUAGE ViewPatterns     #-}
 module Numeric.Basics
   ( -- * Constants
     pattern M_E, pattern M_LOG2E, pattern M_LOG10E, pattern M_LN2, pattern M_LN10
@@ -10,10 +12,14 @@ module Numeric.Basics
     -- * Functions
   , RealExtras (..), RealFloatExtras (..)
   , negateUnless
+    -- * Exceptions
+  , IterativeMethod, TooManyIterations, tooManyIterations
   ) where
 
 import Data.Int
 import Data.Word
+import GHC.Exception
+import GHC.Stack
 import Numeric.PrimBytes
 
 -- | \( e \)
@@ -164,3 +170,69 @@ foreign import ccall unsafe "hypot"  c'hypotd :: Double -> Double -> Double
 foreign import ccall unsafe "hypotf" c'hypotf :: Float -> Float -> Float
 foreign import ccall unsafe "copysign"  c'copysignd :: Double -> Double -> Double
 foreign import ccall unsafe "copysignf" c'copysignf :: Float -> Float -> Float
+
+{- |
+This is just an alias for the `HasCallStack` constraint.
+It servers two goals:
+
+  1. Document functions that use iterative methods and can fail
+     (supposedly in extremely rare cases).
+  2. Provide a call stack in case of failure.
+
+Use `tooManyIterations` function where necessary if you implement an iterative
+algorithm and annotate your implementation function with `IterativeMethod` constraint.
+
+ -}
+type IterativeMethod = HasCallStack
+
+-- | Throw a `TooManyIterations` exception.
+tooManyIterations ::
+       IterativeMethod
+    => String  -- ^ Label (e.g. function name)
+    -> a
+tooManyIterations s
+  = throw TooManyIterations
+  { tmiUserInfo  = s
+  , tmiCallStack = callStack
+  }
+
+{- |
+Typically, this exception can occur in an iterative algorithm;
+when the number of iterations exceeds a pre-defined limit, but the stop condition
+is not fulfilled.
+
+Use the `IterativeMethod` constraint to annotate functions that throw this exception.
+ -}
+data TooManyIterations
+  = TooManyIterations
+  { tmiUserInfo  :: String
+    -- ^ Short description of the error, e.g. a function name.
+  , tmiCallStack :: CallStack
+    -- ^ Function call stack.
+    --   Note, this field is ignored in the `Eq` and `Ord` instances.
+  }
+
+-- | Note, this instance ignores `oodCallStack`
+instance Eq TooManyIterations where
+  (==) a b = tmiUserInfo a == tmiUserInfo b
+
+-- | Note, this instance ignores `oodCallStack`
+instance Ord TooManyIterations where
+  compare a b = compare (tmiUserInfo a) (tmiUserInfo b)
+
+instance Show TooManyIterations where
+  showsPrec p e = addLoc errStr
+    where
+      addLoc s
+        = let someE = errorCallWithCallStackException s (tmiCallStack e)
+              errc :: ErrorCall
+              errc = case fromException someE of
+                Nothing -> ErrorCall s
+                Just ec -> ec
+          in  showsPrec p errc
+      errStr = unlines
+        [ "An iterative method has exceeded the limit for the iteration number."
+        , "User info: " ++ tmiUserInfo e
+        ]
+
+instance Exception TooManyIterations
