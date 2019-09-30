@@ -131,7 +131,7 @@ withDFPtr x k
 --   Prefer this function to using @unsafePtr a@, because the latter
 --    does not keep the dependency information in GC, which results in
 --    member structure being garbage-collected and the reference being invalid.
-setDFRef :: forall fname x a ds
+setDFRef :: forall fname x a (ds :: [Nat])
           . ( CanWriteField fname x
             , FieldType fname x ~ Ptr a
             , PrimBytes a, Dimensions ds
@@ -159,7 +159,7 @@ fillDataFrame :: forall a
                . PrimBytes a
               => Word -> (Ptr a -> IO ()) -> IO (Vector a (XN 0))
 fillDataFrame n k
-  | Dx (_ :: Dim n) <- someDimVal n
+  | Dx (D :: Dim n) <- someDimVal n
   , Dict <- inferKnownBackend @a @'[n]
   = do
      mdf <- newPinnedDataFrame

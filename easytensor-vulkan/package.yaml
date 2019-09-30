@@ -1,5 +1,5 @@
 name:                easytensor-vulkan
-version:             2.0.1.0
+version:             2.0.2.0
 github:              "achirkin/easytensor/easytensor-vulkan"
 license:             BSD3
 author:              "Artem Chirkin"
