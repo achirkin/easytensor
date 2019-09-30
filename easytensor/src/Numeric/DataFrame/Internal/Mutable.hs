@@ -33,8 +33,7 @@ module Numeric.DataFrame.Internal.Mutable
     , copyDataFrame'#, copyMDataFrame'#
     , copyDataFrameOff#, copyMDataFrameOff#
     , freezeDataFrame#, unsafeFreezeDataFrame#
-    , thawDataFrame#, thawPinDataFrame#, unsafeThawDataFrame#
-    , uncheckedThawDataFrame#
+    , thawDataFrame#, thawPinDataFrame#, unsafeThawDataFrame#, withThawDataFrame#
     , writeDataFrame#, writeDataFrameOff#
     , readDataFrame#, readDataFrameOff#
     , withDataFramePtr#, isDataFramePinned#
@@ -46,7 +45,6 @@ import Numeric.DataFrame.Internal.PrimArray
 import Numeric.DataFrame.Type
 import Numeric.Dimensions
 import Numeric.PrimBytes
-import Unsafe.Coerce
 
 -- | Mutable DataFrame type.
 --   Keeps element offset, number of elements, and a mutable byte storage
@@ -106,6 +104,10 @@ oneMoreDataFrame# mdf@(MDataFrame# off steps mba) s0
 --
 --   This function does not perform a copy.
 --   All changes to a new DataFrame will be reflected in the original DataFrame as well.
+--
+--   If any of the dims in @as@ or @b@ is unknown (@a ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 subDataFrameView# ::
        forall (t :: Type) (k :: Type)
               (b :: k) (bi :: k) (bd :: k)
@@ -122,8 +124,12 @@ subDataFrameView# ei (MDataFrame# offM stepsM arr)
 --   This function does not perform a copy.
 --   All changes to a new DataFrame will be reflected in the original DataFrame as well.
 --
---   This is a simpler version of @subDataFrameView#@ that allows
+--   This is a simpler version of @subDataFrameView@ that allows
 --    to view over one index at a time.
+--
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 subDataFrameView'# ::
        forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k]) s
      . ConcatList as bs asbs
@@ -135,9 +141,16 @@ subDataFrameView'# ei (MDataFrame# offM stepsM arr)
 
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
 --
---   In contrast to @copyDataFrame'#@, this function allows to copy over a range
+--   In contrast to @copyDataFrame'@, this function allows to copy over a range
 --    of contiguous indices over a single dimension.
 --   For example, you can write a 3x4 matrix into a 7x4 matrix, starting at indices 0..3.
+--
+--   This function is safe (no `OutOfDimBounds` exception possible).
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   you may happen to write data beyond dataframe bounds.
+--   In this case, this function does nothing.
+--   If (@b ~ XN m@) and (@Idx bi + Dim bd > Dim b@), this function copies only as
+--   many elements as fits into the dataframe along this dimension (possibly none).
 copyDataFrame# ::
        forall (t :: Type) (k :: Type)
               (b :: k) (bi :: k) (bd :: k)
@@ -150,22 +163,31 @@ copyDataFrame# ::
     -> State# s -> (# State# s, () #)
 copyDataFrame# ei df (MDataFrame# offM stepsM arrDest)
     | elS <- byteSize @t undefined
-    , (I# offDest, CumulDims ~(nw:_))
-         <- getOffAndStepsSub (I# offM) stepsM ei (dim @bd)
-    , I# n <- fromIntegral nw
+    , Just (I# offDest, stepsB)
+         <- getOffAndStepsSubM (I# offM) stepsM ei (dim @bd)
+    , n <- cdTotalDim# stepsB
+    , isTrue# (n ># 0#) -- is there enough space to write anything?
     = withArrayContent
       (\e s -> (# fillArray arrDest offDest n e s, () #))
       (\_ offSrc arrSrc s ->
         (# copyByteArray# arrSrc  (offSrc *# elS)
                           arrDest (offDest *# elS) (n *# elS) s, () #)) df
+    | otherwise = \s -> (# s, () #)
 {-# INLINE copyDataFrame# #-}
 
 {-# ANN copyMDataFrame# "HLint: ignore Use camelCase" #-}
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
 --
---   In contrast to @copyMDataFrame'#@, this function allows to copy over a range
+--   In contrast to @copyMutableDataFrame'@, this function allows to copy over a range
 --    of contiguous indices over a single dimension.
 --   For example, you can write a 3x4 matrix into a 7x4 matrix, starting at indices 0..3.
+--
+--   This function is safe (no `OutOfDimBounds` exception possible).
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   you may happen to write data beyond dataframe bounds.
+--   In this case, this function does nothing.
+--   If (@b ~ XN m@) and (@Idx bi + Dim bd > Dim b@), this function copies only as
+--   many elements as fits into the dataframe along this dimension (possibly none).
 copyMDataFrame# ::
        forall (t :: Type) (k :: Type)
               (b :: k) (bi :: k) (bd :: k)
@@ -176,21 +198,29 @@ copyMDataFrame# ::
        , ConcatList as (b :+ bs) asbs )
     => Idxs (as +: bi) -> MDataFrame s t (bd :+ bs) -> MDataFrame s t asbs
     -> State# s -> (# State# s, () #)
-copyMDataFrame# ei (MDataFrame# offA (CumulDims ~(bn:n:_)) arrA)
+copyMDataFrame# ei (MDataFrame# offA (CumulDims ~(bb:b:_)) arrA)
                    (MDataFrame# offM stepsM arrM)
     | elS <- byteSize @t undefined
-    , I# lenA <- fromIntegral bn
-    , I# i <- cdIxSub stepsM ei (unsafeCoerce (quot bn n))
+    , Just (I# offDest, stepsB)
+         <- getOffAndStepsSubM (I# offM) stepsM ei (unsafeCoerce# (quot bb b))
+    , n <- cdTotalDim# stepsB
+    , isTrue# (n ># 0#) -- is there enough space to write anything?
     = \s -> (# copyMutableByteArray# arrA (offA *# elS)
-                                     arrM ((offM +# i) *# elS) (lenA *# elS) s
+                                     arrM (offDest *# elS) (n *# elS) s
              , () #)
+    | otherwise = \s -> (# s, () #)
 {-# INLINE copyMDataFrame# #-}
 
 {-# ANN copyDataFrame'# "HLint: ignore Use camelCase" #-}
 -- | Copy one DataFrame into another mutable DataFrame at specified position.
 --
---   This is a simpler version of @copyDataFrame#@ that allows
+--   This is a simpler version of @copyDataFrame@ that allows
 --     to copy over one index at a time.
+--
+--   This function is safe (no `OutOfDimBounds` exception possible).
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   you may happen to write data beyond dataframe bounds.
+--   In this case, this function does nothing.
 copyDataFrame'# ::
        forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k]) s
      . ( ExactDims bs
@@ -200,20 +230,26 @@ copyDataFrame'# ::
     -> State# s -> (# State# s, () #)
 copyDataFrame'# ei df (MDataFrame# offM stepsM arrDest)
     | elS <- byteSize @t undefined
-    , (I# offDest, stepsA) <- getOffAndSteps (I# offM) stepsM ei
+    , Just (I# offDest, stepsA) <- getOffAndStepsM (I# offM) stepsM ei
     , n <- cdTotalDim# stepsA
     = withArrayContent
       (\e s -> (# fillArray arrDest offDest n e s, () #))
       (\_ offSrc arrSrc s ->
         (# copyByteArray# arrSrc  (offSrc *# elS)
                           arrDest (offDest *# elS) (n *# elS) s, () #)) df
+    | otherwise = \s -> (# s, () #)
 {-# INLINE copyDataFrame'# #-}
 
 {-# ANN copyMDataFrame'# "HLint: ignore Use camelCase" #-}
 -- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
 --
---   This is a simpler version of @copyMDataFrame#@ that allows
+--   This is a simpler version of @copyMutableDataFrame@ that allows
 --     to copy over one index at a time.
+--
+--   This function is safe (no `OutOfDimBounds` exception possible).
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   you may happen to write data beyond dataframe bounds.
+--   In this case, this function does nothing.
 copyMDataFrame'# ::
        forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k]) s
      . (ExactDims bs, PrimBytes t, ConcatList as bs asbs)
@@ -222,10 +258,11 @@ copyMDataFrame'# ::
 copyMDataFrame'# ei (MDataFrame# offA stepsA arrA) (MDataFrame# offM stepsM arrM)
     | elS <- byteSize @t undefined
     , lenA <- cdTotalDim# stepsA
-    , I# i <- cdIx stepsM ei
+    , Just (I# i) <- cdIxM stepsM ei
     = \s -> (# copyMutableByteArray#
                  arrA (offA *# elS)
                  arrM ((offM +# i) *# elS) (lenA *# elS) s, () #)
+    | otherwise = \s -> (# s, () #)
 {-# INLINE copyMDataFrame'# #-}
 
 -- | Copy one DataFrame into another mutable DataFrame by offset in
@@ -233,6 +270,7 @@ copyMDataFrame'# ei (MDataFrame# offA stepsA arrA) (MDataFrame# offM stepsM arrM
 --
 --   This is a low-level copy function; you have to keep in mind the row-major
 --   layout of Mutable DataFrames. Offset bounds are not checked.
+--   You will get an undefined behavior if you write beyond the DataFrame bounds.
 copyDataFrameOff# ::
        forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k]) s
      . ( Dimensions bs
@@ -258,6 +296,7 @@ copyDataFrameOff# (I# off) df (MDataFrame# offM _ arrDest)
 --
 --   This is a low-level copy function; you have to keep in mind the row-major
 --   layout of Mutable DataFrames. Offset bounds are not checked.
+--   You will get an undefined behavior if you write beyond the DataFrame bounds.
 copyMDataFrameOff# ::
        forall (t :: Type) (k :: Type) (as :: [k]) (bs :: [k]) (asbs :: [k]) s
      . (ExactDims bs, PrimBytes t, ConcatList as bs asbs)
@@ -357,31 +396,38 @@ unsafeThawDataFrame# = withArrayContent f g
       = (# s0, MDataFrame# off steps (unsafeCoerce# ba) #)
 {-# INLINE unsafeThawDataFrame# #-}
 
--- | Create a new mutable DataFrame and copy content of immutable one in there.
---   This function is unsafe in that it assumes that the input DataFrame is
---   not @fromScalar@-made (i.e. I assume CumulDims is available).
---   It is only safe to call this function if @uniqueOrCumulDims@ from @PrimArray@
---   returns @Right CumulDims@.
-uncheckedThawDataFrame# ::
-       forall (t :: Type) (k :: Type) (ns :: [k]) s
+-- | Given two continuations @f@ and @g@.
+--   If the input DataFrame is a single broadcast value, use it in @f@.
+--   Otherwise, create a new mutable DataFrame and copy content of immutable one
+--   in there; then use it in @g@.
+--
+--   This function is useful when @thawDataFrame@ cannot be used due to
+--   @Dimensions ns@ constraint being not available.
+withThawDataFrame# ::
+       forall (t :: Type) (k :: Type) (ns :: [k]) (r :: Type) s
      . PrimArray t (DataFrame t ns)
-    => DataFrame t ns -> State# s -> (# State# s, MDataFrame s t ns #)
-uncheckedThawDataFrame# = withArrayContent f g
+    => (t -> State# s -> (# State# s, r #)) -- ^ f
+    -> (MDataFrame s t ns -> State# s -> (# State# s, r #)) -- ^ g
+    -> DataFrame t ns
+    -> State# s -> (# State# s, r #)
+withThawDataFrame# f g = withArrayContent f g'
   where
-    f :: t -> State# s -> (# State# s, MDataFrame s t ns #)
-    f _ s0 = (# s0, error "unexpected DataFrame - 'fromScalar'" #)
-    g :: CumulDims -> Int# -> ByteArray# -> State# s -> (# State# s, MDataFrame s t ns #)
-    g steps eOff arrA s0 = case cdTotalDim# steps of
-      0# -> (# s0, error "Empty DataFrame (DF0)" #)
+    g' :: CumulDims -> Int# -> ByteArray# -> State# s -> (# State# s, r #)
+    g' steps eOff arrA s0 = case cdTotalDim# steps of
+      0# -> g (error "Empty DataFrame (DF0)") s0
       elems
        | elS <- byteSize @t undefined
        , bsize <- elS *# elems
        , (# s1, arrM #) <- newByteArray# bsize s0
        , s2 <- copyByteArray# arrA (eOff *# elS) arrM 0# bsize s1
-         -> (# s2, MDataFrame# 0# steps arrM #)
-{-# INLINE uncheckedThawDataFrame# #-}
+         -> g (MDataFrame# 0# steps arrM) s2
+{-# INLINE withThawDataFrame# #-}
 
--- | Write a single element at the specified element offset
+-- | Write a single element at the specified element offset.
+--
+--   This is a low-level write function; you have to keep in mind the row-major
+--   layout of Mutable DataFrames. Offset bounds are not checked.
+--   You will get an undefined behavior if you write beyond the DataFrame bounds.
 writeDataFrameOff# ::
        forall (t :: Type) (k :: Type) (ns :: [k]) s
      . PrimBytes (DataFrame t ('[] :: [k]))
@@ -391,17 +437,28 @@ writeDataFrameOff# (MDataFrame# off _ mba) (I# i) x s
   = (# writeArray mba (off +# i) x s, () #)
 {-# INLINE writeDataFrameOff# #-}
 
--- | Write a single element at the specified index
+-- | Write a single element at the specified index.
+--
+--   This function is safe (no `OutOfDimBounds` exception possible).
+--   If any of the dims in @ns@ is unknown (@n ~ XN m@),
+--   you may happen to write data beyond dataframe bounds.
+--   In this case, this function does nothing.
 writeDataFrame# ::
        forall (t :: Type) (k :: Type) (ns :: [k]) s
      . PrimBytes (DataFrame t ('[] :: [k]))
     => MDataFrame s t ns -> Idxs ns -> DataFrame t ('[] :: [k])
     -> State# s -> (# State# s, () #)
 writeDataFrame# mdf@(MDataFrame# _ st _) ei
-  = writeDataFrameOff# mdf (cdIx st ei)
+  | Just off <- (cdIxM st ei)
+  = writeDataFrameOff# mdf off
+  | otherwise = const (\s -> (# s, () #))
 {-# INLINE writeDataFrame# #-}
 
--- | Read a single element at the specified element offset
+-- | Read a single element at the specified element offset.
+--
+--   This is a low-level read function; you have to keep in mind the row-major
+--   layout of Mutable DataFrames. Offset bounds are not checked.
+--   You will get an undefined behavior if you read beyond the DataFrame bounds.
 readDataFrameOff# ::
        forall (t :: Type) (k :: Type) (ns :: [k]) s
      . PrimBytes (DataFrame t ('[] :: [k]))
@@ -411,7 +468,11 @@ readDataFrameOff# (MDataFrame# off _ mba) (I# i)
   = readArray @(DataFrame t ('[] :: [k])) mba (off +# i)
 {-# INLINE readDataFrameOff# #-}
 
--- | Read a single element at the specified index
+-- | Read a single element at the specified index.
+--
+--   If any of the dims in @ns@ is unknown (@n ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 readDataFrame# ::
        forall (t :: Type) (k :: Type) (ns :: [k]) s
      . PrimBytes (DataFrame t ('[] :: [k]))
