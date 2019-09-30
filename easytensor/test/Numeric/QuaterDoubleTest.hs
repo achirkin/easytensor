@@ -10,10 +10,6 @@ import Test.QuickCheck
 
 type T = Double
 
--- Extra factor for compensating too strict Epsilon.
-extraTolerance :: T
-extraTolerance = 1
-
 -- | Some non-linear function are very unstable;
 --   it would be a downting task to determine the uncertainty precisely.
 --   Instead, I just make sure the tolerance is small enough to find at least
@@ -27,7 +23,7 @@ qSpan (Quater a b c d) = asSpan . foldl mm (1,1) $ map (\x -> x*x) [a, b, c, d]
       | x > M_EPS = (min mi x, max ma x)
       | otherwise = (mi, ma)
     asSpan :: (T,T) -> T
-    asSpan (mi, ma) = extraTolerance * ma / mi
+    asSpan (mi, ma) = ma / mi
 
 
 prop_Eq :: Quater T -> Bool
