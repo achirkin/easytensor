@@ -10,7 +10,7 @@
 {-# LANGUAGE UnboxedTuples              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE ViewPatterns               #-}
-{-# OPTIONS_GHC -fno-warn-orphans  #-}
+{-# OPTIONS_GHC -fno-warn-orphans       #-}
 module Numeric.Quaternion.Internal.QFloat
     ( QFloat, Quater (..)
     ) where
@@ -415,10 +415,10 @@ instance Floating QFloat where
         sn2 = l1qq - w1qq
         sp = sqrt sp2
         sn = copysign (sqrt sn2) w
-        dp = v2 / ((sp + v)*(sn2 + v2))
-        dn = w2 / ((sn + w)*(sp2 + w2))
-        (wD, vD) =  -- choose a more stable (symbolically equiv) version
-          case compare w1qq 0 of
+        -- choose a more stable (symbolically equiv) version
+        dp = if 2 * v2 <= sp2 then sp - v else v2 / ((sp + v)*(sn2 + v2))
+        dn = if 2 * w2 <= sn2 then w - sn else w2 / ((sn + w)*(sp2 + w2))
+        (wD, vD) = case compare w1qq 0 of
             GT -> (dp, w * dp / sp)
             LT -> (v * dn / sn, dn)
             EQ -> (-v, w)
@@ -461,12 +461,13 @@ instance Floating QFloat where
         sn2 = l1qq - w1qq
         sp = sqrt sp2
         sn = copysign (sqrt sn2) w
-        dp = w2 / ((sp - w)*(w2 + sn2))
-        dn = v2 / ((v - sn)*(v2 + sp2))
-        (wD, vD) =  -- choose a more stable (symbolically equiv) version
-          case compare w1qq 0 of
-            GT -> if w >= 0 then (w + sp, v * (1 + w / sp)) else (dp, v * dp / sp)
-            LT -> if w >= 0 then (w * (1 + v / sn), v + sn) else (w * dn / sn, dn)
+        -- choose a more stable (symbolically equiv) version
+        dp = if 2 * w >= - sp then w + sp else w2 / ((sp - w)*(w2 + sn2))
+        dn = if 2 * v <= - sn || sn >= 0
+                              then v + sn else v2 / ((v - sn)*(v2 + sp2))
+        (wD, vD) = case compare w1qq 0 of
+            GT -> (dp, v * dp / sp)
+            LT -> (w * dn / sn, dn)
             EQ -> (w, v)
         c = atan2 vD wD / v
         arg = 0.5 * log (wD*wD + vD*vD)
@@ -489,12 +490,13 @@ instance Floating QFloat where
         sn2 = l1qq - w1qq
         sp = sqrt sp2
         sn = copysign (sqrt sn2) w
-        dp = w2 / ((w - sp)*(w2 + sn2))
-        dn = v2 / ((sn - v)*(v2 + sp2))
-        (wD, vD) =  -- choose a more stable (symbolically equiv) version
-          case compare w1qq 0 of
-            GT -> if w >= 0 then (w + sp, v * (1 + w / sp)) else (dp, v * dp / sp)
-            LT -> if w >= 0 then (w * (1 + v / sn), v + sn) else (w * dn / sn, dn)
+        -- choose a more stable (symbolically equiv) version
+        dp = if 2 * w >= - sp then w + sp else w2 / ((w - sp)*(w2 + sn2))
+        dn = if 2 * v <= - sn || sn >= 0
+                              then v + sn else v2 / ((sn - v)*(v2 + sp2))
+        (wD, vD) = case compare w1qq 0 of
+            GT -> (dp, v * dp / sp)
+            LT -> (w * dn / sn, dn)
             EQ -> (w, v)
         c = atan2 vD wD / v
         arg = 0.5 * log (wD*wD + vD*vD)
