@@ -64,7 +64,7 @@ deriving instance ( Eq (Matrix t n n)
 class RealFloatExtras t
     => MatrixSVD (t :: Type) (n :: Nat) (m :: Nat) where
     -- | Compute SVD factorization of a matrix
-    svd :: Matrix t n m -> SVD t n m
+    svd :: IterativeMethod => Matrix t n m -> SVD t n m
 
 -- | Obvious dummy implementation of SVD for 1x1 matrices
 svd1 :: (PrimBytes t, Num t, Eq t) => Matrix t 1 1 -> SVD t 1 1
@@ -420,7 +420,11 @@ instance {-# INCOHERENT #-}
         svdGolubKahanZeroCol alphas betas vPtr nm1
 
       -- main routine for a bidiagonal matrix
-      svdBidiagonalInplace alphas betas uPtr vPtr nm (3*nm) -- number of tries
+      let maxIter = 3*nm -- number of tries
+      withinIters <- svdBidiagonalInplace alphas betas uPtr vPtr nm maxIter
+      unless withinIters . tooManyIterations
+        $ "SVD - Givens rotation sweeps for a bidiagonal matrix ("
+           ++ show maxIter ++ " sweeps max)."
 
       -- sort singular values
       sUnsorted <- unsafeFreezeDataFrame alphas
@@ -499,7 +503,7 @@ instance {-# INCOHERENT #-}
  -}
 svdBidiagonalInplace ::
        forall (s :: Type) (t :: Type) (n :: Nat) (m :: Nat) (nm :: Nat)
-     . ( RealFloatExtras t
+     . ( IterativeMethod, RealFloatExtras t
        , KnownDim n, KnownDim m, KnownDim nm, nm ~ Min n m)
     => STDataFrame s t '[nm] -- ^ the main diagonal of B and then the singular values.
     -> STDataFrame s t '[nm] -- ^ first upper diagonal of B
@@ -507,20 +511,22 @@ svdBidiagonalInplace ::
     -> STDataFrame s t '[m,m] -- ^ V
     -> Int -- ^ 0 < q <= nm -- size of a reduced matrix, such that leftover is diagonal
     -> Int -- iters
-    -> ST s ()
-svdBidiagonalInplace _ _ _ _ 0 _ = pure ()
-svdBidiagonalInplace _ _ _ _ 1 _ = pure ()
+    -> ST s Bool -- whether the algorithm succeeds within the maxIter
+svdBidiagonalInplace _ _ _ _ 0 _ = pure True
+svdBidiagonalInplace _ _ _ _ 1 _ = pure True
+svdBidiagonalInplace _ _ _ _ _ 0 = pure False
 svdBidiagonalInplace aPtr bPtr uPtr vPtr q' iter = do
     Dict <- pure $ minIsSmaller (dim @n) (dim @m)
     (p, q) <- findCounters q'
-    when (iter == 0) $ error "Too many iterations."
-    when (q /= 0) $ do
+    if (q /= 0)
+    then do
       findZeroDiagonal p q >>= \case
         Just k
           | k == q-1  -> svdGolubKahanZeroCol aPtr bPtr vPtr (k-1)
           | otherwise -> svdGolubKahanZeroRow aPtr bPtr uPtr k
         Nothing -> svdGolubKahanStep aPtr bPtr uPtr vPtr p q
       svdBidiagonalInplace aPtr bPtr uPtr vPtr q (iter - 1)
+    else return True
   where
     -- nm = fromIntegral $ dimVal' @nm :: Int
 
