@@ -92,7 +92,7 @@ validateBidiagonal a BiDiag {..} =
         ]
       ) (approxEq mag bdVDet (det v))
   where
-    mag = fromIntegral (totalDim $ dims `inSpaceOf` a) :: Scalar t
+    mag = fromIntegral (totalDim $ dims `inSpaceOf` a) ^ (2 :: Int) :: Scalar t
     a'  = u %* b %* transpose v
     b = biDiag dims bdAlpha bdBeta
     u = bdU
