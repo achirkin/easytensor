@@ -59,10 +59,8 @@ sortBy :: forall (t :: Type) n ns
        -> DataFrame t (n ': ns)
        -> DataFrame t (n ': ns)
 sortBy cmp df = case dimKind @(KindOf n) of
-    DimKNat
-      | Left _ <- uniqueOrCumulDims df -> df -- all equal, no need for sorting.
-      | otherwise -> runST $ do
-        mdf <- uncheckedThawDataFrame df
+    DimKNat -> runST $
+      flip (withThawDataFrame (const $ pure df)) df $ \mdf -> do
         sortByInplace
           (\x y -> cmp <$> unsafeFreezeDataFrame x <*> unsafeFreezeDataFrame y)
           mdf

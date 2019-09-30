@@ -33,8 +33,7 @@ module Numeric.DataFrame.IO
     , copyDataFrame', copyMutableDataFrame'
     , copyDataFrameOff, copyMutableDataFrameOff
     , freezeDataFrame, unsafeFreezeDataFrame
-    , thawDataFrame, thawPinDataFrame, unsafeThawDataFrame
-    , uncheckedThawDataFrame
+    , thawDataFrame, thawPinDataFrame, unsafeThawDataFrame, withThawDataFrame
     , writeDataFrame, writeDataFrameOff
     , readDataFrame, readDataFrameOff
     , isDataFramePinned, getDataFrameSteps
@@ -119,6 +118,10 @@ oneMoreDataFrame = coerce (oneMoreDataFrame# @t @_ @ns)
 --
 --   This function does not perform a copy.
 --   All changes to a new DataFrame will be reflected in the original DataFrame as well.
+--
+--   If any of the dims in @as@ or @b@ is unknown (@a ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 subDataFrameView ::
        forall (t :: Type) b bi bd as bs asbs
      . (SubFrameIndexCtx b bi bd, KnownDim bd, ConcatList as (b :+ bs) asbs)
@@ -132,6 +135,10 @@ subDataFrameView = coerce (subDataFrameView# @t @_ @b @bi @bd @as @bs @asbs)
 --
 --   This is a simpler version of @subDataFrameView@ that allows
 --    to view over one index at a time.
+--
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 subDataFrameView' ::
        forall (t :: Type) as bs asbs
      . ConcatList as bs asbs
@@ -143,6 +150,13 @@ subDataFrameView' = coerce (subDataFrameView'# @t @_ @as @bs @asbs)
 --   In contrast to @copyDataFrame'@, this function allows to copy over a range
 --    of contiguous indices over a single dimension.
 --   For example, you can write a 3x4 matrix into a 7x4 matrix, starting at indices 0..3.
+--
+--   This function is safe (no `OutOfDimBounds` exception possible).
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   you may happen to write data beyond dataframe bounds.
+--   In this case, this function does nothing.
+--   If (@b ~ XN m@) and (@Idx bi + Dim bd > Dim b@), this function copies only as
+--   many elements as fits into the dataframe along this dimension (possibly none).
 copyDataFrame ::
        forall (t :: Type) b bi bd as bs asbs
      . ( SubFrameIndexCtx b bi bd, KnownDim bd, ExactDims bs
@@ -157,6 +171,13 @@ copyDataFrame = coerce (copyDataFrame# @t @_ @b @bi @bd @as @bs @asbs)
 --   In contrast to @copyMutableDataFrame'@, this function allows to copy over a range
 --    of contiguous indices over a single dimension.
 --   For example, you can write a 3x4 matrix into a 7x4 matrix, starting at indices 0..3.
+--
+--   This function is safe (no `OutOfDimBounds` exception possible).
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   you may happen to write data beyond dataframe bounds.
+--   In this case, this function does nothing.
+--   If (@b ~ XN m@) and (@Idx bi + Dim bd > Dim b@), this function copies only as
+--   many elements as fits into the dataframe along this dimension (possibly none).
 copyMutableDataFrame ::
        forall (t :: Type) b bi bd as bs asbs
      . ( SubFrameIndexCtx b bi bd
@@ -167,11 +188,46 @@ copyMutableDataFrame ::
 copyMutableDataFrame = coerce (copyMDataFrame# @t @_ @b @bi @bd @as @bs @asbs)
 {-# INLINE copyMutableDataFrame #-}
 
+-- | Copy one DataFrame into another mutable DataFrame at specified position.
+--
+--   This is a simpler version of @copyDataFrame@ that allows
+--     to copy over one index at a time.
+--
+--   This function is safe (no `OutOfDimBounds` exception possible).
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   you may happen to write data beyond dataframe bounds.
+--   In this case, this function does nothing.
+copyDataFrame' ::
+       forall (t :: Type) as bs asbs
+     . ( ExactDims bs
+       , PrimArray t (DataFrame t bs)
+       , ConcatList as bs asbs )
+    => Idxs as -> DataFrame t bs -> IODataFrame t asbs -> IO ()
+copyDataFrame' = coerce (copyDataFrame'# @t @_ @as @bs @asbs)
+{-# INLINE copyDataFrame' #-}
+
+-- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
+--
+--   This is a simpler version of @copyMutableDataFrame@ that allows
+--     to copy over one index at a time.
+--
+--   This function is safe (no `OutOfDimBounds` exception possible).
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   you may happen to write data beyond dataframe bounds.
+--   In this case, this function does nothing.
+copyMutableDataFrame' ::
+       forall (t :: Type) as bs asbs
+     . (ExactDims bs, PrimBytes t, ConcatList as bs asbs)
+    => Idxs as -> IODataFrame t bs -> IODataFrame t asbs -> IO ()
+copyMutableDataFrame' = coerce (copyMDataFrame'# @t @_ @as @bs @asbs)
+{-# INLINE copyMutableDataFrame' #-}
+
 -- | Copy one DataFrame into another mutable DataFrame by offset in
 --   primitive elements.
 --
 --   This is a low-level copy function; you have to keep in mind the row-major
 --   layout of Mutable DataFrames. Offset bounds are not checked.
+--   You will get an undefined behavior if you write beyond the DataFrame bounds.
 copyDataFrameOff ::
        forall (t :: Type) as bs asbs
      . ( Dimensions bs
@@ -186,36 +242,13 @@ copyDataFrameOff = coerce (copyDataFrameOff# @t @_ @as @bs @asbs)
 --
 --   This is a low-level copy function; you have to keep in mind the row-major
 --   layout of Mutable DataFrames. Offset bounds are not checked.
+--   You will get an undefined behavior if you write beyond the DataFrame bounds
 copyMutableDataFrameOff ::
        forall (t :: Type) as bs asbs
      . (ExactDims bs, PrimBytes t, ConcatList as bs asbs)
     => Int -> IODataFrame t bs -> IODataFrame t asbs -> IO ()
 copyMutableDataFrameOff = coerce (copyMDataFrameOff# @t @_ @as @bs @asbs)
 {-# INLINE copyMutableDataFrameOff #-}
-
--- | Copy one DataFrame into another mutable DataFrame at specified position.
---
---   This is a simpler version of @copyDataFrame@ that allows
---     to copy over one index at a time.
-copyDataFrame' ::
-       forall (t :: Type) as bs asbs
-     . ( ExactDims bs
-       , PrimArray t (DataFrame t bs)
-       , ConcatList as bs asbs )
-    => Idxs as -> DataFrame t bs -> IODataFrame t asbs -> IO ()
-copyDataFrame' = coerce (copyDataFrame'# @t @_ @as @bs @asbs)
-{-# INLINE copyDataFrame' #-}
-
--- | Copy one mutable DataFrame into another mutable DataFrame at specified position.
---
---   This is a simpler version of @copyMutableDataFrame@ that allows
---     to copy over one index at a time.
-copyMutableDataFrame' ::
-       forall (t :: Type) as bs asbs
-     . (ExactDims bs, PrimBytes t, ConcatList as bs asbs)
-    => Idxs as -> IODataFrame t bs -> IODataFrame t asbs -> IO ()
-copyMutableDataFrame' = coerce (copyMDataFrame'# @t @_ @as @bs @asbs)
-{-# INLINE copyMutableDataFrame' #-}
 
 -- | Make a mutable DataFrame immutable, without copying.
 unsafeFreezeDataFrame ::
@@ -259,18 +292,26 @@ unsafeThawDataFrame ::
 unsafeThawDataFrame = coerce (unsafeThawDataFrame# @t @_ @ns)
 {-# INLINE unsafeThawDataFrame #-}
 
--- | Create a new mutable DataFrame and copy content of immutable one in there.
---   This function is unsafe in that it assumes that the input DataFrame is
---   not @fromScalar@-made (i.e. I assume CumulDims is available).
---   It is only safe to call this function if @uniqueOrCumulDims@ from @PrimArray@
---   returns @Right CumulDims@.
-uncheckedThawDataFrame ::
-       forall (t :: Type) ns
+-- | Given two continuations @f@ and @g@.
+--   If the input DataFrame is a single broadcast value, use it in @f@.
+--   Otherwise, create a new mutable DataFrame and copy content of immutable one
+--   in there; then use it in @g@.
+--
+--   This function is useful when @thawDataFrame@ cannot be used due to
+--   @Dimensions ns@ constraint being not available.
+withThawDataFrame ::
+       forall (t :: Type) ns r
      . PrimArray t (DataFrame t ns)
-    => DataFrame t ns -> IO (IODataFrame t ns)
-uncheckedThawDataFrame = coerce (uncheckedThawDataFrame# @t @_ @ns)
+    => (t -> IO r)
+    -> (IODataFrame t ns -> IO r)
+    -> DataFrame t ns -> IO r
+withThawDataFrame = coerce (withThawDataFrame# @t @_ @ns @r)
 
--- | Write a single element at the specified element offset
+-- | Write a single element at the specified element offset.
+--
+--   This is a low-level write function; you have to keep in mind the row-major
+--   layout of Mutable DataFrames. Offset bounds are not checked.
+--   You will get an undefined behavior if you write beyond the DataFrame bounds.
 writeDataFrameOff ::
        forall (t :: Type) ns
      . PrimBytes (DataFrame t ('[] :: KindOf ns))
@@ -278,7 +319,12 @@ writeDataFrameOff ::
 writeDataFrameOff = coerce (writeDataFrameOff# @t @_ @ns)
 {-# INLINE writeDataFrameOff #-}
 
--- | Write a single element at the specified index
+-- | Write a single element at the specified index.
+--
+--   This function is safe (no `OutOfDimBounds` exception possible).
+--   If any of the dims in @ns@ is unknown (@n ~ XN m@),
+--   you may happen to write data beyond dataframe bounds.
+--   In this case, this function does nothing.
 writeDataFrame ::
        forall (t :: Type) ns
      . PrimBytes (DataFrame t ('[] :: KindOf ns))
@@ -286,7 +332,11 @@ writeDataFrame ::
 writeDataFrame = coerce (writeDataFrame# @t @_ @ns)
 {-# INLINE writeDataFrame #-}
 
--- | Read a single element at the specified element offset
+-- | Read a single element at the specified element offset.
+--
+--   This is a low-level read function; you have to keep in mind the row-major
+--   layout of Mutable DataFrames. Offset bounds are not checked.
+--   You will get an undefined behavior if you read beyond the DataFrame bounds.
 readDataFrameOff ::
        forall (t :: Type) ns
      . PrimBytes (DataFrame t ('[] :: KindOf ns))
@@ -294,7 +344,11 @@ readDataFrameOff ::
 readDataFrameOff = coerce (readDataFrameOff# @t @_ @ns)
 {-# INLINE readDataFrameOff #-}
 
--- | Read a single element at the specified index
+-- | Read a single element at the specified index.
+--
+--   If any of the dims in @ns@ is unknown (@n ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 readDataFrame ::
        forall (t :: Type) ns
      . PrimBytes (DataFrame t ('[] :: KindOf ns))

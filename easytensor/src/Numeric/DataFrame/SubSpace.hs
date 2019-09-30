@@ -53,7 +53,7 @@ module Numeric.DataFrame.SubSpace
     --   Use these functions if you are tired of @TypeApplications@ or find the
     --   error messages too cryptic.
   , sindexOffset, supdateOffset
-  , (.!), supdate, sslice, supdateSlice
+  , (.!), slookup, supdate, sslice, ssliceMaybe, supdateSlice
   , sewgen, siwgen, sewmap, siwmap, sewzip, siwzip
   , selement, selementWise, selementWise_, sindexWise, sindexWise_
   , sewfoldl, sewfoldl', sewfoldr, sewfoldr', sewfoldMap
@@ -67,13 +67,15 @@ module Numeric.DataFrame.SubSpace
     --   Often, you would need @TypeApplications@ to specify explicitly at least
     --   the indexing subspace (parameter @as@).
   , joinDataFrame, indexOffset, updateOffset
-  , index, update, slice, updateSlice
+  , index, Numeric.DataFrame.SubSpace.lookup
+  , update, slice, sliceMaybe, updateSlice
   , ewgen, iwgen, ewmap, iwmap, ewzip, iwzip
   , element, elementWise, elementWise_, indexWise, indexWise_
   , ewfoldl, ewfoldl', ewfoldr, ewfoldr', ewfoldMap
   , iwfoldl, iwfoldl', iwfoldr, iwfoldr', iwfoldMap
   ) where
 
+import           Control.Arrow                        (first)
 import           Control.Monad
 import           Control.Monad.ST
 import           Data.Kind
@@ -126,14 +128,13 @@ infixl 4 .!
 
 -- | Set a new value to an element.
 --
---   If (@a ~ XN m@) then this function is unsafe and can throw
---   an `OutOfDimBounds` exception.
---   Otherwise, its safety is guaranteed by the type system.
+--   If (@a ~ XN m@) and the index falls outside of the DataFrame dim,
+--   then this function returns the original DataFrame.
 supdate ::
        forall t a bs
      . SubSpace t '[a] bs (a :+ bs)
-    => Idxs '[a] -> DataFrame t bs -> DataFrame t (a :+ bs) -> DataFrame t (a :+ bs)
-supdate = update @t @'[a] @bs @(a :+ bs)
+    => Idx a -> DataFrame t bs -> DataFrame t (a :+ bs) -> DataFrame t (a :+ bs)
+supdate = update @t @'[a] @bs @(a :+ bs) . (:*U)
 {-# INLINE[1] supdate #-}
 
 -- | Map a function over each element of DataFrame.
@@ -280,9 +281,8 @@ sindexWise_ f = indexWise_ @t @'[a] @bs @(a :+ bs) @f @b (\(i :* U) -> f i)
 
 -- | Apply a functor over a single element (simple lens)
 --
---   If (@a ~ XN m@) then this function is unsafe and can throw
---   an `OutOfDimBounds` exception.
---   Otherwise, its safety is guaranteed by the type system.
+--   If (@a ~ XN m@) and the index falls outside of the DataFrame Dim, the
+--   argument Functor is not called and the result is @pure@ original DataFrame.
 selement ::
        forall t a bs f
      . (SubSpace t '[a] bs (a :+ bs), Applicative f)
@@ -377,8 +377,8 @@ index = indexI @_ @t @as @bs @asbs
 -- | Set a new value to an element.
 --
 --   If any of the dims in @as@ is unknown (@a ~ XN m@),
---   then this function is unsafe and can throw an `OutOfDimBounds` exception.
---   Otherwise, its safety is guaranteed by the type system.
+--   you may happen to update data beyond dataframe bounds.
+--   In this case, the original DataFrame is returned.
 update ::
        forall t as bs asbs
      . SubSpace t as bs asbs
@@ -538,16 +538,23 @@ indexWise_ f = iwfoldr (\i -> (*>) . f i) (pure ())
 
 -- | Apply a functor over a single element (simple lens)
 --
---   If any of the dims in @as@ is unknown (@a ~ XN m@),
---   then this function is unsafe and can throw an `OutOfDimBounds` exception.
---   Otherwise, its safety is guaranteed by the type system.
+--   If any of the dims in @as@ is unknown (@a ~ XN m@) and any of the
+--   corresponding indices fall outside of the DataFrame Dims, then the
+--   argument Functor is not called and the result is @pure@ original DataFrame.
 element ::
        forall t as bs asbs f
      . (SubSpace t as bs asbs, Applicative f)
     => Idxs as
     -> (DataFrame t bs -> f (DataFrame t bs))
     -> DataFrame t asbs -> f (DataFrame t asbs)
-element i f df = flip (update i) df <$> f (index i df)
+element i f df = case dimKind @(KindOfEl asbs) of
+  DimKNat -> flip (update i) df <$> f (index i df)
+  DimKXNat
+    | XFrame (dfN :: DataFrame t asbsN) <- df
+    , Just off <- cdIxM (getSteps (dims @asbsN) dfN) i
+      -> flip (updateOffset off) df <$> f (indexOffset off df)
+    | otherwise
+      -> pure df
 {-# INLINE element #-}
 
 
@@ -577,7 +584,7 @@ ewzip :: forall t as bs asbs l bsL asbsL r bsR asbsR
 ewzip = iwzip . const
 {-# INLINE ewzip #-}
 
--- | Zip two spaces on a specified subspace index-wise (with index)
+-- | Zip two spaces on a specified subspace index-wise (with index).
 iwzip :: forall t as bs asbs l bsL asbsL r bsR asbsR
      . (SubSpace t as bs asbs, SubSpace l as bsL asbsL, SubSpace r as bsR asbsR)
     => (Idxs as -> DataFrame l bsL -> DataFrame r bsR -> DataFrame t bs)
@@ -633,9 +640,8 @@ sslice = slice @t @b @bi @bd @'[] @bs @(b :+ bs) . (:* U)
 --
 --   In a sense, this is just a more complicated version of `supdate`.
 --
---   If (@b ~ XN m@) then this function is unsafe and can throw
---   an `OutOfDimBounds` exception.
---   Otherwise, its safety is guaranteed by the type system.
+--   If (@b ~ XN m@) and (@Idx bi + Dim bd > Dim b@), this function updates only as
+--   many elements as fits into the dataframe along this dimension (possibly none).
 supdateSlice ::
        forall t b bi bd bs
      . ( KnownDimKind (KindOfEl bs)
@@ -682,9 +688,11 @@ slice i = case dimKind @(KindOfEl asbs) of
 --
 --   In a sense, this is just a more complicated version of `update`.
 --
---   If any of the dims in @as@ or @b@ is unknown (@a ~ XN m@),
---   then this function is unsafe and can throw an `OutOfDimBounds` exception.
---   Otherwise, its safety is guaranteed by the type system.
+--   If any of the dims in @as@ is unknown (@a ~ XN m@),
+--   you may happen to update data beyond dataframe bounds.
+--   In this case, the original DataFrame is returned.
+--   If (@b ~ XN m@) and (@Idx bi + Dim bd > Dim b@), this function updates only as
+--   many elements as fits into the dataframe along this dimension (possibly none).
 updateSlice ::
        forall (t :: Type) b bi bd as bs asbs
      . ( KnownDimKind (KindOfEl asbs)
@@ -706,6 +714,81 @@ updateSlice i bdbsDf asbsDf = case dimKind @(KindOfEl asbs) of
       copyDataFrame i bdbsDf (castDataFrame @t @asbs asbsM)
       XFrame <$> unsafeFreezeDataFrame asbsM
 {-# INLINE[1] updateSlice #-}
+
+
+-- | Get an element by its index in the dataframe.
+--   This is a safe alternative to `(.!)` function when the index dimension
+--   is not known at compile time (@a ~ XN m@).
+slookup ::
+       forall t (a :: XNat) (bs :: [XNat])
+     . (All KnownDimType bs, PrimBytes t)
+    => Idx a -> DataFrame t (a :+ bs) -> Maybe (DataFrame t bs)
+slookup = Numeric.DataFrame.SubSpace.lookup @t @'[a] @bs @(a :+ bs) . (:*U)
+{-# INLINE slookup #-}
+
+-- | Get an element by its index in the dataframe.
+--   This is a safe alternative to `index` function when some of the dimensions
+--   are not known at compile time (@d ~ XN m@).
+lookup ::
+       forall t (as :: [XNat]) (bs :: [XNat]) (asbs :: [XNat])
+     . (ConcatList as bs asbs, All KnownDimType bs, PrimBytes t)
+    => Idxs as -> DataFrame t asbs -> Maybe (DataFrame t bs)
+lookup i (XFrame (df :: DataFrame t asbsN))
+  | asbsN <- dims @asbsN
+  , Just off <- cdIxM (getSteps asbsN df) i
+  , asbs <- XDims asbsN :: Dims asbs
+  , (as, bs) <- prefSufDims i asbs
+    = withLiftedConcatList @'Nothing @'Nothing @('Just asbsN) as bs asbs $
+        \(Dims :: Dims asn) (Dims :: Dims bsn) (_ :: Dims asbsn)
+          -> case inferKnownBackend @t @bsn of
+            Dict -> Just (XFrame (indexOffset @t @asn @bsn @asbsn off df))
+  | otherwise = Nothing
+{-# INLINE lookup #-}
+
+-- | Get a few contiguous elements.
+--
+--   In a sense, this is just a more complicated version of `slookup`.
+--
+--   This is a safe alternative to `sslice` function when the slice dimension
+--   is not known at compile time (@b ~ XN m@).
+ssliceMaybe ::
+       forall (t :: Type) (b :: XNat) (bi :: XNat) (bd :: XNat) (bs :: [XNat])
+     . ( SubFrameIndexCtx b bi bd, KnownDim bd
+       , All KnownDimType bs, PrimBytes t)
+    => Idx bi -> DataFrame t (b :+ bs) -> Maybe (DataFrame t (bd :+ bs))
+ssliceMaybe = sliceMaybe @t @b @bi @bd @'[] @bs @(b :+ bs) . (:* U)
+{-# INLINE ssliceMaybe #-}
+
+
+-- | Get a few contiguous elements.
+--
+--   In a sense, this is just a more complicated version of `lookup`.
+--
+--   This is a safe alternative to `slice` function when some of the dimensions
+--   are not known at compile time (@d ~ XN m@).
+sliceMaybe ::
+       forall (t :: Type) (b :: XNat) bi bd as bs asbs
+     . ( SubFrameIndexCtx b bi bd, KnownDim bd
+       , ConcatList as (b :+ bs) asbs
+       , All KnownDimType bs, PrimBytes t)
+    => Idxs (as +: bi) -> DataFrame t asbs -> Maybe (DataFrame t (bd :+ bs))
+sliceMaybe i (XFrame (df :: DataFrame t asbsN))
+  | asbsN <- dims @asbsN
+  , bd <- dim @bd
+  , Dict <- ( withKnownXDim @bd Dict
+      :: Dict (KnownDim (DimBound bd), KnownDimType bd, FixedDim bd (DimBound bd)))
+  , Just (I# off0, bsteps@(CumulDims (bbN:bN:_)))
+      <- getOffAndStepsSubM 0 (getSteps asbsN df) i bd
+  , bbN == bN * dimVal bd -- is there enough elements?
+  , asbs <- XDims asbsN :: Dims asbs
+  , XDims (Dims :: Dims bsN) <-
+      unsafeCoerce (dropSome (listIdxs i) (listDims asbs)) :: Dims bs
+  , Dict <- inferKnownBackend @t @(DimBound bd ': bsN)
+    = Just $ XFrame @_ @t @(bd :+ bs) @(DimBound bd ': bsN)
+              (withArrayContent broadcast
+                (\_ off -> fromElems bsteps (off0 +# off)) df)
+  | otherwise = Nothing
+{-# INLINE sliceMaybe #-}
 
 
 -- | Operations on DataFrames
@@ -910,10 +993,10 @@ nonVoidDims = all (0 <) . listDims
 
 dropPref :: Dims (ns :: [Nat]) -> CumulDims -> CumulDims
 dropPref ds = CumulDims . dropSome (listDims ds) . unCumulDims
-  where
-    dropSome :: [Word] -> [Word] -> [Word]
-    dropSome []     xs = xs
-    dropSome (_:as) xs = dropSome as (tail xs)
+
+dropSome :: [Word] -> [Word] -> [Word]
+dropSome []     xs = xs
+dropSome (_:as) xs = dropSome as (tail xs)
 
 instance ( ConcatList as bs asbs
          , SubSpaceCtx t as bs asbs
@@ -1127,6 +1210,14 @@ dropSufDims = unsafeCoerce dropSuf
     f :: Word -> ([Word], [Word]) -> ([Word], [Word])
     f x (as, [])  = (x:as,[])
     f _ (_, _:rs) = ([], rs)
+
+prefSufDims :: ConcatList as bs asbs
+             => TypedList f as -> Dims asbs -> (Dims as, Dims bs)
+prefSufDims = unsafeCoerce f
+  where
+    f :: [Word] -> [Word] -> ([Word], [Word])
+    f  []      asbs   = ([], asbs)
+    f (_:is) ~(a:sbs) = first (a:) (f is sbs)
 
 concatDims :: ConcatList as bs asbs
            => Dims as -> Dims bs -> Dims asbs

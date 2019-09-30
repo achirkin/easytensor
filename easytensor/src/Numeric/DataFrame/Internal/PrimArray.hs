@@ -11,8 +11,9 @@
 {-# LANGUAGE UnboxedTuples          #-}
 module Numeric.DataFrame.Internal.PrimArray
   ( PrimArray (..), CumulDims (..)
-  , cumulDims, cdTotalDim, cdTotalDim#, cdIx, cdIxSub
-  , getOffAndSteps, getOffAndStepsSub
+  , cumulDims, cdTotalDim, cdTotalDim#
+  , cdIx, cdIxSub, getOffAndSteps, getOffAndStepsSub
+  , cdIxM, getOffAndStepsM, getOffAndStepsSubM
   , ixOff, unsafeFromFlatList, getSteps, fromSteps
   , withArrayContent, fromElems, broadcast
   ) where
@@ -61,6 +62,10 @@ cdTotalDim# ~(CumulDims ~(n:_)) = case n of W# w -> word2Int# w
 --
 --   Note, you can take offset of subspace with CumulDims of larger space
 --     - very convenient!
+--
+--   If any of the dims in @ns@ is unknown (@n ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 cdIx :: CumulDims -> Idxs ns -> Int
 cdIx steps
   = fromIntegral . fst . getOffAndSteps' 0 0 (unCumulDims steps) . listIdxs
@@ -68,15 +73,21 @@ cdIx steps
 -- | Calculate offset of an Idxs.
 --
 --   Also check if the last index plus dimVal of subN is not bigger than the
---   corresponding dim inside CumulDims;
---     throw an out-of-bounds error otherwise
---       (unless @unsafeindices@ flag is enabled).
+--   corresponding dim inside CumulDims; throw an `OutOfDimBounds` otherwise.
+--
+--   If any of the dims in @ns@ is unknown (@n ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 cdIxSub :: CumulDims -> Idxs (ns +: idxN) -> Dim subN -> Int
 cdIxSub steps idxs d
   = fromIntegral
   . fst . getOffAndSteps' (dimVal d) 0 (unCumulDims steps) $ listIdxs idxs
 
 -- | Calculate offset of an Idxs and return remaining CumulDims.
+--
+--   If any of the dims in @ns@ is unknown (@n ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 getOffAndSteps :: Int -- ^ Initial offset
                -> CumulDims -> Idxs ns -> (Int, CumulDims)
 getOffAndSteps off0 steps
@@ -86,9 +97,11 @@ getOffAndSteps off0 steps
 -- | Calculate offset of an Idxs and return remaining CumulDims.
 --
 --   Also check if the last index plus dimVal of subN is not bigger than the
---   corresponding dim inside CumulDims;
---     throw an out-of-bounds error otherwise
---       (unless @unsafeindices@ flag is enabled).
+--   corresponding dim inside CumulDims; throw an `OutOfDimBounds` otherwise.
+--
+--   If any of the dims in @ns@ is unknown (@n ~ XN m@),
+--   then this function is unsafe and can throw an `OutOfDimBounds` exception.
+--   Otherwise, its safety is guaranteed by the type system.
 getOffAndStepsSub :: Int -- ^ Initial offset
                   -> CumulDims -> Idxs (ns +: idxN)
                   -> Dim subN -> (Int, CumulDims)
@@ -124,6 +137,48 @@ getOffAndSteps' sub0 off0 steps0 is0 = go sub0 off0 steps0 is0
     go sub off ~(_:steps@(s:_)) (i:ixs)
       = go sub (off + i*s) steps ixs
 {-# INLINE getOffAndSteps' #-}
+
+
+
+-- | Same as `cdIx`, but safe; returns @Nothing@ if out of bounds.
+cdIxM :: CumulDims -> Idxs ns -> Maybe Int
+cdIxM steps
+  = fmap (fromIntegral . fst)
+  . getOffAndStepsM' 0 0 (unCumulDims steps) . listIdxs
+
+-- | Same as `getOffAndSteps`, but safe; returns @Nothing@ if out of bounds.
+--   Trims the first (slicing) dimension of the returned CumulDims to fit
+--   the original dataframe if necessary.
+getOffAndStepsM :: Int -- ^ Initial offset
+                -> CumulDims -> Idxs ns -> Maybe (Int, CumulDims)
+getOffAndStepsM off0 steps
+  = fmap (fromIntegral *** CumulDims)
+  . getOffAndStepsM' 0 (fromIntegral off0) (unCumulDims steps) . listIdxs
+
+-- | Same as `getOffAndStepsSub`, but safe; returns @Nothing@ if out of bounds.
+--   Trims the first (slicing) dimension of the returned CumulDims to fit
+--   the original dataframe if necessary.
+getOffAndStepsSubM :: Int -- ^ Initial offset
+                  -> CumulDims -> Idxs (ns +: idxN)
+                  -> Dim subN -> Maybe (Int, CumulDims)
+getOffAndStepsSubM off0 steps idxs d
+  = fmap (fromIntegral *** CumulDims)
+  . getOffAndStepsM' (dimVal d) (fromIntegral off0) (unCumulDims steps)
+  $ listIdxs idxs
+
+getOffAndStepsM' :: Word -> Word -> [Word] -> [Word] -> Maybe (Word, [Word])
+getOffAndStepsM' = go
+  where
+    go :: Word -> Word -> [Word] -> [Word] -> Maybe (Word, [Word])
+    go _   off steps [] = Just (off, steps)
+    go sub off ~(bs:steps@(s:_)) (i:ixs)
+      | is >= bs       = Nothing
+      | not (null ixs) = go sub (off + is) steps ixs
+      | sub == 0       = Just (off + is, steps)
+      | otherwise      = Just (off + is, min (bs - is) (sub*s) : steps)
+      where
+        is = i*s
+{-# INLINE getOffAndStepsM' #-}
 
 -- | Try to get @CumulDims@ from an array,
 --   and create it using @Dims@ if failed.
