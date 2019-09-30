@@ -39,6 +39,7 @@ import           Numeric.DataFrame              hiding (D, S)
 import           Numeric.Dimensions             hiding (D)
 import qualified Numeric.Dimensions             as Dim
 import           Numeric.PrimBytes
+import qualified Numeric.TypedList              as TL
 import           OpenCV.Core.Types.Mat          hiding (All)
 import           OpenCV.Internal.C.Inline       (openCvCtx)
 import           OpenCV.Internal.C.Types        (C'Mat)
@@ -132,28 +133,39 @@ instance (PrimBytes t, Dimensions ds, KnownDim d)
     fromMat _ = error "OpenCV.Core.Types.Mat.DataFrame.fromMat: impossible arguments"
 
 
-instance ( PrimBytes t, BoundedDims xds, KnownXNatTypes xds)
+instance ( PrimBytes t, BoundedDims xds, All KnownDimType xds)
          => FromMat (SChMatDF t (xds :: [XNat])) where
     {-# NOINLINE fromMat #-}
     fromMat m
       = unsafePerformIO . withMatData' m $ \xds -> fmap SChMatDF . readMatData @t xds
 
 instance ( PrimBytes t, BoundedDims xds, BoundedDim xd
-         , KnownXNatTypes xds, KnownXNatType xd)
+         , All KnownDimType xds, KnownDimType xd)
          => FromMat (MChMatDF t (xds :: [XNat]) (xd :: XNat)) where
     {-# NOINLINE fromMat #-}
     fromMat m
-      | Dict <- inferAllBoundedDims @XNat @xds
-      , Dict <- snocBDims @xds @xd minDims minDim
-      = unsafePerformIO . withMatData' m $ \xds -> fmap MChMatDF . readMatData @t xds
+      | xdsEvs <- TL.EvList @KnownDimType @xds
+      , xdEv <- TL.Dict1 @KnownDimType @xd
+      , TL.EvList <- Snoc xdsEvs xdEv
+      , Dict <- snocBDims @xds @xd minimalDims minimalDim
+        = unsafePerformIO . withMatData' m $ \xds -> fmap MChMatDF . readMatData @t xds
+      | otherwise
+        = error "OpenCV.Core.Types.Mat.DataFrame.fromMat: impossible arguments"
       where
         snocBDims :: forall (xns :: [XNat]) (xn :: XNat)
-                   . ( All BoundedDim xns, BoundedDim xn
-                     , KnownXNatTypes xns, KnownXNatType xn)
-                  => Dims xns -> Dim xn -> Dict (BoundedDims (xns +: xn), KnownXNatTypes (xns +: xn))
+                   . (BoundedDims xns, BoundedDim xn)
+                  => Dims xns -> Dim xn
+                  -> Dict (BoundedDims (xns +: xn))
         snocBDims U _           = Dict
-        snocBDims (_ :* xns) xn = case snocBDims xns xn of Dict -> Dict
-
+        snocBDims ((x :: Dim x) :* (xns :: Dims xs)) xn
+          | Dict <- unsafeCoerce (Dict @((xns +: xn)~(xns +: xn)))
+                      :: Dict ((x:+(xs+:xn)) ~ (xns +: xn))
+            = consBDims x (snocBDims xns xn)
+        consBDims :: forall (xn :: XNat) (xns :: [XNat])
+                   . BoundedDim xn
+                  => Dim xn -> Dict (BoundedDims xns)
+                  -> Dict (BoundedDims (xn :+ xns))
+        consBDims _ Dict = Dict
 
 -- | Reveal the Mat depth by pattern-matching against this data
 data FixDepth (shape :: DS [DS Nat]) (channels :: DS Nat)
@@ -265,10 +277,10 @@ makeMat ds@Dims df
 --   pointer -- just reads the whole thing into a frame.
 readMatData :: forall t (xds :: [XNat])
              . ( PrimBytes t
-               , KnownXNatTypes xds
+               , All KnownDimType xds
                )
             => Dims xds -> Ptr Word8 -> IO (DataFrame t xds)
-readMatData (XDims (_ :: Dims ds)) ptr
+readMatData (XDims (Dims :: Dims ds)) ptr
   | Dict <- inferKnownBackend @t @ds
   = XFrame <$> (peek (unsafeCoerce ptr) :: IO (DataFrame t ds))
 
@@ -323,7 +335,7 @@ readDims channels ptr n = do
       SomeDims xds -> fromMaybe
          (fail $ "OpenCV.Core.Types.Mat.DataFrame.readDims: \
                   \read dimensions do not agree with the specified XDim")
-         (return <$> constrainDims @k @xds xds)
+         (return <$> constrainDims @xds xds)
   where
     withChannels c xs = if c > 1 then addLast c xs else xs
     addLast :: Int32 -> [Int32] -> [Int32]

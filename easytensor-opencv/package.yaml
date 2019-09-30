@@ -1,5 +1,5 @@
 name:                easytensor-opencv
-version:             2.0.0.0
+version:             2.0.0.1
 github:              "achirkin/easytensor/easytensor-opencv"
 license:             BSD3
 author:              "Artem Chirkin"
@@ -34,8 +34,8 @@ ghc-options:
 
 dependencies:
   - base >= 4.10 && < 5
-  - dimensions >= 2 && < 3
-  - easytensor >= 2 && < 3
+  - dimensions >= 2.1 && < 3
+  - easytensor >= 2.1 && < 3
   - opencv >= 0.0.2.1 && < 0.0.3
   - inline-c -any
   - inline-c-cpp -any
