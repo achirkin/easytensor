@@ -763,7 +763,7 @@ data OutOfDimBounds
   , oodDimsCtx   :: Maybe ([Word], [Word])
     -- ^ If available, contains (Dims xns, Idxs xns).
   , oodName      :: String
-    -- ^ Short location of the error description, typically a function name.
+    -- ^ Short description of the error location, typically a function name.
   , oodCallStack :: Maybe CallStack
     -- ^ Function call stack, if available.
     --   Note, this field is ignored in the `Eq` and `Ord` instances.
