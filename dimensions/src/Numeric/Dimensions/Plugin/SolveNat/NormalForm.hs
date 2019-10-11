@@ -95,11 +95,18 @@ data PowE t v
 -- | Primitive values and irreducible functions.
 data UnitE t v
   = UN Prime
-  | UDiv  (SumsE None t v) (SumsE None t v)
+    -- ^ Prime numbers. Note, no zeroes possible!
+  | UDiv  (SumsE None t v) (MaxsE t v)
+    -- ^ Numerator is free of MaxsE and MinsE, but I cannot float out
+    --   MaxsE from the denominator due to possible zeroes.
   | UMod  (NormalE t v) (NormalE t v)
-  | ULog2 (SumsE None t v)
+    -- ^ Mod is a tricky thing, I can do almost nothing about it.
+  | ULog2 (MaxsE t v)
+    -- ^ Cannot float out MaxsE due to possible zeroes.
   | UF t
+    -- ^ An irreducible type family
   | UV v
+    -- ^ A type variable
   deriving (Eq, Ord, Show, Foldable)
 
 -- | 1,2,3,5,7,11...
@@ -254,7 +261,10 @@ instance NormalForm MinsE where
     = fromNormal e
   fromNormal (MinsE (e1 :| L (e2:es)))
     = Min (fromNormal e1) (fromNormal (MinsE (e2 :| L es)))
-  isZero = all isZero . getMinsE
+  isZero = (\(atLeastOneZero, allZeroOrOne) -> atLeastOneZero && allZeroOrOne)
+         . foldr (\x (a, b) -> let is0 = isZero x
+                               in  (a || is0, b && (is0 || isOne x) )
+                 ) (False, True) . getMinsE
   isOne  = all isOne . getMinsE
   validate x = foldMap validate xl <> decreasing xl
     where
@@ -273,7 +283,10 @@ instance NormalForm MaxsE where
   fromNormal (MaxsE (e1 :| L (e2:es)))
     = Max (fromNormal e1) (fromNormal (MaxsE (e2 :| L es)))
   isZero = all isZero . getMaxsE
-  isOne  = all isOne . getMaxsE
+  isOne  = (\(atLeastOneOne, allZeroOrOne) -> atLeastOneOne && allZeroOrOne)
+         . foldr (\x (a, b) -> let is1 = isOne x
+                               in  (a || is1, b && (is1 || isZero x) )
+                 ) (False, True) . getMaxsE
   validate x = foldMap validate xl <> decreasing xl
     where
       xl = toList $ getMaxsE x

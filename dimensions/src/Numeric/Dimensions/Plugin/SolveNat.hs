@@ -142,7 +142,14 @@ normalize (a :^ b)
   = map2Sums powSums (normalize a) (normalize b)
 
 normalize (Div a b)
-  = map2Sums normalizeDiv (normalize a) (inverseMM $ normalize b)
+  -- we can map over the first argument of the Dic but not second, because
+  --  it would mess up mins, maxs and zeroes.
+  =   foldr1 (map2Mins (<>))
+    . fmap ( foldr1 (map2Maxs (<>))
+           . fmap normDiv . getMaxsE)
+    . getMinsE $ getNormalE $ normalize a
+  where
+    normDiv = flip normalizeDiv (getNormalE $ normalize b)
 
 normalize (Mod a b)
   = normalizeMod (normalize a) (normalize b)
@@ -154,9 +161,7 @@ normalize (Min a b)
   = map2Mins (<>) (normalize a) (normalize b)
 
 normalize (Log2 a)
-  = NormalE $ MinsE
-            $ fmap (MaxsE . fmap normalizeLog2 . getMaxsE)
-            $ getMinsE $ getNormalE $ normalize a
+  = NormalE $ MinsE $ fmap normalizeLog2 $ getMinsE $ getNormalE $ normalize a
 
 
 map2Mins :: (Ord v, Ord t)
@@ -204,14 +209,27 @@ inverseMM' (MinsE (maxs1 :| L (maxs2 : maxS)))
 
 
 normalizeDiv :: (Ord v, Ord t)
-             => SumsE None t v -> SumsE None t v -> SumsE None t v
-normalizeDiv a b
+             => SumsE None t v -> MinsE t v -> NormalE t v
+normalizeDiv a (MinsE bs)
+  | isZero a  = minMax 0
+    -- Note, I convert the minimum of a list of maximimums (MinsE bs) into
+    -- the maximum of a list of sums, because bs is the second argument of Div,
+    -- which means swapping MinsE-MaxsE
+  | otherwise = foldr1 (map2Maxs (<>)) $ normalizeDiv' a <$> bs
+
+normalizeDiv' :: (Ord v, Ord t)
+              => SumsE None t v -> MaxsE t v -> NormalE t v
+normalizeDiv' a b
   | (ca, SumsE (L [])) <- unconstSumsE a
-  , (cb, SumsE (L [])) <- unconstSumsE b
-  , cb /= 0   = fromInteger $ div ca cb
-  | isZero a  = 0
-  | isOne  b  = a
-  | otherwise = unitAsSums $ UDiv a b
+  , (cb, True) <- foldr
+      ( \x (cb, nothin) -> case unconstSumsE x of
+                (cb', SumsE (L [])) -> (max cb cb', nothin)
+                _                   -> (0, False)
+      ) (0, True) $ getMaxsE b
+  , cb /= 0   = minMax . fromInteger $ div ca cb
+  | isOne  b  = minMax a
+  | otherwise = unit $ UDiv a b
+
 
 normalizeMod :: (Ord v, Ord t)
              => NormalE t v -> NormalE t v -> NormalE t v
@@ -225,11 +243,15 @@ normalizeMod a b
   | isOne  b  = minMax 0
   | otherwise = unit $ UMod a b
 
-normalizeLog2 :: (Ord v, Ord t) => SumsE None t v -> SumsE None t v
+normalizeLog2 :: (Ord v, Ord t) => MaxsE t v -> MaxsE t v
 normalizeLog2 p
-  | (c, SumsE (L [])) <- unconstSumsE p
-  , c > 0 = fromIntegral $ log2Nat (fromInteger c)
-  | otherwise = unitAsSums $ ULog2 p
+  | (c, True) <- foldr
+      ( \x (cb, nothin) -> case unconstSumsE x of
+                (cb', SumsE (L [])) -> (max cb cb', nothin)
+                _                   -> (0, False)
+      ) (0, True) $ getMaxsE p
+  , c > 0 = MaxsE . pure . fromIntegral $ log2Nat (fromInteger c)
+  | otherwise = MaxsE . pure . unitAsSums $ ULog2 p
 
 
 
