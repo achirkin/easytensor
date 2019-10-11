@@ -90,7 +90,7 @@ newtype ProdE t v = ProdE { getProdE :: AtLeast One (PowE t v) }
 data PowE t v
   = PowU (UnitE t v) (SumsE None t v)
     -- ^ If the base is a UnitE, there is an extra invariant:
-    --   the power is equal to zero iff the base is equal to @Prime 1@.
+    --   the power is equal to zero iff the base is equal to @UOne@.
   | PowS (SumsE Two t v) (SumsE One t v)
     -- ^ If the base is a SumE, there is an extra invariant:
     --   the power must have variable or irreducible funs or be negative const
@@ -99,7 +99,9 @@ data PowE t v
 
 -- | Primitive values and irreducible functions.
 data UnitE t v
-  = UN Prime
+  = UOne
+    -- ^ Number @1@, which is not considered prime here
+  | UN Prime
     -- ^ Prime numbers. Note, no zeroes possible!
   | UDiv  (SumsE None t v) (MaxsE t v)
     -- ^ Numerator is free of MaxsE and MinsE, but I cannot float out
@@ -114,9 +116,9 @@ data UnitE t v
     -- ^ A type variable
   deriving (Eq, Ord, Show, Foldable)
 
--- | 1,2,3,5,7,11...
+-- | 2,3,5,7,11...
 --
---   Note, I conside 1 a Prime here for convenience.
+--   Note, this does not include number 1.
 newtype Prime = Prime { asNatural :: Natural }
   deriving (Eq, Ord, Show)
 
@@ -128,7 +130,7 @@ newtype Prime = Prime { asNatural :: Natural }
 --   The resulting list of powers is decreasing in the magnitude of the base.
 factorize :: Natural -> AtLeast None (PowE t v)
 factorize 0 = mempty
-factorize 1 = L [unitAsPow $ UN (Prime 1)]
+factorize 1 = L [unitAsPow UOne]
 factorize x = L . reverse . fmap asPow . group $ factor x 2
   where
     asPow :: [Natural] -> PowE t v
@@ -240,8 +242,8 @@ singlePowAsSums :: Applicative (AtLeast n) => PowE t v -> SumsE n t v
 singlePowAsSums p = singleProdAsSums $ Pos (ProdE $ pure p)
 
 unitAsPow :: UnitE t v -> PowE t v
-unitAsPow u@(UN (Prime 1)) = PowU u zero
-unitAsPow u                = PowU u one
+unitAsPow UOne = PowU UOne zero
+unitAsPow u    = PowU u one
 
 unitAsSums :: Applicative (AtLeast n) => UnitE t v -> SumsE n t v
 unitAsSums = singlePowAsSums . unitAsPow
@@ -253,7 +255,7 @@ one :: Applicative (AtLeast n) => SumsE n t v
 one = singleProdAsSums $ Pos oneP
 
 oneP :: ProdE t v
-oneP = ProdE $ PowU (UN (Prime 1)) zero :| mempty
+oneP = ProdE $ PowU UOne zero :| mempty
 
 instance Ord a => Ord (Signed a) where
   compare a b = compare (getAbs a) (getAbs b)
@@ -386,9 +388,9 @@ instance NormalForm PowE where
       aIsOne  = isOne a
       checkConst
         | bIsZero && not aIsOne = Invalid $ pure $ hsep
-          ["If power is zero, base must be one, but got", ppr a]
+          ["If power is zero, base must be one, but got", ppr a, "^", ppr b]
         | not bIsZero && aIsOne = Invalid $ pure $ hsep
-          ["If base is one, power must be zero, but got", ppr b]
+          ["If base is one, power must be zero, but got", ppr a, "^", ppr b]
         | otherwise = Ok
   validate x@(PowS a b) = validate a <> validate b <> isNotConst
     where
@@ -398,6 +400,7 @@ instance NormalForm PowE where
         | otherwise = Ok
 
 instance NormalForm UnitE where
+  fromNormal  UOne      = N 1
   fromNormal (UN p)     = N (asNatural p)
   fromNormal (UDiv a b) = fromNormal a `Div` fromNormal b
   fromNormal (UMod a b) = fromNormal a `Mod` fromNormal b
@@ -405,8 +408,9 @@ instance NormalForm UnitE where
   fromNormal (UF t)     = F t
   fromNormal (UV v)     = V v
   isZero = const False
-  isOne (UN (Prime 1)) = True
-  isOne _              = False
+  isOne UOne = True
+  isOne _    = False
+  validate UOne = Ok
   validate up@(UN (Prime p))
     | factorize p == L [unitAsPow up] = Ok
     | otherwise = Invalid $ pure $ ppr (toInteger p) <+> "is not a prime number."
