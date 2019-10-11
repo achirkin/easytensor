@@ -305,6 +305,10 @@ runSolveNat = do
     z1 = V "z1" :: Exp XType Var
     z2 = V "z2" :: Exp XType Var
     z3 = V "z3" :: Exp XType Var
+    f1 a = Log2 (Max (Div (Min a x) (Max (x - y) (Log2 a))) 2)
+    f2 a = (x + y - 5) :^ (Log2 $ z1 + 4 * Div 194 (Max a y) - 1)
+        +  (x + y - 5) :^ (Log2 $ z1 + 4 * Div 194 (Max a y) - 4)
+        + Mod z3 (Min 4 z1) * 4
     exprs :: [Exp XType Var]
     exprs =
       [ Log2 (Max 4 (Min (Div y x) (Mod (Max z1 3) 7)))
@@ -328,4 +332,9 @@ runSolveNat = do
           + Div (9 - Max 6 3 + 2 * 2 :^ 3) (Log2 18 :^ 3)
       , (x + y + 4) * (x - z1) + Max (x * (y + 2)) (y * (z1 + x)) - (x - z1) :^ 3
         + y :^ (z1 + 2)
+      , f1 x
+      , f1 (x + z1)
+      , f2 y
+      , f2 (Div x (f1 y))
+      , f2 (Log2 (Max (f1 z2) (x - 15))) + (-1) :^ f1 (15 + y - x)
       ]

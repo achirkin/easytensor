@@ -89,7 +89,12 @@ newtype ProdE t v = ProdE { getProdE :: AtLeast One (PowE t v) }
 --   the power of some @SumE@.
 data PowE t v
   = PowU (UnitE t v) (SumsE None t v)
+    -- ^ If the base is a UnitE, there is an extra invariant:
+    --   the power is equal to zero iff the base is equal to @Prime 1@.
   | PowS (SumsE Two t v) (SumsE One t v)
+    -- ^ If the base is a SumE, there is an extra invariant:
+    --   the power must have variable or irreducible funs or be negative const
+    --     (single non-negative const is not allowed and immediately expanded).
   deriving (Eq, Ord, Show, Foldable)
 
 -- | Primitive values and irreducible functions.
@@ -196,9 +201,13 @@ powSums _ (SumsE (L [])) = 1
 powSums (SumsE (L [a])) b
   | isOne b   = SumsE (L [a])
   | otherwise = powProd a b
-powSums (SumsE (L (a1:a2:as))) (SumsE (L (b:bs)))
-  = singlePowAsSums $ PowS (SumsE $ a1 :| a2 :| L as)
-                           (SumsE $ b  :| L bs)
+powSums a'@(SumsE (L (a1:a2:as))) b'@(SumsE (L (b:bs)))
+    -- expand sum if the power is a non-negative constant
+  | (c, SumsE (L [])) <- unshiftPosSumsE b'
+    = a' ^ c
+  | otherwise
+    = singlePowAsSums $ PowS (SumsE $ a1 :| a2 :| L as)
+                             (SumsE $ b  :| L bs)
 
 -- | Take signed @ProdE@ expression into a power of @SumE@ expression
 powProd :: (Ord v, Ord t)
@@ -371,11 +380,22 @@ instance NormalForm PowE where
   isOne (PowU u p)
     | isOne u || isZero p = True
   isOne _                 = False
-  validate (PowU (UN (Prime 1)) b)
-    | not (isZero b) = Invalid $ pure $ hsep
-      ["Power of unit that is equal to one must always be zero, but got", ppr b]
-  validate (PowU a b) = validate a <> validate b
-  validate (PowS a b) = validate a <> validate b
+  validate (PowU a b) = validate a <> validate b <> checkConst
+    where
+      bIsZero = isZero b
+      aIsOne  = isOne a
+      checkConst
+        | bIsZero && not aIsOne = Invalid $ pure $ hsep
+          ["If power is zero, base must be one, but got", ppr a]
+        | not bIsZero && aIsOne = Invalid $ pure $ hsep
+          ["If base is one, power must be zero, but got", ppr b]
+        | otherwise = Ok
+  validate x@(PowS a b) = validate a <> validate b <> isNotConst
+    where
+      isNotConst
+        | (_, SumsE (L [])) <- unshiftPosSumsE b = Invalid $ pure $ hsep
+          ["Power of SumE must never be a bare positive constant:", ppr x]
+        | otherwise = Ok
 
 instance NormalForm UnitE where
   fromNormal (UN p)     = N (asNatural p)
