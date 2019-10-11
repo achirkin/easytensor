@@ -59,7 +59,6 @@ Show stoppers:
  -}
 module Numeric.Dimensions.Plugin.SolveNat  where
 
-import Data.Foldable         (toList)
 import Data.Functor.Identity
 import Data.String           (IsString)
 import Outputable            hiding ((<>))
@@ -70,35 +69,35 @@ import Numeric.Dimensions.Plugin.SolveNat.NormalForm
 
 
 
-data EqConstraint v t
-  = CLT (Exp v t) (Exp v t)
+data EqConstraint t v
+  = CLT (Exp t v) (Exp t v)
     -- ^ @CmpNat a b ~ 'LT@
-  | CEQ (Exp v t) (Exp v t)
+  | CEQ (Exp t v) (Exp t v)
     -- ^ @CmpNat a b ~ 'EQ@ or @a ~ b@
-  | CGT (Exp v t) (Exp v t)
+  | CGT (Exp t v) (Exp t v)
     -- ^ @CmpNat a b ~ 'GT@
-  | CLE (Exp v t) (Exp v t)
+  | CLE (Exp t v) (Exp t v)
     -- ^ @a <=? b ~ 'True@
   deriving (Eq, Ord, Show)
 
 instance (Outputable v, Outputable t)
-      => Outputable (EqConstraint v t) where
+      => Outputable (EqConstraint t v) where
   ppr (CLT a b) = ppr a <+> "<" <+> ppr b
   ppr (CEQ a b) = ppr a <+> "~" <+> ppr b
   ppr (CGT a b) = ppr a <+> ">" <+> ppr b
   ppr (CLE a b) = ppr a <+> "<=" <+> ppr b
 
-data SolveResult v t ct
+data SolveResult t v ct
   = Contradiction
     { solveRef  :: ct }
   | Success
     { solveRef  :: ct
-    , solveDeps :: [EqConstraint v t]
+    , solveDeps :: [EqConstraint t v]
     }
   deriving (Eq, Ord, Show)
 
 instance (Outputable v, Outputable t, Outputable ct)
-      => Outputable (SolveResult v t ct) where
+      => Outputable (SolveResult t v ct) where
   pprPrec p (Contradiction ct) = cparen (p > 10) $ "Contradiction" <+> pprPrec 10 ct
   pprPrec _ (Success ct ctx) = "Success" <+> braces
     ( pprWithCommas id ["solveRef =" <+> ppr ct, "solveDeps =" <+> ppr ctx])
@@ -106,7 +105,7 @@ instance (Outputable v, Outputable t, Outputable ct)
 
 -- | Derive all constraints that come out of the expression itself.
 --   Do not simplify constraints yet.
-implCts :: Exp v t -> [EqConstraint v t]
+implCts :: Exp t v -> [EqConstraint t v]
 implCts (N _)     = mempty
 implCts (F _)     = mempty
 implCts (V _)     = mempty
@@ -121,7 +120,7 @@ implCts (Min a b) = implCts a <> implCts b
 implCts (Log2 a)  = [CGT a 0] <> implCts a
 
 
-normalize :: (Ord v, Ord t) => Exp v t -> NormalE v t
+normalize :: (Ord v, Ord t) => Exp t v -> NormalE t v
 
 normalize (N n)
   = minMax $ fromIntegral n
@@ -160,70 +159,41 @@ normalize (Log2 a)
             $ getMinsE $ getNormalE $ normalize a
 
 
-powSums :: (Ord v, Ord t)
-        => SumsE None v t -> SumsE None v t -> SumsE None v t
-powSums (SumsE (L [])) _ = 0
-powSums _ (SumsE (L [])) = 1
-powSums (SumsE (L [a])) b
-  | isOne b   = SumsE (L [a])
-  | otherwise = powProd a b
-powSums (SumsE (L (a1:a2:as))) (SumsE (L (b:bs)))
-  = singlePowAsSums $ PowS (SumsE $ a1 :| a2 :| L as)
-                           (SumsE $ b  :| L bs)
-
-powProd :: (Ord v, Ord t)
-        => Signed (ProdE v t) -> SumsE None v t -> SumsE None v t
-powProd a b = sig $ go $ getProdE $ getAbs a
-  where
-    sig x
-      | isPositive a = x
-      | otherwise = x - 2 * x * unitAsSums (UMod (minMax b) (minMax 2))
-    powPow (PowU u p) = singlePowAsSums $ PowU u (p * b)
-    powPow (PowS s p) = case (SumsE $ L $ toList $ getSumsE p) * b of
-      SumsE (L []) -> 0
-      p'@(SumsE (L (x:xs)))
-        | isOne p'      -> SumsE $ L $ toList $ getSumsE s
-        | otherwise     -> singlePowAsSums
-                         $ PowS s (SumsE $ x :| L xs)
-    go (x  :| L [])      = powPow x
-    go (x1 :| L (x2:xs)) = powPow x1 * go (x2 :| L xs)
-
-
 map2Mins :: (Ord v, Ord t)
-         => (MinsE vl tl -> MinsE vr tr -> MinsE v t)
-         -> NormalE vl tl -> NormalE vr tr -> NormalE v t
+         => (MinsE vl tl -> MinsE vr tr -> MinsE t v)
+         -> NormalE vl tl -> NormalE vr tr -> NormalE t v
 map2Mins k a = NormalE . k (getNormalE a) . getNormalE
 
 map2Maxs :: (Ord v, Ord t)
-         => (MaxsE vl tl -> MaxsE vr tr -> MaxsE v t)
-         -> NormalE vl tl -> NormalE vr tr -> NormalE v t
+         => (MaxsE vl tl -> MaxsE vr tr -> MaxsE t v)
+         -> NormalE vl tl -> NormalE vr tr -> NormalE t v
 map2Maxs k = map2Mins $ \a -> runIdentity . lift2Mins (\x -> pure . k x) a
 
 map2Sums :: (Ord v, Ord t)
-         => (SumsE None vl tl -> SumsE None vr tr -> SumsE None v t)
-         -> NormalE vl tl -> NormalE vr tr -> NormalE v t
+         => (SumsE None vl tl -> SumsE None vr tr -> SumsE None t v)
+         -> NormalE vl tl -> NormalE vr tr -> NormalE t v
 map2Sums k = map2Maxs $ \a -> runIdentity . lift2Maxs (\x -> pure . k x) a
 
 lift2Maxs :: (Ord v, Ord t, Applicative m)
-          => (SumsE None vl tl -> SumsE None vr tr -> m (SumsE None v t))
+          => (SumsE None vl tl -> SumsE None vr tr -> m (SumsE None t v))
           -> MaxsE vl tl -> MaxsE vr tr
-          -> m (MaxsE v t)
+          -> m (MaxsE t v)
 lift2Maxs f (MaxsE a)
   = fmap (MaxsE . flattenDesc) . traverse (\b -> traverse (`f` b) a) . getMaxsE
 
 lift2Mins :: (Ord v, Ord t, Applicative m)
-          => (MaxsE vl tl -> MaxsE vr tr -> m (MaxsE v t))
+          => (MaxsE vl tl -> MaxsE vr tr -> m (MaxsE t v))
           -> MinsE vl tl -> MinsE vr tr
-          -> m (MinsE v t)
+          -> m (MinsE t v)
 lift2Mins f (MinsE a)
   = fmap (MinsE . flattenDesc) . traverse (\b -> traverse (`f` b) a) . getMinsE
 
 -- | Swap Mins and Maxs and then renormalize according to the distributivity law.
 --   Use this for 2nd argument of @Div@ or @(:-)@.
-inverseMM :: (Ord v, Ord t) => NormalE v t -> NormalE v t
+inverseMM :: (Ord v, Ord t) => NormalE t v -> NormalE t v
 inverseMM (NormalE x) = NormalE (inverseMM' x)
 
-inverseMM' :: (Ord v, Ord t) => MinsE v t -> MinsE v t
+inverseMM' :: (Ord v, Ord t) => MinsE t v -> MinsE t v
 inverseMM' (MinsE (MaxsE xs :| L []))
     = MinsE $ (MaxsE . pure) <$> xs
 inverseMM' (MinsE (maxs1 :| L (maxs2 : maxS)))
@@ -234,28 +204,28 @@ inverseMM' (MinsE (maxs1 :| L (maxs2 : maxS)))
 
 
 normalizeDiv :: (Ord v, Ord t)
-             => SumsE None v t -> SumsE None v t -> SumsE None v t
+             => SumsE None t v -> SumsE None t v -> SumsE None t v
 normalizeDiv a b
   | (ca, SumsE (L [])) <- unconstSumsE a
   , (cb, SumsE (L [])) <- unconstSumsE b
   , cb /= 0   = fromInteger $ div ca cb
-  | isZero a  = zero
+  | isZero a  = 0
   | isOne  b  = a
   | otherwise = unitAsSums $ UDiv a b
 
 normalizeMod :: (Ord v, Ord t)
-             => NormalE v t -> NormalE v t -> NormalE v t
+             => NormalE t v -> NormalE t v -> NormalE t v
 normalizeMod (NormalE (MinsE (MaxsE (a :| L []) :| L [])))
              (NormalE (MinsE (MaxsE (b :| L []) :| L [])))
   | (ca, SumsE (L [])) <- unconstSumsE a
   , (cb, SumsE (L [])) <- unconstSumsE b
   , cb /= 0      = minMax $ fromInteger $ mod ca cb
 normalizeMod a b
-  | isZero a  = minMax zero
-  | isOne  b  = minMax zero
+  | isZero a  = minMax 0
+  | isOne  b  = minMax 0
   | otherwise = unit $ UMod a b
 
-normalizeLog2 :: (Ord v, Ord t) => SumsE None v t -> SumsE None v t
+normalizeLog2 :: (Ord v, Ord t) => SumsE None t v -> SumsE None t v
 normalizeLog2 p
   | (c, SumsE (L [])) <- unconstSumsE p
   , c > 0 = fromIntegral $ log2Nat (fromInteger c)
@@ -287,20 +257,33 @@ runSolveNat = do
     mapM_ (\e -> pprTraceM "implCts:   " $
                  ppr e $$ vcat (ppr <$> implCts e)) $ exprs
     mapM_ (\e ->
-            let en = normalize e :: NormalE Var XType
+            let en = normalize e :: NormalE XType Var
+                e' = fromNormal en
+                eval1 = fmap toInteger
+                      . evaluate $ runIdentity $ substituteVar mySubst e
+                eval2 = fmap toInteger
+                      . evaluate $ runIdentity $ substituteVar mySubst e'
             in  pprTraceM "normalize: "
                  $  ppr e
                  -- $$ pprNormalize (Var . show <$> en)
                  $$ ppr en
-                 $$ ("validate: " <+> ppr (validate en))
+                 $$ ("validate:" <+> ppr (validate en))
+                 $$ "eval orig:" <+> ppr eval1
+                 $$ "eval norm:" <+> ppr eval2
           ) $ exprs
   where
-    x = V "x" :: Exp Var XType
-    y = V "y" :: Exp Var XType
-    z1 = V "z1" :: Exp Var XType
-    z2 = V "z2" :: Exp Var XType
-    z3 = V "z3" :: Exp Var XType
-    exprs :: [Exp Var XType]
+    mySubst "x"  = pure $ N 17
+    mySubst "y"  = pure $ N 9
+    mySubst "z1" = pure $ N 256
+    mySubst "z2" = pure $ N 1734
+    mySubst "z3" = pure $ N 0
+    mySubst v    = pure $ V v
+    x = V "x" :: Exp XType Var
+    y = V "y" :: Exp XType Var
+    z1 = V "z1" :: Exp XType Var
+    z2 = V "z2" :: Exp XType Var
+    z3 = V "z3" :: Exp XType Var
+    exprs :: [Exp XType Var]
     exprs =
       [ Log2 (Max 4 (Min (Div y x) (Mod (Max z1 3) 7)))
       , x + y + Min (Log2 z1) (Max 5 y)
