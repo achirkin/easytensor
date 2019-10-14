@@ -61,6 +61,7 @@ module Numeric.Dimensions.Plugin.SolveNat  where
 
 import Data.Functor.Identity
 import Data.String           (IsString)
+import Numeric.Natural
 import Outputable            hiding ((<>))
 
 import Numeric.Dimensions.Plugin.AtLeast
@@ -280,26 +281,14 @@ runSolveNat = do
                  ppr e $$ vcat (ppr <$> implCts e)) $ exprs
     mapM_ (\e ->
             let en = normalize e :: NormalE XType Var
-                e' = fromNormal en
-                eval1 = fmap toInteger
-                      . evaluate $ runIdentity $ substituteVar mySubst e
-                eval2 = fmap toInteger
-                      . evaluate $ runIdentity $ substituteVar mySubst e'
             in  pprTraceM "normalize: "
                  $  ppr e
                  -- $$ pprNormalize (Var . show <$> en)
                  $$ ppr en
                  $$ ("validate:" <+> ppr (validate en))
-                 $$ "eval orig:" <+> ppr eval1
-                 $$ "eval norm:" <+> ppr eval2
+                 $$ test5 e
           ) $ exprs
   where
-    mySubst "x"  = pure $ N 17
-    mySubst "y"  = pure $ N 9
-    mySubst "z1" = pure $ N 256
-    mySubst "z2" = pure $ N 1734
-    mySubst "z3" = pure $ N 0
-    mySubst v    = pure $ V v
     x = V "x" :: Exp XType Var
     y = V "y" :: Exp XType Var
     z1 = V "z1" :: Exp XType Var
@@ -338,3 +327,52 @@ runSolveNat = do
       , f2 (Div x (f1 y))
       , f2 (Log2 (Max (f1 z2) (x - 15))) + (-1) :^ f1 (15 + y - x)
       ]
+
+test5 :: Exp XType Var -> SDoc
+test5 e1 = case counts of
+    (total, success1, success2, fail1success2, errs) ->
+      vcat $
+        [ "Total:   " <+> ppr total
+        , "Success1:" <+> ppr success1
+        , "Success2:" <+> ppr success2
+        , "Relaxed: " <+> ppr fail1success2
+        ] <> [hang "Errors:" 2 (vcat $ take 5 errs) | not (null errs)]
+  where
+    e2 = fromNormal $ normalize e1
+    n = 7
+    ns = [0..n]
+    evs = f <$> ns <*> ns <*> ns <*> ns <*> ns
+    f x y z1 z2 z3 = ( (x, y, z1, z2, z3)
+                     , evalWith x y z1 z2 z3 e1, evalWith x y z1 z2 z3 e2)
+    counts = foldr g (0,0,0,0,[]) evs :: (Int, Int, Int, Int, [SDoc])
+    g (args, Right r1, Right r2)
+      (total, success1, success2, fail1success2, errs)
+      | r1 == r2
+        = (total + 1, success1 + 1, success2 + 1, fail1success2, errs)
+      | otherwise
+        = (total + 1, success1 + 1, success2 + 1, fail1success2
+          , hsep [ "Results do not match! ", ppr r1 , "/=", ppr r2
+                 , ". Arguments:", text (show args)] : errs)
+    g (_, Left _, Right _)
+      (total, success1, success2, fail1success2, errs)
+        = (total + 1, success1, success2 + 1, fail1success2 + 1, errs)
+    g (args, Right _, Left e)
+      (total, success1, success2, fail1success2, errs)
+        = (total + 1, success1, success2 + 1, fail1success2 + 1
+          , hsep [ "Failed new!", ppr e
+                 , ". Arguments:", text (show args)] : errs)
+    g (_, Left _, Left _)
+      (total, success1, success2, fail1success2, errs)
+        = (total + 1, success1, success2, fail1success2, errs)
+
+
+evalWith :: Natural -> Natural -> Natural -> Natural -> Natural
+         -> Exp XType Var -> Either (Exp XType Var) Integer
+evalWith x y z1 z2 z3 = evaluate . runIdentity . substituteVar s
+  where
+    s "x"  = pure $ N x
+    s "y"  = pure $ N y
+    s "z1" = pure $ N z1
+    s "z2" = pure $ N z2
+    s "z3" = pure $ N z3
+    s v    = pure $ V v

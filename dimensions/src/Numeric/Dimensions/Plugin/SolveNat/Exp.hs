@@ -117,122 +117,138 @@ substituteFun f (Min a b) = Min  <$> substituteFun f a <*> substituteFun f b
 substituteFun f (Log2 a)  = Log2 <$> substituteFun f a
 
 -- | Try to evaluate an expression fully or partially and return either a single
---   Natural number or a simplified expression.
+--   Integer or a simplified expression.
 --
---   We try to be very liberal here: using various arithmetic laws to postpone
---   underflow errors if possible.
-evaluate :: Exp a b -> Either (Exp a b) Natural
-evaluate (N n) = Right n
-evaluate (V v) = Left (V v)
-evaluate (F t) = Left (F t)
-evaluate (a :+ b) = case (evaluate a, evaluate b) of
-  (x, Right 0)         -> x
-  (Right 0, y)         -> y
-  (Right x, Right y) -> Right (x + y)
-  -- postpone evaluation of minus using commutativity
-  (Left (x1 :- x2), Left (y1 :- y2))
-                     -> evaluate ((x1 :+ y1) :- (x2 :+ y2))
-  (Left (x1 :- x2), Right y)
-                     -> evaluate ((x1 :+ N y) :- x2)
-  (Right x, Left (y1 :- y2))
-                     -> evaluate ((N x :+ y1) :- y2)
-  (Left (x1 :- x2), Left y)
-                     -> evaluate ((x1 :+ y) :- x2)
-  (Left x, Left (y1 :- y2))
-                     -> evaluate ((x :+ y1) :- y2)
-  -- can do nothing else
-  (Left x,  Right y) -> Left (x :+ N y)
-  -- move computed numbers to the right
-  (Right x, Left y)  -> evaluate (y :+ N x)
-  (Left x,  Left y)  -> Left (x :+ y)
+--   Note, the expression can have negative value.
+evaluate :: Exp a b -> Either (Exp a b) Integer
+evaluate e = case e' of
+    [] -> Right r
+    _  -> Left $ foldl f (_N r) e'
+  where
+    (r, e') = evaluate' e
+    f :: Exp t v -> (Integer, Exp t v) -> Exp t v
+    f (N 0) ( 1, x) = x
+    f (N 0) ( i, x)
+      | i >= 0 = N (fromInteger i) :* x
+    f y ( 1, x) = y :+ x
+    f y (-1, x) = y :- x
+    f y (i, x)
+      | i >= 0 = y :+ N (fromInteger i) :* x
+      | otherwise = y :- N (fromInteger $ negate i) :* x
 
-evaluate (a :- b) = case (evaluate a, evaluate b) of
-  (x, Right 0)       -> x
+
+evaluate' :: Exp a b -> (Integer, [(Integer, Exp a b)])
+evaluate' (N n) = (toInteger n, [])
+evaluate' (F t) = (0, [(1, F t)])
+evaluate' (V v) = (0, [(1, V v)])
+
+evaluate' (a :+ b) = (na + nb, xsa ++ xsb)
+  where
+    (na, xsa) = evaluate' a
+    (nb, xsb) = evaluate' b
+evaluate' (a :- b) = (na - nb, xsa ++ map (first negate) xsb)
+  where
+    (na, xsa) = evaluate' a
+    (nb, xsb) = evaluate' b
+
+evaluate' (a :* b) = (na * nb, (xsa >>= f nb) ++ (xsb >>= f na)
+                                              ++ (g <$> xsa <*> xsb))
+  where
+    (na, xsa) = evaluate' a
+    (nb, xsb) = evaluate' b
+    f :: Integer -> (Integer, Exp a b) -> [(Integer, Exp a b)]
+    f 0 x      | safe (snd x) = []
+    f 1 x      = [x]
+    f c (n, e) = [(c*n, e)]
+    g :: (Integer, Exp a b) -> (Integer, Exp a b) -> (Integer, Exp a b)
+    g (nx, ex) (ny, ey) = (nx*ny, ex*ey)
+
+evaluate' (a :^ b) = case (evaluate a, evaluate b) of
+  (Right x, Right y)    -> (x ^ y, [])
+  (Left  x, Right y)
+    | y == 0 && safe x  -> (1, [])
+    | y == 1            -> (0, [(1, x)])
+    | y >= 0            -> evaluate' (x ^ y)
+    | otherwise         -> (0, [(1, x :^ _N y)])
+  (Right x, Left  y)
+    | x == 0 && safe y  -> (0, [])
+    | x == 1 && safe y  -> (1, [])
+    | otherwise         -> (0, [(1, _N x :^ y)])
+  (Left  x, Left  y)    -> (0, [(1, x :^ y)])
+
+evaluate' (Div a b) = case (evaluate a, evaluate b) of
   (Right x, Right y)
-    | x >= y         -> Right (x - y)
-    | otherwise      -> Left (N x :- N y)
-  -- join nested minus
-  (Right x, Left (y1 :- y2))
-                     -> evaluate ((N x :+ y2) :- y1)
-  (Left (x1 :- x2), Right y)
-                     -> evaluate (x1 :- (x2 :+ N y))
-  (Left (x1 :+ N x2), Right y)
-    | x2 >= y        -> evaluate (x1 :+ N (x2 - y))
-    | otherwise      -> evaluate (x1 :- N (y - x2))
-  (Left x, Left (y1 :- y2))
-                     -> evaluate ((x :+ y2) :- y1)
-  (Left (x1 :- x2), Left y)
-                     -> evaluate (x1 :- (x2 :+ y))
-  -- can do nothing else
-  (Left x,  Right y) -> Left (x :- N y)
-  (Right x, Left y)  -> Left (N x :- y)
-  (Left x,  Left y)  -> Left (x :- y)
+    | y == 0            -> (0, [(signum x, Div (N $ fromInteger $ abs x) (N 0))])
+    | otherwise         -> (div x y, [])
+  (Left  x, Right y)
+    | y ==  1 && safe x -> evaluate' x
+    | y == -1 && safe x -> bimap negate (map $ first negate) $ evaluate' x
+    | y >=  0           -> (0, [(1, Div x (N $ fromInteger y))])
+    | otherwise         -> (0, [(1, Div (N 0 :- x) (N $ fromInteger $ negate y))])
+  (Right x, Left  y)
+    | x == 0 && safe y  -> (0, [])
+    | otherwise         -> (0, [(1, _N x `Div` y)])
+  (Left  x, Left  y)    -> (0, [(1, Div x y)])
 
-evaluate (a :* b) = case (evaluate a, evaluate b) of
-  (_, Right 0)         -> Right 0
-  (x, Right 1)         -> x
-  (Right 0, _)         -> Right 0
-  (Right 1, y)         -> y
-  (Right x, Right y)   -> Right (x * y)
-  -- postpone minus using distributivity
-  (Left (x1 :- x2), _) -> evaluate (x1 :* b :- x2 :* b)
-  (_, Left (y1 :- y2)) -> evaluate (a :* y1 :- a :* y2)
-  -- can do nothing else
-  (Left x,  Right y)   -> Left (x :* N y)
-  (Right x, Left y)    -> evaluate (y :* N x)
-  (Left x,  Left y)    -> Left (x :* y)
-
-evaluate (a :^ b) = case (evaluate a, evaluate b) of
-  (Right 0, _)         -> Right 0
-  (Right 1, _)         -> Right 1
-  (_, Right 0)         -> Right 1
-  (x, Right 1)         -> x
-  (Right x, Right y)   -> Right (x ^ y)
-  -- expand power expr so that later we can compute minus
-  (Left x@(_ :- _), Right n)
-    | (n', c) <- divMod n 2
-                       -> evaluate (x :^ N n' :* x :^ N (n' + c))
-  -- can do nothing else
-  (Left x,  Right y)   -> Left (x :^ N y)
-  (Right x, Left y)    -> Left (N x :^ y)
-  (Left x,  Left y)    -> Left (x :^ y)
-
-evaluate (Div a b) = case (evaluate a, evaluate b) of
-  (Right 0, _)       -> Right 0
+evaluate' (Mod a b) = case (evaluate a, evaluate b) of
   (Right x, Right y)
-    | y > 0          -> Right (div x y)
-    | otherwise      -> Left (Div (N x) (N y))
-  (Left x,  Right y) -> Left (Div x (N y))
-  (Right x, Left y)  -> Left (Div (N x) y)
-  (Left x,  Left y)  -> Left (Div x y)
+    | y == 0            -> (0, [(signum x, Mod (N $ fromInteger $ abs x) (N 0))])
+    | otherwise         -> (mod x y, [])
+  (Left  x, Right y)
+    | y ==  1 && safe x -> (0, [])
+    | y == -1 && safe x -> (0, [])
+    | y >=  0           -> (0, [(1, Mod x (N $ fromInteger y))])
+    | otherwise         -> (0, [(1, Mod (N 0 :- x) (N $ fromInteger $ negate y))])
+  (Right x, Left  y)
+    | x == 0 && safe y  -> (0, [])
+    | otherwise         -> (0, [(1, _N x `Mod` y)])
+  (Left  x, Left  y)    -> (0, [(1, Mod x y)])
 
-evaluate (Mod a b) = case (evaluate a, evaluate b) of
-  (Right 0, _)       -> Right 0
-  (Right x, Right y)
-    | y > 0          -> Right (mod x y)
-    | otherwise      -> Left (Mod (N x) (N y))
-  (Left x,  Right y) -> Left (Mod x (N y))
-  (Right x, Left y)  -> Left (Mod (N x) y)
-  (Left x,  Left y)  -> Left (Mod x y)
+evaluate' (Max a b) = case (evaluate a, evaluate b) of
+  (Right x, Right y)    -> (max x y, [])
+  (Left  x, Right y)
+    | y >= 0            -> (0, [(1, Max x (N $ fromInteger y))])
+    | otherwise         -> evaluate' (N 0 :- Min (N 0 :- x)
+                                     (N $ fromInteger $ negate y))
+  (Right _, Left  y)    -> evaluate' (Max y a)
+  (Left  x, Left  y)    -> (0, [(1, Max x y)])
 
-evaluate (Max a b) = case (evaluate a, evaluate b) of
-  (Right 0, y)       -> y
-  (x, Right 0)       -> x
-  (Right x, Right y) -> Right (max x y)
+evaluate' (Min a b) = case (evaluate a, evaluate b) of
+  (Right x, Right y)    -> (min x y, [])
+  (Left  x, Right y)
+    | y >= 0            -> (0, [(1, Min x (N $ fromInteger y))])
+    | otherwise         -> evaluate' (N 0 :- Max (N 0 :- x)
+                                     (N $ fromInteger $ negate y))
+  (Right _, Left  y)    -> evaluate' (Min y a)
+  (Left  x, Left  y)    -> (0, [(1, Min x y)])
 
-  (Left x,  Right y) -> Left (Max x (N y))
-  (Right x, Left y)  -> evaluate (Max y (N x))
-  (Left x,  Left y)  -> Left (Max x y)
+evaluate' (Log2 a) = case evaluate a of
+  Right x
+    | x > 0             -> (toInteger $ log2Nat $ fromInteger x, [])
+    | otherwise         -> (0, [(1, Log2 $ _N x)])
+  Left e                -> (0, [(1, Log2 e)])
 
-evaluate (Min a b) = case (evaluate a, evaluate b) of
-  (Right 0, _)       -> Right 0
-  (_, Right 0)       -> Right 0
-  (Right x, Right y) -> Right (min x y)
-  (Left x,  Right y) -> Left (Min x (N y))
-  (Right x, Left y)  -> evaluate (Min y (N x))
-  (Left x,  Left y)  -> Left (Min x y)
 
-evaluate (Log2 a)  = case evaluate a of
-  Right 0 -> Left  (Log2 (N 0))
-  Right x -> Right (log2Nat x)
-  Left e  -> Left  (Log2 e)
+_N :: Integer -> Exp t v
+_N n
+  | n >= 0 = N (fromInteger n)
+  | otherwise = N 0 :- N (fromInteger $ negate n)
+
+
+-- | A basic check if the expression cannot be undefined for any valid input.
+safe :: Exp t v -> Bool
+safe (N _)         = True
+safe (F _)         = False
+safe (V _)         = True
+safe (a :+ b)      = safe a && safe b
+safe (a :- b)      = safe a && safe b
+safe (a :* b)      = safe a && safe b
+safe (a :^ b)      = safe a && safe b
+safe (Div a (N n)) = safe a && n > 0
+safe (Div _ _)     = False
+safe (Mod a (N n)) = safe a && n > 0
+safe (Mod _ _)     = False
+safe (Max a b)     = safe a && safe b
+safe (Min a b)     = safe a && safe b
+safe (Log2 (N n))  = n > 0
+safe (Log2 _)      = False
