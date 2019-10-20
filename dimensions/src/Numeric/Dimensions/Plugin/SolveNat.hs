@@ -211,8 +211,9 @@ inverseMM' (MinsE (maxs1 :| L (maxs2 : maxS)))
 
 normalizeDiv :: (Ord v, Ord t)
              => SumsE None t v -> MinsE t v -> NormalE t v
-normalizeDiv a (MinsE bs)
+normalizeDiv a b@(MinsE bs)
   | isZero a  = minMax 0
+  | isOne  b  = minMax a
     -- Note, I convert the minimum of a list of maximimums (MinsE bs) into
     -- the maximum of a list of sums, because bs is the second argument of Div,
     -- which means swapping MinsE-MaxsE
@@ -228,21 +229,19 @@ normalizeDiv' a b
                 _                   -> (0, False)
       ) (0, True) $ getMaxsE b
   , cb /= 0   = minMax . fromInteger $ div ca cb
-  | isOne  b  = minMax a
-  | otherwise = unit $ UDiv a b
-
+  | otherwise = unit $ UDiv a (mapSupersedeMax id b)
 
 normalizeMod :: (Ord v, Ord t)
              => NormalE t v -> NormalE t v -> NormalE t v
 normalizeMod (NormalE (MinsE (MaxsE (a :| L []) :| L [])))
              (NormalE (MinsE (MaxsE (b :| L []) :| L [])))
-  | (ca, SumsE (L [])) <- unconstSumsE a
-  , (cb, SumsE (L [])) <- unconstSumsE b
-  , cb /= 0      = minMax $ fromInteger $ mod ca cb
+  | (ca, sa) <- unconstSumsE a
+  , (cb, sb) <- unconstSumsE b
+  , cb /= 0 && isZero sa && isZero sb = minMax $ fromInteger $ mod ca cb
 normalizeMod a b
   | isZero a  = minMax 0
   | isOne  b  = minMax 0
-  | otherwise = unit $ UMod a b
+  | otherwise = unit $ UMod (simplify a) (simplify b)
 
 normalizeLog2 :: (Ord v, Ord t) => MaxsE t v -> MaxsE t v
 normalizeLog2 p
@@ -252,7 +251,68 @@ normalizeLog2 p
                 _                   -> (0, False)
       ) (0, True) $ getMaxsE p
   , c > 0 = MaxsE . pure . fromIntegral $ log2Nat (fromInteger c)
-  | otherwise = MaxsE . pure . unitAsSums $ ULog2 p
+  | otherwise = MaxsE . pure . unitAsSums $ ULog2 (mapSupersedeMax id p)
+
+
+-- | Another series of simplifications at different levels of a normal expr.
+simplify :: (Ord t, Ord v)
+         => NormalE t v -> NormalE t v
+simplify
+  = NormalE
+  . ( mapSupersedeMin $ mapSupersedeMax $ mapSimplifySum $ mapSimplifyProd id )
+  . getNormalE
+
+--  NB: mapped function must keep monotonicity of maxs
+mapSupersedeMin :: (Ord t, Ord v)
+                => (MaxsE t v -> MaxsE t v) -> MinsE t v -> MinsE t v
+mapSupersedeMin k mins = MinsE (head y :| L (tail y))
+  where
+    x :| L xs = k <$> getMinsE mins
+    y = f x xs
+    allGE :: (Ord t, Ord v) => MaxsE t v -> MaxsE t v -> Bool
+    allGE (MaxsE a) (MaxsE b) = all isNonNeg $ (-) <$> a <*> b
+    f :: (Ord t, Ord v) => MaxsE t v -> [MaxsE t v] -> [MaxsE t v]
+    f a bs = case filter (not . flip allGE a) bs of
+      []  -> [a]
+      bs'@(c:cs)
+        | any (allGE a) bs'
+          -> f c cs
+        | otherwise
+          -> a : f c cs
+
+--  NB: mapped function must keep monotonicity of sums
+mapSupersedeMax :: (Ord t, Ord v)
+                => (SumsE None t v -> SumsE None t v) -> MaxsE t v -> MaxsE t v
+mapSupersedeMax k maxs = MaxsE (head y :| L (tail y))
+  where
+    x :| L xs = k <$> getMaxsE maxs
+    y = f x xs
+    sumGE :: (Ord t, Ord v) => SumsE None t v -> SumsE None t v -> Bool
+    sumGE a b = isNonNeg (a - b)
+    f :: (Ord t, Ord v) => SumsE None t v -> [SumsE None t v] -> [SumsE None t v]
+    f a bs = case filter (not . sumGE a) bs of
+      []  -> [a]
+      bs'@(c:cs)
+        | any (flip sumGE a) bs'
+          -> f c cs
+        | otherwise
+          -> a : f c cs
+
+--  NB: mapped function must keep monotonicity of prods
+mapSimplifySum :: (Ord t, Ord v)
+               => (ProdE t v -> ProdE t v) -> SumsE n t v -> SumsE None t v
+mapSimplifySum k
+  = SumsE . L
+  . filter (not . isZero . getAbs) . map (fmap k) . toList . getSumsE
+
+--  NB: mapped function must keep monotonicity of pows
+mapSimplifyProd :: (Ord t, Ord v)
+                => (PowE t v -> PowE t v) -> ProdE t v -> ProdE t v
+mapSimplifyProd k
+  = ProdE . f . filter (not . isOne) . map k . toList . getProdE
+  where
+    f []     = PowU UOne 0 :| mempty
+    f (x:xs) = x :| L xs
 
 
 
@@ -280,7 +340,7 @@ runSolveNat = do
     mapM_ (\e -> pprTraceM "implCts:   " $
                  ppr e $$ vcat (ppr <$> implCts e)) $ exprs
     mapM_ (\e ->
-            let en = normalize e :: NormalE XType Var
+            let en = simplify $ normalize e :: NormalE XType Var
             in  pprTraceM "normalize: "
                  $  ppr e
                  -- $$ pprNormalize (Var . show <$> en)
@@ -326,6 +386,8 @@ runSolveNat = do
       , f2 y
       , f2 (Div x (f1 y))
       , f2 (Log2 (Max (f1 z2) (x - 15))) + (-1) :^ f1 (15 + y - x)
+      , Min (x + 2 * y) (x + 3 * y)
+      , Max (x + 2 * y) (x + 3 * y)
       ]
 
 test5 :: Exp XType Var -> SDoc
@@ -338,7 +400,7 @@ test5 e1 = case counts of
         , "Relaxed: " <+> ppr fail1success2
         ] <> [hang "Errors:" 2 (vcat $ take 5 errs) | not (null errs)]
   where
-    e2 = fromNormal $ normalize e1
+    e2 = fromNormal $ simplify $ normalize e1
     n = 7
     ns = [0..n]
     evs = f <$> ns <*> ns <*> ns <*> ns <*> ns

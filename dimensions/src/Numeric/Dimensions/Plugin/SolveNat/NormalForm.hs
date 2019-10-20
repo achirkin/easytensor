@@ -11,7 +11,7 @@ module Numeric.Dimensions.Plugin.SolveNat.NormalForm
     -- * Parts of the normal form
   , NormalE (..), MinsE (..), MaxsE (..)
   , SumsE (..), ProdE (..), PowE (..), UnitE (..)
-  , Prime ()
+  , Signed (..), Prime ()
     -- * Extra convenience functions
   , asNatural, factorize
   , minMax, unit, unitAsSums, unconstSumsE, powSums
@@ -44,10 +44,18 @@ stages.
 class NormalForm e where
   -- | Every part of the normal form can be converted back to an expression.
   fromNormal :: e t v -> Exp t v
-  -- | A helper to check if the value is guaranteed to be zero
+  -- | Check if the value is guaranteed to be zero
   isZero     :: e t v -> Bool
-  -- | A helper to check if the value is guaranteed to be one
+  -- | Check if the value is guaranteed to be non-zero
+  isNonZero  :: e t v -> Bool
+  -- | Check if the value is guaranteed to be one
   isOne      :: e t v -> Bool
+  -- | Check if the value is guaranteed to be zero or positive
+  isNonNeg   :: e t v -> Bool
+  -- | Check if the value is guaranteed to be zero or negative
+  isNonPos   :: e t v -> Bool
+  -- | Check if the expression is guaranteed to be valid for all inputs
+  isComplete :: e t v -> Bool
   -- | Check the invariants that must hold by construction.
   --   Do not check arithmetic errors, such as division by zero, etc.
   validate   :: (Ord t, Ord v, Outputable t, Outputable v) => e t v -> Validate
@@ -257,26 +265,52 @@ one = singleProdAsSums $ Pos oneP
 oneP :: ProdE t v
 oneP = ProdE $ PowU UOne zero :| mempty
 
+-- | Same as signum, but only if we have enough evidence.
+normalSign :: NormalForm a => a t v -> Maybe Integer
+normalSign a
+  | isZero a   = Just 0
+  | isNonNeg a = Just 1
+  | isNonPos a = Just (-1)
+  | otherwise  = Nothing
+
+-- | Same as signum, but only if we have enough evidence.
+sumsSign :: SumsE n t v -> Maybe Integer
+sumsSign = foldl f (Just 0) . getSumsE
+  where
+    k :: Maybe Integer -> Integer -> Maybe Integer
+    k mx 0          = mx
+    k (Just x) 1    | x >= 0 = Just 1
+    k (Just x) (-1) | x <= 0 = Just (-1)
+    k _ _           = Nothing
+    f :: Maybe Integer -> Signed (ProdE t v) -> Maybe Integer
+    f ms (Pos x) = ms >>= k (normalSign x)
+    f ms (Neg x) = ms >>= k (negate <$> normalSign x)
+
 instance Ord a => Ord (Signed a) where
   compare a b = compare (getAbs a) (getAbs b)
              <> compare (isPositive a) (isPositive b)
 
 instance NormalForm NormalE where
   fromNormal = fromNormal . getNormalE
-  isZero = isZero . getNormalE
-  isOne  = isOne . getNormalE
-  validate = validate . getNormalE
+  isZero     = isZero . getNormalE
+  isNonZero  = isNonZero . getNormalE
+  isOne      = isOne . getNormalE
+  isNonNeg   = isNonNeg . getNormalE
+  isNonPos   = isNonPos . getNormalE
+  isComplete = isComplete . getNormalE
+  validate   = validate . getNormalE
 
 instance NormalForm MinsE where
   fromNormal (MinsE (e :| L []))
     = fromNormal e
   fromNormal (MinsE (e1 :| L (e2:es)))
     = Min (fromNormal e1) (fromNormal (MinsE (e2 :| L es)))
-  isZero = (\(atLeastOneZero, allZeroOrOne) -> atLeastOneZero && allZeroOrOne)
-         . foldr (\x (a, b) -> let is0 = isZero x
-                               in  (a || is0, b && (is0 || isOne x) )
-                 ) (False, True) . getMinsE
-  isOne  = all isOne . getMinsE
+  isZero     (MinsE x) = all isNonNeg x && any isZero x
+  isNonZero  (MinsE x) = all isNonZero x || any ((&&) <$> isNonPos <*> isNonZero) x
+  isNonNeg   (MinsE x) = all isNonNeg x
+  isNonPos   (MinsE x) = any isNonPos x
+  isOne      (MinsE x) = any isOne x && all ((&&) <$> isNonZero <*> isNonNeg) x
+  isComplete (MinsE x) = all isComplete x
   validate x = foldMap validate xl <> decreasing xl
     where
       xl = toList $ getMinsE x
@@ -293,11 +327,12 @@ instance NormalForm MaxsE where
     = fromNormal e
   fromNormal (MaxsE (e1 :| L (e2:es)))
     = Max (fromNormal e1) (fromNormal (MaxsE (e2 :| L es)))
-  isZero = all isZero . getMaxsE
-  isOne  = (\(atLeastOneOne, allZeroOrOne) -> atLeastOneOne && allZeroOrOne)
-         . foldr (\x (a, b) -> let is1 = isOne x
-                               in  (a || is1, b && (is1 || isZero x) )
-                 ) (False, True) . getMaxsE
+  isZero     (MaxsE x) = all isNonPos x && any isZero x
+  isNonZero  (MaxsE x) = all isNonZero x || any ((&&) <$> isNonNeg <*> isNonZero) x
+  isNonNeg   (MaxsE x) = any isNonNeg x
+  isNonPos   (MaxsE x) = all isNonPos x
+  isOne      (MaxsE x) = any isOne x && all ((||) <$> isOne <*> isNonPos) x
+  isComplete (MaxsE x) = all isComplete x
   validate x = foldMap validate xl <> decreasing xl
     where
       xl = toList $ getMaxsE x
@@ -322,7 +357,11 @@ instance NormalForm (SumsE n) where
       f :: Exp t v -> Signed (ProdE t v) -> Exp t v
       f e (Pos p) = e :+ fromNormal p
       f e (Neg p) = e :- fromNormal p
-  isZero = null . getSumsE
+  isZero     = all (isZero . getAbs) . getSumsE
+  isNonZero  = (Just True == ) . fmap (/= 0) . sumsSign
+  isNonNeg   = (Just True == ) . fmap (>= 0) . sumsSign
+  isNonPos   = (Just True == ) . fmap (<= 0) . sumsSign
+  isComplete = all (isComplete . getAbs) . getSumsE
   isOne (SumsE (L [Pos p])) = isOne p
   isOne  _                  = False
   validate x = foldMap (validate . getAbs) xl <> decreasing ps <> maxOneConst
@@ -350,9 +389,18 @@ instance NormalForm ProdE where
       go n (  e :| L [])      = N n :* e
       go n (N m :| L (e:es))  = go (n * m) (e :| L es)
       go n ( e1 :| L (e2:es)) = go n (e2 :| L es) :* e1
-  isZero = const False
-  isOne (ProdE (p :| L [])) = isOne p
-  isOne _                   = False
+  isZero = any isZero . getProdE
+  isNonZero = all isNonZero . getProdE
+  isOne = all isOne . getProdE
+  isNonNeg = (Just True == ) . fmap (>= 0) . foldl g (Just 1) . getProdE
+    where
+      g :: Maybe Integer -> PowE t v -> Maybe Integer
+      g ms x = (*) <$> ms <*> normalSign x
+  isNonPos = (Just True == ) . fmap (<= 0) . foldl g (Just 1) . getProdE
+    where
+      g :: Maybe Integer -> PowE t v -> Maybe Integer
+      g ms x = (*) <$> ms <*> normalSign x
+  isComplete = all isComplete . getProdE
   validate x@(ProdE x') = foldMap validate x' <> decreasing (toList x')
     where
       errMsg = Invalid $ pure $ hsep
@@ -378,10 +426,26 @@ instance NormalForm PowE where
       cleanPow (a :^ N 1)   = cleanPow a
       cleanPow (N a :^ N p) = N (a ^ p)
       cleanPow a            = a
-  isZero = const False
-  isOne (PowU u p)
-    | isOne u || isZero p = True
-  isOne _                 = False
+  isZero (PowU a b) = isZero a && isComplete b
+  isZero (PowS a b) = isZero a && isComplete b
+  isNonZero (PowU a b) = isNonZero a && isComplete b
+  isNonZero (PowS a b) = isNonZero a && isComplete b
+  isOne (PowU u p) =  isComplete u && isZero p
+                   || isComplete p && isOne u
+  isOne (PowS u p) =  isComplete u && isZero p
+                   || isComplete p && isOne u
+  isNonNeg (PowU a b) =  isComplete b && isNonNeg a
+                      || isComplete a && isZero (UMod (minMax b) (unit $ UN $ Prime 2))
+  isNonNeg (PowS a b) =  isComplete b && isNonNeg a
+                      || isComplete a && isZero (UMod (minMax $ SumsE $ L $ toList $ getSumsE b)
+                                                      (unit $ UN $ Prime 2))
+  isNonPos (PowU a b) =  isNonPos a
+                      && isOne (UMod (minMax b) (unit $ UN $ Prime 2))
+  isNonPos (PowS a b) =  isNonPos a
+                      && isOne  (UMod (minMax $ SumsE $ L $ toList $ getSumsE b)
+                                      (unit $ UN $ Prime 2))
+  isComplete (PowU a b) = isComplete a && isComplete b
+  isComplete (PowS a b) = isComplete a && isComplete b
   validate (PowU a b) = validate a <> validate b <> checkConst
     where
       bIsZero = isZero b
@@ -407,9 +471,49 @@ instance NormalForm UnitE where
   fromNormal (ULog2 a)  = Log2 (fromNormal a)
   fromNormal (UF t)     = F t
   fromNormal (UV v)     = V v
-  isZero = const False
-  isOne UOne = True
-  isOne _    = False
+  isZero UOne       = False
+  isZero (UN _)     = False
+  isZero (UDiv a b) = isComplete a && isComplete b && isZero a
+  isZero (UMod a b) = isComplete a && isComplete b && (isZero a || isOne b)
+  isZero (ULog2 a)  = isComplete a && isOne a
+  isZero (UF _)     = False
+  isZero (UV _)     = False
+  isNonZero UOne       = True
+  isNonZero (UN _)     = True
+  isNonZero (UDiv a b) = isComplete a && isComplete b && isNonZero a && isOne b
+  isNonZero (UMod _ _) = False
+  isNonZero (ULog2 _)  = False
+  isNonZero (UF _)     = False
+  isNonZero (UV _)     = False
+  isOne UOne       = True
+  isOne (UMod a b) = case (evaluate $ fromNormal a, evaluate $ fromNormal b) of
+    (Right x, Right y) -> y >  0 && mod x y == 1
+    (Left  _, Right y) -> y == 2 && isOne a
+    _                  -> False
+  isOne _          = False
+  isNonNeg UOne       = True
+  isNonNeg (UN _)     = True
+  isNonNeg (UDiv a b) = isComplete a && isComplete b &&
+                        (isNonNeg a && isNonNeg b || isNonPos a && isNonPos b)
+  isNonNeg (UMod a b) = isComplete a && isComplete b && isNonNeg b
+  isNonNeg (ULog2 a)  = isComplete a
+  isNonNeg (UF _ )    = False
+  isNonNeg (UV _ )    = True
+  isNonPos UOne       = False
+  isNonPos (UN _)     = False
+  isNonPos (UDiv a b) = isComplete a && isComplete b &&
+                        (isNonNeg a && isNonPos b || isNonPos a && isNonNeg b)
+  isNonPos (UMod a b) = isComplete a && isComplete b && isNonPos b
+  isNonPos (ULog2 a)  = isComplete a && isOne a
+  isNonPos (UF _ )    = False
+  isNonPos (UV _ )    = False
+  isComplete UOne       = True
+  isComplete (UN _)     = True
+  isComplete (UDiv a b) = isComplete a && isComplete b && isNonZero b
+  isComplete (UMod a b) = isComplete a && isComplete b && isNonZero b
+  isComplete (ULog2 a)  = isComplete a && isNonZero  a && isNonNeg  a
+  isComplete (UF _ )    = False
+  isComplete (UV _ )    = True
   validate UOne = Ok
   validate up@(UN (Prime p))
     | factorize p == L [unitAsPow up] = Ok
@@ -538,10 +642,9 @@ instance (Ord t, Ord v) => Num (SumsE None t v) where
   abs (SumsE (L [Neg x])) = (SumsE (L [Pos x]))
   abs (SumsE (L [Pos x])) = (SumsE (L [Pos x]))
   abs x                   = x * signum x
-  signum (SumsE (L []))      = (SumsE (L []))
-  signum (SumsE (L [Neg _])) = (SumsE (L [Neg oneP]))
-  signum (SumsE (L [Pos _])) = (SumsE (L [Pos oneP]))
-  signum _ = error "Tried to take signum of a complex expression"
+  signum x = case sumsSign x of
+    Nothing -> error "Tried to take signum of a complex expression"
+    Just n  -> fromInteger n
   fromInteger n = case toList $ factorize (fromInteger $ abs n) of
     []     -> zero
     (x:xs) -> SumsE $ L $ (:[]) $ sig $ ProdE $ x :| L xs
