@@ -156,12 +156,14 @@ factorize x = L . reverse . fmap asPow . group $ factor x 2
       | otherwise             = factor n (k + 1)
 
 intE :: Integer -> NormalE t v
-intE n = toNormalE $ case toList . factorize . fromInteger $ abs n of
+intE = toNormalE . intSumsE
+
+intSumsE :: Integer -> SumsE None t v
+intSumsE n = case toList . factorize . fromInteger $ abs n of
     []     -> zero
     (x:xs) -> SumsE $ L $ (:[]) $ sig $ ProdE $ x :| L xs
   where
     sig = if n >= 0 then Pos else Neg
-
 
 isPositive :: Signed a -> Bool
 isPositive Pos{} = True
@@ -654,8 +656,4 @@ instance (Ord t, Ord v) => Num (SumsE None t v) where
   signum x = case sumsSign x of
     Nothing -> error "Tried to take signum of a complex expression"
     Just n  -> fromInteger n
-  fromInteger n = case toList $ factorize (fromInteger $ abs n) of
-    []     -> zero
-    (x:xs) -> SumsE $ L $ (:[]) $ sig $ ProdE $ x :| L xs
-    where
-      sig = if n >= 0 then Pos else Neg
+  fromInteger = intSumsE
