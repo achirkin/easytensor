@@ -124,11 +124,11 @@ implCts (Log2 a)  = [CGT a 0] <> implCts a
 normalize :: (Ord v, Ord t) => Exp t v -> NormalE t v
 
 normalize (N n)
-  = minMax $ fromIntegral n
+  = intE $ toInteger n
 normalize (F t)
-  = unit (UF t)
+  = toNormalE (UF t)
 normalize (V v)
-  = unit (UV v)
+  = toNormalE (UV v)
 
 normalize (a :+ b)
   = map2Sums (+) (normalize a) (normalize b)
@@ -212,8 +212,8 @@ inverseMM' (MinsE (maxs1 :| L (maxs2 : maxS)))
 normalizeDiv :: (Ord v, Ord t)
              => SumsE None t v -> MinsE t v -> NormalE t v
 normalizeDiv a b@(MinsE bs)
-  | isZero a  = minMax 0
-  | isOne  b  = minMax a
+  | isZero a  = intE 0
+  | isOne  b  = toNormalE a
     -- Note, I convert the minimum of a list of maximimums (MinsE bs) into
     -- the maximum of a list of sums, because bs is the second argument of Div,
     -- which means swapping MinsE-MaxsE
@@ -228,8 +228,8 @@ normalizeDiv' a b
                 (cb', SumsE (L [])) -> (max cb cb', nothin)
                 _                   -> (0, False)
       ) (0, True) $ getMaxsE b
-  , cb /= 0   = minMax . fromInteger $ div ca cb
-  | otherwise = unit $ UDiv a (mapSupersedeMax id b)
+  , cb /= 0   = intE $ div ca cb
+  | otherwise = toNormalE $ UDiv a (mapSupersedeMax id b)
 
 normalizeMod :: (Ord v, Ord t)
              => NormalE t v -> NormalE t v -> NormalE t v
@@ -237,11 +237,11 @@ normalizeMod (NormalE (MinsE (MaxsE (a :| L []) :| L [])))
              (NormalE (MinsE (MaxsE (b :| L []) :| L [])))
   | (ca, sa) <- unconstSumsE a
   , (cb, sb) <- unconstSumsE b
-  , cb /= 0 && isZero sa && isZero sb = minMax $ fromInteger $ mod ca cb
+  , cb /= 0 && isZero sa && isZero sb = intE $ mod ca cb
 normalizeMod a b
-  | isZero a  = minMax 0
-  | isOne  b  = minMax 0
-  | otherwise = unit $ UMod (simplify a) (simplify b)
+  | isZero a  = intE 0
+  | isOne  b  = intE 0
+  | otherwise = toNormalE $ UMod (simplify a) (simplify b)
 
 normalizeLog2 :: (Ord v, Ord t) => MaxsE t v -> MaxsE t v
 normalizeLog2 p
