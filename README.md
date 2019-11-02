@@ -1,6 +1,6 @@
 Easytensor: many-dimensional type-safe numeric ops
 ==================================
-[![Build Status](https://secure.travis-ci.org/achirkin/easytensor.svg)](http://travis-ci.org/achirkin/easytensor)
+[![Build Status](https://travis-ci.org/achirkin/easytensor.svg?branch=v2)](https://travis-ci.org/achirkin/easytensor)
 
 The project consists of two parts:
  * `dimensions` is a library to support type-level operations on lists of dimensions;
