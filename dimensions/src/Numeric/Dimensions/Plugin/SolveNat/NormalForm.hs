@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
@@ -15,8 +16,10 @@ module Numeric.Dimensions.Plugin.SolveNat.NormalForm
     -- * Extra convenience functions
   , intE, asNatural, factorize
   , unitAsSums, unconstSumsE, powSums
+  , regroupSumsE
   ) where
 
+import Data.Either                            (partitionEithers)
 import Data.List                              (group)
 import Numeric.Dimensions.Plugin.AtLeast
 import Numeric.Dimensions.Plugin.SolveNat.Exp
@@ -87,7 +90,7 @@ newtype SumsE n t v = SumsE { getSumsE :: AtLeast n (Signed (ProdE t v)) }
 -- | A signed value with a weird Ord instance:
 --   we first compare by magnitude, and then check the signs.
 data Signed a = Pos { getAbs :: a } | Neg { getAbs :: a }
-  deriving (Eq, Show, Functor, Foldable)
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
 -- | A product is a non-empty list of power expressions (@PowE@) sorted in
 --   the descending order; none of the bases are equal.
@@ -271,6 +274,9 @@ one = singleProdAsSums $ Pos oneP
 oneP :: ProdE t v
 oneP = ProdE $ PowU UOne zero :| mempty
 
+noneSumsE :: SumsE n t v -> SumsE None t v
+noneSumsE = SumsE . L . toList . getSumsE
+
 -- | Same as signum, but only if we have enough evidence.
 normalSign :: NormalForm a => a t v -> Maybe Integer
 normalSign a
@@ -291,6 +297,75 @@ sumsSign = foldl f (Just 0) . getSumsE
     f :: Maybe Integer -> Signed (ProdE t v) -> Maybe Integer
     f ms (Pos x) = ms >>= k (normalSign x)
     f ms (Neg x) = ms >>= k (negate <$> normalSign x)
+
+-- | Group expresssions like
+--      \(    {(a + b)}^{x + c_1} + {(a + b)}^{x + c_2}    \)
+--   into
+--      \(    {(a + b)}^{x + \min c_1 c_2} * ( {(a + b)}^{\max c_1 c_2 - \min c_1 c_2) + 1}   \),
+--   where
+--      \(a\) and \(x\) are arbitrary variable expressions
+--      and \(c_1, c_2\) are constants.
+--
+--   This solves the problem of ambiguous sum-of-products representation:
+--   there must be no two product terms that differ only in constant power value.
+--     (note, RHS of the resulting product is immediately expanded into simple terms).
+--
+--   If this invariant holds, comparing normalized expressions becomes simple:
+--   substract one from another and compare result to zero.
+regroupSumsE :: (Ord t, Ord v) => SumsE n t v -> SumsE None t v
+regroupSumsE = go . toList . getSumsE
+  where
+    go :: (Ord t, Ord v) => [Signed (ProdE t v)] -> SumsE None t v
+    go [] = zero
+    go xs = foldl (+) (SumsE $ L xs') sums
+      where
+        (xs', sums) = partitionEithers $
+          map (toSingleProdOrSum . splitExtraSums bases) xs
+        bases = foldMap (foldMap addBase . getProdE . getAbs) xs []
+    -- add only PowS sums;
+    -- terms are ordered descending,
+    --   by base first, then by power
+    addBase :: (Ord t, Ord v) => PowE t v -> PowsS t v -> PowsS t v
+    addBase (PowU _ _) xs = xs
+    addBase (PowS a p) [] = [(a, p)]
+    addBase (PowS a p) (x@(b, q):xs) = case compare a b of
+      GT -> (a, p):x:xs
+      EQ -> case unconstSumsE (noneSumsE p - noneSumsE q) of
+        (c, s)
+          | isZero s  -> (b, if c < 0 then p else q) : xs
+          | p > q     -> (a, p):x:xs
+          | otherwise -> x : addBase (PowS a p) xs
+      LT -> x : addBase (PowS a p) xs
+    subBase :: (Ord t, Ord v) => PowsS t v -> PowE t v
+                              -> ([(SumsE Two t v, Natural)], PowE t v)
+    subBase bases (PowS a p)
+      | (c, _):_ <- filter (isZero . snd)
+            . map (\(_, q) -> unconstSumsE (noneSumsE p - noneSumsE q))
+            $ filter ((a ==) . fst) bases
+      , c > 0
+        = let ps' = getSumsE $ noneSumsE p - fromInteger c
+              p' = case ps' of
+                L [] -> error "regroupSumsE/subBase panic: expected non-empty SumsE!"
+                L (x:xs) -> SumsE (x :| L xs)
+          in ([(a, fromInteger c)], PowS a p')
+    subBase _ x = ([], x)
+
+    -- extracts terms like (a + b) ^ Nat from a product expression,
+    -- such that all complex sum expressions inside match the bases list
+    splitExtraSums :: (Ord t, Ord v) => PowsS t v
+                   -> Signed (ProdE t v)
+                   -> ([(SumsE Two t v, Natural)], Signed (ProdE t v))
+    splitExtraSums bases = traverse $ fmap ProdE . traverse (subBase bases) . getProdE
+
+    toSingleProdOrSum :: (Ord t, Ord v)
+                      => ([(SumsE Two t v, Natural)], Signed (ProdE t v))
+                      -> Either (Signed (ProdE t v)) (SumsE None t v)
+    toSingleProdOrSum ([], p) = Left p
+    toSingleProdOrSum (xs, p) = Right $
+      foldl (\s (x,n) -> s * noneSumsE x ^ n) (singleProdAsSums p) xs
+
+
+type PowsS t v = [(SumsE Two t v, SumsE One t v)]
 
 instance Ord a => Ord (Signed a) where
   compare a b = compare (getAbs a) (getAbs b)
@@ -366,7 +441,7 @@ instance NormalForm (SumsE n) where
       f :: Exp t v -> Signed (ProdE t v) -> Exp t v
       f e (Pos p) = e :+ fromNormal p
       f e (Neg p) = e :- fromNormal p
-  toNormalE  = toNormalE . MaxsE . pure . SumsE . L . toList . getSumsE
+  toNormalE  = toNormalE . MaxsE . pure . noneSumsE
   isZero     = all (isZero . getAbs) . getSumsE
   isNonZero  = (Just True == ) . fmap (/= 0) . sumsSign
   isNonNeg   = (Just True == ) . fmap (>= 0) . sumsSign

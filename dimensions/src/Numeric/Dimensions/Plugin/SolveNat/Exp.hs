@@ -164,7 +164,10 @@ evaluate' (a :* b) = (na * nb, (xsa >>= f nb) ++ (xsb >>= f na)
     g (nx, ex) (ny, ey) = (nx*ny, ex*ey)
 
 evaluate' (a :^ b) = case (evaluate a, evaluate b) of
-  (Right x, Right y)    -> (x ^ y, [])
+  (Right x, Right y)
+    | y >= 0            -> (x ^ y, [])
+    | x == 1            -> (1, [])
+    | otherwise         -> (0, [(1, _N x :^ _N y)])
   (Left  x, Right y)
     | y == 0 && safe x  -> (1, [])
     | y == 1            -> (0, [(1, x)])

@@ -259,7 +259,7 @@ simplify :: (Ord t, Ord v)
          => NormalE t v -> NormalE t v
 simplify
   = NormalE
-  . ( mapSupersedeMin $ mapSupersedeMax $ mapSimplifySum $ mapSimplifyProd id )
+  . ( mapSupersedeMin $ mapSupersedeMax $ regroupSumsE . mapSimplifySum (mapSimplifyProd id) )
   . getNormalE
 
 --  NB: mapped function must keep monotonicity of maxs
@@ -388,6 +388,8 @@ runSolveNat = do
       , f2 (Log2 (Max (f1 z2) (x - 15))) + (-1) :^ f1 (15 + y - x)
       , Min (x + 2 * y) (x + 3 * y)
       , Max (x + 2 * y) (x + 3 * y)
+      , (x + y) :^ (z1 - 5) + (x + y) :^ (z1 - 3)
+      , (x - y) :^ (z1 - 5) + (x - y) :^ (z1 - 3)
       ]
 
 test5 :: Exp XType Var -> SDoc
