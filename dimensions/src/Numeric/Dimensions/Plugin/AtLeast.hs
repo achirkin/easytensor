@@ -3,14 +3,21 @@
 {-# LANGUAGE GADTs              #-}
 {-# LANGUAGE StandaloneDeriving #-}
 module Numeric.Dimensions.Plugin.AtLeast
-  ( AtLeast (..)
-  , cons, mergeDesc, flattenDesc, toList
-  , Nat (..), None, One, Two
-  ) where
+  ( AtLeast(..)
+  , cons
+  , mergeDesc
+  , flattenDesc
+  , toList
+  , Nat(..)
+  , None
+  , One
+  , Two
+  )
+where
 
-import Control.Applicative
-import Control.Monad
-import Data.Foldable       (toList)
+import           Control.Applicative
+import           Control.Monad
+import           Data.Foldable                  ( toList )
 
 
 data Nat = Nil | S Nat
@@ -25,17 +32,17 @@ data AtLeast n a where
 infixr 5 :|
 
 cons :: a -> AtLeast n a -> AtLeast n a
-cons x (L xs)    = L (x:xs)
+cons x (L xs   ) = L (x : xs)
 cons x (a :| as) = x :| cons a as
 
 -- | @O(n + m)@ Merge two decreasing lists into one.
 mergeDesc :: Ord a => AtLeast n a -> AtLeast n a -> AtLeast n a
-mergeDesc xs (L []) = xs
-mergeDesc (L []) xs = xs
-mergeDesc (L (a:as)) (L (b:bs)) = case compare a b of
-  GT -> cons a $ mergeDesc (L as) (L (b:bs))
+mergeDesc xs           (L [])       = xs
+mergeDesc (L []      ) xs           = xs
+mergeDesc (L (a : as)) (L (b : bs)) = case compare a b of
+  GT -> cons a $ mergeDesc (L as) (L (b : bs))
   EQ -> cons a $ mergeDesc (L as) (L bs)
-  LT -> cons b $ mergeDesc (L (a:as)) (L bs)
+  LT -> cons b $ mergeDesc (L (a : as)) (L bs)
 mergeDesc (a :| as) (b :| bs) = case compare a b of
   GT -> a :| mergeDesc as (cons b bs)
   EQ -> a :| mergeDesc as bs
@@ -44,13 +51,13 @@ mergeDesc (a :| as) (b :| bs) = case compare a b of
 flattenDesc :: Ord a => AtLeast n (AtLeast n a) -> AtLeast n a
 flattenDesc (L []) = L []
 flattenDesc l      = case l of
-    L []       -> L []
-    L (x : xs) -> go (x :| L xs)
-    (x :| xs)  -> go (x :| L (toList xs))
+  L []       -> L []
+  L (x : xs) -> go (x :| L xs)
+  (x :| xs)  -> go (x :| L (toList xs))
   where
     go :: Ord a => AtLeast One (AtLeast n a) -> AtLeast n a
-    go (x  :| L [])      = x
-    go (x1 :| L (x2:xs)) = go (mergeDesc x1 x2 :| L xs)
+    go (x  :| L []       ) = x
+    go (x1 :| L (x2 : xs)) = go (mergeDesc x1 x2 :| L xs)
 
 deriving instance Eq a => Eq (AtLeast k a)
 deriving instance Ord a => Ord (AtLeast k a)
