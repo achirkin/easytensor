@@ -55,7 +55,8 @@ instance Num (Exp t v) where
   (+) = (:+)
   (-) = (:-)
   (*) = (:*)
-  negate = (N 0 :-)
+  negate (N 0 :- e) = e
+  negate e = N 0 :- e
   abs (N n)        = N n
   abs (N 0 :- N n) = N n
   abs (Log2 e)   = Log2 e
@@ -64,7 +65,9 @@ instance Num (Exp t v) where
   signum (N 0 :- N 0) = N 0
   signum (N 0 :- N _) = N 0 :- N 1
   signum e    = Min (Max (N 1) (N 0 :- e)) (Max (N 0 :- N 1) e)
-  fromInteger = N . fromInteger
+  fromInteger i
+    | i >= 0    = N (fromInteger i)
+    | otherwise = N 0 :- N (fromInteger $ negate i)
 
 
 instance (Outputable v, Outputable t) => Outputable (Exp t v) where

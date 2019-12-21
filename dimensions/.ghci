@@ -3,3 +3,4 @@
 :set -XTypeApplications
 :set -XTypeInType
 :set -XTypeOperators
+:set -Wall
