@@ -173,6 +173,7 @@ evaluate' (a :* b) =
 evaluate' (a :^ b) = case (evaluate a, evaluate b) of
   (Right x, Right y) | y >= 0    -> (x ^ y, [])
                      | x == 1    -> (1, [])
+                     | x == -1   -> (if even y then 1 else -1, [])
                      | otherwise -> (0, [(1, _N x :^ _N y)])
   (Left x, Right y) | y == 0 && safe x -> (1, [])
                     | y == 1           -> (0, [(1, x)])

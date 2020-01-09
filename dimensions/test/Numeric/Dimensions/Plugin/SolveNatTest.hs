@@ -99,7 +99,7 @@ keepSolutions expOrig = i'mStuck .||. QC.counterexample
   (showSDocUnsafe $ vcat
     [ text "  Original expr:" <+> ppr expOrig
     , text "Normalized expr:" <+> ppr expNorm
-    , text "    Normal form:" <+> text (show normal)
+    , text "    Normal form:" <+> text (take 100 $ show normal)
     ]
   )
   (case (resOrig, resNorm) of
@@ -110,8 +110,12 @@ keepSolutions expOrig = i'mStuck .||. QC.counterexample
         ("  Results are not equal! " ++ show a ++ " /= " ++ show b)
         False
     (Left  _, Right _) -> QC.classify True "simplifed to evaluatable" True
-    (Right _, Left b ) -> QC.counterexample
-      ("  Non-evaluatable after normalization: " ++ show b)
+    (Right a, Left b ) -> QC.counterexample
+      (  "  Non-evaluatable after normalization: "
+      ++ show b
+      ++ "\n  Evaluated original: "
+      ++ show a
+      )
       False
   )
   where
@@ -155,20 +159,23 @@ prop_keepSolutions_5 = ks $ Max (N 0 - N 1) (N 0 :- N 3) :^ N 3
 prop_keepSolutions_6 :: Property
 prop_keepSolutions_6 = ks $ Max (N 0 - N 1) (N 0 :- N 3) :^ N 0
 
--- prop_keepSolutions_7 :: Property
--- prop_keepSolutions_7 =
---   ks $ Max (V (Var 12) - V (Var 13)) (V (Var 15) :- V (Var 17)) :^ V (Var 2)
+prop_keepSolutions_7 :: Property
+prop_keepSolutions_7 =
+  ks $ Max (V (Var 12) - V (Var 13)) (V (Var 15) :- V (Var 17)) :^ V (Var 2)
 
--- prop_keepSolutions_8 :: Property
--- prop_keepSolutions_8 =
---   ks $ Max (V (Var 12) - V (Var 13)) (V (Var 15) :- V (Var 17)) :^ V (Var 3)
+prop_keepSolutions_8 :: Property
+prop_keepSolutions_8 =
+  ks $ Max (V (Var 12) - V (Var 13)) (V (Var 15) :- V (Var 17)) :^ V (Var 3)
 
--- prop_keepSolutions_9 :: Property
--- prop_keepSolutions_9 =
---   ks $ Max (V (Var 12) - V (Var 13)) (V (Var 15) :- V (Var 17)) :^ V (Var 0)
+prop_keepSolutions_9 :: Property
+prop_keepSolutions_9 =
+  ks $ Max (V (Var 12) - V (Var 13)) (V (Var 15) :- V (Var 17)) :^ V (Var 0)
 
 prop_keepSolutions_10 :: Property
 prop_keepSolutions_10 = ks $ Min (V (Var 1)) (N 2) :^ (N 0 :- N 2)
+
+prop_keepSolutions_11 :: Property
+prop_keepSolutions_11 = ks $ Max (N 0 - N 1) (N 0 :- N 3) :^ (N 0 :- N 2)
 
 return []
 runTests :: IO Bool

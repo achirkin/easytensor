@@ -117,66 +117,10 @@ normalize :: (Ord v, Ord t) => Exp t v -> NormalE t v
 normalize (N n   ) = intE $ toInteger n
 normalize (F t   ) = toNormalE (UF t)
 normalize (V v   ) = toNormalE (UV v)
-normalize (a :+ b) = map2Sums (+) (normalize a) (normalize b)
-normalize (a :- b) = map2Sums (-) (normalize a) (inverseMM $ normalize b)
-normalize (a :* b) = case (good na, good nb) of
-  (Just ga, Just gb) -> map2Sums (*) (mInverseMM gb na) (mInverseMM ga nb)
-  (Just True, Nothing) ->
-    map2Sums (+) (map2Sums (*) na nbp) (map2Sums (*) (inverseMM na) nbm)
-  (Just False, Nothing) ->
-    map2Sums (+) (map2Sums (*) na nbm) (map2Sums (*) (inverseMM na) nbp)
-  (Nothing, Just True) ->
-    map2Sums (+) (map2Sums (*) nap nb) (map2Sums (*) nam (inverseMM nb))
-  (Nothing, Just False) ->
-    map2Sums (+) (map2Sums (*) nam nb) (map2Sums (*) nap (inverseMM nb))
-  (Nothing, Nothing) -> map2Sums
-    (+)
-    (map2Sums (+) (map2Sums (*) nap nbp) (map2Sums (*) nam (inverseMM nbp)))
-    (map2Sums (+)
-              (map2Sums (*) (inverseMM nap) nbm)
-              (map2Sums (*) (inverseMM nam) (inverseMM nbm))
-    )
-  where
-    nap = normalize $ Max a 0
-    nam = normalize $ Min a 0
-    nbp = normalize $ Max b 0
-    nbm = normalize $ Min b 0
-    na  = normalize a
-    nb  = normalize b
-    mInverseMM :: (Ord v, Ord t) => Bool -> NormalE t v -> NormalE t v
-    mInverseMM True  = id
-    mInverseMM False = inverseMM
-    good :: NormalE t v -> Maybe Bool
-    good x | isNonNeg x = Just True
-           | isNonPos x = Just False
-           | otherwise  = Nothing
-normalize (a :^ b)
-  | isNonNeg na && isNonNeg nb = map2Sums powSums na nb
-  | otherwise = foldl1
-    (map2Sums (+))
-    [ mapPow (normalize $ Max a 0)     (normalize $ Max b 0)
-    , mapPow (normalize $ whenOdd am)  (normalize bp)
-    , mapPow (normalize $ whenEven am) (normalize bp)
-    -- , mapPow (inverseMM $ normalize $ whenEven am) (normalize bp)
-    -- , mapPow (inverseMM $ no am) (normalize bp)
-    -- , mapPow (no am) (normalize bp)
-    -- , mapPow (inverseMM $ normalize ap) (normalize bm)
-    -- , mapPow (no am)                    nb
-    -- , mapPow (inverseMM $ ne am)        nb
-    , error "not there yet, sorry"
-    ]
-  where
-    mapPow :: (Ord v, Ord t) => NormalE t v -> NormalE t v -> NormalE t v
-    mapPow   = map2Sums powSums
-    ap       = Max a 0 * bI
-    am       = Min a 0 * bI
-    bp       = Max b (1 - bI)
-    bm       = Min b 0 + 1 - bI
-    bI       = Min 1 (abs b)
-    na       = normalize a
-    nb       = normalize b
-    whenEven = (* (1 - Mod b 2))
-    whenOdd  = (* Mod b 2)
+normalize (a :+ b) = normalize a + normalize b
+normalize (a :- b) = normalize a - normalize b
+normalize (a :* b) = normalize a * normalize b
+normalize (a :^ b) = normal'pow (normalize a) (normalize b)
 normalize (Div a b) =
   foldr1 (map2Mins (<>))
     . fmap (foldr1 (map2Maxs (<>)) . fmap normDiv . getMaxsE)
@@ -187,8 +131,8 @@ normalize (Div a b) =
   --  it would mess up mins, maxs and zeroes.
   where normDiv = flip normalizeDiv (getNormalE $ normalize b)
 normalize (Mod a b) = normalizeMod (normalize a) (normalize b)
-normalize (Max a b) = map2Maxs (<>) (normalize a) (normalize b)
-normalize (Min a b) = map2Mins (<>) (normalize a) (normalize b)
+normalize (Max a b) = normal'max (normalize a) (normalize b)
+normalize (Min a b) = normal'min (normalize a) (normalize b)
 normalize (Log2 a) =
   NormalE $ MinsE $ fmap normalizeLog2 $ getMinsE $ getNormalE $ normalize a
 

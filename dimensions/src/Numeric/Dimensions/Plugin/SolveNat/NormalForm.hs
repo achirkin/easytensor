@@ -6,6 +6,9 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+
+{-# OPTIONS_GHC -Wno-missing-local-signatures #-}
+{-# OPTIONS_GHC -Wno-monomorphism-restriction #-}
 module Numeric.Dimensions.Plugin.SolveNat.NormalForm
   ( NormalForm(..)
   , Validate(..)
@@ -27,6 +30,10 @@ module Numeric.Dimensions.Plugin.SolveNat.NormalForm
   , unconstSumsE
   , powSums
   , regroupSumsE
+  , ifNonNeg, ifEven
+  , normal'max
+  , normal'min
+  , normal'pow
   )
 where
 
@@ -36,6 +43,8 @@ import           Numeric.Dimensions.Plugin.AtLeast
 import           Numeric.Dimensions.Plugin.SolveNat.Exp
 import           Numeric.Natural
 import           Outputable              hiding ( (<>) )
+
+-- import Debug.Trace
 
 {- |
 The normal form of an expression
@@ -746,3 +755,145 @@ instance (Ord t, Ord v) => Num (SumsE None t v) where
     Nothing -> error "Tried to take signum of a complex expression"
     Just n  -> fromInteger n
   fromInteger = intSumsE
+
+
+instance (Ord t, Ord v) => Num (NormalE t v) where
+  (+) = map2Sums (+)
+  a * b = case (good a, good b) of
+    (Just ga, Just gb) -> map2Sums (*) (mInverseMM gb a) (mInverseMM ga b)
+    (Just True, Nothing) ->
+      map2Sums (*) a bPos + map2Sums (*) (inverseMM a) bNeg
+    (Just False, Nothing) ->
+      map2Sums (*) a bNeg + map2Sums (*) (inverseMM a) bPos
+    (Nothing, Just True) ->
+      map2Sums (*) aPos b + map2Sums (*) aNeg (inverseMM b)
+    (Nothing, Just False) ->
+      map2Sums (*) aNeg b + map2Sums (*) aPos (inverseMM b)
+    (Nothing, Nothing) -> sum
+      [ map2Sums (*) aPos bPos
+      , map2Sums (*) aNeg (inverseMM bPos)
+      , map2Sums (*) (inverseMM aPos) bNeg
+      , map2Sums (*) (inverseMM aNeg) (inverseMM bNeg)
+      ]
+    where
+      aPos = normal'max a 0
+      aNeg = normal'min a 0
+      bPos = normal'max b 0
+      bNeg = normal'min b 0
+      mInverseMM :: (Ord t, Ord v) => Bool -> NormalE t v -> NormalE t v
+      mInverseMM True  = id
+      mInverseMM False = inverseMM
+      good :: NormalE t v -> Maybe Bool
+      good x | isNonNeg x = Just True
+             | isNonPos x = Just False
+             | otherwise  = Nothing
+  negate = inverseMM . neg
+    where
+      neg :: (Ord t, Ord v) => NormalE t v -> NormalE t v
+      neg = NormalE . MinsE . fmap (MaxsE . fmap negate . getMaxsE) . getMinsE . getNormalE
+  abs a
+    | isNonNeg a = a
+    | isOne a = a
+    | isZero a = a
+    | isNonPos a = negate a
+    | otherwise = normal'max a (negate a)
+  signum a
+    | isZero a = 0
+    | isOne a = 1
+    | isNonNeg a && isNonZero a = 1
+    | isNonPos a && isNonZero a = -1
+    | otherwise = normal'min x y
+    where
+      x = normal'max 1 (negate a)
+      y = normal'max (-1) a
+  fromInteger = toNormalE . intSumsE
+
+inverseMM :: (Ord t, Ord v) => NormalE t v -> NormalE t v
+inverseMM = NormalE . go . getNormalE
+  where
+    go :: (Ord t, Ord v) => MinsE t v -> MinsE t v
+    go (MinsE (MaxsE xs :| L [])) = MinsE $ (MaxsE . pure) <$> xs
+    go (MinsE (maxs1 :| L (maxs2 : maxS))) = MinsE $ (<>) <$> a <*> b
+      where
+        MinsE a = go $ MinsE $ pure maxs1
+        MinsE b = go $ MinsE $ maxs2 :| L maxS
+
+map2Sums
+  :: (Ord t, Ord v)
+  => (SumsE None t v -> SumsE None t v -> SumsE None t v)
+  -> NormalE t v
+  -> NormalE t v
+  -> NormalE t v
+map2Sums f = map2Maxs g
+  where g a b = MaxsE . flattenDesc $ (\x -> f x <$> getMaxsE b) <$> getMaxsE a
+
+map2Maxs
+  :: (Ord t, Ord v)
+  => (MaxsE t v -> MaxsE t v -> MaxsE t v)
+  -> NormalE t v
+  -> NormalE t v
+  -> NormalE t v
+map2Maxs f = map2Mins g
+  where g a b = MinsE . flattenDesc $ (\x -> f x <$> getMinsE b) <$> getMinsE a
+
+map2Mins
+  :: (MinsE t v -> MinsE t v -> MinsE t v)
+  -> NormalE t v
+  -> NormalE t v
+  -> NormalE t v
+map2Mins f a b = NormalE $ f (getNormalE a) (getNormalE b)
+
+
+normal'max :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
+normal'max = map2Maxs (<>)
+
+normal'min :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
+normal'min = map2Mins (<>)
+
+normal'pow :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
+normal'pow a b = ifNonNeg
+    (\x -> ifNonNeg (fpp x) (fpn x) b)
+    (\x -> ifNonNeg (ifEven (fnpe x) (fnpo x)) (ifEven (fnne x) (fnno x)) b) a
+  where
+    fpp = map2Sums powSums
+    fpn = map2Sums powSums . inverseMM
+    fnpe x y = map2Sums powSums (negate x) (inverseMM y)
+    fnpo = map2Sums powSums
+    fnne = map2Sums powSums . negate
+    fnno = map2Sums powSums . inverseMM
+
+
+
+-- | Split an expression e as (f e * I(e >= 0) + g e * I(e < 0))
+--
+--   WARNING: Incorrect behavior when (f e) or (g e) equal to (0 ^ (- c))!
+ifNonNeg
+  :: (Ord t, Ord v)
+  => (NormalE t v -> NormalE t v) -- ^ if non-negative
+  -> (NormalE t v -> NormalE t v) -- ^ if negative
+  -> NormalE t v
+  -> NormalE t v
+ifNonNeg f g a | isZero a                  = f a
+               | isOne a                   = f a
+               | isNonNeg a                = f a
+               | isNonZero a && isNonPos a = g a
+               | otherwise                 = iPos * f a + iNeg * g a
+  where
+    iPos = normal'min 1 (normal'max 0 (a + 1))
+    iNeg = normal'min 1 (normal'max 0 (negate a))
+
+-- | Split an expression e as (f e * I(Mod e 2 == 0) + g e * I(Mod e 2 == 1))
+--
+--   WARNING: Incorrect behavior when (f e) or (g e) equal to (0 ^ (- c))!
+ifEven
+  :: (Ord t, Ord v)
+  => (NormalE t v -> NormalE t v) -- ^ if even (Mod e 2 == 0)
+  -> (NormalE t v -> NormalE t v) -- ^ if odd  (Mod e 2 == 1)
+  -> NormalE t v
+  -> NormalE t v
+ifEven f g a | isZero a = f a
+             | isOne a = g a
+             | otherwise = iEven * f a + iOdd * g a
+  where
+    iEven = 1 - iOdd
+    iOdd = toNormalE $ UMod a 2
