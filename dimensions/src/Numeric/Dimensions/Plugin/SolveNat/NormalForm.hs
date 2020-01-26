@@ -6,6 +6,7 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 
 {-# OPTIONS_GHC -Wno-missing-local-signatures #-}
 {-# OPTIONS_GHC -Wno-monomorphism-restriction #-}
@@ -23,17 +24,29 @@ module Numeric.Dimensions.Plugin.SolveNat.NormalForm
   , UnitE(..)
   , Signed(..)
     -- * Extra convenience functions
-  , intE
-  , asNatural
+  , isZero
+  , isNonZero
+  , isSignOne
+  , isOne
+  , isNonNeg
+  , isNonPos
+  , isComplete
+  , isEven
+  , isOdd
+  , neMin, neMax, nePow
+  , minsE, maxsE, sumsE, prodE, powU, powS
+  , map2Maxs, map2Mins, map2Sums, inverseMM
+  -- , asNatural
   , factorize
   , unitAsSums
   , unconstSumsE
-  , powSums
+  -- , powSums
   , regroupSumsE
-  , ifNonNeg, ifEven
-  , normal'max
-  , normal'min
-  , normal'pow
+  -- , ifNonNeg
+  -- , ifEven
+  -- , normal'max
+  -- , normal'min
+  -- , normal'pow
   )
 where
 
@@ -41,6 +54,7 @@ import           Data.Either                    ( partitionEithers )
 import           Data.List                      ( group )
 import           Numeric.Dimensions.Plugin.AtLeast
 import           Numeric.Dimensions.Plugin.SolveNat.Exp
+import Numeric.Dimensions.Plugin.SolveNat.ExpState
 import           Numeric.Natural
 import           Outputable              hiding ( (<>) )
 
@@ -69,21 +83,48 @@ class NormalForm e where
   fromNormal :: e t v -> Exp t v
   -- | Every part of the normal form can be transformed to a full NormalE expr.
   toNormalE :: e t v -> NormalE t v
-  -- | Check if the value is guaranteed to be zero
-  isZero     :: e t v -> Bool
-  -- | Check if the value is guaranteed to be non-zero
-  isNonZero  :: e t v -> Bool
-  -- | Check if the value is guaranteed to be one
-  isOne      :: e t v -> Bool
-  -- | Check if the value is guaranteed to be zero or positive
-  isNonNeg   :: e t v -> Bool
-  -- | Check if the value is guaranteed to be zero or negative
-  isNonPos   :: e t v -> Bool
-  -- | Check if the expression is guaranteed to be valid for all inputs
-  isComplete :: e t v -> Bool
+  -- | Extra information about the part of an expression in the normal form.
+  expState :: e t v -> ExpState
   -- | Check the invariants that must hold by construction.
   --   Do not check arithmetic errors, such as division by zero, etc.
   validate   :: (Ord t, Ord v, Outputable t, Outputable v) => e t v -> Validate
+
+-- | Check if the value is guaranteed to be zero
+isZero :: NormalForm e => e t v -> Bool
+isZero = _isZero . expState
+
+-- | Check if the value is guaranteed to be non-zero
+isNonZero :: NormalForm e => e t v -> Bool
+isNonZero = _isNonZero . expState
+
+-- | Check if the value is guaranteed to be one or minus one
+isSignOne :: NormalForm e => e t v -> Bool
+isSignOne = _isSignOne . expState
+
+-- | Check if the value is guaranteed to be one
+isOne :: NormalForm e => e t v -> Bool
+isOne x = _isSignOne s && _isNonNeg s
+  where s = expState x
+
+-- | Check if the value is guaranteed to be zero or positive
+isNonNeg :: NormalForm e => e t v -> Bool
+isNonNeg = _isNonNeg . expState
+
+-- | Check if the value is guaranteed to be zero or negative
+isNonPos :: NormalForm e => e t v -> Bool
+isNonPos = _isNonPos . expState
+
+-- | Check if the value is guaranteed to be even
+isEven :: NormalForm e => e t v -> Bool
+isEven = _isEven . expState
+
+-- | Check if the value is guaranteed to be odd
+isOdd :: NormalForm e => e t v -> Bool
+isOdd = _isOdd . expState
+
+-- | Check if the expression is guaranteed to be valid for all inputs
+isComplete :: NormalForm e => e t v -> Bool
+isComplete = _isComplete . expState
 
 -- | Report broken invariants
 data Validate = Invalid (AtLeast One SDoc) | Ok
@@ -93,19 +134,20 @@ newtype NormalE t v = NormalE { getNormalE :: MinsE t v }
   deriving (Eq, Ord, Show, Foldable)
 
 -- | A minimum among a list of expressions is the outermost level.
-newtype MinsE t v = MinsE { getMinsE :: AtLeast One (MaxsE t v) }
-  deriving (Eq, Ord, Show, Foldable)
+data MinsE t v = MinsE { getMinsEState :: ExpState, getMinsE :: AtLeast One (MaxsE t v) }
+  deriving (Show, Foldable)
+
 
 -- | A maximum among a list of expressions is the second level.
-newtype MaxsE t v = MaxsE { getMaxsE :: AtLeast One  (SumsE None t v) }
-  deriving (Eq, Ord, Show, Foldable)
+data MaxsE t v = MaxsE { getMaxsEState :: ExpState, getMaxsE :: AtLeast One  (SumsE None t v) }
+  deriving (Show, Foldable)
 
 -- | An expression (empty of mins and maxs) is the sum of products.
 --   It can be zero (empty list of products), or const (a single const product);
 --   otherwise the list of products is sorted (descending).
 --   None of the components have the same variable part.
-newtype SumsE n t v = SumsE { getSumsE :: AtLeast n (Signed (ProdE t v)) }
-  deriving (Eq, Ord, Show, Foldable)
+data SumsE n t v = SumsE { getSumsEState :: ExpState, getSumsE :: AtLeast n (Signed (ProdE t v)) }
+  deriving (Show, Foldable)
 
 -- | A signed value with a weird Ord instance:
 --   we first compare by magnitude, and then check the signs.
@@ -115,20 +157,20 @@ data Signed a = Pos { getAbs :: a } | Neg { getAbs :: a }
 -- | A product is a non-empty list of power expressions (@PowE@) sorted in
 --   the descending order; none of the bases are equal.
 --   Note, @ProdE@ is a positive value by construction (cannot be zero or negative).
-newtype ProdE t v = ProdE { getProdE :: AtLeast One (PowE t v) }
-  deriving (Eq, Ord, Show, Foldable)
+data ProdE t v = ProdE { getProdEState :: ExpState, getProdE :: AtLeast One (PowE t v) }
+  deriving (Show, Foldable)
 
 -- | A power expression is either a unit or a non-trivial @SumE@ (base) in
 --   the power of some @SumE@.
 data PowE t v
-  = PowU (UnitE t v) (SumsE None t v)
+  = PowU ExpState (UnitE t v) (SumsE None t v)
     -- ^ If the base is a UnitE, there is an extra invariant:
     --   the power is equal to zero iff the base is equal to @UOne@.
-  | PowS (SumsE Two t v) (SumsE One t v)
+  | PowS ExpState (SumsE Two t v) (SumsE One t v)
     -- ^ If the base is a SumE, there is an extra invariant:
     --   the power must have variable or irreducible funs or be negative const
     --     (single non-negative const is not allowed and immediately expanded).
-  deriving (Eq, Ord, Show, Foldable)
+  deriving (Show, Foldable)
 
 -- | Primitive values and irreducible functions.
 data UnitE t v
@@ -136,10 +178,10 @@ data UnitE t v
     -- ^ Number @1@, which is not considered prime here
   | UN Prime
     -- ^ Prime numbers. Note, no zeroes possible!
-  | UDiv  (SumsE None t v) (MaxsE t v)
+  | UDiv (SumsE None t v) (MaxsE t v)
     -- ^ Numerator is free of MaxsE and MinsE, but I cannot float out
     --   MaxsE from the denominator due to possible zeroes.
-  | UMod  (NormalE t v) (NormalE t v)
+  | UMod (NormalE t v) (NormalE t v)
     -- ^ Mod is a tricky thing, I can do almost nothing about it.
   | ULog2 (MaxsE t v)
     -- ^ Cannot float out MaxsE due to possible zeroes.
@@ -168,54 +210,75 @@ factorize x = L . reverse . fmap asPow . group $ factor x 2
   where
     asPow :: [Natural] -> PowE t v
     asPow ns =
-      let L ps = factorize $ fromIntegral (length ns)
-          u    = UN $ Prime $ head ns
-      in  PowU u $ case ps of
-            []         -> zero
-            (p' : ps') -> singleProdAsSums $ Pos $ ProdE $ p' :| L ps'
+      let L ps = factorize $ fromIntegral p
+          p    = length ns
+          n    = head ns
+      in  PowU (fromIntegral n) (UN $ Prime n) $ case ps of
+            [] -> zero
+            (p' : ps') ->
+              singleProdAsSums $ Pos $ ProdE (fromIntegral p) $ p' :| L ps'
     factor :: Natural -> Natural -> [Natural]
     factor n k | k * k > n             = [n]
                | (n', 0) <- divMod n k = k : factor n' k
                | otherwise             = factor n (k + 1)
 
-intE :: Integer -> NormalE t v
-intE = toNormalE . intSumsE
-
-intSumsE :: Integer -> SumsE None t v
-intSumsE n = case toList . factorize . fromInteger $ abs n of
-  []       -> zero
-  (x : xs) -> SumsE $ L $ (: []) $ sig $ ProdE $ x :| L xs
-  where sig = if n >= 0 then Pos else Neg
+eStateSigned :: NormalForm a => Signed (a t v) -> ExpState
+eStateSigned a = s
+  { _isNonNeg = if isPositive a then _isNonNeg s else _isNonPos s
+  , _isNonPos = if isPositive a then _isNonPos s else _isNonNeg s
+  }
+  where s = expState $ getAbs a
 
 isPositive :: Signed a -> Bool
 isPositive Pos{} = True
 isPositive Neg{} = False
 
+
+minsE :: AtLeast One (MaxsE t v) -> MinsE t v
+minsE xxs@(x :| L xs) = MinsE (foldl (\s -> esMin s . expState) (expState x) xs) xxs
+
+maxsE :: AtLeast One (SumsE None t v) -> MaxsE t v
+maxsE xxs@(x :| L xs) = MaxsE (foldl (\s -> esMax s . expState) (expState x) xs) xxs
+
+sumsE :: AtLeast n (Signed (ProdE t v)) -> SumsE n t v
+sumsE xs = SumsE (sum $ fmap eStateSigned xs) xs
+
+prodE :: AtLeast One (PowE t v) -> ProdE t v
+prodE xxs@(x :| L xs) = ProdE (foldl (\s -> (s *) . expState) (expState x) xs) xxs
+
+powU :: UnitE t v -> SumsE None t v -> PowE t v
+powU a b = PowU (esPow (expState a) (expState b)) a b
+
+powS :: SumsE Two t v -> SumsE One t v -> PowE t v
+powS a b = PowS (esPow (expState a) (expState b)) a b
+
 -- | Split product into two parts: constant and irreducible prod.
---   Removes all constant components from the result prod.
+--   Removes all constant components from the result prod if they are evaluatable
+--   (i.e. an integer in negative power is not evaluatable to an integer)
 unscaleProdE :: Signed (ProdE t v) -> (Integer, ProdE t v)
 unscaleProdE p = atleast1
   <$> go (if isPositive p then 1 else -1) (toList $ getProdE $ getAbs p)
   where
     atleast1 :: [PowE t v] -> ProdE t v
-    atleast1 (a : as) = ProdE $ a :| L as
+    atleast1 (a : as) = prodE $ a :| L as
     atleast1 []       = oneP
     go :: Integer -> [PowE t v] -> (Integer, [PowE t v])
-    go c []                             = (c, [])
-    go c (PowU u@(UN (Prime n)) s : xs) = case unshiftPosSumsE s of
-      (k, SumsE (L [])) -> go (c * toInteger n ^ k) xs
-      (k, s'          ) -> (PowU u s' :) <$> go (c * toInteger n ^ k) xs
+    go c [] = (c, [])
+    go c (PowU _ u@(UN (Prime n)) s : xs) = case unshiftPosSumsE s of
+      (k, SumsE _ (L [])) -> go (c * toInteger n ^ k) xs
+      (k, s'            ) -> (PowU ps u s' :) <$> go (c * toInteger n ^ k) xs
+                              where
+                                ps = esPow (fromIntegral n) (expState s')
     go c (x : xs) = (x :) <$> go c xs
 
--- | Take the positive constant part of SumsE;
---   The returned SumsE is guaranteed to not have a constant component or have
---   negative constant value.
+-- | Take the positive constant part of SumsE.
+--   The constant component of the output SumsE is guaranteed to be non-positive.
 unshiftPosSumsE :: SumsE n t v -> (Natural, SumsE None t v)
 unshiftPosSumsE s = toPos $ go 0 (toList $ getSumsE s)
   where
     toPos (n, xs) = if n >= 0
-      then (fromInteger n, SumsE $ L xs)
-      else (0, SumsE $ L $ toList $ getSumsE s)
+      then (fromInteger n, sumsE $ L xs)
+      else (0, SumsE (getSumsEState s) $ L $ toList $ getSumsE s)
     go :: Integer -> [Signed (ProdE t v)] -> (Integer, [Signed (ProdE t v)])
     go c [] = (c, [])
     go c (p : ps) | isOne p'  = go (c + c') ps
@@ -226,7 +289,7 @@ unshiftPosSumsE s = toPos $ go 0 (toList $ getSumsE s)
 --   The returned SumsE is guaranteed to not have a constant component
 --    (i.e. it is either empty or has unknown funs or vars inside).
 unconstSumsE :: SumsE n t v -> (Integer, SumsE None t v)
-unconstSumsE s = SumsE . L <$> go 0 (toList $ getSumsE s)
+unconstSumsE s = sumsE . L <$> go 0 (toList $ getSumsE s)
   where
     go :: Integer -> [Signed (ProdE t v)] -> (Integer, [Signed (ProdE t v)])
     go c [] = (c, [])
@@ -236,21 +299,33 @@ unconstSumsE s = SumsE . L <$> go 0 (toList $ getSumsE s)
 
 -- | Take @SumE@ expression into a power of @SumE@ expression
 powSums :: (Ord v, Ord t) => SumsE None t v -> SumsE None t v -> SumsE None t v
-powSums a b | SumsE (L []) <- b       = 1
+powSums a b | SumsE _ (L []) <- b     = 1
             | isZero b                = 1
             | isOne b                 = a
-            | isNonZero b && isZero a = 0
-powSums (SumsE (L [a])) b = powProd a b
-powSums a'@(SumsE (L (a1 : a2 : as))) b'@(SumsE (L (b : bs)))
+            | isOne a                 = 1
+            | isNonNeg b && isNonZero b && isZero a = 0
+powSums (SumsE _ (L [a])) b = powProd a b
+powSums a'@(SumsE sa' (L (a1 : a2 : as))) b'@(SumsE sb' (L (b : bs)))
   |
     -- expand sum if the power is a non-negative constant
-    (c, SumsE (L [])) <- unshiftPosSumsE b' = a' ^ c
+    (c, SumsE _ (L [])) <- unshiftPosSumsE b' = a' ^ c
   | otherwise = singlePowAsSums
-  $ PowS (SumsE $ a1 :| a2 :| L as) (SumsE $ b :| L bs)
+  $ powS (SumsE sa' $ a1 :| a2 :| L as) (SumsE sb' $ b :| L bs)
 -- in this weird case I don't know if the power is zero or not,
 -- I have to use a Mod trick to workaround that
-powSums (SumsE (L [])) b =
-  1 - unitAsSums (UMod (intE 1) (toNormalE $ MaxsE $ 1 + b :| L [1 - b]))
+powSums (SumsE _ (L [])) b =
+  1 - unitAsSums (UMod 1 (toNormalE $ MaxsE s $ 1 + b :| L [1 - b]))
+  where
+    s = ExpState
+      { _isZero     = False
+      , _isNonZero  = True
+      , _isSignOne  = isZero b
+      , _isNonNeg   = True
+      , _isNonPos   = False
+      , _isEven     = isOdd b
+      , _isOdd      = isEven b
+      , _isComplete = isComplete b
+      }
 
 -- | Take signed @ProdE@ expression into a power of @SumE@ expression
 powProd
@@ -258,60 +333,47 @@ powProd
 powProd a b = sig $ go $ getProdE $ getAbs a
   where
     sig x | isPositive a = x
-          | otherwise    = x - 2 * x * unitAsSums (UMod (toNormalE b) (intE 2))
-    powPow (PowU u p) = singlePowAsSums $ PowU u (p * b)
-    powPow (PowS s p) = case (SumsE $ L $ toList $ getSumsE p) * b of
-      SumsE (L []) -> 0
-      p'@(SumsE (L (x : xs)))
-        | isOne p'  -> SumsE $ L $ toList $ getSumsE s
-        | otherwise -> singlePowAsSums $ PowS s (SumsE $ x :| L xs)
+          | otherwise    = x - 2 * x * unitAsSums (UMod (toNormalE b) 2)
+    powPow (PowU _ u p) = let pb = p * b in singlePowAsSums $ PowU (esPow (expState u) (expState pb)) u pb
+    powPow (PowS es s p) = case (SumsE es $ L $ toList $ getSumsE p) * b of
+      SumsE _ (L []) -> 0
+      p'@(SumsE es' (L (x : xs)))
+        | isOne p'  -> SumsE es' $ L $ toList $ getSumsE s
+        | otherwise -> singlePowAsSums $ powS s (SumsE es' $ x :| L xs)
     go (x  :| L []       ) = powPow x
     go (x1 :| L (x2 : xs)) = powPow x1 * go (x2 :| L xs)
 
 singleProdAsSums :: Applicative (AtLeast n) => Signed (ProdE t v) -> SumsE n t v
-singleProdAsSums p = SumsE $ pure p
+singleProdAsSums p = SumsE (eStateSigned p) $ pure p
 
 singlePowAsSums :: Applicative (AtLeast n) => PowE t v -> SumsE n t v
-singlePowAsSums p = singleProdAsSums $ Pos (ProdE $ pure p)
+singlePowAsSums p = singleProdAsSums $ Pos (ProdE (expState p) $ pure p)
 
 unitAsPow :: UnitE t v -> PowE t v
-unitAsPow UOne = PowU UOne zero
-unitAsPow u    = PowU u one
+unitAsPow UOne = PowU 1 UOne zero
+unitAsPow u    = PowU (expState u) u one
 
 unitAsSums :: Applicative (AtLeast n) => UnitE t v -> SumsE n t v
 unitAsSums = singlePowAsSums . unitAsPow
 
 zero :: SumsE None t v
-zero = SumsE mempty
+zero = SumsE 0 mempty
 
 one :: Applicative (AtLeast n) => SumsE n t v
 one = singleProdAsSums $ Pos oneP
 
 oneP :: ProdE t v
-oneP = ProdE $ PowU UOne zero :| mempty
+oneP = ProdE 1 $ PowU 1 UOne zero :| mempty
 
 noneSumsE :: SumsE n t v -> SumsE None t v
-noneSumsE = SumsE . L . toList . getSumsE
+noneSumsE s = SumsE (expState s) . L . toList $ getSumsE s
 
 -- | Same as signum, but only if we have enough evidence.
 normalSign :: NormalForm a => a t v -> Maybe Integer
 normalSign a | isZero a   = Just 0
-             | isNonNeg a = Just 1
-             | isNonPos a = Just (-1)
+             | isNonNeg a && isNonZero a = Just 1
+             | isNonPos a && isNonZero a = Just (-1)
              | otherwise  = Nothing
-
--- | Same as signum, but only if we have enough evidence.
-sumsSign :: SumsE n t v -> Maybe Integer
-sumsSign = foldl f (Just 0) . getSumsE
-  where
-    k :: Maybe Integer -> Integer -> Maybe Integer
-    k mx 0                   = mx
-    k (Just x) 1 | x >= 0    = Just 1
-    k (Just x) (-1) | x <= 0 = Just (-1)
-    k _ _                    = Nothing
-    f :: Maybe Integer -> Signed (ProdE t v) -> Maybe Integer
-    f ms (Pos x) = ms >>= k (normalSign x)
-    f ms (Neg x) = ms >>= k (negate <$> normalSign x)
 
 -- | Group expresssions like
 --      \(    {(a + b)}^{x + c_1} + {(a + b)}^{x + c_2}    \)
@@ -332,7 +394,7 @@ regroupSumsE = go . toList . getSumsE
   where
     go :: (Ord t, Ord v) => [Signed (ProdE t v)] -> SumsE None t v
     go [] = zero
-    go xs = foldl (+) (SumsE $ L xs') sums
+    go xs = foldl (+) (sumsE $ L xs') sums
       where
         (xs', sums) =
           partitionEithers $ map (toSingleProdOrSum . splitExtraSums bases) xs
@@ -341,21 +403,21 @@ regroupSumsE = go . toList . getSumsE
     -- terms are ordered descending,
     --   by base first, then by power
     addBase :: (Ord t, Ord v) => PowE t v -> PowsS t v -> PowsS t v
-    addBase (PowU _ _) xs              = xs
-    addBase (PowS a p) []              = [(a, p)]
-    addBase (PowS a p) (x@(b, q) : xs) = case compare a b of
+    addBase (PowU _ _ _) xs              = xs
+    addBase (PowS _ a p) []              = [(a, p)]
+    addBase (PowS _ a p) (x@(b, q) : xs) = case compare a b of
       GT -> (a, p) : x : xs
       EQ -> case unconstSumsE (noneSumsE p - noneSumsE q) of
         (c, s) | isZero s  -> (b, if c < 0 then p else q) : xs
                | p > q     -> (a, p) : x : xs
-               | otherwise -> x : addBase (PowS a p) xs
-      LT -> x : addBase (PowS a p) xs
+               | otherwise -> x : addBase (powS a p) xs
+      LT -> x : addBase (powS a p) xs
     subBase
       :: (Ord t, Ord v)
       => PowsS t v
       -> PowE t v
       -> ([(SumsE Two t v, Natural)], PowE t v)
-    subBase bases (PowS a p)
+    subBase bases (PowS _ a p)
       | (c, _) : _ <-
         filter (isZero . snd)
         . map (\(_, q) -> unconstSumsE (noneSumsE p - noneSumsE q))
@@ -365,8 +427,8 @@ regroupSumsE = go . toList . getSumsE
             p'  = case ps' of
               L [] ->
                 error "regroupSumsE/subBase panic: expected non-empty SumsE!"
-              L (x : xs) -> SumsE (x :| L xs)
-        in  ([(a, fromInteger c)], PowS a p')
+              L (x : xs) -> sumsE (x :| L xs)
+        in  ([(a, fromInteger c)], powS a p')
     subBase _ x = ([], x)
 
     -- extracts terms like (a + b) ^ Nat from a product expression,
@@ -377,7 +439,7 @@ regroupSumsE = go . toList . getSumsE
       -> Signed (ProdE t v)
       -> ([(SumsE Two t v, Natural)], Signed (ProdE t v))
     splitExtraSums bases =
-      traverse $ fmap ProdE . traverse (subBase bases) . getProdE
+      traverse $ fmap prodE . traverse (subBase bases) . getProdE
 
     toSingleProdOrSum
       :: (Ord t, Ord v)
@@ -390,33 +452,20 @@ regroupSumsE = go . toList . getSumsE
 
 type PowsS t v = [(SumsE Two t v, SumsE One t v)]
 
-instance Ord a => Ord (Signed a) where
-  compare a b = compare (getAbs a) (getAbs b)
-             <> compare (isPositive a) (isPositive b)
 
 instance NormalForm NormalE where
   fromNormal = fromNormal . getNormalE
   toNormalE  = id
-  isZero     = isZero . getNormalE
-  isNonZero  = isNonZero . getNormalE
-  isOne      = isOne . getNormalE
-  isNonNeg   = isNonNeg . getNormalE
-  isNonPos   = isNonPos . getNormalE
-  isComplete = isComplete . getNormalE
+  expState    = expState . getNormalE
   validate   = validate . getNormalE
 
 instance NormalForm MinsE where
-  fromNormal (MinsE (e :| L []))
+  fromNormal (MinsE _ (e :| L []))
     = fromNormal e
-  fromNormal (MinsE (e1 :| L (e2:es)))
-    = Min (fromNormal e1) (fromNormal (MinsE (e2 :| L es)))
+  fromNormal (MinsE s (e1 :| L (e2:es)))
+    = Min (fromNormal e1) (fromNormal (MinsE s (e2 :| L es)))
   toNormalE = NormalE
-  isZero     (MinsE x) = all isNonNeg x && any isZero x
-  isNonZero  (MinsE x) = all isNonZero x || any ((&&) <$> isNonPos <*> isNonZero) x
-  isNonNeg   (MinsE x) = all isNonNeg x
-  isNonPos   (MinsE x) = any isNonPos x
-  isOne      (MinsE x) = any isOne x && all ((&&) <$> isNonZero <*> isNonNeg) x
-  isComplete (MinsE x) = all isComplete x
+  expState = getMinsEState
   validate x = foldMap validate xl <> decreasing xl
     where
       xl = toList $ getMinsE x
@@ -429,17 +478,12 @@ instance NormalForm MinsE where
         | otherwise = decreasing xs
 
 instance NormalForm MaxsE where
-  fromNormal (MaxsE (e :| L []))
+  fromNormal (MaxsE _ (e :| L []))
     = fromNormal e
-  fromNormal (MaxsE (e1 :| L (e2:es)))
-    = Max (fromNormal e1) (fromNormal (MaxsE (e2 :| L es)))
-  toNormalE = toNormalE . MinsE . pure
-  isZero     (MaxsE x) = all isNonPos x && any isZero x
-  isNonZero  (MaxsE x) = all isNonZero x || any ((&&) <$> isNonNeg <*> isNonZero) x
-  isNonNeg   (MaxsE x) = any isNonNeg x
-  isNonPos   (MaxsE x) = all isNonPos x
-  isOne      (MaxsE x) = any isOne x && all ((||) <$> isOne <*> isNonPos) x
-  isComplete (MaxsE x) = all isComplete x
+  fromNormal (MaxsE s (e1 :| L (e2:es)))
+    = Max (fromNormal e1) (fromNormal (MaxsE s (e2 :| L es)))
+  toNormalE x = toNormalE $ MinsE (expState x) (pure x)
+  expState = getMaxsEState
   validate x = foldMap validate xl <> decreasing xl
     where
       xl = toList $ getMaxsE x
@@ -460,18 +504,12 @@ instance NormalForm (SumsE n) where
       (Neg _ : _)   -> foldl f e0 x'
     where
       e0 = if c >= 0 then N (fromInteger c) else 0 :- N (fromInteger $ negate c)
-      (c, SumsE (L x')) = unconstSumsE x
+      (c, SumsE _ (L x')) = unconstSumsE x
       f :: Exp t v -> Signed (ProdE t v) -> Exp t v
       f e (Pos p) = e :+ fromNormal p
       f e (Neg p) = e :- fromNormal p
-  toNormalE  = toNormalE . MaxsE . pure . noneSumsE
-  isZero     = all (isZero . getAbs) . getSumsE
-  isNonZero  = (Just True == ) . fmap (/= 0) . sumsSign
-  isNonNeg   = (Just True == ) . fmap (>= 0) . sumsSign
-  isNonPos   = (Just True == ) . fmap (<= 0) . sumsSign
-  isComplete = all (isComplete . getAbs) . getSumsE
-  isOne (SumsE (L [Pos p])) = isOne p
-  isOne  _                  = False
+  toNormalE x = toNormalE $ MaxsE (expState x) (pure $ noneSumsE x)
+  expState = getSumsEState
   validate x = foldMap (validate . getAbs) xl <> decreasing ps <> maxOneConst
     where
       xl = toList $ getSumsE x
@@ -497,29 +535,18 @@ instance NormalForm ProdE where
       go n (  e :| L [])      = N n :* e
       go n (N m :| L (e:es))  = go (n * m) (e :| L es)
       go n ( e1 :| L (e2:es)) = go n (e2 :| L es) :* e1
-  toNormalE = toNormalE . SumsE . L . (:[]) . Pos
-  isZero = any isZero . getProdE
-  isNonZero = all isNonZero . getProdE
-  isOne = all isOne . getProdE
-  isNonNeg = (Just True == ) . fmap (>= 0) . foldl g (Just 1) . getProdE
-    where
-      g :: Maybe Integer -> PowE t v -> Maybe Integer
-      g ms x = (*) <$> ms <*> normalSign x
-  isNonPos = (Just True == ) . fmap (<= 0) . foldl g (Just 1) . getProdE
-    where
-      g :: Maybe Integer -> PowE t v -> Maybe Integer
-      g ms x = (*) <$> ms <*> normalSign x
-  isComplete = all isComplete . getProdE
-  validate x@(ProdE x') = foldMap validate x' <> decreasing (toList x')
+  toNormalE = toNormalE . sumsE . L . (:[]) . Pos
+  expState = getProdEState
+  validate x@(ProdE _ x') = foldMap validate x' <> decreasing (toList x')
     where
       errMsg = Invalid $ pure $ hsep
         ["Components of", ppr x, "are not descending:", ppr (toList x')]
       decreasing :: (Ord t, Ord v) => [PowE t v] -> Validate
       decreasing []  = Ok
       decreasing [_] = Ok
-      decreasing (PowU u1 _ : PowU u2 _ : _)
+      decreasing (PowU _ u1 _ : PowU _ u2 _ : _)
         | u1 <= u2 = errMsg
-      decreasing (PowS s1 _ : PowS s2 _ : _)
+      decreasing (PowS _ s1 _ : PowS _ s2 _ : _)
         | s1 <= s2 = errMsg
       decreasing (x1:x2:_)
         | x1 <= x2 = errMsg
@@ -527,34 +554,18 @@ instance NormalForm ProdE where
 
 instance NormalForm PowE where
   fromNormal x = cleanPow $ case x of
-      PowU a b -> fromNormal a :^ fromNormal b
-      PowS a b -> fromNormal a :^ fromNormal b
+      PowU _ a b -> fromNormal a :^ fromNormal b
+      PowS _ a b -> fromNormal a :^ fromNormal b
     where
       cleanPow :: Exp t v -> Exp t v
       cleanPow (_ :^ N 0)   = N 1
       cleanPow (a :^ N 1)   = cleanPow a
       cleanPow (N a :^ N p) = N (a ^ p)
       cleanPow a            = a
-  toNormalE = toNormalE . ProdE . pure
-  isZero (PowU a b) = isZero a && isComplete b
-  isZero (PowS a b) = isZero a && isComplete b
-  isNonZero (PowU a b) = isNonZero a && isComplete b
-  isNonZero (PowS a b) = isNonZero a && isComplete b
-  isOne (PowU u p) =  isComplete u && isZero p
-                   || isComplete p && isOne u
-  isOne (PowS u p) =  isComplete u && isZero p
-                   || isComplete p && isOne u
-  isNonNeg (PowU a b) =  isComplete b && isNonNeg a
-                      || isComplete a && isZero (UMod (toNormalE b) (intE 2))
-  isNonNeg (PowS a b) =  isComplete b && isNonNeg a
-                      || isComplete a && isZero (UMod (toNormalE b) (intE 2))
-  isNonPos (PowU a b) =  isNonPos a
-                      && isOne (UMod (toNormalE b) (intE 2))
-  isNonPos (PowS a b) =  isNonPos a
-                      && isOne  (UMod (toNormalE b) (intE 2))
-  isComplete (PowU a b) = isComplete a && isComplete b
-  isComplete (PowS a b) = isComplete a && isComplete b
-  validate (PowU a b) = validate a <> validate b <> checkConst
+  toNormalE x = toNormalE $ ProdE (expState x) (pure x)
+  expState (PowU s _ _) = s
+  expState (PowS s _ _) = s
+  validate (PowU _ a b) = validate a <> validate b <> checkConst
     where
       bIsZero = isZero b
       aIsOne  = isOne a
@@ -564,10 +575,10 @@ instance NormalForm PowE where
         | not bIsZero && aIsOne = Invalid $ pure $ hsep
           ["If base is one, power must be zero, but got", ppr a, "^", ppr b]
         | otherwise = Ok
-  validate x@(PowS a b) = validate a <> validate b <> isNotConst
+  validate x@(PowS _ a b) = validate a <> validate b <> isNotConst
     where
       isNotConst
-        | (_, SumsE (L [])) <- unshiftPosSumsE b = Invalid $ pure $ hsep
+        | (_, SumsE _ (L [])) <- unshiftPosSumsE b = Invalid $ pure $ hsep
           ["Power of SumE must never be a bare positive constant:", ppr x]
         | otherwise = Ok
 
@@ -580,49 +591,32 @@ instance NormalForm UnitE where
   fromNormal (UF t)     = F t
   fromNormal (UV v)     = V v
   toNormalE = toNormalE . unitAsPow
-  isZero UOne       = False
-  isZero (UN _)     = False
-  isZero (UDiv a b) = isComplete a && isComplete b && isZero a
-  isZero (UMod a b) = isComplete a && isComplete b && (isZero a || isOne b)
-  isZero (ULog2 a)  = isComplete a && isOne a
-  isZero (UF _)     = False
-  isZero (UV _)     = False
-  isNonZero UOne       = True
-  isNonZero (UN _)     = True
-  isNonZero (UDiv a b) = isComplete a && isComplete b && isNonZero a && isOne b
-  isNonZero (UMod _ _) = False
-  isNonZero (ULog2 _)  = False
-  isNonZero (UF _)     = False
-  isNonZero (UV _)     = False
-  isOne UOne       = True
-  isOne (UMod a b) = case (evaluate $ fromNormal a, evaluate $ fromNormal b) of
-    (Right x, Right y) -> y >  0 && mod x y == 1
-    (Left  _, Right y) -> y == 2 && isOne a
-    _                  -> False
-  isOne _          = False
-  isNonNeg UOne       = True
-  isNonNeg (UN _)     = True
-  isNonNeg (UDiv a b) = isComplete a && isComplete b &&
-                        (isNonNeg a && isNonNeg b || isNonPos a && isNonPos b)
-  isNonNeg (UMod a b) = isComplete a && isComplete b && isNonNeg b
-  isNonNeg (ULog2 a)  = isComplete a
-  isNonNeg (UF _ )    = False
-  isNonNeg (UV _ )    = True
-  isNonPos UOne       = False
-  isNonPos (UN _)     = False
-  isNonPos (UDiv a b) = isComplete a && isComplete b &&
-                        (isNonNeg a && isNonPos b || isNonPos a && isNonNeg b)
-  isNonPos (UMod a b) = isComplete a && isComplete b && isNonPos b
-  isNonPos (ULog2 a)  = isComplete a && isOne a
-  isNonPos (UF _ )    = False
-  isNonPos (UV _ )    = False
-  isComplete UOne       = True
-  isComplete (UN _)     = True
-  isComplete (UDiv a b) = isComplete a && isComplete b && isNonZero b
-  isComplete (UMod a b) = isComplete a && isComplete b && isNonZero b
-  isComplete (ULog2 a)  = isComplete a && isNonZero  a && isNonNeg  a
-  isComplete (UF _ )    = False
-  isComplete (UV _ )    = True
+  expState UOne = 1
+  expState (UN p) = fromIntegral $ asNatural p
+  expState (UDiv a b) = esDiv (expState a) (expState b)
+  expState (UMod a b) = esMod (expState a) (expState b)
+  expState (ULog2 a) = esLog2 $ expState a
+  expState (UF _) = ExpState
+    { _isZero     = False
+    , _isNonZero  = False
+    , _isSignOne  = False
+    , _isNonNeg   = False
+    , _isNonPos   = False
+    , _isEven     = False
+    , _isOdd      = False
+    , _isComplete = False
+    }
+  expState (UV _) = ExpState
+    { _isZero     = False
+    , _isNonZero  = False
+    , _isSignOne  = False
+    , _isNonNeg   = True
+    , _isNonPos   = False
+    , _isEven     = False
+    , _isOdd      = False
+    , _isComplete = True
+    }
+
   validate UOne = Ok
   validate up@(UN (Prime p))
     | factorize p == L [unitAsPow up] = Ok
@@ -633,6 +627,45 @@ instance NormalForm UnitE where
   validate (UF _) = Ok
   validate (UV _) = Ok
 
+
+instance (Eq t, Eq v) => Eq (MinsE t v) where
+  a == b = getMinsE a == getMinsE b
+
+instance (Eq t, Eq v) => Eq (MaxsE t v) where
+  a == b = getMaxsE a == getMaxsE b
+
+instance (Eq t, Eq v) => Eq (SumsE n t v) where
+  a == b = getSumsE a == getSumsE b
+
+instance (Eq t, Eq v) => Eq (ProdE t v) where
+  a == b = getProdE a == getProdE b
+
+instance (Eq t, Eq v) => Eq (PowE t v) where
+  (PowU _ a1 a2) == (PowU _ b1 b2) = a1 == b1 && a2 == b2
+  (PowS _ a1 a2) == (PowS _ b1 b2) = a1 == b1 && a2 == b2
+  _ == _ = False
+
+instance (Ord t, Ord v) => Ord (MinsE t v) where
+  compare a b = compare (getMinsE a) (getMinsE b)
+
+instance (Ord t, Ord v) => Ord (MaxsE t v) where
+  compare a b = compare (getMaxsE a) (getMaxsE b)
+
+instance (Ord t, Ord v) => Ord (SumsE n t v) where
+  compare a b = compare (getSumsE a) (getSumsE b)
+
+instance (Ord t, Ord v) => Ord (ProdE t v) where
+  compare a b = compare (getProdE a) (getProdE b)
+
+instance (Ord t, Ord v) => Ord (PowE t v) where
+  compare (PowU _ a1 a2) (PowU _ b1 b2) = compare a1 b1 <> compare a2 b2
+  compare (PowS _ a1 a2) (PowS _ b1 b2) = compare a1 b1 <> compare a2 b2
+  compare PowU{} PowS{} = LT
+  compare PowS{} PowU{} = GT
+
+instance Ord a => Ord (Signed a) where
+  compare a b = compare (getAbs a) (getAbs b)
+             <> compare (isPositive a) (isPositive b)
 
 instance Outputable Validate where
   ppr Ok             = "Ok"
@@ -661,18 +694,17 @@ instance Semigroup Validate where
 
 -- take minimum
 instance (Ord t, Ord v) => Semigroup (MinsE t v) where
-  x <> y = MinsE $ mergeDesc (getMinsE x) (getMinsE y)
+  x <> y = MinsE (esMin (expState x) (expState y)) (mergeDesc (getMinsE x) (getMinsE y))
 
 -- take maximum
 instance (Ord t, Ord v) => Semigroup (MaxsE t v) where
-  x <> y = MaxsE $ mergeDesc (getMaxsE x) (getMaxsE y)
+  x <> y = MaxsE (esMax (expState x) (expState y)) (mergeDesc (getMaxsE x) (getMaxsE y))
 
 -- add up
 instance (Ord t, Ord v) => Semigroup (SumsE None t v) where
-  x <> y = SumsE $ L $ go (toList $ getSumsE x) (toList $ getSumsE y)
+  x <> y = SumsE (expState x + expState y) $ L $ go (toList $ getSumsE x) (toList $ getSumsE y)
     where
-      go :: (Ord t, Ord v)
-         => [Signed (ProdE t v)] -> [Signed (ProdE t v)] -> [Signed (ProdE t v)]
+      go :: [Signed (ProdE t v)] -> [Signed (ProdE t v)] -> [Signed (ProdE t v)]
       go [] xs = xs
       go xs [] = xs
       go (a:as) (b:bs) = case compare pa pb of
@@ -680,7 +712,7 @@ instance (Ord t, Ord v) => Semigroup (SumsE None t v) where
           EQ -> case factorize (fromInteger $ abs c) of
             L [] -> go as bs
             L (f:fs)
-              | p <- pa <> ProdE (f :| L fs)
+              | p <- pa <> prodE (f :| L fs)
                 -> (if c >= 0 then Pos p else Neg p) : go as bs
           LT -> b : go (a:as) bs
         where
@@ -693,24 +725,23 @@ instance (Ord t, Ord v) => Semigroup (ProdE t v) where
   x <> y = atleast1 $ go (toList $ getProdE x) (toList $ getProdE y)
     where
       atleast1 :: [PowE t v] -> ProdE t v
-      atleast1 (a:as) = ProdE $ a :| L as
+      atleast1 (a:as) = ProdE (expState x * expState y) $ a :| L as
       atleast1 []     = oneP
-      go :: (Ord t, Ord v)
-         => [PowE t v] -> [PowE t v] -> [PowE t v]
+      go :: [PowE t v] -> [PowE t v] -> [PowE t v]
       go [] xs = filter (not . isOne) xs
       go xs [] = filter (not . isOne) xs
-      go (a@(PowU ua pa) : as) (b@(PowU ub pb) : bs) = case compare ua ub of
+      go (a@(PowU _ ua pa) : as) (b@(PowU _ ub pb) : bs) = case compare ua ub of
         GT -> a : go as (b:bs)
         EQ -> case pa <> pb of
-          SumsE (L []) -> go as bs
-          p            -> PowU ua p : go as bs
+          SumsE _ (L []) -> go as bs
+          p            -> powU ua p : go as bs
         LT -> b : go (a:as) bs
-      go (a@(PowS sa (SumsE (pa1 :| pas))) : as)
-         (b@(PowS sb (SumsE (pb1 :| pbs))) : bs) = case compare sa sb of
+      go (a@(PowS _ sa (SumsE past (pa1 :| pas))) : as)
+         (b@(PowS _ sb (SumsE pbst (pb1 :| pbs))) : bs) = case compare sa sb of
         GT -> a : go as (b:bs)
-        EQ -> case SumsE (cons pa1 pas) <> SumsE (cons pb1 pbs) of
-          SumsE (L [])     -> go as bs
-          SumsE (L (p:ps)) -> PowS sa (SumsE (p :| L ps)) : go as bs
+        EQ -> case SumsE past (cons pa1 pas) <> SumsE pbst (cons pb1 pbs) of
+          SumsE _   (L [])     -> go as bs
+          SumsE pst (L (p:ps)) -> powS sa (SumsE pst (p :| L ps)) : go as bs
         LT -> b : go (a:as) bs
       go (a:as) (b:bs)
         | a >= b    = a : go as (b:bs)
@@ -732,29 +763,36 @@ instance (Ord t, Ord v) => Monoid (ProdE t v) where
 instance (Ord t, Ord v) => Num (SumsE None t v) where
   (+) = (<>)
   a - b = a + negate b
-  a * b = go (toList $ getSumsE a)
+  a * b = foldr (\x -> (+) (sumsE (L $ times x <$> ys))) zero (getSumsE a)
     where
       ys = toList $ getSumsE b
-      go []     = zero
-      go (x:xs) = SumsE (L $ times x <$> ys) + go xs
-      times :: (Ord t, Ord v)
-            => Signed (ProdE t v) -> Signed (ProdE t v) -> Signed (ProdE t v)
+      times :: Signed (ProdE t v) -> Signed (ProdE t v) -> Signed (ProdE t v)
       times x y = sig $ getAbs x <> getAbs y
         where
           sig = if isPositive x == isPositive y then Pos else Neg
-  negate = SumsE . fmap neg . getSumsE
+  negate s = SumsE (negate $ expState s) $ neg <$> getSumsE s
     where
       neg :: Signed a -> Signed a
       neg (Pos x) = Neg x
       neg (Neg x) = Pos x
-  abs (SumsE (L []))      = (SumsE (L []))
-  abs (SumsE (L [Neg x])) = (SumsE (L [Pos x]))
-  abs (SumsE (L [Pos x])) = (SumsE (L [Pos x]))
+  abs (SumsE s (L []))      = SumsE (abs s) (L [])
+  abs (SumsE s (L [Neg x])) = SumsE (abs s) (L [Pos x])
+  abs (SumsE s (L [Pos x])) = SumsE (abs s) (L [Pos x])
   abs x                   = x * signum x
-  signum x = case sumsSign x of
+  signum x = case normalSign x of
     Nothing -> error "Tried to take signum of a complex expression"
     Just n  -> fromInteger n
-  fromInteger = intSumsE
+  fromInteger n = case toList . factorize . fromInteger $ abs n of
+    [] -> zero
+    (x : xs) ->
+      SumsE (fromInteger n)
+        $  L
+        $  (: [])
+        $  sig
+        $  ProdE (fromInteger $ abs n)
+        $  x
+        :| L xs
+    where sig = if n >= 0 then Pos else Neg
 
 
 instance (Ord t, Ord v) => Num (NormalE t v) where
@@ -776,11 +814,11 @@ instance (Ord t, Ord v) => Num (NormalE t v) where
       , map2Sums (*) (inverseMM aNeg) (inverseMM bNeg)
       ]
     where
-      aPos = normal'max a 0
-      aNeg = normal'min a 0
-      bPos = normal'max b 0
-      bNeg = normal'min b 0
-      mInverseMM :: (Ord t, Ord v) => Bool -> NormalE t v -> NormalE t v
+      aPos = neMax a 0
+      aNeg = neMin a 0
+      bPos = neMax b 0
+      bNeg = neMin b 0
+      mInverseMM :: Bool -> NormalE t v -> NormalE t v
       mInverseMM True  = id
       mInverseMM False = inverseMM
       good :: NormalE t v -> Maybe Bool
@@ -789,34 +827,33 @@ instance (Ord t, Ord v) => Num (NormalE t v) where
              | otherwise  = Nothing
   negate = inverseMM . neg
     where
-      neg :: (Ord t, Ord v) => NormalE t v -> NormalE t v
-      neg = NormalE . MinsE . fmap (MaxsE . fmap negate . getMaxsE) . getMinsE . getNormalE
+      neg :: NormalE t v -> NormalE t v
+      neg = NormalE . minsE . fmap (maxsE . fmap negate . getMaxsE) . getMinsE . getNormalE
   abs a
     | isNonNeg a = a
-    | isOne a = a
     | isZero a = a
     | isNonPos a = negate a
-    | otherwise = normal'max a (negate a)
+    | otherwise = neMax a (negate a)
   signum a
     | isZero a = 0
-    | isOne a = 1
+    | isSignOne a = a
     | isNonNeg a && isNonZero a = 1
     | isNonPos a && isNonZero a = -1
-    | otherwise = normal'min x y
+    | otherwise = neMin x y
     where
-      x = normal'max 1 (negate a)
-      y = normal'max (-1) a
-  fromInteger = toNormalE . intSumsE
+      x = neMax 1 (negate a)
+      y = neMax (-1) a
+  fromInteger = toNormalE . (fromInteger :: Integer -> SumsE None t v)
 
 inverseMM :: (Ord t, Ord v) => NormalE t v -> NormalE t v
 inverseMM = NormalE . go . getNormalE
   where
     go :: (Ord t, Ord v) => MinsE t v -> MinsE t v
-    go (MinsE (MaxsE xs :| L [])) = MinsE $ (MaxsE . pure) <$> xs
-    go (MinsE (maxs1 :| L (maxs2 : maxS))) = MinsE $ (<>) <$> a <*> b
+    go (MinsE _ (MaxsE _ xs :| L [])) = minsE ((maxsE . pure) <$> xs)
+    go (MinsE _ (maxs1 :| L (maxs2 : maxS))) = minsE ((<>) <$> a <*> b)
       where
-        MinsE a = go $ MinsE $ pure maxs1
-        MinsE b = go $ MinsE $ maxs2 :| L maxS
+        MinsE _ a = go $ minsE (pure maxs1)
+        MinsE _ b = go $ minsE (maxs2 :| L maxS)
 
 map2Sums
   :: (Ord t, Ord v)
@@ -825,7 +862,7 @@ map2Sums
   -> NormalE t v
   -> NormalE t v
 map2Sums f = map2Maxs g
-  where g a b = MaxsE . flattenDesc $ (\x -> f x <$> getMaxsE b) <$> getMaxsE a
+  where g a b = maxsE . flattenDesc $ (\x -> f x <$> getMaxsE b) <$> getMaxsE a
 
 map2Maxs
   :: (Ord t, Ord v)
@@ -834,7 +871,7 @@ map2Maxs
   -> NormalE t v
   -> NormalE t v
 map2Maxs f = map2Mins g
-  where g a b = MinsE . flattenDesc $ (\x -> f x <$> getMinsE b) <$> getMinsE a
+  where g a b = minsE . flattenDesc $ (\x -> f x <$> getMinsE b) <$> getMinsE a
 
 map2Mins
   :: (MinsE t v -> MinsE t v -> MinsE t v)
@@ -844,56 +881,29 @@ map2Mins
 map2Mins f a b = NormalE $ f (getNormalE a) (getNormalE b)
 
 
-normal'max :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
-normal'max = map2Maxs (<>)
+neMax :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
+neMax = map2Maxs (<>)
 
-normal'min :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
-normal'min = map2Mins (<>)
+neMin :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
+neMin = map2Mins (<>)
 
-normal'pow :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
-normal'pow a b = ifNonNeg
-    (\x -> ifNonNeg (fpp x) (fpn x) b)
-    (\x -> ifNonNeg (ifEven (fnpe x) (fnpo x)) (ifEven (fnne x) (fnno x)) b) a
-  where
-    fpp = map2Sums powSums
-    fpn = map2Sums powSums . inverseMM
-    fnpe x y = map2Sums powSums (negate x) (inverseMM y)
-    fnpo = map2Sums powSums
-    fnne = map2Sums powSums . negate
-    fnno = map2Sums powSums . inverseMM
+nePow :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
+nePow a b
+  | isNonNeg a && isNonNeg b = map2Sums powSums a b
+  | isNonNeg a && isNonPos b = map2Sums powSums (inverseMM a) b
+  | isNonPos a && isNonNeg b && isEven b = map2Sums powSums (negate a) (inverseMM b)
+  | isNonPos a && isNonNeg b && isOdd  b = map2Sums powSums a b
+  | isNonPos a && isNonPos b && isEven b = map2Sums (powSums . negate) a b
+  | isNonPos a && isNonPos b && isOdd  b = map2Sums powSums (inverseMM a) b
+  | isNonNeg a = error "Uknown state of b"
+  | isNonPos a = error "Uknown state of b"
+  | otherwise = 
+    let NormalE ap' = neMax 0 a
+        ap = NormalE $ ap' { getMinsEState = (expState ap') { _isNonNeg = True, _isNonPos = isZero ap' } }
+        NormalE am' = neMin 0 a
+        am = NormalE $ am' { getMinsEState = (expState am') { _isNonPos = True, _isNonNeg = isZero am' } }
+        sb | isZero b = 1
+           | isNonZero b = 0
+           | otherwise = 1 - neMin 1 (abs b)
+    in nePow ap b + nePow am b - sb 
 
-
-
--- | Split an expression e as (f e * I(e >= 0) + g e * I(e < 0))
---
---   WARNING: Incorrect behavior when (f e) or (g e) equal to (0 ^ (- c))!
-ifNonNeg
-  :: (Ord t, Ord v)
-  => (NormalE t v -> NormalE t v) -- ^ if non-negative
-  -> (NormalE t v -> NormalE t v) -- ^ if negative
-  -> NormalE t v
-  -> NormalE t v
-ifNonNeg f g a | isZero a                  = f a
-               | isOne a                   = f a
-               | isNonNeg a                = f a
-               | isNonZero a && isNonPos a = g a
-               | otherwise                 = iPos * f a + iNeg * g a
-  where
-    iPos = normal'min 1 (normal'max 0 (a + 1))
-    iNeg = normal'min 1 (normal'max 0 (negate a))
-
--- | Split an expression e as (f e * I(Mod e 2 == 0) + g e * I(Mod e 2 == 1))
---
---   WARNING: Incorrect behavior when (f e) or (g e) equal to (0 ^ (- c))!
-ifEven
-  :: (Ord t, Ord v)
-  => (NormalE t v -> NormalE t v) -- ^ if even (Mod e 2 == 0)
-  -> (NormalE t v -> NormalE t v) -- ^ if odd  (Mod e 2 == 1)
-  -> NormalE t v
-  -> NormalE t v
-ifEven f g a | isZero a = f a
-             | isOne a = g a
-             | otherwise = iEven * f a + iOdd * g a
-  where
-    iEven = 1 - iOdd
-    iOdd = toNormalE $ UMod a 2

@@ -177,6 +177,38 @@ prop_keepSolutions_10 = ks $ Min (V (Var 1)) (N 2) :^ (N 0 :- N 2)
 prop_keepSolutions_11 :: Property
 prop_keepSolutions_11 = ks $ Max (N 0 - N 1) (N 0 :- N 3) :^ (N 0 :- N 2)
 
+prop_keepSolutions_12 :: Property
+prop_keepSolutions_12 = ks $ Max (Min (N 0) (N 1)) (N 3) :^ N 2
+
+prop_keepSolutions_13 :: Property
+prop_keepSolutions_13 = ks $ Min (N 1) (N 3) :^ (N 0 :- N 2)
+
+prop_keepSolutions_14 :: Property
+prop_keepSolutions_14 = ks $ Max (N 0 - N 1) (N 0 :- N 3) :^ N 2
+
+prop_keepSolutions_15 :: Property
+prop_keepSolutions_15 = ks $ Max (N 0 - N 1) (N 0 :- N 3) :^ N 3
+
+prop_keepSolutions_16 :: Property
+prop_keepSolutions_16 = ks $ Max (N 0 - N 1) (N 0 :- N 3) :^ (N 0 :- N 3)
+
+prop_keepSolutions_17 :: Property
+prop_keepSolutions_17 =
+  ks $ Max (V (Var 1) - V (Var 2)) (V (Var 1) + V (Var 2)) :^ (N 0 :- N 3)
+
+prop_keepSolutions_18 :: Property
+prop_keepSolutions_18 =
+  ks $ Min (V (Var 1) - V (Var 2)) (V (Var 1) + V (Var 2)) :^ (N 0 :- N 3)
+
+
+prop_keepSolutions_19 :: Property
+prop_keepSolutions_19 =
+  ks $ Max (V (Var 1) - V (Var 2)) (V (Var 2) - V (Var 1)) :^ N 3
+
+prop_keepSolutions_20 :: Property
+prop_keepSolutions_20 =
+  ks $ Max (V (Var 1) - V (Var 2)) (V (Var 2) - V (Var 1)) :^ (N 0 :- N 3)
+
 return []
 runTests :: IO Bool
 -- runTests = $quickCheckAll

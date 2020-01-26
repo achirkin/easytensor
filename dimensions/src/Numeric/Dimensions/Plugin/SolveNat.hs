@@ -55,7 +55,7 @@ Show stoppers:
  -}
 module Numeric.Dimensions.Plugin.SolveNat where
 
-import           Data.Functor.Identity
+-- import           Data.Functor.Identity
 import           Outputable              hiding ( (<>) )
 
 import           Numeric.Dimensions.Plugin.AtLeast
@@ -114,13 +114,13 @@ implCts (Log2 a  ) = [CGT a 0] <> implCts a
 
 
 normalize :: (Ord v, Ord t) => Exp t v -> NormalE t v
-normalize (N n   ) = intE $ toInteger n
+normalize (N n   ) = fromIntegral n
 normalize (F t   ) = toNormalE (UF t)
 normalize (V v   ) = toNormalE (UV v)
 normalize (a :+ b) = normalize a + normalize b
 normalize (a :- b) = normalize a - normalize b
 normalize (a :* b) = normalize a * normalize b
-normalize (a :^ b) = normal'pow (normalize a) (normalize b)
+normalize (a :^ b) = nePow (normalize a) (normalize b)
 normalize (Div a b) =
   foldr1 (map2Mins (<>))
     . fmap (foldr1 (map2Maxs (<>)) . fmap normDiv . getMaxsE)
@@ -131,34 +131,11 @@ normalize (Div a b) =
   --  it would mess up mins, maxs and zeroes.
   where normDiv = flip normalizeDiv (getNormalE $ normalize b)
 normalize (Mod a b) = normalizeMod (normalize a) (normalize b)
-normalize (Max a b) = normal'max (normalize a) (normalize b)
-normalize (Min a b) = normal'min (normalize a) (normalize b)
+normalize (Max a b) = neMax (normalize a) (normalize b)
+normalize (Min a b) = neMin (normalize a) (normalize b)
 normalize (Log2 a) =
-  NormalE $ MinsE $ fmap normalizeLog2 $ getMinsE $ getNormalE $ normalize a
+  NormalE $ minsE $ fmap normalizeLog2 $ getMinsE $ getNormalE $ normalize a
 
-
-map2Mins
-  :: (MinsE vl tl -> MinsE vr tr -> MinsE t v)
-  -> NormalE vl tl
-  -> NormalE vr tr
-  -> NormalE t v
-map2Mins k a = NormalE . k (getNormalE a) . getNormalE
-
-map2Maxs
-  :: (Ord v, Ord t)
-  => (MaxsE vl tl -> MaxsE vr tr -> MaxsE t v)
-  -> NormalE vl tl
-  -> NormalE vr tr
-  -> NormalE t v
-map2Maxs k = map2Mins $ \a -> runIdentity . lift2Mins (\x -> pure . k x) a
-
-map2Sums
-  :: (Ord v, Ord t)
-  => (SumsE None vl tl -> SumsE None vr tr -> SumsE None t v)
-  -> NormalE vl tl
-  -> NormalE vr tr
-  -> NormalE t v
-map2Sums k = map2Maxs $ \a -> runIdentity . lift2Maxs (\x -> pure . k x) a
 
 lift2Maxs
   :: (Ord v, Ord t, Applicative m)
@@ -166,8 +143,8 @@ lift2Maxs
   -> MaxsE vl tl
   -> MaxsE vr tr
   -> m (MaxsE t v)
-lift2Maxs f (MaxsE a) =
-  fmap (MaxsE . flattenDesc) . traverse (\b -> traverse (`f` b) a) . getMaxsE
+lift2Maxs f (MaxsE _ a) =
+  fmap (maxsE . flattenDesc) . traverse (\b -> traverse (`f` b) a) . getMaxsE
 
 lift2Mins
   :: (Ord v, Ord t, Applicative m)
@@ -175,25 +152,12 @@ lift2Mins
   -> MinsE vl tl
   -> MinsE vr tr
   -> m (MinsE t v)
-lift2Mins f (MinsE a) =
-  fmap (MinsE . flattenDesc) . traverse (\b -> traverse (`f` b) a) . getMinsE
-
--- | Swap Mins and Maxs and then renormalize according to the distributivity law.
---   Use this for 2nd argument of @Div@ or @(:-)@.
-inverseMM :: (Ord v, Ord t) => NormalE t v -> NormalE t v
-inverseMM (NormalE x) = NormalE (inverseMM' x)
-
-inverseMM' :: (Ord v, Ord t) => MinsE t v -> MinsE t v
-inverseMM' (MinsE (MaxsE xs :| L [])) = MinsE $ (MaxsE . pure) <$> xs
-inverseMM' (MinsE (maxs1 :| L (maxs2 : maxS))) = MinsE $ (<>) <$> a <*> b
-  where
-    MinsE a = inverseMM' $ MinsE $ pure maxs1
-    MinsE b = inverseMM' $ MinsE $ maxs2 :| L maxS
-
+lift2Mins f (MinsE _ a) =
+  fmap (minsE . flattenDesc) . traverse (\b -> traverse (`f` b) a) . getMinsE
 
 normalizeDiv :: (Ord v, Ord t) => SumsE None t v -> MinsE t v -> NormalE t v
-normalizeDiv a b@(MinsE bs)
-  | isZero a  = intE 0
+normalizeDiv a b@(MinsE _ bs)
+  | isZero a  = 0
   | isOne b   = toNormalE a
   |
     -- Note, I convert the minimum of a list of maximimums (MinsE bs) into
@@ -203,28 +167,28 @@ normalizeDiv a b@(MinsE bs)
 
 normalizeDiv' :: (Ord v, Ord t) => SumsE None t v -> MaxsE t v -> NormalE t v
 normalizeDiv' a b
-  | (ca, SumsE (L [])) <- unconstSumsE a
+  | (ca, SumsE _ (L [])) <- unconstSumsE a
   , (cb, True) <-
     foldr
         (\x (cb, nothin) -> case unconstSumsE x of
-          (cb', SumsE (L [])) -> (max cb cb', nothin)
-          _                   -> (0, False)
+          (cb', SumsE _ (L [])) -> (max cb cb', nothin)
+          _                     -> (0, False)
         )
         (0, True)
       $ getMaxsE b
   , cb /= 0
-  = intE $ div ca cb
+  = fromInteger $ div ca cb
   | otherwise
   = toNormalE $ UDiv a (mapSupersedeMax id b)
 
 normalizeMod :: (Ord v, Ord t) => NormalE t v -> NormalE t v -> NormalE t v
-normalizeMod (NormalE (MinsE (MaxsE (a :| L []) :| L []))) (NormalE (MinsE (MaxsE (b :| L []) :| L [])))
+normalizeMod (NormalE (MinsE _ (MaxsE _ (a :| L []) :| L []))) (NormalE (MinsE _ (MaxsE _ (b :| L []) :| L [])))
   | (ca, sa) <- unconstSumsE a
   , (cb, sb) <- unconstSumsE b
   , cb /= 0 && isZero sa && isZero sb
-  = intE $ mod ca cb
-normalizeMod a b | isZero a  = intE 0
-                 | isOne b   = intE 0
+  = fromInteger $ mod ca cb
+normalizeMod a b | isZero a  = 0
+                 | isOne b   = 0
                  | otherwise = toNormalE $ UMod (simplify a) (simplify b)
 
 normalizeLog2 :: (Ord v, Ord t) => MaxsE t v -> MaxsE t v
@@ -232,15 +196,15 @@ normalizeLog2 p
   | (c, True) <-
     foldr
         (\x (cb, nothin) -> case unconstSumsE x of
-          (cb', SumsE (L [])) -> (max cb cb', nothin)
-          _                   -> (0, False)
+          (cb', SumsE _ (L [])) -> (max cb cb', nothin)
+          _                     -> (0, False)
         )
         (0, True)
       $ getMaxsE p
   , c > 0
-  = MaxsE . pure . fromIntegral $ log2Nat (fromInteger c)
+  = maxsE . pure . fromIntegral $ log2Nat (fromInteger c)
   | otherwise
-  = MaxsE . pure . unitAsSums $ ULog2 (mapSupersedeMax id p)
+  = maxsE . pure . unitAsSums $ ULog2 (mapSupersedeMax id p)
 
 
 -- | Another series of simplifications at different levels of a normal expr.
@@ -255,12 +219,12 @@ simplify =
 --  NB: mapped function must keep monotonicity of maxs
 mapSupersedeMin
   :: (Ord t, Ord v) => (MaxsE t v -> MaxsE t v) -> MinsE t v -> MinsE t v
-mapSupersedeMin k mins = MinsE (head y :| L (tail y))
+mapSupersedeMin k mins = minsE (head y :| L (tail y))
   where
     x :| L xs = k <$> getMinsE mins
     y         = f x xs
     allGE :: (Ord t, Ord v) => MaxsE t v -> MaxsE t v -> Bool
-    allGE (MaxsE a) (MaxsE b) = all isNonNeg $ (-) <$> a <*> b
+    allGE (MaxsE _ a) (MaxsE _ b) = all isNonNeg $ (-) <$> a <*> b
     f :: (Ord t, Ord v) => MaxsE t v -> [MaxsE t v] -> [MaxsE t v]
     f a bs = case filter (not . flip allGE a) bs of
       [] -> [a]
@@ -273,7 +237,7 @@ mapSupersedeMax
   => (SumsE None t v -> SumsE None t v)
   -> MaxsE t v
   -> MaxsE t v
-mapSupersedeMax k maxs = MaxsE (head y :| L (tail y))
+mapSupersedeMax k maxs = maxsE (head y :| L (tail y))
   where
     x :| L xs = k <$> getMaxsE maxs
     y         = f x xs
@@ -292,14 +256,14 @@ mapSupersedeMax k maxs = MaxsE (head y :| L (tail y))
 --  NB: mapped function must keep monotonicity of prods
 mapSimplifySum :: (ProdE t v -> ProdE t v) -> SumsE n t v -> SumsE None t v
 mapSimplifySum k =
-  SumsE . L . filter (not . isZero . getAbs) . map (fmap k) . toList . getSumsE
+  sumsE . L . filter (not . isZero . getAbs) . map (fmap k) . toList . getSumsE
 
 --  NB: mapped function must keep monotonicity of pows
 mapSimplifyProd
   :: (Ord t, Ord v) => (PowE t v -> PowE t v) -> ProdE t v -> ProdE t v
 mapSimplifyProd k =
-  ProdE . f . filter (not . isOne) . map k . toList . getProdE
+  prodE . f . filter (not . isOne) . map k . toList . getProdE
   where
     f :: (Ord t, Ord v) => [PowE t v] -> AtLeast One (PowE t v)
-    f []       = PowU UOne 0 :| mempty
+    f []       = powU UOne 0 :| mempty
     f (x : xs) = x :| L xs
