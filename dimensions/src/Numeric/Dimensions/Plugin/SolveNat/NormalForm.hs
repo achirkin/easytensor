@@ -85,6 +85,8 @@ class NormalForm e where
   toNormalE :: e t v -> NormalE t v
   -- | Extra information about the part of an expression in the normal form.
   expState :: e t v -> ExpState
+  -- | Update the expression expState.
+  mapExpState :: (ExpState -> ExpState) -> e t v -> e t v
   -- | Check the invariants that must hold by construction.
   --   Do not check arithmetic errors, such as division by zero, etc.
   validate   :: (Ord t, Ord v, Outputable t, Outputable v) => e t v -> Validate
@@ -228,6 +230,15 @@ eStateSigned a = s
   , _isNonPos = if isPositive a then _isNonPos s else _isNonNeg s
   }
   where s = expState $ getAbs a
+
+mapExpStateSigned :: NormalForm a => (ExpState -> ExpState) -> Signed (a t v) -> Signed (a t v)
+mapExpStateSigned f (Pos a) = Pos (mapExpState f a)
+mapExpStateSigned f (Neg a) = Neg (mapExpState (g . f . g) a)
+  where
+    g s = s
+      { _isNonNeg = _isNonPos s
+      , _isNonPos = _isNonNeg s
+      }
 
 isPositive :: Signed a -> Bool
 isPositive Pos{} = True
@@ -408,10 +419,11 @@ type PowsS t v = [(SumsE Two t v, SumsE One t v)]
 
 
 instance NormalForm NormalE where
-  fromNormal = fromNormal . getNormalE
-  toNormalE  = id
-  expState    = expState . getNormalE
-  validate   = validate . getNormalE
+  fromNormal    = fromNormal . getNormalE
+  toNormalE     = id
+  expState      = expState . getNormalE
+  mapExpState f = NormalE . mapExpState f . getNormalE
+  validate      = validate . getNormalE
 
 instance NormalForm MinsE where
   fromNormal (MinsE _ (e :| L []))
@@ -420,6 +432,15 @@ instance NormalForm MinsE where
     = Min (fromNormal e1) (fromNormal (MinsE s (e2 :| L es)))
   toNormalE = NormalE
   expState = getMinsEState
+  mapExpState f (MinsE s (e :| L [])) = let fs = f s in MinsE (f s) (mapExpState (const fs) e :| L [])
+  mapExpState f (MinsE s es) = MinsE fs (mapExpState g <$> es)
+    where
+      fs = f s
+      g a = a
+        { _isNonZero  = _isNonZero a  || (_isNonNeg fs && _isNonZero fs)
+        , _isNonNeg   = _isNonNeg a   || _isNonNeg fs
+        , _isComplete = _isComplete a || _isComplete fs
+        }
   validate x = foldMap validate xl <> decreasing xl
     where
       xl = toList $ getMinsE x
@@ -438,6 +459,15 @@ instance NormalForm MaxsE where
     = Max (fromNormal e1) (fromNormal (MaxsE s (e2 :| L es)))
   toNormalE x = toNormalE $ MinsE (expState x) (pure x)
   expState = getMaxsEState
+  mapExpState f (MaxsE s (e :| L [])) = let fs = f s in MaxsE (f s) (mapExpState (const fs) e :| L [])
+  mapExpState f (MaxsE s es) = MaxsE fs (mapExpState g <$> es)
+    where
+      fs = f s
+      g a = a
+        { _isNonZero  = _isNonZero a  || (_isNonPos fs && _isNonZero fs)
+        , _isNonPos   = _isNonPos a   || _isNonPos fs
+        , _isComplete = _isComplete a || _isComplete fs
+        }
   validate x = foldMap validate xl <> decreasing xl
     where
       xl = toList $ getMaxsE x
@@ -464,6 +494,12 @@ instance NormalForm (SumsE n) where
       f e (Neg p) = e :- fromNormal p
   toNormalE x = toNormalE $ MaxsE (expState x) (pure $ noneSumsE x)
   expState = getSumsEState
+  mapExpState f (SumsE s es)
+      | length es == 1 = SumsE fs (mapExpStateSigned (const fs) <$> es)
+      | otherwise      = SumsE fs (mapExpStateSigned g <$> es)
+    where
+      fs = f s
+      g a = a { _isComplete = _isComplete a || _isComplete fs }
   validate x = foldMap (validate . getAbs) xl <> decreasing ps <> maxOneConst
     where
       xl = toList $ getSumsE x
@@ -491,6 +527,15 @@ instance NormalForm ProdE where
       go n ( e1 :| L (e2:es)) = go n (e2 :| L es) :* e1
   toNormalE = toNormalE . sumsE . L . (:[]) . Pos
   expState = getProdEState
+  mapExpState f (ProdE s (e :| L [])) = let fs = f s in ProdE (f s) (mapExpState (const fs) e :| L [])
+  mapExpState f (ProdE s es) = ProdE fs (mapExpState g <$> es)
+    where
+      fs = f s
+      g a = a
+        { _isNonZero  = _isNonZero a  || _isNonZero fs
+        , _isOdd      = _isOdd a      || _isOdd fs
+        , _isComplete = _isComplete a || _isComplete fs
+        }
   validate x@(ProdE _ x') = foldMap validate x' <> decreasing (toList x')
     where
       errMsg = Invalid $ pure $ hsep
@@ -519,6 +564,8 @@ instance NormalForm PowE where
   toNormalE x = toNormalE $ ProdE (expState x) (pure x)
   expState (PowU s _ _) = s
   expState (PowS s _ _) = s
+  mapExpState f (PowU s a b) = PowU (f s) a b
+  mapExpState f (PowS s a b) = PowS (f s) a b
   validate (PowU _ a b) = validate a <> validate b <> checkConst
     where
       bIsZero = isZero b
@@ -570,7 +617,7 @@ instance NormalForm UnitE where
     , _isOdd      = False
     , _isComplete = True
     }
-
+  mapExpState _ = id
   validate UOne = Ok
   validate up@(UN (Prime p))
     | factorize p == L [unitAsPow up] = Ok
@@ -750,8 +797,8 @@ instance (Ord t, Ord v) => Num (SumsE None t v) where
 
 
 instance (Ord t, Ord v) => Num (NormalE t v) where
-  (+) = map2Sums (+)
-  a * b = case (good a, good b) of
+  a + b = mapExpState (const (expState a + expState b)) $ map2Sums (+) a b
+  a * b = mapExpState (const (expState a * expState b)) $ case (good a, good b) of
     (Just ga, Just gb) -> map2Sums (*) (mInverseMM gb a) (mInverseMM ga b)
     (Just True, Nothing) ->
       map2Sums (*) a bPos + map2Sums (*) (inverseMM a) bNeg
@@ -779,7 +826,7 @@ instance (Ord t, Ord v) => Num (NormalE t v) where
       good x | isNonNeg x = Just True
              | isNonPos x = Just False
              | otherwise  = Nothing
-  negate = inverseMM . neg
+  negate x = mapExpState (const $ negate $ expState x) $ inverseMM $ neg x
     where
       neg :: NormalE t v -> NormalE t v
       neg = NormalE . minsE . fmap (maxsE . fmap negate . getMaxsE) . getMinsE . getNormalE
@@ -787,13 +834,13 @@ instance (Ord t, Ord v) => Num (NormalE t v) where
     | isNonNeg a = a
     | isZero a = a
     | isNonPos a = negate a
-    | otherwise = neMax a (negate a)
+    | otherwise = mapExpState (const $ abs $ expState a) $ neMax a (negate a)
   signum a
     | isZero a = 0
     | isSignOne a = a
     | isNonNeg a && isNonZero a = 1
     | isNonPos a && isNonZero a = -1
-    | otherwise = neMin x y
+    | otherwise = mapExpState (const $ signum $ expState a) $ neMin x y
     where
       x = neMax 1 (negate a)
       y = neMax (-1) a
@@ -836,30 +883,40 @@ map2Mins f a b = NormalE $ f (getNormalE a) (getNormalE b)
 
 
 neMax :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
-neMax = map2Maxs (<>)
+neMax a b = mapExpState (\s -> s <> (expState a `esMax` expState b)) $ map2Maxs (<>) a b
 
 neMin :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
-neMin = map2Mins (<>)
+neMin a b = mapExpState (\s -> s <> (expState a `esMin` expState b)) $ map2Mins (<>) a b
 
 nePow :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
 nePow a b
+  | isZero b                 = 1
+  | isZero a && isNonZero b  = 0
   | isNonNeg a && isNonNeg b = map2Sums powSums a b
   | isNonNeg a && isNonPos b = map2Sums powSums (inverseMM a) b
-  | isNonPos a && isNonNeg b && isEven b = map2Sums powSums (negate a) (inverseMM b)
-  | isNonPos a && isNonNeg b && isOdd  b = map2Sums powSums a b
-  | isNonPos a && isNonPos b && isEven b = map2Sums (powSums . negate) a b
-  | isNonPos a && isNonPos b && isOdd  b = map2Sums powSums (inverseMM a) b
-  | isNonNeg a = error "Uknown state of b"
-  | isNonPos a = error "Uknown state of b"
-  | otherwise = 
-    let NormalE ap' = neMax 0 a
-        ap = NormalE $ ap' { getMinsEState = (expState ap') { _isNonNeg = True, _isNonPos = isZero ap' } }
-        NormalE am' = neMin 0 a
-        am = NormalE $ am' { getMinsEState = (expState am') { _isNonPos = True, _isNonNeg = isZero am' } }
-        sb | isZero b = 1
+  | isNonPos a && isEven b   = nePow (negate a) b
+  | isNonPos a && isOdd  b   = negate $ nePow (negate a) b
+  | isEven b                 = nePow (abs a) b
+  | -- branch pos/neg a
+    not (isNonNeg a || isNonPos a) = 
+    let sb | isZero b = 1
            | isNonZero b = 0
-           | otherwise = 1 - neMin 1 (abs b)
-    in nePow ap b + nePow am b - sb 
+           | otherwise = mapExpState (\s -> s
+                { _isNonNeg  = True
+                , _isNonPos  = _isNonPos s || _isZero s
+                , _isZero    = _isNonPos s || _isZero s
+                , _isSignOne = _isSignOne s || _isNonZero s
+                }) $ 1 - neMin 1 (abs b)
+    in nePow (neMax 0 a) b + nePow (neMin 0 a) b - sb 
+  | -- branch pos/neg b
+    not (isNonNeg b || isNonPos b) = nePow a (neMax 0 b) + nePow a (neMin 0 b) - 1 
+  | -- branch even/odd b
+    not (isEven b || isOdd b) =
+    let -- techinically, bo is not odd when b == 0, but that would not hurt the result.
+        bo = mapExpState (\s -> s { _isOdd = True }) $ b * toNormalE (UMod b 2)
+        be = mapExpState (\s -> s { _isEven = True }) $ b * toNormalE (UMod (b+1) 2)
+    in nePow a be  + nePow a bo - 1
+  | otherwise = 77777777777777
 
 -- | Take @SumE@ expression into a power of @SumE@ expression
 powSums :: (Ord v, Ord t) => SumsE None t v -> SumsE None t v -> SumsE None t v
@@ -877,9 +934,18 @@ powSums a'@(SumsE sa' (L (a1 : a2 : as))) b'@(SumsE sb' (L (b : bs)))
   $ powS (SumsE sa' $ a1 :| a2 :| L as) (SumsE sb' $ b :| L bs)
 -- in this weird case I don't know if the power is zero or not,
 -- I have to use a Mod trick to workaround that
-powSums (SumsE _ (L [])) b =
-  1 - unitAsSums (UMod 1 (toNormalE $ MaxsE s $ 1 + b :| L [1 - b]))
+powSums (SumsE _ (L [])) b = r { getSumsEState = ExpState
+      { _isZero     = isNonZero b
+      , _isNonZero  = isZero b
+      , _isSignOne  = isZero b
+      , _isNonNeg   = True
+      , _isNonPos   = isNonZero b
+      , _isEven     = isNonZero b
+      , _isOdd      = isZero b
+      , _isComplete = isComplete b
+      }}
   where
+    r = 1 - unitAsSums (UMod 1 (toNormalE $ MaxsE s $ 1 + b :| L [1 - b]))
     s = ExpState
       { _isZero     = False
       , _isNonZero  = True

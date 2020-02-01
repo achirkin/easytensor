@@ -21,6 +21,19 @@ data ExpState = ExpState
   , _isComplete :: Bool
   } deriving (Eq, Ord, Show)
 
+-- | Refine evidence from multiple sources
+instance Semigroup ExpState where
+  a <> b = ExpState
+    { _isZero     = _isZero a     || _isZero b
+    , _isNonZero  = _isNonZero a  || _isNonZero b
+    , _isSignOne  = _isSignOne a  || _isSignOne b
+    , _isNonNeg   = _isNonNeg a   || _isNonNeg b
+    , _isNonPos   = _isNonPos a   || _isNonPos b
+    , _isEven     = _isEven a     || _isEven b
+    , _isOdd      = _isOdd a      || _isOdd b
+    , _isComplete = _isComplete a || _isComplete b
+    }
+
 instance Num ExpState where
   a + b = ExpState
     { _isZero     = _isZero a && _isZero b
