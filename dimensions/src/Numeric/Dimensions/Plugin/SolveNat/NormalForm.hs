@@ -297,52 +297,6 @@ unconstSumsE s = sumsE . L <$> go 0 (toList $ getSumsE s)
                   | otherwise = (p :) <$> go c ps
       where (c', p') = unscaleProdE p
 
--- | Take @SumE@ expression into a power of @SumE@ expression
-powSums :: (Ord v, Ord t) => SumsE None t v -> SumsE None t v -> SumsE None t v
-powSums a b | SumsE _ (L []) <- b     = 1
-            | isZero b                = 1
-            | isOne b                 = a
-            | isOne a                 = 1
-            | isNonNeg b && isNonZero b && isZero a = 0
-powSums (SumsE _ (L [a])) b = powProd a b
-powSums a'@(SumsE sa' (L (a1 : a2 : as))) b'@(SumsE sb' (L (b : bs)))
-  |
-    -- expand sum if the power is a non-negative constant
-    (c, SumsE _ (L [])) <- unshiftPosSumsE b' = a' ^ c
-  | otherwise = singlePowAsSums
-  $ powS (SumsE sa' $ a1 :| a2 :| L as) (SumsE sb' $ b :| L bs)
--- in this weird case I don't know if the power is zero or not,
--- I have to use a Mod trick to workaround that
-powSums (SumsE _ (L [])) b =
-  1 - unitAsSums (UMod 1 (toNormalE $ MaxsE s $ 1 + b :| L [1 - b]))
-  where
-    s = ExpState
-      { _isZero     = False
-      , _isNonZero  = True
-      , _isSignOne  = isZero b
-      , _isNonNeg   = True
-      , _isNonPos   = False
-      , _isEven     = isOdd b
-      , _isOdd      = isEven b
-      , _isComplete = isComplete b
-      }
-
--- | Take signed @ProdE@ expression into a power of @SumE@ expression
-powProd
-  :: (Ord v, Ord t) => Signed (ProdE t v) -> SumsE None t v -> SumsE None t v
-powProd a b = sig $ go $ getProdE $ getAbs a
-  where
-    sig x | isPositive a = x
-          | otherwise    = x - 2 * x * unitAsSums (UMod (toNormalE b) 2)
-    powPow (PowU _ u p) = let pb = p * b in singlePowAsSums $ PowU (esPow (expState u) (expState pb)) u pb
-    powPow (PowS es s p) = case (SumsE es $ L $ toList $ getSumsE p) * b of
-      SumsE _ (L []) -> 0
-      p'@(SumsE es' (L (x : xs)))
-        | isOne p'  -> SumsE es' $ L $ toList $ getSumsE s
-        | otherwise -> singlePowAsSums $ powS s (SumsE es' $ x :| L xs)
-    go (x  :| L []       ) = powPow x
-    go (x1 :| L (x2 : xs)) = powPow x1 * go (x2 :| L xs)
-
 singleProdAsSums :: Applicative (AtLeast n) => Signed (ProdE t v) -> SumsE n t v
 singleProdAsSums p = SumsE (eStateSigned p) $ pure p
 
@@ -907,3 +861,48 @@ nePow a b
            | otherwise = 1 - neMin 1 (abs b)
     in nePow ap b + nePow am b - sb 
 
+-- | Take @SumE@ expression into a power of @SumE@ expression
+powSums :: (Ord v, Ord t) => SumsE None t v -> SumsE None t v -> SumsE None t v
+powSums a b | SumsE _ (L []) <- b     = 1
+            | isZero b                = 1
+            | isOne b                 = a
+            | isOne a                 = 1
+            | isNonNeg b && isNonZero b && isZero a = 0
+powSums (SumsE _ (L [a])) b = powProd a b
+powSums a'@(SumsE sa' (L (a1 : a2 : as))) b'@(SumsE sb' (L (b : bs)))
+  |
+    -- expand sum if the power is a non-negative constant
+    (c, SumsE _ (L [])) <- unshiftPosSumsE b' = a' ^ c
+  | otherwise = singlePowAsSums
+  $ powS (SumsE sa' $ a1 :| a2 :| L as) (SumsE sb' $ b :| L bs)
+-- in this weird case I don't know if the power is zero or not,
+-- I have to use a Mod trick to workaround that
+powSums (SumsE _ (L [])) b =
+  1 - unitAsSums (UMod 1 (toNormalE $ MaxsE s $ 1 + b :| L [1 - b]))
+  where
+    s = ExpState
+      { _isZero     = False
+      , _isNonZero  = True
+      , _isSignOne  = isZero b
+      , _isNonNeg   = True
+      , _isNonPos   = False
+      , _isEven     = isOdd b
+      , _isOdd      = isEven b
+      , _isComplete = isComplete b
+      }
+
+-- | Take signed @ProdE@ expression into a power of @SumE@ expression
+powProd
+  :: (Ord v, Ord t) => Signed (ProdE t v) -> SumsE None t v -> SumsE None t v
+powProd a b = sig $ go $ getProdE $ getAbs a
+  where
+    sig x | isPositive a = x
+          | otherwise    = x - 2 * x * unitAsSums (UMod (toNormalE b) 2)
+    powPow (PowU _ u p) = let pb = p * b in singlePowAsSums $ PowU (esPow (expState u) (expState pb)) u pb
+    powPow (PowS es s p) = case (SumsE es $ L $ toList $ getSumsE p) * b of
+      SumsE _ (L []) -> 0
+      p'@(SumsE es' (L (x : xs)))
+        | isOne p'  -> SumsE es' $ L $ toList $ getSumsE s
+        | otherwise -> singlePowAsSums $ powS s (SumsE es' $ x :| L xs)
+    go (x  :| L []       ) = powPow x
+    go (x1 :| L (x2 : xs)) = powPow x1 * go (x2 :| L xs)
