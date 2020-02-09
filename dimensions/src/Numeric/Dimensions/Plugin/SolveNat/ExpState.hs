@@ -72,7 +72,7 @@ instance Num ExpState where
     , _isNonNeg   = _isZero a || _isZero b || _isNonNeg a && _isNonNeg b || _isNonPos a && _isNonPos b
     , _isNonPos   = _isZero a || _isZero b || _isNonNeg a && _isNonPos b || _isNonPos a && _isNonNeg b
     , _isEven     = _isEven a || _isEven b
-    , _isOdd      = _isEven a && _isOdd b
+    , _isOdd      = _isOdd a && _isOdd b
     , _isComplete = _isComplete a && _isComplete b
     }
   negate a = a
