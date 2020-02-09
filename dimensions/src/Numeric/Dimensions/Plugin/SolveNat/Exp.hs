@@ -7,6 +7,7 @@ module Numeric.Dimensions.Plugin.SolveNat.Exp
   , substituteVar
   , substituteFun
   , evaluate
+  , evaluateR
   )
 where
 
@@ -16,9 +17,11 @@ import           Control.Exception              ( ArithException(..)
 import           Data.Bifunctor
 import           Data.Bits
 import           Data.Functor.Identity
+import           Data.Ratio
 import           Numeric.Natural
 import           Outputable              hiding ( (<>) )
 
+-- | Integer logarithm with base 2 (rounding the value down)
 log2Nat :: Natural -> Natural
 log2Nat 0 = throw Underflow
 log2Nat 1 = 0
@@ -59,11 +62,13 @@ instance Num (Exp t v) where
   negate e = N 0 :- e
   abs (N n)        = N n
   abs (N 0 :- N n) = N n
-  abs (Log2 e)   = Log2 e
-  abs e          = Max e (N 0 :- e)
+  abs (Log2 e)     = Log2 e
+  abs e            = Max e (N 0 :- e)
   signum (N n) = N (signum n)
   signum (N 0 :- N 0) = N 0
   signum (N 0 :- N _) = N 0 :- N 1
+  -- NB: this is not exactly signum for rational-valued expressions;
+  --     it's linear on segment [-1, 1].
   signum e    = Min (Max (N 1) (N 0 :- e)) (Max (N 0 :- N 1) e)
   fromInteger i
     | i >= 0    = N (fromInteger i)
@@ -130,22 +135,34 @@ substituteFun f (Log2 a  ) = Log2 <$> substituteFun f a
 --
 --   Note, the expression can have negative value.
 evaluate :: Exp a b -> Either (Exp a b) Integer
-evaluate e = case e' of
+evaluate e = evaluateR e
+  >>= \r -> if denominator r == 1 then Right (numerator r) else Left (_R r)
+
+-- | Try to evaluate an expression fully or partially and return either a single
+--   Rational or a simplified expression.
+evaluateR :: Exp a b -> Either (Exp a b) Rational
+evaluateR e = case e' of
   [] -> Right r
-  _  -> Left $ foldl f (_N r) e'
+  _  -> Left . withDen $ foldl f (fromR r) e'
   where
-    (r, e') = evaluate' e
-    f :: Exp t v -> (Integer, Exp t v) -> Exp t v
+    (r, e')   = evaluate' e
+    commonDen = foldl (\d (x, _) -> lcm d (denominator x)) (denominator r) e'
+    withDen :: Exp t v -> Exp t v
+    withDen x | commonDen == 1  = x
+              | commonDen == -1 = 0 :- x
+              | otherwise       = x :* (_N commonDen :^ _N (-1))
+    fromR :: Rational -> Exp t v
+    fromR x = _N . numerator $ x * (commonDen % 1)
+    f :: Exp t v -> (Rational, Exp t v) -> Exp t v
     f (N 0) (1, x)          = x
-    f (N 0) (i, x) | i >= 0 = N (fromInteger i) :* x
+    f (N 0) (i, x) | i >= 0 = fromR i :* x
     f y (1 , x)             = y :+ x
     f y (-1, x)             = y :- x
-    f y (i, x) | i >= 0    = y :+ N (fromInteger i) :* x
-               | otherwise = y :- N (fromInteger $ negate i) :* x
+    f y (i, x) | i >= 0    = y :+ fromR i :* x
+               | otherwise = y :- (fromR $ negate i) :* x
 
-
-evaluate' :: Exp a b -> (Integer, [(Integer, Exp a b)])
-evaluate' (N n   ) = (toInteger n, [])
+evaluate' :: Exp a b -> (Rational, [(Rational, Exp a b)])
+evaluate' (N n   ) = (toRational n, [])
 evaluate' (F t   ) = (0, [(1, F t)])
 evaluate' (V v   ) = (0, [(1, V v)])
 
@@ -163,81 +180,146 @@ evaluate' (a :* b) =
   where
     (na, xsa) = evaluate' a
     (nb, xsb) = evaluate' b
-    f :: Integer -> (Integer, Exp a b) -> [(Integer, Exp a b)]
+    f :: Rational -> (Rational, Exp a b) -> [(Rational, Exp a b)]
     f 0 x | safe (snd x) = []
     f 1 x                = [x]
     f c (n, e)           = [(c * n, e)]
-    g :: (Integer, Exp a b) -> (Integer, Exp a b) -> (Integer, Exp a b)
+    g :: (Rational, Exp a b) -> (Rational, Exp a b) -> (Rational, Exp a b)
     g (nx, ex) (ny, ey) = (nx * ny, ex * ey)
 
-evaluate' (a :^ b) = case (evaluate a, evaluate b) of
-  (Right x, Right y) | y >= 0    -> (x ^ y, [])
-                     | x == 1    -> (1, [])
-                     | x == -1   -> (if even y then 1 else -1, [])
-                     | otherwise -> (0, [(1, _N x :^ _N y)])
-  (Left x, Right y) | y == 0 && safe x -> (1, [])
-                    | y == 1           -> (0, [(1, x)])
-                    | y >= 0           -> evaluate' (x ^ y)
-                    | otherwise        -> (0, [(1, x :^ _N y)])
-  (Right x, Left y) | x == 0 && safe y -> (0, [])
-                    | x == 1 && safe y -> (1, [])
-                    | otherwise        -> (0, [(1, _N x :^ y)])
+evaluate' (a :^ b) = case (evaluateR a, evaluateR b) of
+  (Right x, Right y) | Just z <- ratioPow x y -> (z, [])
+                     | otherwise              -> (0, [(1, _R x :^ _R y)])
+  (Left x, Right y)
+    | y == 0 && safe x             -> (1, [])
+    | y == 1                       -> (0, [(1, x)])
+    | denominator y == 1 && y >= 0 -> evaluate' (x ^ numerator y)
+    | otherwise                    -> (0, [(1, x :^ _R y)])
+  (Right x, Left y) | x == 1 && safe y -> (1, [])
+                    | otherwise        -> (0, [(1, _R x :^ y)])
   (Left x, Left y) -> (0, [(1, x :^ y)])
 
-evaluate' (Div a b) = case (evaluate a, evaluate b) of
+evaluate' (Div a b) = case (evaluateR a, evaluateR b) of
   (Right x, Right y)
-    | y == 0    -> (0, [(signum x, Div (N $ fromInteger $ abs x) (N 0))])
-    | otherwise -> (div x y, [])
+    | y == 0
+    -> (0, [(signum x, Div (_R $ abs x) 0)])
+    | otherwise
+    -> let d  = lcm (denominator x) (denominator y)
+           dr = d % 1
+       in  (div (numerator $ x * dr) (numerator $ y * dr) % d, [])
   (Left x, Right y)
     | y == 1 && safe x  -> evaluate' x
     | y == -1 && safe x -> bimap negate (map $ first negate) $ evaluate' x
-    | y >= 0            -> (0, [(1, Div x (N $ fromInteger y))])
-    | otherwise -> (0, [(1, Div (N 0 :- x) (N $ fromInteger $ negate y))])
+    | y >= 0            -> (0, [(1, Div x (_R y))])
+    | otherwise         -> (0, [(1, Div (0 :- x) (_R $ negate y))])
   (Right x, Left y) | x == 0 && safe y -> (0, [])
-                    | otherwise        -> (0, [(1, _N x `Div` y)])
+                    | otherwise        -> (0, [(1, _R x `Div` y)])
   (Left x, Left y) -> (0, [(1, Div x y)])
 
-evaluate' (Mod a b) = case (evaluate a, evaluate b) of
+evaluate' (Mod a b) = case (evaluateR a, evaluateR b) of
   (Right x, Right y)
-    | y == 0    -> (0, [(signum x, Mod (N $ fromInteger $ abs x) (N 0))])
-    | otherwise -> (mod x y, [])
-  (Left x, Right y)
-    | y == 1 && safe x  -> (0, [])
-    | y == -1 && safe x -> (0, [])
-    | y >= 0            -> (0, [(1, Mod x (N $ fromInteger y))])
-    | otherwise -> (0, [(1, Mod (N 0 :- x) (N $ fromInteger $ negate y))])
+    | y == 0
+    -> (0, [(signum x, Mod (_R $ abs x) 0)])
+    | otherwise
+    -> let d  = lcm (denominator x) (denominator y)
+           dr = d % 1
+       in  (mod (numerator $ x * dr) (numerator $ y * dr) % d, [])
+  (Left x, Right y) | y == 1 && safe x  -> (0, [])
+                    | y == -1 && safe x -> (0, [])
+                    | y >= 0            -> (0, [(1, Mod x (_R y))])
+                    | otherwise -> (0, [(1, Mod (0 :- x) (_R $ negate y))])
   (Right x, Left y) | x == 0 && safe y -> (0, [])
-                    | otherwise        -> (0, [(1, _N x `Mod` y)])
+                    | otherwise        -> (0, [(1, _R x `Mod` y)])
   (Left x, Left y) -> (0, [(1, Mod x y)])
 
-evaluate' (Max a b) = case (evaluate a, evaluate b) of
+evaluate' (Max a b) = case (evaluateR a, evaluateR b) of
   (Right x, Right y) -> (max x y, [])
-  (Left (N x1 :^ (N 0 :- N x2)), Right y) | x1 > 0 && x2 > 0 && y > 0 -> (y, [])
-  (Left x, Right y)
-    | y >= 0 -> (0, [(1, Max x (N $ fromInteger y))])
-    | otherwise -> evaluate'
-      (N 0 :- Min (N 0 :- x) (N $ fromInteger $ negate y))
-  (Right _, Left y) -> evaluate' (Max y a)
-  (Left  x, Left y) -> (0, [(1, Max x y)])
+  (Left  x, Right y) -> (0, [(1, Max x (_R y))])
+  (Right x, Left y ) -> (0, [(1, Max (_R x) y)])
+  (Left  x, Left y ) -> (0, [(1, Max x y)])
 
-evaluate' (Min a b) = case (evaluate a, evaluate b) of
+evaluate' (Min a b) = case (evaluateR a, evaluateR b) of
   (Right x, Right y) -> (min x y, [])
-  (Left x, Right y)
-    | y >= 0 -> (0, [(1, Min x (N $ fromInteger y))])
-    | otherwise -> evaluate'
-      (N 0 :- Max (N 0 :- x) (N $ fromInteger $ negate y))
-  (Right _, Left y) -> evaluate' (Min y a)
-  (Left  x, Left y) -> (0, [(1, Min x y)])
+  (Left  x, Right y) -> (0, [(1, Min x (_R y))])
+  (Right x, Left y ) -> (0, [(1, Min (_R x) y)])
+  (Left  x, Left y ) -> (0, [(1, Min x y)])
 
-evaluate' (Log2 a) = case evaluate a of
-  Right x | x > 0     -> (toInteger $ log2Nat $ fromInteger x, [])
-          | otherwise -> (0, [(1, Log2 $ _N x)])
+evaluate' (Log2 a) = case evaluateR a of
+  Right x
+    | x >= 1
+    -> ( toInteger (log2Nat $ fromInteger (numerator x `div` denominator x)) % 1
+       , []
+       )
+    | otherwise
+    -> (0, [(1, Log2 $ _R x)])
   Left e -> (0, [(1, Log2 e)])
 
 
 _N :: Integer -> Exp t v
-_N n | n >= 0    = N (fromInteger n)
-     | otherwise = N 0 :- N (fromInteger $ negate n)
+_N = fromInteger
+
+_R :: Rational -> Exp t v
+_R x | dx == 1   = _N nx
+     | dx == -1  = _N (negate nx)
+     | otherwise = _N nx :* _N dx :^ (-1)
+  where
+    dx = denominator x
+    nx = numerator x
+
+-- | Calculate @a ^ b@ for rationals if that is possible.
+ratioPow :: Rational -> Rational -> Maybe Rational
+ratioPow a b | b == 0           = Just 1
+             | a == 0 && b > 0  = Just 0
+             | a == 0 && b <= 0 = Nothing
+             | b < 0            = ratioPow (1 / a) (negate b)
+             | a == 1           = Just 1
+             | a < 0 && even nb = ratioPow (negate a) b
+             | a < 0 && even db = Nothing
+             | a < 0            = negate <$> ratioPow (negate a) b
+             | otherwise        = f <$> intRoot na db <*> intRoot da db
+  where
+    db = denominator b
+    nb = numerator b
+    da = denominator a
+    na = numerator a
+    f :: Integer -> Integer -> Rational
+    f nx dx = nx ^ nb % dx ^ nb
+
+
+
+-- | Calculate @a ^ (1/b)@ for integers.
+--   @b@ must be positive.
+--   @a@ must be positive if @even b@.
+intRoot :: Integer -> Integer -> Maybe Integer
+intRoot a b
+  | b <= 0
+  = Just $ error $ show a ++ " ^ (1/(" ++ show b ++ ")) : non-positive power"
+  | a == 0
+  = Just $ error $ "0 ^ (1/" ++ show b ++ ") : infinity"
+  | a < 0 && even b
+  = Just
+    $  error
+    $  "("
+    ++ show a
+    ++ ") ^ (1/"
+    ++ show b
+    ++ ") : imaginary number"
+  | a < 0
+  = negate <$> intRoot (negate a) b
+  | otherwise
+  = check $ go a
+  where
+    check :: Integer -> Maybe Integer
+    check x | x ^ b == a = Just x
+            | otherwise  = Nothing
+    b1 = b - 1
+    go :: Integer -> Integer
+    go x =
+      let x' = (x * b1 + div a (x ^ b1)) `div` b
+      in  case compare x x' of
+            GT -> go x'
+            EQ -> x'
+            LT -> x
 
 
 -- | A basic check if the expression cannot be undefined for any valid input.
