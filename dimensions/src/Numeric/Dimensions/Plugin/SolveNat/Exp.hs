@@ -204,9 +204,7 @@ evaluate' (Div a b) = case (evaluateR a, evaluateR b) of
     | y == 0
     -> (0, [(signum x, Div (_R $ abs x) 0)])
     | otherwise
-    -> let d  = lcm (denominator x) (denominator y)
-           dr = d % 1
-       in  (div (numerator $ x * dr) (numerator $ y * dr) % d, [])
+    -> (div (numerator x * denominator y) (numerator y * denominator x) % 1, [])
   (Left x, Right y)
     | y == 1 && safe x  -> evaluate' x
     | y == -1 && safe x -> bimap negate (map $ first negate) $ evaluate' x
@@ -221,9 +219,10 @@ evaluate' (Mod a b) = case (evaluateR a, evaluateR b) of
     | y == 0
     -> (0, [(signum x, Mod (_R $ abs x) 0)])
     | otherwise
-    -> let d  = lcm (denominator x) (denominator y)
-           dr = d % 1
-       in  (mod (numerator $ x * dr) (numerator $ y * dr) % d, [])
+    -> let dx = denominator x
+           dy = denominator y
+           dr = dx * dy
+       in  (mod (numerator x * dy) (numerator y * dx) % dr, [])
   (Left x, Right y) | y == 1 && safe x  -> (0, [])
                     | y == -1 && safe x -> (0, [])
                     | y >= 0            -> (0, [(1, Mod x (_R y))])
