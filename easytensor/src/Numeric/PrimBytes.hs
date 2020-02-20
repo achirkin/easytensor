@@ -90,6 +90,7 @@ import           GHC.Exts
 import           GHC.Generics
 import           GHC.Int
 import           GHC.IO               (IO (..))
+import           GHC.Stable
 import           GHC.Word
 import           Numeric.Dimensions
 import qualified Numeric.Tuple.Lazy   as TL
@@ -932,7 +933,6 @@ instance PrimBytes Double where
     writeArray mba i (D# x) = writeDoubleArray# mba i x
     {-# INLINE writeArray #-}
 
-
 instance PrimBytes (Ptr a) where
     type PrimFields (Ptr a) = '[]
     getBytes (Ptr x) = case runRW#
@@ -970,6 +970,79 @@ instance PrimBytes (Ptr a) where
     writeArray mba i (Ptr x) = writeAddrArray# mba i x
     {-# INLINE writeArray #-}
 
+instance PrimBytes (FunPtr a) where
+    type PrimFields (FunPtr a) = '[]
+    getBytes (FunPtr x) = case runRW#
+      ( \s0 -> case newByteArray# SIZEOF_HSFUNPTR# s0 of
+         (# s1, marr #) -> case writeAddrArray# marr 0# x s1 of
+             s2 -> unsafeFreezeByteArray# marr s2
+      ) of (# _, a #) -> a
+    {-# NOINLINE getBytes #-}
+    fromBytes off ba
+      = FunPtr (indexWord8ArrayAsAddr# ba off)
+    {-# INLINE fromBytes #-}
+    readBytes mba off s
+      = case readWord8ArrayAsAddr# mba off s of (# s', r #) -> (# s', FunPtr r #)
+    {-# INLINE readBytes #-}
+    writeBytes mba off (FunPtr x)
+      = writeWord8ArrayAsAddr# mba off x
+    {-# INLINE writeBytes #-}
+    readAddr a s
+      = case readAddrOffAddr# a 0# s of (# s', x #) -> (# s', FunPtr x #)
+    {-# INLINE readAddr #-}
+    writeAddr (FunPtr x) a
+      = writeAddrOffAddr# a 0# x
+    {-# INLINE writeAddr #-}
+    byteSize _ = SIZEOF_HSFUNPTR#
+    {-# INLINE byteSize #-}
+    byteAlign _ = ALIGNMENT_HSFUNPTR#
+    {-# INLINE byteAlign #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
+    indexArray ba i = FunPtr (indexAddrArray# ba i)
+    {-# INLINE indexArray #-}
+    readArray mba i s
+      = case readAddrArray# mba i s of (# s', x #) -> (# s', FunPtr x #)
+    {-# INLINE readArray #-}
+    writeArray mba i (FunPtr x) = writeAddrArray# mba i x
+    {-# INLINE writeArray #-}
+
+instance PrimBytes (StablePtr a) where
+    type PrimFields (StablePtr a) = '[]
+    getBytes (StablePtr x) = case runRW#
+      ( \s0 -> case newByteArray# SIZEOF_HSSTABLEPTR# s0 of
+         (# s1, marr #) -> case writeStablePtrArray# marr 0# x s1 of
+             s2 -> unsafeFreezeByteArray# marr s2
+      ) of (# _, a #) -> a
+    {-# NOINLINE getBytes #-}
+    fromBytes off ba
+      = StablePtr (indexWord8ArrayAsStablePtr# ba off)
+    {-# INLINE fromBytes #-}
+    readBytes mba off s
+      = case readWord8ArrayAsStablePtr# mba off s of (# s', r #) -> (# s', StablePtr r #)
+    {-# INLINE readBytes #-}
+    writeBytes mba off (StablePtr x)
+      = writeWord8ArrayAsStablePtr# mba off x
+    {-# INLINE writeBytes #-}
+    readAddr a s
+      = case readStablePtrOffAddr# a 0# s of (# s', x #) -> (# s', StablePtr x #)
+    {-# INLINE readAddr #-}
+    writeAddr (StablePtr x) a
+      = writeStablePtrOffAddr# a 0# x
+    {-# INLINE writeAddr #-}
+    byteSize _ = SIZEOF_HSSTABLEPTR#
+    {-# INLINE byteSize #-}
+    byteAlign _ = ALIGNMENT_HSSTABLEPTR#
+    {-# INLINE byteAlign #-}
+    byteFieldOffset _ _ = negateInt# 1#
+    {-# INLINE byteFieldOffset #-}
+    indexArray ba i = StablePtr (indexStablePtrArray# ba i)
+    {-# INLINE indexArray #-}
+    readArray mba i s
+      = case readStablePtrArray# mba i s of (# s', x #) -> (# s', StablePtr x #)
+    {-# INLINE readArray #-}
+    writeArray mba i (StablePtr x) = writeStablePtrArray# mba i x
+    {-# INLINE writeArray #-}
 
 instance PrimBytes Int8 where
     type PrimFields Int8 = '[]
@@ -1652,6 +1725,10 @@ writeWord8ArrayAsAddr# :: MutableByteArray# d -> Int# -> Addr# -> State# d -> St
 writeWord8ArrayAsAddr# mba off = writeAddrArray# mba (uncheckedIShiftRL# off OFFSHIFT_P#)
 {-# INLINE writeWord8ArrayAsAddr# #-}
 
+writeWord8ArrayAsStablePtr# :: MutableByteArray# d -> Int# -> StablePtr# a -> State# d -> State# d
+writeWord8ArrayAsStablePtr# mba off = writeStablePtrArray# mba (uncheckedIShiftRL# off OFFSHIFT_P#)
+{-# INLINE writeWord8ArrayAsStablePtr# #-}
+
 writeWord8ArrayAsFloat# :: MutableByteArray# d -> Int# -> Float# -> State# d -> State# d
 writeWord8ArrayAsFloat# mba off = writeFloatArray# mba (uncheckedIShiftRL# off OFFSHIFT_F#)
 {-# INLINE writeWord8ArrayAsFloat# #-}
@@ -1700,6 +1777,10 @@ readWord8ArrayAsAddr# :: MutableByteArray# d -> Int# -> State# d -> (# State# d,
 readWord8ArrayAsAddr# mba off = readAddrArray# mba (uncheckedIShiftRL# off OFFSHIFT_P#)
 {-# INLINE readWord8ArrayAsAddr# #-}
 
+readWord8ArrayAsStablePtr# :: MutableByteArray# d -> Int# -> State# d -> (# State# d, StablePtr# a #)
+readWord8ArrayAsStablePtr# mba off = readStablePtrArray# mba (uncheckedIShiftRL# off OFFSHIFT_P#)
+{-# INLINE readWord8ArrayAsStablePtr# #-}
+
 readWord8ArrayAsFloat# :: MutableByteArray# d -> Int# -> State# d -> (# State# d, Float# #)
 readWord8ArrayAsFloat# mba off = readFloatArray# mba (uncheckedIShiftRL# off OFFSHIFT_F#)
 {-# INLINE readWord8ArrayAsFloat# #-}
@@ -1747,6 +1828,10 @@ indexWord8ArrayAsWideChar# ba off = indexWideCharArray# ba (uncheckedIShiftRL# o
 indexWord8ArrayAsAddr# :: ByteArray# -> Int# -> Addr#
 indexWord8ArrayAsAddr# ba off = indexAddrArray# ba (uncheckedIShiftRL# off OFFSHIFT_P#)
 {-# INLINE indexWord8ArrayAsAddr# #-}
+
+indexWord8ArrayAsStablePtr# :: ByteArray# -> Int# -> StablePtr# a
+indexWord8ArrayAsStablePtr# ba off = indexStablePtrArray# ba (uncheckedIShiftRL# off OFFSHIFT_P#)
+{-# INLINE indexWord8ArrayAsStablePtr# #-}
 
 indexWord8ArrayAsFloat# :: ByteArray# -> Int# -> Float#
 indexWord8ArrayAsFloat# ba off = indexFloatArray# ba (uncheckedIShiftRL# off OFFSHIFT_F#)
