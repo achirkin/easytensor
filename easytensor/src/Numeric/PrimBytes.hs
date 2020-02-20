@@ -1725,6 +1725,10 @@ writeWord8ArrayAsAddr# :: MutableByteArray# d -> Int# -> Addr# -> State# d -> St
 writeWord8ArrayAsAddr# mba off = writeAddrArray# mba (uncheckedIShiftRL# off OFFSHIFT_P#)
 {-# INLINE writeWord8ArrayAsAddr# #-}
 
+writeWord8ArrayAsStablePtr# :: MutableByteArray# d -> Int# -> StablePtr# a -> State# d -> State# d
+writeWord8ArrayAsStablePtr# mba off = writeStablePtrArray# mba (uncheckedIShiftRL# off OFFSHIFT_P#)
+{-# INLINE writeWord8ArrayAsStablePtr# #-}
+
 writeWord8ArrayAsFloat# :: MutableByteArray# d -> Int# -> Float# -> State# d -> State# d
 writeWord8ArrayAsFloat# mba off = writeFloatArray# mba (uncheckedIShiftRL# off OFFSHIFT_F#)
 {-# INLINE writeWord8ArrayAsFloat# #-}
@@ -1773,6 +1777,10 @@ readWord8ArrayAsAddr# :: MutableByteArray# d -> Int# -> State# d -> (# State# d,
 readWord8ArrayAsAddr# mba off = readAddrArray# mba (uncheckedIShiftRL# off OFFSHIFT_P#)
 {-# INLINE readWord8ArrayAsAddr# #-}
 
+readWord8ArrayAsStablePtr# :: MutableByteArray# d -> Int# -> State# d -> (# State# d, StablePtr# a #)
+readWord8ArrayAsStablePtr# mba off = readStablePtrArray# mba (uncheckedIShiftRL# off OFFSHIFT_P#)
+{-# INLINE readWord8ArrayAsStablePtr# #-}
+
 readWord8ArrayAsFloat# :: MutableByteArray# d -> Int# -> State# d -> (# State# d, Float# #)
 readWord8ArrayAsFloat# mba off = readFloatArray# mba (uncheckedIShiftRL# off OFFSHIFT_F#)
 {-# INLINE readWord8ArrayAsFloat# #-}
@@ -1820,6 +1828,10 @@ indexWord8ArrayAsWideChar# ba off = indexWideCharArray# ba (uncheckedIShiftRL# o
 indexWord8ArrayAsAddr# :: ByteArray# -> Int# -> Addr#
 indexWord8ArrayAsAddr# ba off = indexAddrArray# ba (uncheckedIShiftRL# off OFFSHIFT_P#)
 {-# INLINE indexWord8ArrayAsAddr# #-}
+
+indexWord8ArrayAsStablePtr# :: ByteArray# -> Int# -> StablePtr# a
+indexWord8ArrayAsStablePtr# ba off = indexStablePtrArray# ba (uncheckedIShiftRL# off OFFSHIFT_P#)
+{-# INLINE indexWord8ArrayAsStablePtr# #-}
 
 indexWord8ArrayAsFloat# :: ByteArray# -> Int# -> Float#
 indexWord8ArrayAsFloat# ba off = indexFloatArray# ba (uncheckedIShiftRL# off OFFSHIFT_F#)
