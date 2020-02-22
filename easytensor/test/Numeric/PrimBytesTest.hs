@@ -22,6 +22,7 @@ module Numeric.PrimBytesTest (runTests) where
 import           Data.Int
 import           Data.Type.Lits
 import           Data.Word
+import           Foreign.C.Types
 import           Foreign.Marshal
 import           Foreign.Ptr
 import           Foreign.Storable
@@ -106,6 +107,9 @@ instance PrimBytes a => Storable (MyUnboxedType a) where
     pokeByteOff = bPokeByteOff
     peek = bPeek
     poke = bPoke
+
+instance Arbitrary CBool where
+    arbitrary = CBool <$> arbitrary
 
 instance Arbitrary (Ptr Dummy) where
     arbitrary = intPtrToPtr . IntPtr <$> arbitrary
@@ -316,6 +320,12 @@ type SingleVarTypes =
    '[ Word8, Word16, Word32, Word64, Word
     , Int8, Int16, Int32, Int64, Int
     , Char, Double, Float
+    , CChar, CSChar, CUChar, CShort, CUShort
+    , CInt, CUInt, CLong, CULong
+    , CPtrdiff, CSize, CWchar, CSigAtomic
+    , CLLong, CULLong, CBool, CIntPtr, CUIntPtr
+    , CIntMax, CUIntMax, CClock, CTime
+    , CUSeconds, CSUSeconds, CFloat, CDouble
     , Vertex Double Float Char
     , Vertex Word8 Double Int16
     , Vertex Word16 Word32 Word64
