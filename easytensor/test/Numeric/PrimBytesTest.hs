@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DefaultSignatures     #-}
@@ -22,6 +23,7 @@ module Numeric.PrimBytesTest (runTests) where
 import           Data.Int
 import           Data.Type.Lits
 import           Data.Word
+import           Foreign.C.Types
 import           Foreign.Marshal
 import           Foreign.Ptr
 import           Foreign.Storable
@@ -106,6 +108,9 @@ instance PrimBytes a => Storable (MyUnboxedType a) where
     pokeByteOff = bPokeByteOff
     peek = bPeek
     poke = bPoke
+
+instance Arbitrary CBool where
+    arbitrary = CBool <$> arbitrary
 
 instance Arbitrary (Ptr Dummy) where
     arbitrary = intPtrToPtr . IntPtr <$> arbitrary
@@ -316,6 +321,12 @@ type SingleVarTypes =
    '[ Word8, Word16, Word32, Word64, Word
     , Int8, Int16, Int32, Int64, Int
     , Char, Double, Float
+    , CChar, CSChar, CUChar, CShort, CUShort
+    , CInt, CUInt, CLong, CULong
+    , CPtrdiff, CSize, CWchar, CSigAtomic
+    , CLLong, CULLong, CBool, CIntPtr, CUIntPtr
+    , CIntMax, CUIntMax, CClock, CTime
+    , CUSeconds, CSUSeconds, CFloat, CDouble
     , Vertex Double Float Char
     , Vertex Word8 Double Int16
     , Vertex Word16 Word32 Word64
@@ -343,33 +354,73 @@ type TypeTriples =
    , '(Word16, Word32, Word64)
    , '(Int64, Int8, Int32)
    , '(Float, Char, Char)
+   , '(CChar, CInt, CPtrdiff)
+   , '(CSChar, CUInt, CSize)
+   , '(CUChar, CLong, CWchar)
+   , '(CShort, CULong, CSigAtomic)
+   , '(CUShort, CLLong, CIntMax)
+   , '(CULLong, CUIntMax, CUSeconds)
+   , '(CBool, CClock, CSUSeconds)
+   , '(CIntPtr, CTime, CFloat)
+   , '(CUIntPtr, CDouble, CDouble)
    ]
 
-instance SamePrimRep a (ST.Tuple '[a]) where
-  convert a = a ST.:$ U
-instance SamePrimRep (a,b) (ST.Tuple '[a,b]) where
-  convert (a, b) = a ST.:$ b ST.:$ U
-instance SamePrimRep (a,b,c) (ST.Tuple '[a,b,c]) where
-  convert (a, b, c) = a ST.:$ b ST.:$ c ST.:$ U
-instance SamePrimRep (a,b,c,d) (ST.Tuple '[a,b,c,d]) where
-  convert (a, b, c, d) = a ST.:$ b ST.:$ c ST.:$ d ST.:$ U
-instance SamePrimRep (a,b,c,d,e) (ST.Tuple '[a,b,c,d,e]) where
-  convert (a, b, c, d, e) = a ST.:$ b ST.:$ c ST.:$ d ST.:$ e ST.:$ U
+instance SamePrimRep a a where
+  convert = id
 
-instance SamePrimRep a (LT.Tuple '[a]) where
-  convert a = a LT.:$ U
-instance SamePrimRep (a,b) (LT.Tuple '[a,b]) where
-  convert (a, b) = a LT.:$ b LT.:$ U
-instance SamePrimRep (a,b,c) (LT.Tuple '[a,b,c]) where
-  convert (a, b, c) = a LT.:$ b LT.:$ c LT.:$ U
-instance SamePrimRep (a,b,c,d) (LT.Tuple '[a,b,c,d]) where
-  convert (a, b, c, d) = a LT.:$ b LT.:$ c LT.:$ d LT.:$ U
-instance SamePrimRep (a,b,c,d,e) (LT.Tuple '[a,b,c,d,e]) where
-  convert (a, b, c, d, e) = a LT.:$ b LT.:$ c LT.:$ d LT.:$ e LT.:$ U
+instance SamePrimRep a a' => SamePrimRep a (ST.Tuple '[a']) where
+  convert a = convert a ST.:$ U
+instance (SamePrimRep a a', SamePrimRep b b') => SamePrimRep (a,b) (ST.Tuple '[a',b']) where
+  convert (a, b) = convert a ST.:$ convert b ST.:$ U
+instance (SamePrimRep a a', SamePrimRep b b', SamePrimRep c c') => SamePrimRep (a,b,c) (ST.Tuple '[a',b',c']) where
+  convert (a, b, c) = convert a ST.:$ convert b ST.:$ convert c ST.:$ U
+instance (SamePrimRep a a', SamePrimRep b b', SamePrimRep c c', SamePrimRep d d') => SamePrimRep (a,b,c,d) (ST.Tuple '[a',b',c',d']) where
+  convert (a, b, c, d) = convert a ST.:$ convert b ST.:$ convert c ST.:$ convert d ST.:$ U
+instance (SamePrimRep a a', SamePrimRep b b', SamePrimRep c c', SamePrimRep d d', SamePrimRep e e') => SamePrimRep (a,b,c,d,e) (ST.Tuple '[a',b',c',d',e']) where
+  convert (a, b, c, d, e) = convert a ST.:$ convert b ST.:$ convert c ST.:$ convert d ST.:$ convert e ST.:$ U
+
+instance SamePrimRep a a' => SamePrimRep a (LT.Tuple '[a']) where
+  convert a = convert a LT.:$ U
+instance (SamePrimRep a a', SamePrimRep b b') => SamePrimRep (a,b) (LT.Tuple '[a',b']) where
+  convert (a, b) = convert a LT.:$ convert b LT.:$ U
+instance (SamePrimRep a a', SamePrimRep b b', SamePrimRep c c') => SamePrimRep (a,b,c) (LT.Tuple '[a',b',c']) where
+  convert (a, b, c) = convert a LT.:$ convert b LT.:$ convert c LT.:$ U
+instance (SamePrimRep a a', SamePrimRep b b', SamePrimRep c c', SamePrimRep d d') => SamePrimRep (a,b,c,d) (LT.Tuple '[a',b',c',d']) where
+  convert (a, b, c, d) = convert a LT.:$ convert b LT.:$ convert c LT.:$ convert d LT.:$ U
+instance (SamePrimRep a a', SamePrimRep b b', SamePrimRep c c', SamePrimRep d d', SamePrimRep e e') => SamePrimRep (a,b,c,d,e) (LT.Tuple '[a',b',c',d',e']) where
+  convert (a, b, c, d, e) = convert a LT.:$ convert b LT.:$ convert c LT.:$ convert d LT.:$ convert e LT.:$ U
 
 instance SamePrimRep (Maybe a) (Either () a) where
   convert (Just a) = Right a
   convert Nothing  = Left ()
+
+instance SamePrimRep CChar Int8 where convert (CChar v) = v
+instance SamePrimRep CSChar Int8 where convert (CSChar v) = v
+instance SamePrimRep CSChar CChar where convert (CSChar v) = CChar v
+instance SamePrimRep CUChar Word8 where convert (CUChar v) = v
+instance SamePrimRep CShort Int16 where convert (CShort v) = v
+instance SamePrimRep CUShort Word16 where convert (CUShort v) = v
+instance SamePrimRep CInt Int32 where convert (CInt v) = v
+instance SamePrimRep CUInt Word32 where convert (CUInt v) = v
+instance SamePrimRep CLong Int64 where convert (CLong v) = v
+instance SamePrimRep CULong Word64 where convert (CULong v) = v
+instance SamePrimRep CPtrdiff Int64 where convert (CPtrdiff v) = v
+instance SamePrimRep CSize Word64 where convert (CSize v) = v
+instance SamePrimRep CWchar Int32 where convert (CWchar v) = v
+instance SamePrimRep CSigAtomic Int32 where convert (CSigAtomic v) = v
+instance SamePrimRep CLLong Int64 where convert (CLLong v) = v
+instance SamePrimRep CULLong Word64 where convert (CULLong v) = v
+instance SamePrimRep CBool Word8 where convert (CBool v) = v
+instance SamePrimRep CIntPtr Int64 where convert (CIntPtr v) = v
+instance SamePrimRep CUIntPtr Word64 where convert (CUIntPtr v) = v
+instance SamePrimRep CIntMax Int64 where convert (CIntMax v) = v
+instance SamePrimRep CUIntMax Word64 where convert (CUIntMax v) = v
+instance SamePrimRep CClock Int64 where convert (CClock v) = v
+instance SamePrimRep CTime Int64 where convert (CTime v) = v
+instance SamePrimRep CUSeconds Word32 where convert (CUSeconds v) = v
+instance SamePrimRep CSUSeconds Int64 where convert (CSUSeconds v) = v
+instance SamePrimRep CFloat Float where convert (CFloat v) = v
+instance SamePrimRep CDouble Double where convert (CDouble v) = v
 
 type SamePrimRepTypes =
   '[ '( (Word, Double), ST.Tuple '[Word, Double] )
@@ -379,6 +430,13 @@ type SamePrimRepTypes =
       , LT.Tuple '[Word8, Int16, Word32, Either (Either Double Float) Int] )
    , '( Maybe Float, Either () Float)
    , '( Maybe Double, Either () Double)
+   , '( (CChar, CSChar, CSChar, CUChar), ST.Tuple '[Int8, Int8, CChar, Word8] )
+   , '( (CShort, CUShort, CInt, CUInt), LT.Tuple '[Int16, Word16, Int32, Word32] )
+   , '( (CLong, CULong, CPtrdiff, CSize), ST.Tuple '[Int64, Word64, Int64, Word64] )
+   , '( (CWchar, CSigAtomic, CLLong, CULLong), LT.Tuple '[Int32, Int32, Int64, Word64] )
+   , '( (CBool, CIntPtr, CUIntPtr, CIntMax, CUIntMax), ST.Tuple '[Word8, Int64, Word64, Int64, Word64] )
+   , '( (CClock, CTime, CUSeconds, CSUSeconds), LT.Tuple '[Int64, Int64, Word32, Int64] )
+   , '( (CFloat, CDouble), ST.Tuple '[Float, Double] )
    ]
 
 return [] -- this is for $testWithTypes
