@@ -1,20 +1,22 @@
-{-# LANGUAGE AllowAmbiguousTypes   #-}
-{-# LANGUAGE CPP                   #-}
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DefaultSignatures     #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE MagicHash             #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds             #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE UnboxedTuples         #-}
-{-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE AllowAmbiguousTypes        #-}
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DefaultSignatures          #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MagicHash                  #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeInType                 #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UnboxedTuples              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 {- |
 Module      :  Numeric.PrimBytes
 Copyright   :  (c) Artem Chirkin
@@ -86,6 +88,7 @@ import           Data.Proxy           (Proxy (..))
 import           Data.Type.Equality   ((:~:) (..))
 import qualified Data.Type.List       as L
 import           Data.Type.Lits
+import           Foreign.C.Types
 import           GHC.Exts
 import           GHC.Generics
 import           GHC.Int
@@ -1397,6 +1400,33 @@ instance PrimBytes (Idx (x :: k)) where
     {-# INLINE readArray #-}
     writeArray = unsafeCoerce# (writeArray @Word)
     {-# INLINE writeArray #-}
+
+deriving instance PrimBytes CChar
+deriving instance PrimBytes CSChar
+deriving instance PrimBytes CUChar
+deriving instance PrimBytes CShort
+deriving instance PrimBytes CUShort
+deriving instance PrimBytes CInt
+deriving instance PrimBytes CUInt
+deriving instance PrimBytes CLong
+deriving instance PrimBytes CULong
+deriving instance PrimBytes CPtrdiff
+deriving instance PrimBytes CSize
+deriving instance PrimBytes CWchar
+deriving instance PrimBytes CSigAtomic
+deriving instance PrimBytes CLLong
+deriving instance PrimBytes CULLong
+deriving instance PrimBytes CBool
+deriving instance PrimBytes CIntPtr
+deriving instance PrimBytes CUIntPtr
+deriving instance PrimBytes CIntMax
+deriving instance PrimBytes CUIntMax
+deriving instance PrimBytes CClock
+deriving instance PrimBytes CTime
+deriving instance PrimBytes CUSeconds
+deriving instance PrimBytes CSUSeconds
+deriving instance PrimBytes CFloat
+deriving instance PrimBytes CDouble
 
 anyList :: forall (k :: Type) (xs :: [k])
         . RepresentableList xs => [Any]
