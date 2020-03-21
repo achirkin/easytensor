@@ -2,12 +2,18 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Numeric.Dimensions.Plugin.SolveNat.Exp
-  ( Exp(..)
-  , log2Nat
+  ( -- * Rational extensions for Integer functions
+    log2R
+  , divR
+  , modR
+  , powR
+    -- * Expression
+  , Exp(..)
   , substituteVar
   , substituteFun
   , evaluate
   , evaluateR
+  , _R
   )
 where
 
@@ -26,6 +32,63 @@ log2Nat :: Natural -> Natural
 log2Nat 0 = throw Underflow
 log2Nat 1 = 0
 log2Nat n = succ . log2Nat $ shiftR n 1
+
+
+-- | Rounded logarith with base 2.
+--   Rounding is towards zero.
+--
+--   \( \mathrm{log2R}(x) = - \mathrm{log2R} \left( \frac{1}{x} \right) \)
+log2R :: Rational -> Maybe Integer
+log2R x | x <= 0    = Nothing
+        | n >= d    = Just $ f (div n d)
+        | otherwise = Just $ negate $ f (div d n)
+  where
+    n = numerator x
+    d = denominator x
+    f :: Integer -> Integer
+    f a | a == 1    = 0
+        | a > 1     = succ . f $ shiftR a 1
+        | otherwise = throw Underflow
+
+-- | Division rounded towards negative infinity.
+--
+--   \( \mathrm{divR}(x,y) = \left \lfloor \frac{x}{y} \right \rfloor \)
+divR :: Rational -> Rational -> Maybe Integer
+divR x y
+  | y == 0 = Nothing
+  | otherwise = Just
+  $ div (numerator x * denominator y) (numerator y * denominator x)
+
+-- | Remainder of `divR`.
+--
+--   \( x = \mathrm{modR}(x,y) + y \mathrm{divR}(x,y) \)
+modR :: Rational -> Rational -> Maybe Rational
+modR x y | y == 0    = Nothing
+         | otherwise = Just $ mod (numerator x * dy) (numerator y * dx) % dr
+  where
+    dx = denominator x
+    dy = denominator y
+    dr = dx * dy
+
+-- | Calculate @a ^ b@ for rationals if that is possible.
+powR :: Rational -> Rational -> Maybe Rational
+powR a b | b == 0           = Just 1
+         | a == 0 && b > 0  = Just 0
+         | a == 0 && b <= 0 = Nothing
+         | b < 0            = powR (1 / a) (negate b)
+         | a == 1           = Just 1
+         | a < 0 && even nb = powR (negate a) b
+         | a < 0 && even db = Nothing
+         | a < 0            = negate <$> powR (negate a) b
+         | otherwise        = f <$> intRoot na db <*> intRoot da db
+  where
+    db = denominator b
+    nb = numerator b
+    da = denominator a
+    na = numerator a
+    f :: Integer -> Integer -> Rational
+    f nx dx = nx ^ nb % dx ^ nb
+
 
 -- | Type-level expression of kind @Nat@
 data Exp t v
@@ -188,13 +251,12 @@ evaluate' (a :* b) =
     g (nx, ex) (ny, ey) = (nx * ny, ex * ey)
 
 evaluate' (a :^ b) = case (evaluateR a, evaluateR b) of
-  (Right x, Right y) | Just z <- ratioPow x y -> (z, [])
-                     | otherwise              -> (0, [(1, _R x :^ _R y)])
-  (Left x, Right y)
-    | y == 0 && safe x             -> (1, [])
-    | y == 1                       -> (0, [(1, x)])
-    | denominator y == 1 && y >= 0 -> evaluate' (x ^ numerator y)
-    | otherwise                    -> (0, [(1, x :^ _R y)])
+  (Right x, Right y) | Just z <- powR x y -> (z, [])
+                     | otherwise          -> (0, [(1, _R x :^ _R y)])
+  (Left (x :^ b'), _) -> evaluate' $ x :^ (b' :* b)
+  (Left x, Right y) | y == 0 && safe x -> (1, [])
+                    | y == 1           -> (0, [(1, x)])
+                    | otherwise        -> (0, [(1, x :^ _R y)])
   (Right x, Left y) | x == 1 && safe y -> (1, [])
                     | otherwise        -> (0, [(1, _R x :^ y)])
   (Left x, Left y) -> (0, [(1, x :^ y)])
@@ -245,10 +307,13 @@ evaluate' (Min a b) = case (evaluateR a, evaluateR b) of
 
 evaluate' (Log2 a) = case evaluateR a of
   Right x
-    | x >= 1
-    -> ( toInteger (log2Nat $ fromInteger (numerator x `div` denominator x)) % 1
-       , []
-       )
+    | x > 0
+    -> let n = fromInteger $ numerator x :: Natural
+           d = fromInteger $ denominator x :: Natural
+           r = if n >= d
+             then toInteger (log2Nat $ div n d)
+             else negate $ toInteger (log2Nat $ div d n)
+       in  (r % 1, [])
     | otherwise
     -> (0, [(1, Log2 $ _R x)])
   Left e -> (0, [(1, Log2 e)])
@@ -264,25 +329,6 @@ _R x | dx == 1   = _N nx
   where
     dx = denominator x
     nx = numerator x
-
--- | Calculate @a ^ b@ for rationals if that is possible.
-ratioPow :: Rational -> Rational -> Maybe Rational
-ratioPow a b | b == 0           = Just 1
-             | a == 0 && b > 0  = Just 0
-             | a == 0 && b <= 0 = Nothing
-             | b < 0            = ratioPow (1 / a) (negate b)
-             | a == 1           = Just 1
-             | a < 0 && even nb = ratioPow (negate a) b
-             | a < 0 && even db = Nothing
-             | a < 0            = negate <$> ratioPow (negate a) b
-             | otherwise        = f <$> intRoot na db <*> intRoot da db
-  where
-    db = denominator b
-    nb = numerator b
-    da = denominator a
-    na = numerator a
-    f :: Integer -> Integer -> Rational
-    f nx dx = nx ^ nb % dx ^ nb
 
 
 
@@ -305,9 +351,15 @@ intRoot a b
     ++ ") : imaginary number"
   | a < 0
   = negate <$> intRoot (negate a) b
+  | a == 1
+  = Just 1
+  | shiftR a bInt == 0 -- if a < 2 ^ b
+  = Nothing
   | otherwise
   = check $ go a
   where
+    bInt :: Int
+    bInt = if b > toInteger (maxBound :: Int) then maxBound else fromInteger b
     check :: Integer -> Maybe Integer
     check x | x ^ b == a = Just x
             | otherwise  = Nothing

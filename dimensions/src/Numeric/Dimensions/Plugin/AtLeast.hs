@@ -7,6 +7,7 @@ module Numeric.Dimensions.Plugin.AtLeast
   , cons
   , mergeDesc
   , flattenDesc
+  , sortDesc
   , toList
   , Nat(..)
   , None
@@ -18,6 +19,8 @@ where
 import           Control.Applicative
 import           Control.Monad
 import           Data.Foldable                  ( toList )
+import           Data.List                      ( sortOn )
+import           Data.Ord                       ( Down(..) )
 
 
 data Nat = Nil | S Nat
@@ -58,6 +61,16 @@ flattenDesc l      = case l of
     go :: Ord a => AtLeast One (AtLeast n a) -> AtLeast n a
     go (x  :| L []       ) = x
     go (x1 :| L (x2 : xs)) = go (mergeDesc x1 x2 :| L xs)
+
+
+sortDesc :: Ord a => AtLeast n a -> AtLeast n a
+sortDesc (L xs   ) = L (sortOn Down xs)
+sortDesc (x :| xs) = bump $ sortDesc (cons x xs)
+  where
+    bump :: AtLeast n a -> AtLeast ( 'S n) a
+    bump (L ~(a : as)) = a :| L as
+    bump (a :| as    ) = a :| bump as
+
 
 deriving instance Eq a => Eq (AtLeast k a)
 deriving instance Ord a => Ord (AtLeast k a)

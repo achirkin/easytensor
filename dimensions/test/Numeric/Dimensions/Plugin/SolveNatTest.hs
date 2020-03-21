@@ -7,95 +7,137 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# OPTIONS_GHC -fno-warn-missing-local-signatures #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Numeric.Dimensions.Plugin.SolveNatTest where
 
 
-import           Data.Functor.Identity
 import           Outputable              hiding ( (<>) )
-import           Data.String                    ( IsString(..) )
-import           Numeric.Natural
 import           Test.QuickCheck                ( Property
                                                 , Arbitrary(..)
                                                 , (.||.)
                                                 )
 import qualified Test.QuickCheck               as QC
+import           Data.Maybe
+import           Data.Foldable                  ( toList )
 
+import           Numeric.Dimensions.Plugin.SolveNat
 import           Numeric.Dimensions.Plugin.SolveNat.Exp
 import           Numeric.Dimensions.Plugin.SolveNat.NormalForm
-import           Numeric.Dimensions.Plugin.SolveNat
+import           Numeric.Dimensions.Plugin.SolveNat.ExpTest
 
 {-# ANN module ("HLint: ignore Evaluate" :: String) #-}
+{-# ANN module ("HLint: ignore Redundant negate" :: String) #-}
 
 
-newtype Var = Var Natural
-  deriving (Eq, Ord)
+prop_valid :: NormalE Type Var -> Property
+prop_valid x = case validate x of
+  Ok           -> QC.property True
+  Invalid errs -> QC.counterexample
+    (showSDocUnsafe $ hang ("Expr:" <+> ppr (fromNormal x)) 2 $ vcat
+      (toList errs)
+    )
+    False
 
-instance Show Var where
-  show (Var x) = c : show x
-    where
-      z = fromEnum 'z'
-      a = fromEnum 'a'
-      c = toEnum $ (fromIntegral x - a) `mod` (z - a + 1) + a
+ignoreSlow :: QC.Testable p => a -> p -> Property
+ignoreSlow a = (i'mStuck .||.)
+  where
+    i'mStuck =
+      QC.classify True "was not evaluated in time" (isNothing $ inTime a)
 
-instance Outputable Var where
-  ppr = text . show
+evalN :: NormalE Type Var -> Either TestExp Integer
+evalN = evalExp . fromNormal
 
-newtype Type = Type String
-  deriving (Eq, Ord, IsString)
-
-instance Show Type where
-  show (Type x) = x
-
-instance Outputable Type where
-  ppr (Type x) = text x
-
-instance Arbitrary Var where
-  arbitrary = Var . fromInteger . abs <$> arbitrary
-  shrink (Var x) = Var . fromInteger . abs <$> shrink (toInteger x)
-
-instance Arbitrary Type where
-  arbitrary = fmap Type $ QC.choose  ('A', 'Z') >>= go
-    where
-      go c = fmap (c:) $ do
-        oneMore <- arbitrary
-        if oneMore
-        then QC.choose ('a', 'z') >>= go
-        else return []
-
-instance Arbitrary (Exp Type Var) where
+instance Arbitrary (NormalE Type Var) where
   arbitrary = do
-    funList <- QC.choose (1, 4) >>= flip QC.vectorOf arbitrary
-    varList <- QC.choose (1, 20) >>= flip QC.vectorOf arbitrary
-    let go n small = QC.frequency
-          [ (10 * n, N . (if small then (`mod` 10) else id) . fromInteger . abs <$> arbitrary)
-          , (1, F <$> QC.elements funList)
-          , (8, V <$> QC.elements varList)
-          , (if small then 5 else 6, (:+) <$> go (n + 1) small <*> go (n + 1) small)
-          , (if small then 5 else 4, (:-) <$> go (n + 1) small <*> go (n + 1) small)
-          , (if small then 1 else 5, (:*) <$> go (n + 1) small <*> go (n + 1) small)
-          , (if small then 0 else 2, (:^) <$> go (n + 1) True <*> go (n + 1) True)
-          , (if small then 5 else 2, Div <$> go (n + 1) small <*> go (n + 1) False)
-          , (if small then 5 else 2, Mod <$> go (n + 1) False <*> go (n + 1) small)
-          , (if small then 1 else 3, Max <$> go (n + 1) small <*> go (n + 1) small)
-          , (if small then 6 else 3, Min <$> go (n + 1) small <*> go (n + 1) small)
-          , (if small then 5 else 2, Log2 <$>  go (n + 1) small)
-          ]
-    go 1 False
-  shrink (N n) = [N $ div n 2]
-  shrink (V (Var n)) = [N n]
-  shrink (F _) = []
-  shrink (a :+ b) = [a, b]
-  shrink (a :* b) = [a, b]
-  shrink (a :- b) = [a, b]
-  shrink (a :^ b) = [a, b]
-  shrink (Div a b) = [a, b]
-  shrink (Mod a b) = [a, b]
-  shrink (Max a b) = [a, b]
-  shrink (Min a b) = [a, b]
-  shrink (Log2 a)  = [a]
+    expOrig <- arbitrary
+    let x  = normalize expOrig
+        expNorm = fromNormal x
+        resOrig = evalExp expOrig
+        resNorm = evalExp expNorm
+    evald <- pure . inTime $ resOrig `seq` resNorm `seq` (resOrig, resNorm)
+    case evald of
+      Just (Right a, Right b) | a == b -> return x
+      _ -> arbitrary
 
-keepSolutions :: Exp Type Var -> Property
-keepSolutions expOrig = i'mStuck .||. QC.counterexample
+
+prop_numPlusZero :: NormalE Type Var -> Property
+prop_numPlusZero x = ignoreSlow (rx0 `seq` rx1 `seq` r0x `seq` r)
+  $ and [r == rx0, r == rx1, r == r0x]
+  where
+    r   = evalN x
+    rx0 = evalN (x + 0)
+    rx1 = evalN (x - 0)
+    r0x = evalN (0 + x)
+
+prop_numPlusSym :: NormalE Type Var -> NormalE Type Var -> Property
+prop_numPlusSym x y = ignoreSlow (xy `seq` yx) $ xy == yx
+  where
+    xy = evalN (x + y)
+    yx = evalN (y + x)
+
+prop_numTimesOne :: NormalE Type Var -> Property
+prop_numTimesOne x = ignoreSlow (r1x `seq` rx1 `seq` r) $ r == r1x && r == rx1
+  where
+    r   = evalN x
+    r1x = evalN (1 * x)
+    rx1 = evalN (x * 1)
+
+prop_numTimesSym :: NormalE Type Var -> NormalE Type Var -> Property
+prop_numTimesSym x y = ignoreSlow (xy `seq` yx) $ xy == yx
+  where
+    xy = evalN (x * y)
+    yx = evalN (y * x)
+
+prop_negateTwice :: NormalE Type Var -> Property
+prop_negateTwice x = ignoreSlow (rm `seq` rp) $ rp == rm
+  where
+    rp = evalN x
+    rm = evalN $ negate $ negate x
+
+
+prop_negateOnce :: NormalE Type Var -> Property
+prop_negateOnce x = ignoreSlow (rm `seq` rp) (rp == fmap negate rm)
+  where
+    rp = evalN x
+    rm = evalN $ negate x
+
+prop_abs :: NormalE Type Var -> Property
+prop_abs x =
+  QC.counterexample (showSDocUnsafe . ppr $ fromNormal x)
+    $ ignoreSlow (a `seq` m `seq` p)
+    $ and [a == p || a == m, a >= m, a >= p, a >= 0]
+  where
+    Right a = evalN $ abs x
+    Right p = evalN x
+    Right m = evalN $ negate x
+
+prop_max :: NormalE Type Var -> NormalE Type Var -> Property
+prop_max x y = ignoreSlow (rx `seq` ry `seq` rm)
+  $ and [rm >= rx, rm >= ry, rx == rm || ry == rm]
+  where
+    Right rx = evalN x
+    Right ry = evalN y
+    Right rm = evalN $ neMax x y
+
+prop_min :: NormalE Type Var -> NormalE Type Var -> Property
+prop_min x y = ignoreSlow (rx `seq` ry `seq` rm)
+  $ and [rm <= rx, rm <= ry, rx == rm || ry == rm]
+  where
+    Right rx = evalN x
+    Right ry = evalN y
+    Right rm = evalN $ neMin x y
+
+prop_sumPN :: NormalE Type Var -> Property
+prop_sumPN x =
+  QC.counterexample (showSDocUnsafe . ppr $ fromNormal x)
+    $ ignoreSlow (rx `seq` ry) (rx QC.=== ry)
+  where
+    rx = evalN x
+    ry = evalN $ neMin x 0 + neMax x 0
+
+
+keepSolutions :: TestExp -> Property
+keepSolutions expOrig = ignoreSlow (resOrig `seq` resNorm) $ QC.counterexample
   (showSDocUnsafe $ vcat
     [ text "  Original expr:" <+> ppr expOrig
     , text "Normalized expr:" <+> ppr expNorm
@@ -119,27 +161,17 @@ keepSolutions expOrig = i'mStuck .||. QC.counterexample
       False
   )
   where
-    normal  = simplify $ normalize expOrig
+    normal  = normalize expOrig
     expNorm = fromNormal normal
-    substVals =
-      runIdentity . substituteVar (\(Var x) -> pure (N x :: Exp Type Var))
-    resOrig = evaluate $ substVals expOrig
-    resNorm = evaluate $ substVals expNorm
-    i'mStuck =
-      QC.classify True "was not evaluated in time"
-        $   QC.ioProperty
-        $   not
-        .   QC.isSuccess
-        <$> QC.quickCheckWithResult
-              QC.stdArgs { QC.chatty = False }
-              (QC.within 1000000 (resOrig `seq` resNorm `seq` True))
+    resOrig = evalExp expOrig
+    resNorm = evalExp expNorm
 
-ks :: Exp Type Var -> Property
+ks :: TestExp -> Property
 ks = QC.once . keepSolutions
 
 
--- prop_keepSolutions :: Exp Type Var -> Property
--- prop_keepSolutions = keepSolutions
+prop_keepSolutions :: TestExp -> Property
+prop_keepSolutions = keepSolutions
 
 prop_keepSolutions_1 :: Property
 prop_keepSolutions_1 = ks $ N 0 :^ N 0
@@ -166,7 +198,6 @@ prop_keepSolutions_7 =
 prop_keepSolutions_8 :: Property
 prop_keepSolutions_8 =
   ks $ Max (V (Var 12) - V (Var 13)) (V (Var 15) :- V (Var 17)) :^ V (Var 3)
-
 prop_keepSolutions_9 :: Property
 prop_keepSolutions_9 =
   ks $ Max (V (Var 12) - V (Var 13)) (V (Var 15) :- V (Var 17)) :^ V (Var 0)
@@ -208,6 +239,26 @@ prop_keepSolutions_19 =
 prop_keepSolutions_20 :: Property
 prop_keepSolutions_20 =
   ks $ Max (V (Var 1) - V (Var 2)) (V (Var 2) - V (Var 1)) :^ (N 0 :- N 3)
+
+prop_keepSolutions_21 :: Property
+prop_keepSolutions_21 = ks $ (N 5 - (V (Var 2))) * (N 7 - (V (Var 3)))
+
+
+prop_keepSolutions_22 :: Property
+prop_keepSolutions_22 =
+  ks $ Div (N 44 + Min (V (Var 20)) (V (Var 19) * 10)) (4 - 9)
+
+prop_keepSolutions_23 :: Property
+prop_keepSolutions_23 = ks $ Div (N 0 :- N 7) (Min (N 5) (N 3))
+
+prop_keepSolutions_24 :: Property
+prop_keepSolutions_24 = ks $ Mod (-1) 12
+
+-- *** Failed! Falsified, Falsified (after 4662 tests):                  
+-- Min (Div (N 0) (N 59)) (Log2 (N 0)) :^ Div (Log2 (N 6 :+ N 5)) (Max (V g51 :* V y17) (N 14))
+
+-- Div (N 28) (Log2 (Min (N 20) (N 12 :* N 13)) :- Max (V d22 :^ Mod (Log2 (N 4) :^ N 6) (N 6)) (N 7))
+
 
 return []
 runTests :: IO Bool
