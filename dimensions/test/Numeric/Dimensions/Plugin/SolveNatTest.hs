@@ -7,7 +7,6 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# OPTIONS_GHC -fno-warn-missing-local-signatures #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Numeric.Dimensions.Plugin.SolveNatTest where
 
 
@@ -29,8 +28,25 @@ import           Numeric.Dimensions.Plugin.SolveNat.ExpTest
 {-# ANN module ("HLint: ignore Redundant negate" :: String) #-}
 
 
-prop_valid :: NormalE Type Var -> Property
-prop_valid x = case validate x of
+newtype TestNE = T (NormalE Type Var)
+
+instance Show TestNE where
+  show (T x) = show $ fromNormal x
+
+instance Arbitrary TestNE where
+  arbitrary = do
+    expOrig <- arbitrary
+    let x  = normalize expOrig
+        expNorm = fromNormal x
+        resOrig = evalExp expOrig
+        resNorm = evalExp expNorm
+    evald <- pure . inTime $ resOrig `seq` resNorm `seq` (resOrig, resNorm)
+    case evald of
+      Just (Right a, Right b) | a == b -> return $ T x
+      _ -> arbitrary
+
+prop_valid :: TestNE -> Property
+prop_valid (T x) = case validate x of
   Ok           -> QC.property True
   Invalid errs -> QC.counterexample
     (showSDocUnsafe $ hang ("Expr:" <+> ppr (fromNormal x)) 2 $ vcat
@@ -47,21 +63,8 @@ ignoreSlow a = (i'mStuck .||.)
 evalN :: NormalE Type Var -> Either TestExp Integer
 evalN = evalExp . fromNormal
 
-instance Arbitrary (NormalE Type Var) where
-  arbitrary = do
-    expOrig <- arbitrary
-    let x  = normalize expOrig
-        expNorm = fromNormal x
-        resOrig = evalExp expOrig
-        resNorm = evalExp expNorm
-    evald <- pure . inTime $ resOrig `seq` resNorm `seq` (resOrig, resNorm)
-    case evald of
-      Just (Right a, Right b) | a == b -> return x
-      _ -> arbitrary
-
-
-prop_numPlusZero :: NormalE Type Var -> Property
-prop_numPlusZero x = ignoreSlow (rx0 `seq` rx1 `seq` r0x `seq` r)
+prop_numPlusZero :: TestNE -> Property
+prop_numPlusZero (T x) = ignoreSlow (rx0 `seq` rx1 `seq` r0x `seq` r)
   $ and [r == rx0, r == rx1, r == r0x]
   where
     r   = evalN x
@@ -69,40 +72,40 @@ prop_numPlusZero x = ignoreSlow (rx0 `seq` rx1 `seq` r0x `seq` r)
     rx1 = evalN (x - 0)
     r0x = evalN (0 + x)
 
-prop_numPlusSym :: NormalE Type Var -> NormalE Type Var -> Property
-prop_numPlusSym x y = ignoreSlow (xy `seq` yx) $ xy == yx
+prop_numPlusSym :: TestNE -> TestNE -> Property
+prop_numPlusSym (T x) (T y) = ignoreSlow (xy `seq` yx) $ xy == yx
   where
     xy = evalN (x + y)
     yx = evalN (y + x)
 
-prop_numTimesOne :: NormalE Type Var -> Property
-prop_numTimesOne x = ignoreSlow (r1x `seq` rx1 `seq` r) $ r == r1x && r == rx1
+prop_numTimesOne :: TestNE -> Property
+prop_numTimesOne (T x) =
+  ignoreSlow (r1x `seq` rx1 `seq` r) $ r == r1x && r == rx1
   where
     r   = evalN x
     r1x = evalN (1 * x)
     rx1 = evalN (x * 1)
 
-prop_numTimesSym :: NormalE Type Var -> NormalE Type Var -> Property
-prop_numTimesSym x y = ignoreSlow (xy `seq` yx) $ xy == yx
+prop_numTimesSym :: TestNE -> TestNE -> Property
+prop_numTimesSym (T x) (T y) = ignoreSlow (xy `seq` yx) $ xy == yx
   where
     xy = evalN (x * y)
     yx = evalN (y * x)
 
-prop_negateTwice :: NormalE Type Var -> Property
-prop_negateTwice x = ignoreSlow (rm `seq` rp) $ rp == rm
+prop_negateTwice :: TestNE -> Property
+prop_negateTwice (T x) = ignoreSlow (rm `seq` rp) $ rp == rm
   where
     rp = evalN x
     rm = evalN $ negate $ negate x
 
-
-prop_negateOnce :: NormalE Type Var -> Property
-prop_negateOnce x = ignoreSlow (rm `seq` rp) (rp == fmap negate rm)
+prop_negateOnce :: TestNE -> Property
+prop_negateOnce (T x) = ignoreSlow (rm `seq` rp) (rp == fmap negate rm)
   where
     rp = evalN x
     rm = evalN $ negate x
 
-prop_abs :: NormalE Type Var -> Property
-prop_abs x =
+prop_abs :: TestNE -> Property
+prop_abs (T x) =
   QC.counterexample (showSDocUnsafe . ppr $ fromNormal x)
     $ ignoreSlow (a `seq` m `seq` p)
     $ and [a == p || a == m, a >= m, a >= p, a >= 0]
@@ -111,24 +114,24 @@ prop_abs x =
     Right p = evalN x
     Right m = evalN $ negate x
 
-prop_max :: NormalE Type Var -> NormalE Type Var -> Property
-prop_max x y = ignoreSlow (rx `seq` ry `seq` rm)
+prop_max :: TestNE -> TestNE -> Property
+prop_max (T x) (T y) = ignoreSlow (rx `seq` ry `seq` rm)
   $ and [rm >= rx, rm >= ry, rx == rm || ry == rm]
   where
     Right rx = evalN x
     Right ry = evalN y
     Right rm = evalN $ neMax x y
 
-prop_min :: NormalE Type Var -> NormalE Type Var -> Property
-prop_min x y = ignoreSlow (rx `seq` ry `seq` rm)
+prop_min :: TestNE -> TestNE -> Property
+prop_min (T x) (T y) = ignoreSlow (rx `seq` ry `seq` rm)
   $ and [rm <= rx, rm <= ry, rx == rm || ry == rm]
   where
     Right rx = evalN x
     Right ry = evalN y
     Right rm = evalN $ neMin x y
 
-prop_sumPN :: NormalE Type Var -> Property
-prop_sumPN x =
+prop_sumPN :: TestNE -> Property
+prop_sumPN (T x) =
   QC.counterexample (showSDocUnsafe . ppr $ fromNormal x)
     $ ignoreSlow (rx `seq` ry) (rx QC.=== ry)
   where
