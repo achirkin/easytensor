@@ -27,14 +27,7 @@ import           Data.Ratio
 import           Numeric.Natural
 import           Outputable              hiding ( (<>) )
 
--- | Integer logarithm with base 2 (rounding the value down)
-log2Nat :: Natural -> Natural
-log2Nat 0 = throw Underflow
-log2Nat 1 = 0
-log2Nat n = succ . log2Nat $ shiftR n 1
-
-
--- | Rounded logarith with base 2.
+-- | Rounded logarithm with base 2.
 --   Rounding is towards zero.
 --
 --   \( \mathrm{log2R}(x) = - \mathrm{log2R} \left( \frac{1}{x} \right) \)
@@ -306,16 +299,8 @@ evaluate' (Min a b) = case (evaluateR a, evaluateR b) of
   (Left  x, Left y ) -> (0, [(1, Min x y)])
 
 evaluate' (Log2 a) = case evaluateR a of
-  Right x
-    | x > 0
-    -> let n = fromInteger $ numerator x :: Natural
-           d = fromInteger $ denominator x :: Natural
-           r = if n >= d
-             then toInteger (log2Nat $ div n d)
-             else negate $ toInteger (log2Nat $ div d n)
-       in  (r % 1, [])
-    | otherwise
-    -> (0, [(1, Log2 $ _R x)])
+  Right x | Just r <- log2R x -> (r % 1, [])
+          | otherwise         -> (0, [(1, Log2 $ _R x)])
   Left e -> (0, [(1, Log2 e)])
 
 
