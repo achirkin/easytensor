@@ -17,6 +17,7 @@ dist-newstyle
 .ghc.*
 *.cabal
 cabal.project
+stack.yaml.lock
 
 cabal.config
 *.o

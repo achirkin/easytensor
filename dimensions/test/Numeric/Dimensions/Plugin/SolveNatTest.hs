@@ -6,6 +6,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PatternSynonyms            #-}
 {-# OPTIONS_GHC -fno-warn-missing-local-signatures #-}
 module Numeric.Dimensions.Plugin.SolveNatTest where
 
@@ -28,10 +29,13 @@ import           Numeric.Dimensions.Plugin.SolveNat.ExpTest
 {-# ANN module ("HLint: ignore Redundant negate" :: String) #-}
 
 
-newtype TestNE = T (NormalE Type Var)
+data TestNE = TestNE TestExp (NormalE Type Var)
+
+pattern T :: NormalE Type Var -> TestNE
+pattern T x <- TestNE _ x
 
 instance Show TestNE where
-  show (T x) = show $ fromNormal x
+  show (TestNE e _) = show e
 
 instance Arbitrary TestNE where
   arbitrary = do
@@ -42,17 +46,8 @@ instance Arbitrary TestNE where
         resNorm = evalExp expNorm
     evald <- pure . inTime $ resOrig `seq` resNorm `seq` (resOrig, resNorm)
     case evald of
-      Just (Right a, Right b) | a == b -> return $ T x
+      Just (Right a, Right b) | a == b -> return $ TestNE expOrig x
       _ -> arbitrary
-
-prop_valid :: TestNE -> Property
-prop_valid (T x) = case validate x of
-  Ok           -> QC.property True
-  Invalid errs -> QC.counterexample
-    (showSDocUnsafe $ hang ("Expr:" <+> ppr (fromNormal x)) 2 $ vcat
-      (toList errs)
-    )
-    False
 
 ignoreSlow :: QC.Testable p => a -> p -> Property
 ignoreSlow a = (i'mStuck .||.)
@@ -62,82 +57,6 @@ ignoreSlow a = (i'mStuck .||.)
 
 evalN :: NormalE Type Var -> Either TestExp Integer
 evalN = evalExp . fromNormal
-
-prop_numPlusZero :: TestNE -> Property
-prop_numPlusZero (T x) = ignoreSlow (rx0 `seq` rx1 `seq` r0x `seq` r)
-  $ and [r == rx0, r == rx1, r == r0x]
-  where
-    r   = evalN x
-    rx0 = evalN (x + 0)
-    rx1 = evalN (x - 0)
-    r0x = evalN (0 + x)
-
-prop_numPlusSym :: TestNE -> TestNE -> Property
-prop_numPlusSym (T x) (T y) = ignoreSlow (xy `seq` yx) $ xy == yx
-  where
-    xy = evalN (x + y)
-    yx = evalN (y + x)
-
-prop_numTimesOne :: TestNE -> Property
-prop_numTimesOne (T x) =
-  ignoreSlow (r1x `seq` rx1 `seq` r) $ r == r1x && r == rx1
-  where
-    r   = evalN x
-    r1x = evalN (1 * x)
-    rx1 = evalN (x * 1)
-
-prop_numTimesSym :: TestNE -> TestNE -> Property
-prop_numTimesSym (T x) (T y) = ignoreSlow (xy `seq` yx) $ xy == yx
-  where
-    xy = evalN (x * y)
-    yx = evalN (y * x)
-
-prop_negateTwice :: TestNE -> Property
-prop_negateTwice (T x) = ignoreSlow (rm `seq` rp) $ rp == rm
-  where
-    rp = evalN x
-    rm = evalN $ negate $ negate x
-
-prop_negateOnce :: TestNE -> Property
-prop_negateOnce (T x) = ignoreSlow (rm `seq` rp) (rp == fmap negate rm)
-  where
-    rp = evalN x
-    rm = evalN $ negate x
-
-prop_abs :: TestNE -> Property
-prop_abs (T x) =
-  QC.counterexample (showSDocUnsafe . ppr $ fromNormal x)
-    $ ignoreSlow (a `seq` m `seq` p)
-    $ and [a == p || a == m, a >= m, a >= p, a >= 0]
-  where
-    Right a = evalN $ abs x
-    Right p = evalN x
-    Right m = evalN $ negate x
-
-prop_max :: TestNE -> TestNE -> Property
-prop_max (T x) (T y) = ignoreSlow (rx `seq` ry `seq` rm)
-  $ and [rm >= rx, rm >= ry, rx == rm || ry == rm]
-  where
-    Right rx = evalN x
-    Right ry = evalN y
-    Right rm = evalN $ neMax x y
-
-prop_min :: TestNE -> TestNE -> Property
-prop_min (T x) (T y) = ignoreSlow (rx `seq` ry `seq` rm)
-  $ and [rm <= rx, rm <= ry, rx == rm || ry == rm]
-  where
-    Right rx = evalN x
-    Right ry = evalN y
-    Right rm = evalN $ neMin x y
-
-prop_sumPN :: TestNE -> Property
-prop_sumPN (T x) =
-  QC.counterexample (showSDocUnsafe . ppr $ fromNormal x)
-    $ ignoreSlow (rx `seq` ry) (rx QC.=== ry)
-  where
-    rx = evalN x
-    ry = evalN $ neMin x 0 + neMax x 0
-
 
 keepSolutions :: TestExp -> Property
 keepSolutions expOrig = ignoreSlow (resOrig `seq` resNorm) $ QC.counterexample
@@ -172,6 +91,80 @@ keepSolutions expOrig = ignoreSlow (resOrig `seq` resNorm) $ QC.counterexample
 ks :: TestExp -> Property
 ks = QC.once . keepSolutions
 
+-- prop_numPlusZero :: TestNE -> Property
+-- prop_numPlusZero (T x) = ignoreSlow (rx0 `seq` rx1 `seq` r0x `seq` r)
+--   $ and [r == rx0, r == rx1, r == r0x]
+--   where
+--     r   = evalN x
+--     rx0 = evalN (x + 0)
+--     rx1 = evalN (x - 0)
+--     r0x = evalN (0 + x)
+
+-- prop_numPlusSym :: TestNE -> TestNE -> Property
+-- prop_numPlusSym (T x) (T y) = ignoreSlow (xy `seq` yx) $ xy == yx
+--   where
+--     xy = evalN (x + y)
+--     yx = evalN (y + x)
+
+-- prop_numTimesOne :: TestNE -> Property
+-- prop_numTimesOne (T x) =
+--   ignoreSlow (r1x `seq` rx1 `seq` r) $ r == r1x && r == rx1
+--   where
+--     r   = evalN x
+--     r1x = evalN (1 * x)
+--     rx1 = evalN (x * 1)
+
+-- prop_numTimesSym :: TestNE -> TestNE -> Property
+-- prop_numTimesSym (T x) (T y) = ignoreSlow (xy `seq` yx) $ xy == yx
+--   where
+--     xy = evalN (x * y)
+--     yx = evalN (y * x)
+
+-- prop_negateTwice :: TestNE -> Property
+-- prop_negateTwice (T x) = ignoreSlow (rm `seq` rp) $ rp == rm
+--   where
+--     rp = evalN x
+--     rm = evalN $ negate $ negate x
+
+-- prop_negateOnce :: TestNE -> Property
+-- prop_negateOnce (T x) = ignoreSlow (rm `seq` rp) (rp == fmap negate rm)
+--   where
+--     rp = evalN x
+--     rm = evalN $ negate x
+
+-- prop_abs :: TestNE -> Property
+-- prop_abs (T x) =
+--   QC.counterexample (showSDocUnsafe . ppr $ fromNormal x)
+--     $ ignoreSlow (a `seq` m `seq` p)
+--     $ and [a == p || a == m, a >= m, a >= p, a >= 0]
+--   where
+--     Right a = evalN $ abs x
+--     Right p = evalN x
+--     Right m = evalN $ negate x
+
+-- prop_max :: TestNE -> TestNE -> Property
+-- prop_max (T x) (T y) = ignoreSlow (rx `seq` ry `seq` rm)
+--   $ and [rm >= rx, rm >= ry, rx == rm || ry == rm]
+--   where
+--     Right rx = evalN x
+--     Right ry = evalN y
+--     Right rm = evalN $ neMax x y
+
+-- prop_min :: TestNE -> TestNE -> Property
+-- prop_min (T x) (T y) = ignoreSlow (rx `seq` ry `seq` rm)
+--   $ and [rm <= rx, rm <= ry, rx == rm || ry == rm]
+--   where
+--     Right rx = evalN x
+--     Right ry = evalN y
+--     Right rm = evalN $ neMin x y
+
+-- prop_sumPN :: TestNE -> Property
+-- prop_sumPN (T x) =
+--   QC.counterexample (showSDocUnsafe . ppr $ fromNormal x)
+--     $ ignoreSlow (rx `seq` ry) (rx QC.=== ry)
+--   where
+--     rx = evalN x
+--     ry = evalN $ neMin x 0 + neMax x 0
 
 prop_keepSolutions :: TestExp -> Property
 prop_keepSolutions = keepSolutions
@@ -257,15 +250,52 @@ prop_keepSolutions_23 = ks $ Div (N 0 :- N 7) (Min (N 5) (N 3))
 prop_keepSolutions_24 :: Property
 prop_keepSolutions_24 = ks $ Mod (-1) 12
 
--- *** Failed! Falsified, Falsified (after 4662 tests):                  
--- Min (Div (N 0) (N 59)) (Log2 (N 0)) :^ Div (Log2 (N 6 :+ N 5)) (Max (V g51 :* V y17) (N 14))
+prop_keepSolutions_25 :: Property
+prop_keepSolutions_25 = ks $ 2 :^ Min (1 :+ V (Var 3)) (2 :+ V (Var 3))
 
--- Div (N 28) (Log2 (Min (N 20) (N 12 :* N 13)) :- Max (V d22 :^ Mod (Log2 (N 4) :^ N 6) (N 6)) (N 7))
+prop_keepSolutions_26 :: Property
+prop_keepSolutions_26 = ks $ 2 :^ ((Min 4 (Max 5 0) :+ V (Var 2)) :- N 3)
 
+prop_keepSolutions_27 :: Property
+prop_keepSolutions_27 = ks $ Min (Div (N 0) (N 59)) (Log2 (N 0)) :^ Div (Log2 (N 6 :+ N 5)) (Max (V (Var 51) :* V (Var 17)) (N 14))
+
+prop_keepSolutions_28 :: Property
+prop_keepSolutions_28 = ks $ Div 3 (Min (-3) 0)
+
+
+prop_valid :: TestNE -> Property
+prop_valid (TestNE _ x) = case validate x of
+  Ok           -> QC.property True
+  Invalid errs -> QC.counterexample
+    (showSDocUnsafe $ hang ("Expr:" <+> ppr (fromNormal x)) 2 $ vcat
+      (toList errs)
+    )
+    False
+
+pv :: TestExp -> Property
+pv e = prop_valid $ TestNE e (normalize e)
+
+prop_valid_1 :: Property
+prop_valid_1 = pv $ Mod (Div (N 36) (V (Var 2)) :* Min (Div (N 73) (N 57)) (N 84) :- 19) (V (Var 56) :- 21) :- Mod (N 84) (V (Var 29)) :^ N 6
+
+prop_valid_2 :: Property
+prop_valid_2 = pv $ Mod 2 (V (Var 27)) :- Log2 25
+
+prop_valid_3 :: Property
+prop_valid_3 = pv $ (Min 3 (V (Var 2)) :+ 4) :^ Log2 (V (Var 1))
+
+prop_valid_4 :: Property
+prop_valid_4 = pv $ N 2 :^ V (Var 4) :- N 3
+
+prop_valid_5 :: Property
+prop_valid_5 = pv $ N 0 :^ V (Var 2)
+
+prop_valid_6 :: Property
+prop_valid_6 = pv $ (2 :+ V (Var 1)) :^ 5
 
 return []
 runTests :: IO Bool
 -- runTests = $quickCheckAll
 runTests = $(QC.forAllProperties)
-  $ QC.quickCheckWithResult QC.stdArgs { QC.maxSuccess = 10000 }
+  $ QC.quickCheckWithResult QC.stdArgs { QC.maxSuccess = 1000 }
 

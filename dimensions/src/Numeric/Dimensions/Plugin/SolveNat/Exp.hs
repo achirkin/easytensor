@@ -11,6 +11,7 @@ module Numeric.Dimensions.Plugin.SolveNat.Exp
   , Exp(..)
   , substituteVar
   , substituteFun
+  , asConstant
   , evaluate
   , evaluateR
   , _R
@@ -20,10 +21,12 @@ where
 import           Control.Exception              ( ArithException(..)
                                                 , throw
                                                 )
+import           Control.Monad                  ( (>=>) )
 import           Data.Bifunctor
 import           Data.Bits
 import           Data.Functor.Identity
 import           Data.Ratio
+import           Data.Void
 import           Numeric.Natural
 import           Outputable              hiding ( (<>) )
 
@@ -120,12 +123,13 @@ instance Num (Exp t v) where
   abs (N 0 :- N n) = N n
   abs (Log2 e)     = Log2 e
   abs e            = Max e (N 0 :- e)
+  signum e@(F _) = Min (Max 1 (0 :- e)) (Max (-1) e) -- assume type family can be negative int
+  signum e@(V _) = Min 1 e -- only Nats allowed
   signum (N n) = N (signum n)
-  signum (N 0 :- N 0) = N 0
-  signum (N 0 :- N _) = N 0 :- N 1
+  signum (N 0 :- e) = negate (signum e)
   -- NB: this is not exactly signum for rational-valued expressions;
   --     it's linear on segment [-1, 1].
-  signum e    = Min (Max (N 1) (N 0 :- e)) (Max (N 0 :- N 1) e)
+  signum e    = Min (Max 1 (0 :- e)) (Max (-1) e)
   fromInteger i
     | i >= 0    = N (fromInteger i)
     | otherwise = N 0 :- N (fromInteger $ negate i)
@@ -185,6 +189,10 @@ substituteFun f (Mod a  b) = Mod <$> substituteFun f a <*> substituteFun f b
 substituteFun f (Max a  b) = Max <$> substituteFun f a <*> substituteFun f b
 substituteFun f (Min a  b) = Min <$> substituteFun f a <*> substituteFun f b
 substituteFun f (Log2 a  ) = Log2 <$> substituteFun f a
+
+-- | Check if there are no variables or functions inside this expression.
+asConstant :: Exp a b -> Maybe (Exp Void Void)
+asConstant = substituteFun (const Nothing) >=> substituteVar (const Nothing)
 
 -- | Try to evaluate an expression fully or partially and return either a single
 --   Integer or a simplified expression.
