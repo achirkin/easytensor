@@ -166,8 +166,8 @@ ks = QC.once . keepSolutions
 --     rx = evalN x
 --     ry = evalN $ neMin x 0 + neMax x 0
 
-prop_keepSolutions :: TestExp -> Property
-prop_keepSolutions = keepSolutions
+-- prop_keepSolutions :: TestExp -> Property
+-- prop_keepSolutions = keepSolutions
 
 prop_keepSolutions_1 :: Property
 prop_keepSolutions_1 = ks $ N 0 :^ N 0
@@ -262,6 +262,8 @@ prop_keepSolutions_27 = ks $ Min (Div (N 0) (N 59)) (Log2 (N 0)) :^ Div (Log2 (N
 prop_keepSolutions_28 :: Property
 prop_keepSolutions_28 = ks $ Div 3 (Min (-3) 0)
 
+prop_keepSolutions_29 :: Property
+prop_keepSolutions_29 = ks $ V (Var 0) :^ (Div (N 4) (N 1 :+ V (Var 2) :* V (Var 2)) :+ Div (Mod (N 2 :+ (N 0 :+ N 3)) (N 3) :* Min (N 2) (N 3)) 5)
 
 prop_valid :: TestNE -> Property
 prop_valid (TestNE _ x) = case validate x of
@@ -292,6 +294,31 @@ prop_valid_5 = pv $ N 0 :^ V (Var 2)
 
 prop_valid_6 :: Property
 prop_valid_6 = pv $ (2 :+ V (Var 1)) :^ 5
+
+prop_valid_7 :: Property
+prop_valid_7 = pv $ Min (V (Var 3)) 5 :^ (Min (Mod 18 (V (Var 3))) 3 :+ 4 :+ V (Var 3))
+
+prop_valid_8 :: Property
+prop_valid_8 = pv $ Mod (1 :+ Min (V (Var 3)) 0) 2
+
+prop_valid_9 :: Property
+prop_valid_9 = pv $ Min (Min 4 9) 1 :^ Log2 (Min (V (Var 2)) 7)
+
+prop_valid_10 :: Property
+prop_valid_10 = pv $ Mod 1 (Min (N 8) (N 88 :* (N 24 :+ V (Var 34))))
+
+prop_valid_11 :: Property
+prop_valid_11 = pv $ Max (V (Var 0)) (Mod (V (Var 5)) 1 :* Max (3 :- 4 :^ V (Var 4) :* 4) 5)
+
+prop_valid_12 :: Property
+prop_valid_12 = pv $ Min (Max 6 (Mod (Min 1 (V (Var 4) :+ 4)) (Min 3 2))) (V (Var 1) :+ 1)
+
+prop_valid_13 :: Property
+prop_valid_13 = pv $ Mod 28 4 :^ (V (Var 36) :* 8 :- 1)
+
+prop_valid_14 :: Property
+prop_valid_14 = pv $ Div ((V (Var 3) :+ 1) :^ Min (-1) 1) 2
+
 
 return []
 runTests :: IO Bool

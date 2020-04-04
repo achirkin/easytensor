@@ -135,6 +135,13 @@ instance Num (Exp t v) where
     | otherwise = N 0 :- N (fromInteger $ negate i)
 
 
+instance Fractional (Exp t v) where
+  recip (a :^ b) = a :^ negate b
+  recip e = e :^ (-1)
+  fromRational r
+    | denominator r == 1 = fromInteger (numerator r)
+    | otherwise = fromInteger (numerator r) :* fromInteger (denominator r) :^ (-1)
+
 instance (Outputable v, Outputable t) => Outputable (Exp t v) where
   pprPrec _ (N n) = pprPrec 10 (toInteger n)
   pprPrec p (F n) = pprPrec p n
