@@ -118,51 +118,56 @@ instance Num (Exp t v) where
   (-) = (:-)
   (*) = (:*)
   negate (N 0 :- e) = e
-  negate e = N 0 :- e
-  abs (N n)        = N n
+  negate e          = N 0 :- e
+  abs (N n       ) = N n
   abs (N 0 :- N n) = N n
-  abs (Log2 e)     = Log2 e
+  abs (Log2 e    ) = Log2 e
   abs e            = Max e (N 0 :- e)
-  signum e@(F _) = Min (Max 1 (0 :- e)) (Max (-1) e) -- assume type family can be negative int
-  signum e@(V _) = Min 1 e -- only Nats allowed
-  signum (N n) = N (signum n)
-  signum (N 0 :- e) = negate (signum e)
+  signum e@(F _     ) = Min (Max 1 (0 :- e)) (Max (-1) e) -- assume type family can be negative int
+  signum e@(V _     ) = Min 1 e -- only Nats allowed
+  signum (  N n     ) = N (signum n)
+  signum (  N 0 :- e) = negate (signum e)
   -- NB: this is not exactly signum for rational-valued expressions;
   --     it's linear on segment [-1, 1].
-  signum e    = Min (Max 1 (0 :- e)) (Max (-1) e)
-  fromInteger i
-    | i >= 0    = N (fromInteger i)
-    | otherwise = N 0 :- N (fromInteger $ negate i)
+  signum e            = Min (Max 1 (0 :- e)) (Max (-1) e)
+  fromInteger i | i >= 0    = N (fromInteger i)
+                | otherwise = N 0 :- N (fromInteger $ negate i)
 
 
 instance Fractional (Exp t v) where
   recip (a :^ b) = a :^ negate b
-  recip e = e :^ (-1)
+  recip e        = e :^ (-1)
   fromRational r
-    | denominator r == 1 = fromInteger (numerator r)
-    | otherwise = fromInteger (numerator r) :* fromInteger (denominator r) :^ (-1)
+    | denominator r == 1
+    = fromInteger (numerator r)
+    | otherwise
+    = fromInteger (numerator r) :* fromInteger (denominator r) :^ (-1)
 
 instance (Outputable v, Outputable t) => Outputable (Exp t v) where
-  pprPrec _ (N n) = pprPrec 10 (toInteger n)
-  pprPrec p (F n) = pprPrec p n
-  pprPrec p (V v) = pprPrec p v
+  pprPrec _ (N n   ) = pprPrec 10 (toInteger n)
+  pprPrec p (F n   ) = pprPrec p n
+  pprPrec p (V v   ) = pprPrec p v
 
   pprPrec p (a :+ b) = cparen (p > 6) $ pprPrec 6 a <+> "+" <+> pprPrec 6 b
   pprPrec p (a :- b) = cparen (p > 6) $ pprPrec 6 a <+> "-" <+> pprPrec 6.1 b
   pprPrec p (a :* b) = cparen (p > 7) $ pprPrec 7 a <+> "*" <+> pprPrec 7 b
   pprPrec p (a :^ b) = cparen (p > 8) $ pprPrec 8.1 a <+> "^" <+> pprPrec 8 b
-  pprPrec p (Div a b)  = cparen (p > 10) $ "Div"  <+> pprPrec 11 a <+> pprPrec 11 b
-  pprPrec p (Mod a b)  = cparen (p > 10) $ "Mod"  <+> pprPrec 11 a <+> pprPrec 11 b
-  pprPrec p (Max a b)  = cparen (p > 10) $ "Max"  <+> pprPrec 11 a <+> pprPrec 11 b
-  pprPrec p (Min a b)  = cparen (p > 10) $ "Min"  <+> pprPrec 11 a <+> pprPrec 11 b
-  pprPrec p (Log2 v)   = cparen (p > 10) $ "Log2" <+> pprPrec 11 v
+  pprPrec p (Div a b) =
+    cparen (p > 10) $ "Div" <+> pprPrec 11 a <+> pprPrec 11 b
+  pprPrec p (Mod a b) =
+    cparen (p > 10) $ "Mod" <+> pprPrec 11 a <+> pprPrec 11 b
+  pprPrec p (Max a b) =
+    cparen (p > 10) $ "Max" <+> pprPrec 11 a <+> pprPrec 11 b
+  pprPrec p (Min a b) =
+    cparen (p > 10) $ "Min" <+> pprPrec 11 a <+> pprPrec 11 b
+  pprPrec p (Log2 v) = cparen (p > 10) $ "Log2" <+> pprPrec 11 v
 
 
 instance Functor (Exp t) where
   fmap = second
 
 instance Bifunctor Exp where
-  first  f = runIdentity . substituteFun (pure . F . f)
+  first f = runIdentity . substituteFun (pure . F . f)
   second f = runIdentity . substituteVar (pure . V . f)
 
 -- | Replace occurrence of a var with something else, possibly doing something
@@ -270,29 +275,19 @@ evaluate' (a :^ b) = case (evaluateR a, evaluateR b) of
   (Left x, Left y) -> (0, [(1, x :^ y)])
 
 evaluate' (Div a b) = case (evaluateR a, evaluateR b) of
-  (Right x, Right y)
-    | y == 0
-    -> (0, [(signum x, Div (_R $ abs x) 0)])
-    | otherwise
-    -> (div (numerator x * denominator y) (numerator y * denominator x) % 1, [])
-  (Left x, Right y)
-    | y == 1 && safe x  -> evaluate' x
-    | y == -1 && safe x -> bimap negate (map $ first negate) $ evaluate' x
-    | y >= 0            -> (0, [(1, Div x (_R y))])
-    | otherwise         -> (0, [(1, Div (0 :- x) (_R $ negate y))])
+  (Right x, Right y) | Just r <- divR x y -> (r % 1, [])
+                     | y == 0 -> (0, [(signum x, Div (_R $ abs x) 0)])
+                     | otherwise -> (0, [(1, Div (_R x) (_R y))])
+  (Left x, Right y) | y >= 0    -> (0, [(1, Div x (_R y))])
+                    | otherwise -> (0, [(1, Div (0 :- x) (_R $ negate y))])
   (Right x, Left y) | x == 0 && safe y -> (0, [])
                     | otherwise        -> (0, [(1, _R x `Div` y)])
   (Left x, Left y) -> (0, [(1, Div x y)])
 
 evaluate' (Mod a b) = case (evaluateR a, evaluateR b) of
-  (Right x, Right y)
-    | y == 0
-    -> (0, [(signum x, Mod (_R $ abs x) 0)])
-    | otherwise
-    -> let dx = denominator x
-           dy = denominator y
-           dr = dx * dy
-       in  (mod (numerator x * dy) (numerator y * dx) % dr, [])
+  (Right x, Right y) | Just r <- modR x y -> (r, [])
+                     | y == 0 -> (0, [(signum x, Mod (_R $ abs x) 0)])
+                     | otherwise -> (0, [(1, Mod (_R x) (_R y))])
   (Left x, Right y) | y == 1 && safe x  -> (0, [])
                     | y == -1 && safe x -> (0, [])
                     | y >= 0            -> (0, [(1, Mod x (_R y))])
