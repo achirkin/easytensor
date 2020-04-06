@@ -197,6 +197,8 @@ data UnitE t v
     -- ^ An irreducible type family
   | UV v
     -- ^ A type variable
+  | UIrreducible ExpState (Exp t v)
+    
   deriving (Eq, Ord, Show, Foldable)
 
 -- | 2,3,5,7,11...
@@ -640,6 +642,7 @@ instance NormalForm UnitE where
   fromNormal (ULog2 a)  = Log2 (fromNormal a)
   fromNormal (UF t)     = F t
   fromNormal (UV v)     = V v
+  fromNormal (UIrreducible _ e) = e
   toNormalE = toNormalE . unitAsPow
   asRational'  UMinusOne = Just (-1)
   asRational'  UOne      = Just 1
@@ -649,6 +652,7 @@ instance NormalForm UnitE where
   asRational' (ULog2 a)  = fromInteger <$> (asRational a >>= log2R)
   asRational' (UF _)     = Nothing
   asRational' (UV _)     = Nothing
+  asRational' (UIrreducible _ _)     = Nothing
   expState UMinusOne = -1
   expState UOne = 1
   expState (UN p) = fromIntegral $ asNatural p
@@ -677,7 +681,9 @@ instance NormalForm UnitE where
     , _isWhole    = True
     , _isComplete = True
     }
-  mapExpState _ = id
+  expState (UIrreducible s _) = s
+  mapExpState f (UIrreducible s x) = UIrreducible (f s) x
+  mapExpState _ x = x
   validate UMinusOne = Ok
   validate UOne = Ok
   validate up@(UN (Prime p))
@@ -688,6 +694,7 @@ instance NormalForm UnitE where
   validate (ULog2 a)  = validate a
   validate (UF _) = Ok
   validate (UV _) = Ok
+  validate (UIrreducible _ _) = Ok
 
 
 instance (Eq t, Eq v) => Eq (MinsE t v) where
@@ -830,7 +837,7 @@ instance (Ord t, Ord v) => Num (SumsE None t v) where
   abs x | isNonNeg x = x
         | otherwise  = x * signum x
   signum x = case normalSign x of
-    Nothing -> error "Tried to take signum of a complex expression"
+    Nothing -> unitAsSums $ UIrreducible (signum $ expState x) (signum $ fromNormal x)
     Just n  -> fromInteger n
   fromInteger n = case toList $ factorize n of
     [] -> zero
@@ -874,7 +881,7 @@ instance (Ord t, Ord v) => Fractional (SumsE None t v) where
   recip s
     | Just r <- asRational s
     , r /= 0 = fromRational (recip r)
-  recip (SumsE _ (L [])) = error "Division by zero" -- TODO: proper handling
+  recip (SumsE _ (L [])) = unitAsSums $ UIrreducible (recip 0) (0 :^ (-1))
   recip (SumsE _ (L [ProdE _ xs])) = singleProdAsSums $ prodE (f <$> xs)
     where
       f (PowU _ a b) = powU a (negateSum b)
@@ -1002,10 +1009,15 @@ maxsLog2 p
 
 nePow :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
 nePow a b
+  | isNonZero a || isNonNeg b = nePow' a b
+  | otherwise = toNormalE $ UIrreducible (expState a `esPow` expState b) (fromNormal a :^ fromNormal b)
+
+nePow' :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
+nePow' a b
   | Just r <- guardPow a b = r
   | isSingleSum a && isSingleSum b = map2Sums powSums a b
-nePow a (NormalE (MinsE _ (MaxsE _ (b :| L []) :| L []))) = powNeSums a b
-nePow a b = mapSumsOrderly (powNeSums a) b
+nePow' a (NormalE (MinsE _ (MaxsE _ (b :| L []) :| L []))) = powNeSums a b
+nePow' a b = mapSumsOrderly (powNeSums a) b
 
 powNeSums :: (Ord v, Ord t) => NormalE t v -> SumsE None t v -> NormalE t v
 powNeSums (NormalE (MinsE _ (MaxsE _ (a :| L []) :| L []))) b = toNormalE (powSums a b)
@@ -1171,6 +1183,7 @@ neDelta ex | Just r <- deltaR ex = atLeast1 r
     deltaUnitE (ULog2 _)  = [one]
     deltaUnitE (UF _)     = [one]
     deltaUnitE (UV _)     = [one]
+    deltaUnitE (UIrreducible _ _) = [one] -- TODO: not correct for fractionals!
 
     deltaR :: (Ord t, Ord v, NormalForm e) => e t v -> Maybe (SumsE None t v)
     deltaR x
