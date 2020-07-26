@@ -280,20 +280,16 @@ evaluate' (Div a b) = case (evaluateR a, evaluateR b) of
                      | otherwise -> (0, [(1, Div (_R x) (_R y))])
   (Left x, Right y) | y >= 0    -> (0, [(1, Div x (_R y))])
                     | otherwise -> (0, [(1, Div (0 :- x) (_R $ negate y))])
-  (Right x, Left y) | x == 0 && safe y -> (0, [])
-                    | otherwise        -> (0, [(1, _R x `Div` y)])
+  (Right x, Left y) -> (0, [(1, _R x `Div` y)])
   (Left x, Left y) -> (0, [(1, Div x y)])
 
 evaluate' (Mod a b) = case (evaluateR a, evaluateR b) of
   (Right x, Right y) | Just r <- modR x y -> (r, [])
                      | y == 0 -> (0, [(signum x, Mod (_R $ abs x) 0)])
                      | otherwise -> (0, [(1, Mod (_R x) (_R y))])
-  (Left x, Right y) | y == 1 && safe x  -> (0, [])
-                    | y == -1 && safe x -> (0, [])
-                    | y >= 0            -> (0, [(1, Mod x (_R y))])
+  (Left x, Right y) | y >= 0     -> (0, [(1, Mod x (_R y))])
                     | otherwise -> (0, [(1, Mod (0 :- x) (_R $ negate y))])
-  (Right x, Left y) | x == 0 && safe y -> (0, [])
-                    | otherwise        -> (0, [(1, _R x `Mod` y)])
+  (Right x, Left y) -> (0, [(1, _R x `Mod` y)])
   (Left x, Left y) -> (0, [(1, Mod x y)])
 
 evaluate' (Max a b) = case (evaluateR a, evaluateR b) of
@@ -376,12 +372,28 @@ safe (V _         ) = True
 safe (a   :+ b    ) = safe a && safe b
 safe (a   :- b    ) = safe a && safe b
 safe (a   :* b    ) = safe a && safe b
-safe (a   :^ b    ) = safe a && safe b
-safe (Div a  (N n)) = safe a && n > 0
-safe (Div _  _    ) = False
-safe (Mod a  (N n)) = safe a && n > 0
-safe (Mod _  _    ) = False
+safe (a   :^ b    )
+    | not (safe a) || not (safe b) = False
+    | Right rb <- eb, rb == 0 = True
+    | Right rb <- eb, rb > 0 && odd (denominator rb) = True
+    | Right ra <- ea, ra > 0 = True
+    | Right ra <- ea, Right rb <- eb, ra == 0 && rb >= 0 = True
+    | Right ra <- ea, Right rb <- eb, ra < 0 && odd (denominator rb) = True
+    | otherwise = False
+  where
+    ea = evaluateR a
+    eb = evaluateR b
+safe (Div a b)
+    | not (safe a) || not (safe b) = False
+    | Right rb <- evaluateR b = rb /= 0
+    | otherwise = False
+safe (Mod a b)
+    | not (safe a) || not (safe b) = False
+    | Right rb <- evaluateR b = rb /= 0
+    | otherwise = False
 safe (Max a  b    ) = safe a && safe b
 safe (Min a  b    ) = safe a && safe b
-safe (Log2 (N n)  ) = n > 0
-safe (Log2 _      ) = False
+safe (Log2 a)
+    | not (safe a)  = False
+    | Right ra <- evaluateR a = ra > 0
+    | otherwise = False

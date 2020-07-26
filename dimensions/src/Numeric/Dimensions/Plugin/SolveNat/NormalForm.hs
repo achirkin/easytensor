@@ -617,13 +617,13 @@ instance NormalForm PowE where
   mapExpState f (PowS s a b) = PowS (f s) a b
   validate (PowU _ a b) = validate a <> validate b <> checkConst
     where
-      bIsZero = isZero b
-      aIsOne  = isOne a
+      bIsZero = isZero b && isComplete b
+      aIsOne  = isOne a && isComplete a
       checkConst
         | bIsZero && not aIsOne = Invalid $ pure $ hsep
-          ["If power is zero, base must be one, but got", ppr a, "^", ppr b]
+          ["[a^b] If power is zero, base must be one, but got: a =", ppr a, "and b =", ppr b]
         | not bIsZero && aIsOne = Invalid $ pure $ hsep
-          ["If base is one, power must be zero, but got", ppr a, "^", ppr b]
+          ["[a^b] If base is one, power must be zero, but got: a =", ppr a, "and b =", ppr b]
         | otherwise = Ok
   validate x@(PowS _ a b) = validate a <> validate b <> isNotConst
     where
@@ -983,8 +983,8 @@ uDiv :: (Ord t, Ord v) => SumsE None t v -> NormalE t v -> SumsE None t v
 uDiv a b
   | isZero a && isNonZero b = 0
   | toNormalE a == b = 1
-  | isSignOne b && isNonNeg b = a
-  | isSignOne b && isNonPos b = negate a
+  | isSignOne b && isNonNeg b && isWhole a = a
+  | isSignOne b && isNonPos b && isWhole a = negate a
   | otherwise = case (asRational a, asRational b) of
     (Nothing, Nothing) -> unitAsSums $ UDiv a b
     (Just a', Nothing) -> unitAsSums $ UDiv (fromRational a') b
@@ -1009,12 +1009,19 @@ maxsLog2 p
 
 nePow :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
 nePow a b
-  | isNonZero a || isNonNeg b = nePow' a b
+  | Just r <- guardPow a b = r
+  |   all allNonZero (getMinsE $ getNormalE a)
+   || all allNonNeg (getMinsE $ getNormalE b) = nePow' a b
   | otherwise = toNormalE $ UIrreducible (expState a `esPow` expState b) (fromNormal a :^ fromNormal b)
+  where
+    -- check if all components of a MaxsE are non-negative
+    -- (otherwise, 0 ^ MaxsE xs cannot be distributed)
+    allNonNeg = all isNonNeg . getMaxsE
+    -- the same with non-zero
+    allNonZero = all isNonZero . getMaxsE
 
 nePow' :: (Ord t, Ord v) => NormalE t v -> NormalE t v -> NormalE t v
 nePow' a b
-  | Just r <- guardPow a b = r
   | isSingleSum a && isSingleSum b = map2Sums powSums a b
 nePow' a (NormalE (MinsE _ (MaxsE _ (b :| L []) :| L []))) = powNeSums a b
 nePow' a b = mapSumsOrderly (powNeSums a) b

@@ -228,7 +228,6 @@ prop_keepSolutions_18 :: Property
 prop_keepSolutions_18 =
   ks $ Min (V (Var 1) - V (Var 2)) (V (Var 1) + V (Var 2)) :^ (N 0 :- N 3)
 
-
 prop_keepSolutions_19 :: Property
 prop_keepSolutions_19 =
   ks $ Max (V (Var 1) - V (Var 2)) (V (Var 2) - V (Var 1)) :^ N 3
@@ -239,7 +238,6 @@ prop_keepSolutions_20 =
 
 prop_keepSolutions_21 :: Property
 prop_keepSolutions_21 = ks $ (N 5 - (V (Var 2))) * (N 7 - (V (Var 3)))
-
 
 prop_keepSolutions_22 :: Property
 prop_keepSolutions_22 =
@@ -270,7 +268,19 @@ prop_keepSolutions_30 :: Property
 prop_keepSolutions_30 = ks $ V (Var 0) :^ Max (V (Var 1) :- 1) (-2)
 
 prop_keepSolutions_31 :: Property
-prop_keepSolutions_31 = ks $ Div (Min (Div (V (Var 4) :* 3) 2) (3 :^ (-1))) 1
+prop_keepSolutions_31 = ks $ Div (Min (V (Var 4)) (3 :^ (-1))) 1
+
+prop_keepSolutions_32 :: Property
+prop_keepSolutions_32 = ks $ V (Var 0) :^ Max (V (Var 1)) (-1)
+
+prop_keepSolutions_33 :: Property
+prop_keepSolutions_33 = ks $ Div (Min (N 33 :* Div (V (Var 1)) (N 45)) (N 600)) (N 0 :^ (N 0 :- N 5))
+
+prop_keepSolutions_34 :: Property
+prop_keepSolutions_34 = ks $ (Min (V (Var 3) - 3) (-1)) :^ (-2)
+
+prop_keepSolutions_35 :: Property
+prop_keepSolutions_35 = ks $ (0 :^ (V (Var 1) - 2)) * Log2 (Min 2 (V (Var 1)))
 
 prop_valid :: TestNE -> Property
 prop_valid (TestNE _ x) = case validate x of
@@ -326,6 +336,8 @@ prop_valid_13 = pv $ Mod 28 4 :^ (V (Var 36) :* 8 :- 1)
 prop_valid_14 :: Property
 prop_valid_14 = pv $ Div ((V (Var 3) :+ 1) :^ Min (-1) 1) 2
 
+prop_valid_15 :: Property
+prop_valid_15 = pv $ Min (Max 3 0) 1 :^ Mod (N 1) (V (Var 2))
 
 return []
 runTests :: IO Bool
