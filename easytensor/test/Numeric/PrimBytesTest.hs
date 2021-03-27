@@ -305,13 +305,13 @@ vertexFields v
   , off <- byteOffset v
     = conjoin
     [ counterexample "pos" $ pos v === fromBytes
-        (off +# byteFieldOffset (proxy# @Symbol @"pos") v) ba
+        (off +# byteFieldOffset (proxy# :: Proxy# "pos") v) ba
     , counterexample "norm" $ norm v === fromBytes
-       (off +# byteFieldOffset (proxy# @Symbol @"norm") v) ba
+       (off +# byteFieldOffset (proxy# :: Proxy# "norm") v) ba
     , counterexample "tex" $ tex v === fromBytes
-       (off +# byteFieldOffset (proxy# @Symbol @"tex") v) ba
+       (off +# byteFieldOffset (proxy# :: Proxy# "tex") v) ba
     , counterexample "extraFloats" $ extraFloats v === fromBytes
-       (off +# byteFieldOffset (proxy# @Symbol @"extraFloats") v) ba
+       (off +# byteFieldOffset (proxy# :: Proxy# "extraFloats") v) ba
     ]
 
 

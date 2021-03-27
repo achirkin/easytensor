@@ -1,6 +1,6 @@
-name: snapshot-8.6
+name: snapshot-8.10
 
-resolver: lts-14.27
+resolver: lts-17.7
 
 packages:
   - constraints-deriving-1.1.1.2

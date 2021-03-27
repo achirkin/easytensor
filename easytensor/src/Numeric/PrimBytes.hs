@@ -308,7 +308,7 @@ bFieldOffsetOf :: forall (name :: Symbol) (a :: Type) (b :: Type)
                 . ( PrimBytes a, Elem name (PrimFields a)
                   , KnownSymbol name, Num b)
                => a -> b
-bFieldOffsetOf a = fromIntegral (I# (byteFieldOffset (proxy# @Symbol @name) a))
+bFieldOffsetOf a = fromIntegral (I# (byteFieldOffset (proxy# :: Proxy# name) a))
 
 -- | Same as `Foreign.Storable.peekElemOff`: peek an element @a@ by the offset
 --   measured in @byteSize a@.
@@ -498,7 +498,11 @@ instance GPrimBytes f => GPrimBytes (M1 i c f) where
     gwriteAddr p = coerce (gwriteAddr @f p)
     gbyteSize p = coerce (gbyteSize @f p)
     gbyteAlign p = coerce (gbyteAlign @f p)
-    gbyteFieldOffset p = coerce (gbyteFieldOffset @f p)
+    gbyteFieldOffset p = coerce' (gbyteFieldOffset @f p)
+      where
+        coerce' :: (Word# -> Int# -> Proxy# name -> f p -> Int#)
+                -> Word# -> Int# -> Proxy# name -> M1 i c f p -> Int#
+        coerce' = coerce
 
 instance (GPrimBytes f, GPrimBytes g) => GPrimBytes (f :*: g) where
     gfromBytes p t ps i ba = x :*: y
