@@ -1,5 +1,7 @@
 language: haskell
 
+bundler_args: --retry 10
+
 cache:
   directories:
   - $HOME/.ghc
@@ -23,9 +25,9 @@ matrix:
     env: WAY="--flags=unsafeindices --ghc-options=-O0"
   - ghc: "8.10"
     env: WAY="--flags=-unsafeindices --ghc-options=-O0"
-  - ghc: "9.0"
+  - ghc: "9.0.1"
     env: WAY="--flags=unsafeindices --ghc-options=-O0"
-  - ghc: "9.0"
+  - ghc: "9.0.1"
     env: WAY="--flags=-unsafeindices --ghc-options=-O0"
   - ghc: "head"
     env: WAY="--flags=unsafeindices --ghc-options=-O0"
@@ -47,9 +49,9 @@ matrix:
     env: WAY="--flags=unsafeindices --ghc-options=-O"
   - ghc: "8.10"
     env: WAY="--flags=-unsafeindices --ghc-options=-O"
-  - ghc: "9.0"
+  - ghc: "9.0.1"
     env: WAY="--flags=unsafeindices --ghc-options=-O"
-  - ghc: "9.0"
+  - ghc: "9.0.1"
     env: WAY="--flags=-unsafeindices --ghc-options=-O"
   - ghc: "head"
     env: WAY="--flags=unsafeindices --ghc-options=-O"
@@ -60,7 +62,7 @@ matrix:
 
 before_install:
   - printf "packages\u3A \u2A/\u2A.cabal\n" > cabal.project
-  - until curl -sSL https://raw.githubusercontent.com/sol/hpack/main/get-hpack.sh | bash; do sleep 5; done
+  - travis_retry curl -sSL https://raw.githubusercontent.com/sol/hpack/main/get-hpack.sh | bash
   - hpack dimensions/package.yaml
   - hpack easytensor/package.yaml
 
