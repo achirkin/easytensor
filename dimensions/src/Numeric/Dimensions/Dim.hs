@@ -434,9 +434,9 @@ withKnownXDim :: forall (d :: XNat) (rep :: RuntimeRep) (r :: TYPE rep)
               => ( (KnownDim (DimBound d), ExactDim d
                  , KnownDimType d, FixedDim d (DimBound d)) => r)
               -> r
-withKnownXDim
+withKnownXDim x
   | Dict <- unsafeEqTypes @d @(N (DimBound d))
-    = reifyDim @Nat @(DimBound d) (coerce (dim @d))
+    = reifyDim @Nat @(DimBound d) @rep @r (coerce (dim @d)) x
 {-# INLINE withKnownXDim #-}
 
 instance Class (KnownNat n) (KnownDim n) where
@@ -1098,7 +1098,7 @@ inferExactFixedDims (_ :* ns)
 {-# INLINE inferExactFixedDims #-}
 
 instance Typeable d => Data (Dim (d :: Nat)) where
-    gfoldl _ = id
+    gfoldl _ f = f
     gunfold _ z = const (z (typeableDim @d))
     toConstr = const $ dimNatConstr (dimVal (typeableDim @d))
     dataTypeOf = const $ dimDataType (dimVal (typeableDim @d))

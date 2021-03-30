@@ -34,7 +34,8 @@ module Numeric.DataFrame.Internal.Backend.Family
 
 
 import Data.Constraint
-import GHC.Base
+import GHC.Base (Type)
+import GHC.Exts (unsafeCoerce#)
 
 import Numeric.DataFrame.Internal.Backend.Family.ArrayBase
 import Numeric.DataFrame.Internal.Backend.Family.DoubleX2

@@ -109,7 +109,7 @@ cmpSymbol a b
 type Min (a :: TN.Nat) (b :: TN.Nat) = Min' a b (TN.CmpNat a b)
 
 -- | Maximum among two type-level naturals.
-type Max (a :: TN.Nat) (b :: TN.Nat) = Min' a b (TN.CmpNat a b)
+type Max (a :: TN.Nat) (b :: TN.Nat) = Max' a b (TN.CmpNat a b)
 
 type family Min' (a :: TN.Nat) (b :: TN.Nat) (r :: Ordering) :: TN.Nat where
     Min' a _ 'LT = a

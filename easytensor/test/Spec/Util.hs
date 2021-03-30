@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP             #-}
 {-# LANGUAGE QuasiQuotes     #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -29,7 +30,9 @@ testWithTypes fName tyNames = do
   where
     mkProp :: [Type] -> Exp -> ExpQ
     mkProp ts ex
-     = let qe = pure ex :: ExpQ
+     = let qe :: ExpQ
+           qe = pure ex
+           qs :: ExpQ
            qs = litE . stringL $ unlines ["Tested with types:", pprint ts]
        in [e| property ( counterexample $qs $qe ) |]
 
@@ -87,6 +90,7 @@ propWithTypes fName tyNames
     funTypes :: [TypeQ]
     funTypes
       = (\ns -> fmap (subtTyVars (map ConT ns)) ) <$> tyNames <*> [infoType <$> reify fName]
+    mkDecl :: Q Name -> Q Type -> Q Exp -> DecsQ
     mkDecl qn qt qe = do
       n <- qn
       sequence
@@ -124,10 +128,17 @@ substTyVar :: Name -- ^ TyVar name
 substTyVar x y (ForallT vs ctx t)
     = ForallT (remVar vs) (ctx >>= substOrRemove) (substTyVar x y t)
   where
+#if __GLASGOW_HASKELL__ >= 900
+    thisVar :: TyVarBndr a -> Bool
+    thisVar (PlainTV n _)    = n == x
+    thisVar (KindedTV n _ _) = n == x
+    remVar :: [TyVarBndr a] -> [TyVarBndr a]
+#else
     thisVar :: TyVarBndr -> Bool
     thisVar (PlainTV n)    = n == x
     thisVar (KindedTV n _) = n == x
     remVar :: [TyVarBndr] -> [TyVarBndr]
+#endif
     remVar = filter (not . thisVar)
     substOrRemove p
       = let p' = substTyVar x y p
@@ -141,8 +152,13 @@ substTyVar x y (ParensT t) = ParensT (substTyVar x y t)
 substTyVar _ _ t = t
 
 findFirstTyVar :: Type -> Maybe Name
+#if __GLASGOW_HASKELL__ >= 900
+findFirstTyVar (ForallT (PlainTV n _:_) _ _) = Just n
+findFirstTyVar (ForallT (KindedTV n _ _:_) _ _) = Just n
+#else
 findFirstTyVar (ForallT (PlainTV n:_) _ _) = Just n
 findFirstTyVar (ForallT (KindedTV n _:_) _ _) = Just n
+#endif
 findFirstTyVar (ForallT [] ctx t)
   = getFirst (foldMap (First . findFirstTyVar) ctx) <|> findFirstTyVar t
 findFirstTyVar (AppT t1 t2) = findFirstTyVar t1 <|> findFirstTyVar t2

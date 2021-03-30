@@ -40,7 +40,8 @@ module Numeric.DataFrame.Internal.Mutable
     , getDataFrameSteps#
     ) where
 
-import GHC.Base
+import GHC.Base (Type)
+import GHC.Exts
 import Numeric.DataFrame.Internal.PrimArray
 import Numeric.DataFrame.Type
 import Numeric.Dimensions
