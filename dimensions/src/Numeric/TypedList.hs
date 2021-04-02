@@ -11,6 +11,7 @@
 {-# LANGUAGE PatternSynonyms           #-}
 {-# LANGUAGE PolyKinds                 #-}
 {-# LANGUAGE RankNTypes                #-}
+{-# LANGUAGE RoleAnnotations           #-}
 {-# LANGUAGE ScopedTypeVariables       #-}
 {-# LANGUAGE StandaloneDeriving        #-}
 {-# LANGUAGE TypeApplications          #-}
@@ -82,6 +83,9 @@ import {-# SOURCE #-} Numeric.Dimensions.Dim (Dim, dimVal, minusDimM)
 -- | Type-indexed list
 newtype TypedList (f :: (k -> Type)) (xs :: [k]) = TypedList [Any]
   deriving (Typeable)
+
+type role TypedList representational representational
+
 {-# COMPLETE TypeList #-}
 {-# COMPLETE EvList #-}
 {-# COMPLETE U, (:*) #-}

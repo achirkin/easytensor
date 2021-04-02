@@ -119,7 +119,7 @@ import qualified Data.List                (stripPrefix)
 import           Data.Type.List
 import           Data.Type.List.Internal
 import           Data.Type.Lits
-import           GHC.Exts                 (Proxy#, RuntimeRep, TYPE, proxy#)
+import           GHC.Exts                 (Proxy#, RuntimeRep, TYPE, proxy#, type (~~))
 import qualified GHC.Generics             as G
 import           Numeric.Natural          (Natural)
 import           Numeric.TypedList
@@ -203,6 +203,8 @@ instance Class (KnownDimKind k) (KnownDimType (n :: k)) where
 newtype Dim (x :: k) = DimSing Word
   deriving ( Typeable )
 
+type role Dim nominal
+
 -- | Same as `SomeNat`
 type SomeDim = Dim (XN 0)
 
@@ -224,7 +226,7 @@ pattern D <- (patDim (dimType @d) -> PatNat)
 
 #define PLEASE_STYLISH_HASKELL \
   forall d . KnownDimType d => \
-  forall (n :: Nat) . (KindOf d ~ XNat, d ~ N n) => \
+  forall (n :: Nat) . (d ~~ N n) => \
   Dim n -> Dim d
 
 -- | Statically known `XNat`
@@ -236,7 +238,7 @@ pattern Dn k <- (patDim (dimType @d) -> PatXNatN k)
 
 #define PLEASE_STYLISH_HASKELL \
   forall d . KnownDimType d => \
-  forall (m :: Nat) (n :: Nat) . (KindOf d ~ XNat, d ~ XN m, m <= n) => \
+  forall (m :: Nat) (n :: Nat) . (d ~~ XN m, m <= n) => \
   Dim n -> Dim d
 
 -- | `XNat` that is unknown at compile time.
@@ -719,7 +721,7 @@ pattern D25 <- (sameDim (D @25) -> Just Dict)
 
 #define PLEASE_STYLISH_HASKELL \
   forall ds . KnownDimKind (KindOfEl ds) => \
-  (KindOfEl ds ~ Nat, Dimensions ds) => \
+  forall (ns :: [Nat]) . (ds ~~ ns, Dimensions ns) => \
   Dims ds
 
 -- | @O(1)@ Pattern-matching against this constructor brings a `Dimensions`
@@ -735,7 +737,7 @@ pattern Dims <- (patDims (dimKind @(KindOfEl ds)) -> PatNats)
 
 #define PLEASE_STYLISH_HASKELL \
   forall ds . KnownDimKind (KindOfEl ds) => \
-  forall (ns :: [Nat]) . (KindOfEl ds ~ XNat, FixedDims ds ns) => \
+  forall (ns :: [Nat]) . (FixedDims ds ns) => \
   Dims ns -> Dims ds
 
 -- | @O(n)@
@@ -750,10 +752,6 @@ pattern XDims ns <- (patDims (dimKind @(KindOfEl ds)) -> PatXNats ns)
     XDims = unsafeCastTL
 #undef PLEASE_STYLISH_HASKELL
 
-{-# COMPLETE Dims #-}
-{-# COMPLETE XDims #-}
-{-# COMPLETE Dims, XDims #-}
-
 -- | @O(Length ds)@ A heavy weapon against all sorts of type errors
 pattern KnownDims :: forall (ds :: [Nat]) . ()
                   => ( All KnownDim ds, All BoundedDim ds
@@ -762,6 +760,20 @@ pattern KnownDims :: forall (ds :: [Nat]) . ()
 pattern KnownDims <- (patKDims -> PatKDims)
   where
     KnownDims = dims @ds
+
+#if __GLASGOW_HASKELL__ < 809 || __GLASGOW_HASKELL__ > 900
+-- COMPLETE pragmas on Dims and XDims let you avoid the boilerplate
+-- of catch-all cases when pattern-matching only to get the evidence brought
+-- by Dims. Unfortunately, there is a bug the pattern-match checker in GHC 8.10 and 9.0,
+-- which warns you incorrectly about redundant or inacessible patterns in some rare cases.
+-- To workaround those dangerous cases, I disable these patterns for some compiler versions.
+-- (i.e. it's better to place a redundant wildcard case than to have a partial function at runtime).
+--
+-- TODO: add the bug report link
+{-# COMPLETE Dims #-}
+{-# COMPLETE XDims #-}
+#endif
+{-# COMPLETE Dims, XDims #-}
 {-# COMPLETE KnownDims #-}
 
 -- | Same as SomeNat, but for Dimensions:
@@ -908,7 +920,9 @@ incohInstBoundedDims' ds Dict = case dimsBound' of
       | _ :* TypeList <- tList @ds
       , Dict <- incohInstBoundedDims' ds' Dict
         -> defineBoundedDims dimsBound' constrainDims'
+#if __GLASGOW_HASKELL__ < 810
     _ -> error "incohInstBoundedDims': impossible pattern"
+#endif
   where
     dimsBound' :: Dims (DimsBound ds)
     dimsBound' = unsafeCastTL ds
