@@ -1,12 +1,11 @@
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MagicHash             #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds             #-}
-{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
@@ -205,7 +204,9 @@ instance MatrixTranspose (t :: Type) (xn :: XNat) (xm :: XNat) where
       | ((D :: Dim n) :* (D :: Dim m) :* U) <- dims @ns
       , Dict <- inferPrimElem df
       = XFrame (transpose df :: Matrix t m n)
+#if !MIN_VERSION_GLASGOW_HASKELL(8,10,0,0)
     transpose _ = error "MatrixTranspose/transpose: impossible argument"
+#endif
 
 instance (KnownDim n, PrimArray t (Matrix t n n), Num t)
       => SquareMatrix t n where

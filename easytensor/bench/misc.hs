@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP              #-}
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE GADTs            #-}
 {-# LANGUAGE TypeApplications #-}
@@ -39,7 +40,9 @@ main = do
               -- Amazing inference!
               -- m :: KnownNat k => DataFrame '[k,2,4]
             -> print $ m %* vec4 1 2.25 3 0.162
+#if !MIN_VERSION_GLASGOW_HASKELL(8,10,0,0)
         _ -> print "Failed to construct a DataFrame!"
+#endif
     putStrLn "Constructing larger matrices"
     let x :: DataFrame Double '[4,5,2]
         x =  DF4 (transpose $ DF2

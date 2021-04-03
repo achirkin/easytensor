@@ -7,7 +7,6 @@
 {-# LANGUAGE FlexibleInstances         #-}
 {-# LANGUAGE FunctionalDependencies    #-}
 {-# LANGUAGE GADTs                     #-}
-{-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE PartialTypeSignatures     #-}
 {-# LANGUAGE PolyKinds                 #-}
 {-# LANGUAGE QuasiQuotes               #-}
@@ -40,6 +39,9 @@ import           Numeric.Dimensions
 import           Numeric.Quaternion
 import qualified Numeric.Tuple.Lazy   as LT
 import qualified Numeric.Tuple.Strict as ST
+
+-- See dimensions:Numeric.Dimensions.Dim
+#define IS_UNSOUND_MATCHING_810_900 (MIN_VERSION_GLASGOW_HASKELL(8,10,0,0) && !MIN_VERSION_GLASGOW_HASKELL(9,1,0,0))
 
 -- | Maximum number of elements in SomeDims lists
 maxDims :: Word
@@ -514,6 +516,9 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
       case ds of
         (Dims :: Dims ds) -> case inferKnownBackend @ts @ds of
           Dict -> SomeDataFrame <$> arbitrary @(DataFrame ts ds)
+#if IS_UNSOUND_MATCHING_810_900
+        _ -> error "Numeric.Arbitraries.Arbitrary.arbitratry/ds: impossible pattern"
+#endif
     shrink (SomeDataFrame df) = SomeDataFrame <$> shrink df
 
 
@@ -534,6 +539,9 @@ instance ( All Arbitrary ts, All PrimBytes ts, All Num ts, All Ord ts
       case ds of
         XDims (Dims :: Dims ds) -> case inferKnownBackend @ts @ds of
           Dict -> XFrame <$> arbitrary @(DataFrame ts ds)
+#if IS_UNSOUND_MATCHING_810_900
+        _ -> error "Numeric.Arbitraries.Arbitrary.arbitratry/ds: impossible pattern"
+#endif
     shrink (XFrame df) = XFrame <$> shrink df
 
 

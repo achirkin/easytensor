@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
@@ -173,7 +174,9 @@ qrSolveR a b = case compareDim dn dm of
     solveLowerTriangularR lqL (subDataFrameView i0 xPtr)
     (transpose lqQ %*) <$> unsafeFreezeDataFrame xPtr
       -- NB: make a stateful product for transposed mat
-  _ -> error "qrSolveR: impossible pattern"
+#if !MIN_VERSION_GLASGOW_HASKELL(8,10,0,0)
+  _ -> error "Numeric.Matrix.QR.qrSolveR: impossible pattern"
+#endif
   where
     dn = dim @n
     dm = dim @m
@@ -224,8 +227,10 @@ qrSolveL a b
     solveLowerTriangularL xPtr lqL
     ewmap @t @ds @'[n] (sslice i0)
       <$> unsafeFreezeDataFrame xPtr
-  _ -> error "qrSolveL/compareDim: impossible pattern"
-  | otherwise = error "qrSolveL: impossible pattern"
+#if !MIN_VERSION_GLASGOW_HASKELL(8,10,0,0)
+  _ -> error "Numeric.Matrix.QR.qrSolveL/compareDim: impossible pattern"
+#endif
+  | otherwise = error "Numeric.Matrix.QR.qrSolveL: impossible pattern"
   where
     dn = dim @n
     dm = dim @m

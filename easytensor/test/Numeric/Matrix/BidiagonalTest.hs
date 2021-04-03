@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
@@ -99,9 +100,9 @@ validateBidiagonal a BiDiag {..} =
     v = bdV
 
 prop_bidiagonalSimple :: Property
-prop_bidiagonalSimple = once . conjoin $ map prop_bidiagonal $ xs
+prop_bidiagonalSimple = once . conjoin $ map prop_bidiagonal xs
   where
-    mkM :: Dims ([n,m]) -> [Double] -> DataFrame Double '[XN 1, XN 1]
+    mkM :: Dims [n,m] -> [Double] -> DataFrame Double '[XN 1, XN 1]
     mkM ds
       | Just (XDims ds'@Dims) <- constrainDims ds :: Maybe (Dims '[XN 1, XN 1])
         = XFrame . fromFlatList ds' 0
@@ -133,7 +134,9 @@ prop_bidiagonal (XFrame x)
   | n@D :* m@D :* U <- dims `inSpaceOf` x
   , D <- minDim n m
     = validateBidiagonal x (bidiagonalHouseholder x)
+#if !MIN_VERSION_GLASGOW_HASKELL(8,10,0,0)
 prop_bidiagonal _ = property False
+#endif
 
 
 
