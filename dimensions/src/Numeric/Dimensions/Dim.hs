@@ -4,7 +4,6 @@
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE DeriveDataTypeable        #-}
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE ExplicitNamespaces        #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE FlexibleInstances         #-}
 {-# LANGUAGE GADTs                     #-}
@@ -128,6 +127,19 @@ import qualified Text.Read.Lex            as Read
 import           Type.Reflection
 import           Unsafe.Coerce            (unsafeCoerce)
 
+{-
+COMPLETE pragmas on Dims and XDims let you avoid the boilerplate of catch-all cases
+when pattern-matching only to get the evidence brought by Dims. Unfortunately,
+there is a bug the pattern-match checker in GHC 8.10 and 9.0, which warns you incorrectly
+about redundant or inacessible patterns in some rare cases.
+To workaround those dangerous cases, I disable these pragmas for some compiler versions.
+(i.e. it's better to place a redundant wildcard case than to have a partial function at runtime).
+
+https://gitlab.haskell.org/ghc/ghc/-/issues/19622
+ -}
+#define IS_UNSOUND_MATCHING_810_900 (MIN_VERSION_GLASGOW_HASKELL(8,10,0,0) && !MIN_VERSION_GLASGOW_HASKELL(9,1,0,0))
+
+
 -- | Either known or unknown at compile-time natural number
 data XNat = XN Nat | N Nat
 -- | Unknown natural number, known to be not smaller than the given Nat
@@ -250,8 +262,10 @@ pattern Dx k <- (patDim (dimType @d) -> PatXNatX k)
     Dx k = coerce k
 #undef PLEASE_STYLISH_HASKELL
 
+#if !IS_UNSOUND_MATCHING_810_900
 {-# COMPLETE D #-}
 {-# COMPLETE Dn, Dx #-}
+#endif
 {-# COMPLETE D, Dn, Dx #-}
 
 -- | This class provides the `Dim` associated with a type-level natural.
@@ -761,15 +775,7 @@ pattern KnownDims <- (patKDims -> PatKDims)
   where
     KnownDims = dims @ds
 
-#if __GLASGOW_HASKELL__ < 809 || __GLASGOW_HASKELL__ > 900
--- COMPLETE pragmas on Dims and XDims let you avoid the boilerplate
--- of catch-all cases when pattern-matching only to get the evidence brought
--- by Dims. Unfortunately, there is a bug the pattern-match checker in GHC 8.10 and 9.0,
--- which warns you incorrectly about redundant or inacessible patterns in some rare cases.
--- To workaround those dangerous cases, I disable these patterns for some compiler versions.
--- (i.e. it's better to place a redundant wildcard case than to have a partial function at runtime).
---
--- TODO: add the bug report link
+#if !IS_UNSOUND_MATCHING_810_900
 {-# COMPLETE Dims #-}
 {-# COMPLETE XDims #-}
 #endif
@@ -832,6 +838,7 @@ withKnownXDims f
     dsN :: Dims (DimsBound ds)
     dsN = unsafeCastTL (dims @ds)
 {-# INLINE withKnownXDims #-}
+{-# ANN withKnownXDims "HLint: ignore Use const" #-}
 
 -- | Minimal or exact bound of @Dims@.
 --   This is a plural form of `DimBound`.
@@ -922,6 +929,9 @@ incohInstBoundedDims' ds Dict = case dimsBound' of
         -> defineBoundedDims dimsBound' constrainDims'
 #if __GLASGOW_HASKELL__ < 810
     _ -> error "incohInstBoundedDims': impossible pattern"
+#endif
+#if IS_UNSOUND_MATCHING_810_900
+  _ -> error "incohInstBoundedDims': impossible pattern"
 #endif
   where
     dimsBound' :: Dims (DimsBound ds)
@@ -1095,7 +1105,7 @@ unsafeInferFixedDims ((D :: Dim n) :* ns)
     Very unsafe operation.
     I rely here on the fact that FixedDim xn n has the same
     runtime rep as a single type equality.
-    If that changes, then the code is broke.
+    If that changes, then the code is broken.
      -}
   | Dict <- unsafeEqTypes @xns @(N n ': Tail xns)
   , Dict <- unsafeInferFixedDims @(Tail xns) ns = Dict
@@ -1277,7 +1287,7 @@ inferAllBoundedDims = go
   where
     reifyBoundedDim :: forall (d :: k) . Dim d -> Dict (BoundedDim d)
     reifyBoundedDim = case dimKind @k of
-      DimKNat -> \d -> reifyDim d Dict
+      DimKNat -> (`reifyDim` Dict)
       DimKXNat
         | Dict <- unsafeEqTypes @d @(N (DimBound d))
               -> \d -> reifyDim (coerce d :: Dim (DimBound d)) Dict

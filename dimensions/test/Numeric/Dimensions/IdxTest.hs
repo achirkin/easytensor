@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                       #-}
 {-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
@@ -13,7 +14,7 @@
 module Numeric.Dimensions.IdxTest where
 
 import Control.Arrow
-import Data.List
+import Data.List       (mapAccumR)
 import Data.Maybe
 import Test.QuickCheck (quickCheckAll)
 
@@ -47,8 +48,9 @@ prop_idxsFromWords1 ins
   , SomeDims (KnownDims :: Dims ds) <- someDimsVal ys
   , mIs <- idxsFromWords @ds xs
     = or (zipWith (==) xs ys) || isJust mIs
-  | otherwise
-    = error "Impossible arguments"
+#if __GLASGOW_HASKELL__ < 900
+  | otherwise = error "Impossible arguments"
+#endif
 
 -- | Check failing cases
 prop_idxsFromWords2 :: [(Word, Word)] -> Bool
@@ -57,8 +59,9 @@ prop_idxsFromWords2 ins
   , SomeDims (KnownDims :: Dims ds) <- someDimsVal xs
   , mIs <- idxsFromWords @ds ys
     = null xs || isNothing mIs
-  | otherwise
-    = error "Impossible arguments"
+#if __GLASGOW_HASKELL__ < 900
+  | otherwise = error "Impossible arguments"
+#endif
 
 -- | Check if results of idxsFromWords are consistent with idxFromWord
 prop_idxsFromWords3 :: [(Word, Word)] -> Bool
@@ -67,8 +70,9 @@ prop_idxsFromWords3 ins
   , SomeDims (ds@KnownDims :: Dims ds) <- someDimsVal ys
   , mIs <- idxsFromWords @ds xs
     = Just False /= (go xs ds <$> mIs)
-  | otherwise
-    = error "Impossible arguments"
+#if __GLASGOW_HASKELL__ < 900
+  | otherwise = error "Impossible arguments"
+#endif
   where
     go :: forall (ns :: [Nat]) . [Word] -> Dims ns -> Idxs ns -> Bool
     go [] U U = True

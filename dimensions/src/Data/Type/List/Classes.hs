@@ -410,7 +410,7 @@ consInstReverseList = bareToDict d
       => BareConstraint (ReverseList (a ': as) (b ': bs))
     f | Dict <- unsafeEqTypes @(a ': as) @(Reverse (b ': bs))
       , Dict <- unsafeEqTypes @(b ': bs) @(Reverse (a ': as))
-      = dictToBare $ defineReverseList
+      = dictToBare defineReverseList
 
     {- Since both classes, ReverseList and SnocList actually bear no runtime references
        to their parameters, the only thing that matters is the length of the list

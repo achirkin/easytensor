@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                       #-}
 {-# LANGUAGE ConstraintKinds           #-}
 {-# LANGUAGE DataKinds                 #-}
 {-# LANGUAGE ExistentialQuantification #-}
@@ -109,7 +110,9 @@ prop_splitDims n xsys
                                     ("stripSuffixDims with " ++ show (dxs, dys, dxsys)) False
                       Just Dict -> property True
                 -- .&&. dxsys === TL.concat dxs dys
+#if __GLASGOW_HASKELL__ < 900
   | otherwise = property False
+#endif
 
 
 prop_stripPrefixDims :: Int -> [Word] -> Property
