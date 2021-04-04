@@ -1,10 +1,10 @@
+{-# LANGUAGE CPP                   #-}
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds             #-}
-{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
@@ -50,6 +50,7 @@ sort df = case dimKind @(KindOf n) of
           -> XFrame (sortBy compare df')
         | otherwise
           -> error "sort/DimXNat -- impossible pattern"
+{-# ANN sort "HLint: ignore Use sort" #-}
 
 -- | Sort a @DataFrame@ along the first dimension using given comparison function.
 sortBy :: forall (t :: Type) n ns
@@ -110,7 +111,7 @@ instance SortBy 2 where
 
 instance SortBy 3 where
     sortByInplace cmp xs = join $
-        go <$> (unsafeDupableInterleaveST (oneMoreDataFrame a))
+        go <$> unsafeDupableInterleaveST (oneMoreDataFrame a)
            <*> cmp a b <*> cmp b c <*> cmp a c
       where
         a = subDataFrameView' (Idx 0 :* U) xs
@@ -220,7 +221,9 @@ instance BoundedDim xn => SortBy (xn :: XNat) where
     sortByInplace cmp (XSTFrame xs)
       | D :* _ <- dims `inSpaceOf` xs
         = sortByInplace (\x y -> cmp (castDataFrame x) (castDataFrame y)) xs
+#if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
       | otherwise = error "sortByInplace: impossible pattern"
+#endif
 
 
 -- | Swap contents of two DataFrames

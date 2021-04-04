@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
@@ -142,7 +143,7 @@ prop_svdSimple = once . conjoin $ prop_svd <$> dfs
 dfs :: [DataFrame Double '[XN 1, XN 1]]
 dfs = xs
   where
-    mkM :: Dims ([n,m]) -> [Double] -> DataFrame Double '[XN 1, XN 1]
+    mkM :: Dims [n,m] -> [Double] -> DataFrame Double '[XN 1, XN 1]
     mkM ds
       | Just (XDims ds'@Dims) <- constrainDims ds :: Maybe (Dims '[XN 1, XN 1])
         = XFrame . fromFlatList ds' 0
@@ -173,7 +174,9 @@ prop_svd :: DataFrame Double '[XN 1, XN 1] -> Property
 prop_svd (XFrame x)
   | n@D :* m@D :* U <- dims `inSpaceOf` x
   , D <- minDim n m = validateSVD 1 x (svd x)
+#if !MIN_VERSION_GLASGOW_HASKELL(8,10,0,0)
 prop_svd _ = error "prop_svd: impossible pattern"
+#endif
 
 
 return []

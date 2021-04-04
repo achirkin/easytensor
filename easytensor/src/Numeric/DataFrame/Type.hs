@@ -88,7 +88,8 @@ import           Numeric.TypedList                    (typeables)
 import           Numeric.DataFrame.Internal.BackendI (DFBackend, KnownBackend)
 import qualified Numeric.DataFrame.Internal.BackendI as Backend
 
-
+-- See dimensions:Numeric.Dimensions.Dim
+#define IS_UNSOUND_MATCHING_810_900 (MIN_VERSION_GLASGOW_HASKELL(8,10,0,0) && !MIN_VERSION_GLASGOW_HASKELL(9,1,0,0))
 
 -- | Keep data in a primitive data frame
 --    and maintain information about Dimensions in the type system
@@ -241,7 +242,7 @@ instance PrimBytes t
       | D :* (Dims :: Dims ns) <- dims `inSpaceOf` df
       , Dict <- inferKnownBackend @t @ns
         = XFrame (df ! i)
-    (!) _ _ = error "IndexFrame: impossible pattern"
+    (!) _ _ = error "IndexFrame: impossible arguments"
 
 instance (RepresentableList ts, All PrimBytes ts)
       => IndexFrame (ts :: [Type]) (xd :: XNat) xds where
@@ -259,7 +260,7 @@ instance (RepresentableList ts, All PrimBytes ts)
         getTsEvs ((_ :: Proxy a) :* as')
           | Dict <- getTsEvs @_ @d @ds as'
           , Dict <- inferKnownBackend @a @ds = Dict
-    (!) _ _ = error "IndexFrame: impossible pattern"
+    (!) _ _ = error "IndexFrame: impossible arguments"
 
 {- |
 This type family describes two strategies for dealing with dimensions when
@@ -496,6 +497,9 @@ readPrecFixedDF (d@D :* ds@Dims)
   = Read.parens . Read.prec 10 $ do
     Read.lift . Read.expect . Read.Ident $ "DF" ++ show (dimVal d)
     packDF' (<*> Read.step (readPrecFixedDF ds)) pure
+#if IS_UNSOUND_MATCHING_810_900
+readPrecFixedDF _ = error "Numeric.DataFrame.Type.readPrecFixedDF: impossible arguments"
+#endif
 
 {-
 The first argument is, in fact, a @dimsBound@, but covered in the same @[XNat]@
@@ -621,6 +625,9 @@ readBoundedMultiDF ((_ :: Proxy t) :* ts@TypeList) ds
     xs <- readFixedMultiDF ts (dims @ns)
     case inferKnownBackend @ts @ns of
       Dict -> return $ XFrame (x :*: xs)
+#if IS_UNSOUND_MATCHING_810_900
+readBoundedMultiDF _ _ = error "Numeric.DataFrame.Type.readBoundedMultiDF: impossible arguments"
+#endif
 
 readSomeMultiDF :: forall (ts :: [Type])
                  . (All Read ts, All PrimBytes ts)
@@ -811,7 +818,7 @@ packDF
   , Dict <- inferKnownBackend @t @(d ': ds)
   , Dict <- inferKnownBackend @t @ds
     = go d
-  | otherwise = error "Numeric.DataFrame.Type.packDF: impossible args"
+  | otherwise = error "Numeric.DataFrame.Type.packDF: impossible arguments"
   where
     go :: (Dimensions ds, KnownBackend t ds, KnownBackend t (d ': ds))
        => Dim d
@@ -876,7 +883,7 @@ unpackDF :: forall (t :: Type) (d :: Nat) (ds :: [Nat])
 unpackDF c
   | d :* Dims <- dims @(d ': ds)
     = unpackDF' (go d)
-  | otherwise = error "Numeric.DataFrame.Type.unpackDF: impossible args"
+  | otherwise = error "Numeric.DataFrame.Type.unpackDF: impossible arguments"
   where
     go :: forall a . (a ~ Dict (Dimensions ds, KnownBackend t ds))
        => Dim d -> a
@@ -906,7 +913,9 @@ packDF' :: forall (t :: Type) (d :: Nat) (ds :: [Nat]) c
 packDF' k z
   | d :* _ <- dims @(d ': ds)
     = go d (z (packDF @t @d @ds))
-  | otherwise = error "Numeric.DataFrame.Type.packDF': impossible args"
+#if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
+  | otherwise = error "Numeric.DataFrame.Type.packDF': impossible arguments"
+#endif
   where
     go :: forall n . Dim n
        -> c (PackDF t ds n (DataFrame t (d ': ds))) -> c (DataFrame t (d ': ds))
@@ -949,7 +958,7 @@ unpackDF' k
           f consume (I# o) = consume (I# (o -# td)) (fromElems cd o arr)
       in k Dict f (I# (off +# td *# (n -# 1#)))
     )
-  | otherwise = error "Numeric.DataFrame.Type.unpackDF: impossible args"
+  | otherwise = error "Numeric.DataFrame.Type.unpackDF: impossible arguments"
 
 
 -- | Append one DataFrame to another, sum up the first dimension.
@@ -968,7 +977,9 @@ appendDF
   , Dict <- inferKnownBackend @t @(m :+ ds)
   , Dict <- inferKnownBackend @t @((n + m) :+ ds)
               = unsafeAppendPB
-  | otherwise = error "Numeri.DataFrame.Type/appendDF: impossible arguments"
+#if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
+  | otherwise = error "Numeri.DataFrame.Type.appendDF: impossible arguments"
+#endif
 
 -- | Append a small DataFrame to a big DataFrame on the left.
 --
@@ -986,7 +997,9 @@ consDF
   , Dict <- inferKnownBackend @t @ds
   , Dict <- inferKnownBackend @t @((n + 1) :+ ds)
               = unsafeAppendPB
-  | otherwise = error "Numeri.DataFrame.Type/consDF: impossible arguments"
+#if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
+  | otherwise = error "Numeri.DataFrame.Type.consDF: impossible arguments"
+#endif
 
 -- | Append a small DataFrame to a big DataFrame on the right.
 --
@@ -1004,8 +1017,9 @@ snocDF
   , Dict <- inferKnownBackend @t @ds
   , Dict <- inferKnownBackend @t @((n + 1) :+ ds)
               = unsafeAppendPB
-  | otherwise = error "Numeri.DataFrame.Type/snocDF: impossible arguments"
-
+#if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
+  | otherwise = error "Numeri.DataFrame.Type.snocDF: impossible arguments"
+#endif
 
 -- | Unsafely copy two PrimBytes values into a third one.
 unsafeAppendPB :: forall x y z
@@ -1049,14 +1063,15 @@ fromList :: forall (t :: Type) (ds :: [Nat]) (xds :: [XNat])
          => [DataFrame t ds] -> DataFrame t (XN 0 ': xds)
 fromList xs
     | Dx (D :: Dim n) <- someDimVal . fromIntegral $ length xs
+    , Dict <- Dict @(ds ~ UnMap N xds) -- just to make GHC not complain about unused constraints.
     , Dict <- inferKnownBackend @t @(n ': ds)
     , Dict <- unsafeEqTypes @_ @ds @(DimsBound xds)
     , Dict <- inferExactFixedDims (dims @ds)
       = XFrame (fromListWithDefault @t @n @ds undefined xs)
+#if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
     | otherwise
-      = case Dict @(ds ~ UnMap N xds) of
-          Dict -> -- just make GHC not complain about unused constraints.
-            error "Numeri.DataFrame.Type/fromList: impossible arguments"
+      = error "Numeri.DataFrame.Type.fromList: impossible arguments"
+#endif
 
 -- | Try to convert between @XNat@-indexed DataFrames.
 --
@@ -1112,7 +1127,7 @@ asDiag x
 
       ) of (# _, r #) -> fromElems steps 0# r
   | otherwise
-    = error "Numeri.DataFrame.Type/asDiag: impossible arguments"
+    = error "Numeri.DataFrame.Type.asDiag: impossible arguments"
 {-# INLINE asDiag #-}
 
 -- Need this for @packDF'@ to make @Int -> c z@ a proper second-order type
@@ -1136,10 +1151,16 @@ instance (Data t, PrimBytes t, Typeable ds)
                            (\g -> Off . f $ k . runOff g)
                            (Off . const . z)
                        ) v
+#if IS_UNSOUND_MATCHING_810_900
+      _ -> error "DataFrame.gfoldl: impossible arguments"
+#endif
     gunfold k z _ = case typeableDims @ds of
       U      -> k (z S)
       D :* (Dims :: Dims ns)
         -> case inferTypeableCons @ds of Dict -> packDF' k z
+#if IS_UNSOUND_MATCHING_810_900
+      _ -> error "DataFrame.gunfold: impossible arguments"
+#endif
     toConstr _ = case typeableDims @ds of
       U      -> scalarFrameConstr
       d :* _ -> singleFrameConstr $ dimVal d
@@ -1241,6 +1262,9 @@ fromSingleFrame (dd@D :* (Dims :: Dims ds')) x
       where
         d2  = divDim d D2
         d2' = d2 `plusDim` modDim d D2
+#if IS_UNSOUND_MATCHING_810_900
+fromSingleFrame _ _ = error "fromSingleFrame: impossible arguments"
+#endif
 
 toSingleFrame :: forall (t :: Type) (ds :: [Nat]) (x :: Type)
                . PrimBytes t
@@ -1280,6 +1304,9 @@ toSingleFrame (dd@D :* (Dims :: Dims ds')) (G.M1 rep)
       where
         d2  = divDim d D2
         d2' = d2 `plusDim` modDim d D2
+#if IS_UNSOUND_MATCHING_810_900
+toSingleFrame _ _ = error "toSingleFrame: impossible arguments"
+#endif
 {-# INLINE toSingleFrame #-}
 
 type family MultiFrameRepNil (ts :: [Type]) :: (Type -> Type) where

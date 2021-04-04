@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                 #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
@@ -86,7 +87,9 @@ manualMats = join
   where
     mkM :: Dim (n :: Nat) -> [t] -> SomeSquareMatrix AnyMatrix t
     mkM (d@D :: Dim n) = SSM . fromFlatList (d :* d :* U) 0
+#if !MIN_VERSION_GLASGOW_HASKELL(8,10,0,0)
     mkM _              = error "manualMats: bad dims"
+#endif
     variants :: Num a => [a] -> [[a]]
     variants as = rotateList as ++ rotateList (map negate as)
 

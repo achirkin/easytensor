@@ -1570,10 +1570,10 @@ instance ( RepresentableList xs
       where
         go :: L.All PrimBytes ds => MutableByteArray# s
            -> Int# -> TS.Tuple ds -> TypeList ds -> State# s -> State# s
-        go _ _ _ Empty s = s
         go mb n (TS.Id x :* xs) (_ :* ts@TypeList) s
           | n' <- roundUpInt n (byteAlign x)
           = go mb (n' +# byteSize x) xs ts (writeBytes mb (off +# n') x s)
+        go _ _ _ _ s = s
     {-# INLINE writeBytes #-}
     readAddr addr = go 0# (tList @xs)
       where
@@ -1591,10 +1591,10 @@ instance ( RepresentableList xs
       where
         go :: L.All PrimBytes ds
            => Int# -> TS.Tuple ds -> TypeList ds -> State# s -> State# s
-        go _ _ Empty s = s
         go n (TS.Id x :* xs) (_ :* ts@TypeList) s
           | n' <- roundUpInt n (byteAlign x)
           = go (n' +# byteSize x) xs ts (writeAddr x (plusAddr# addr n') s)
+        go _ _ _ s = s
     {-# INLINE writeAddr #-}
     byteSize _ = go 0# 1# (tList @xs)
       where
