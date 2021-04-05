@@ -29,6 +29,7 @@ module Graphics.Vulkan.Marshal.Create.DataFrame
 
 
 import Foreign.Storable
+import GHC.Exts                         (unsafeCoerce#)
 import GHC.Base
 import GHC.Ptr                          (Ptr (..))
 import Graphics.Vulkan
