@@ -75,10 +75,7 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
     getBytes = withArrayContent'
       (\t -> let tbs = byteSize t
              in go tbs (tbs *# totalDim# @ds) t)
-      -- very weird trick with touch# allows to workaround GHC bug
-      --  "internal error: ARR_WORDS object entered!"
-      -- TODO: report this
-      (\_ _ arr -> case runRW# (\s -> (# touch# arr s, arr #)) of (# _, ba #) -> ba)
+      (\_ _ arr -> arr)
       where
         go :: Int# -> Int# -> t -> ByteArray#
         go tbs bsize t = case runRW#
@@ -94,7 +91,7 @@ instance (PrimBytes t, Dimensions ds) => PrimBytes (ArrayBase t ds) where
         g :: Int# -> ByteArray# -> State# RealWorld -> (# State# RealWorld, ByteArray# #)
         g off arr s0
           | isTrue# (isByteArrayPinned# arr)
-            = (# touch# arr s0, arr #)
+            = (# s0, arr #)
           | tba <- byteAlign @t undefined
           , bsize <- sizeofByteArray# arr
           , (# s1, mba #) <- newAlignedPinnedByteArray# bsize tba s0
@@ -525,8 +522,13 @@ withArrayContent' ::
     -> (CumulDims -> Int# -> ByteArray# -> r)
     -> ArrayBase t ds -> r
 withArrayContent' f _ (ArrayBase (# e | #)) = f e
-withArrayContent' _ g (ArrayBase (# | (# steps, off, ba, _ #) #)) = g steps off ba
+withArrayContent' _ g (ArrayBase (# | (# steps, off, ba, _ #) #)) = g steps off (workaroundUSum ba)
 {-# INLINE withArrayContent' #-}
+
+{- A workaround for https://gitlab.haskell.org/ghc/ghc/-/issues/19645 -}
+workaroundUSum :: ByteArray# -> ByteArray#
+workaroundUSum x = x
+{-# NOINLINE workaroundUSum #-}
 
 fromElems' :: forall (t :: Type) (ds :: [Nat])
             . PrimBytes t => CumulDims -> Int# -> ByteArray# -> ArrayBase t ds
