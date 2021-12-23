@@ -5,6 +5,7 @@
 module Numeric.Dimensions.Plugin.AtLeast
   ( AtLeast(..)
   , cons
+  , insertDesc, insertDesc'
   , mergeDesc
   , flattenDesc
   , sortDesc
@@ -38,6 +39,19 @@ cons :: a -> AtLeast n a -> AtLeast n a
 cons x (L xs   ) = L (x : xs)
 cons x (a :| as) = x :| cons a as
 
+insertDesc' :: Ord a => a -> AtLeast n a -> AtLeast n a
+insertDesc' x (L ys) = L (go x ys)
+  where
+    go :: Ord a => a -> [a] -> [a]
+    go a [] = [a]
+    go a (b:bs) = if b <= a then a : b : bs else b : go a bs
+insertDesc' x (y :| ys) = if y <= x then x :| cons y ys else y :| insertDesc' x ys
+
+insertDesc :: Ord a => a -> AtLeast n a -> AtLeast ('S n) a
+insertDesc x (L []) = x :| L []
+insertDesc x yys@(L (y : ys)) = if y <= x then x :| yys else y :| insertDesc' x (L ys)
+insertDesc x yys@(y :| ys) = if y <= x then x :| yys else y :| insertDesc x ys
+
 -- | @O(n + m)@ Merge two decreasing lists into one.
 mergeDesc :: Ord a => AtLeast n a -> AtLeast n a -> AtLeast n a
 mergeDesc xs           (L [])       = xs
@@ -61,7 +75,6 @@ flattenDesc l      = case l of
     go :: Ord a => AtLeast One (AtLeast n a) -> AtLeast n a
     go (x  :| L []       ) = x
     go (x1 :| L (x2 : xs)) = go (mergeDesc x1 x2 :| L xs)
-
 
 sortDesc :: Ord a => AtLeast n a -> AtLeast n a
 sortDesc (L xs   ) = L (sortOn Down xs)

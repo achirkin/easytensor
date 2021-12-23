@@ -46,7 +46,8 @@ where
 
 import           Data.Void
 import           Control.Monad                  (join)
-import           Data.List                      ( group )
+import           Data.Either                    (partitionEithers)
+import           Data.List                      (group)
 import           Data.Ratio
 import           Numeric.Dimensions.Plugin.AtLeast
 import           Numeric.Dimensions.Plugin.SolveNat.Exp
@@ -399,69 +400,69 @@ normalSign a | isZero a   = Just 0
 --   If this invariant holds, comparing normalized expressions becomes simple:
 --   substract one from another and compare result to zero.
 regroupSumsE :: (Ord t, Ord v) => SumsE n t v -> SumsE None t v
-regroupSumsE = noneSumsE
--- regroupSumsE = (\(SumsE s v) -> SumsE s (sortDesc $ fmap (\(ProdE s' v') -> (ProdE s' (sortDesc v'))) v))
---              . go . toList . getSumsE
---   where
---     go :: (Ord t, Ord v) => [ProdE t v] -> SumsE None t v
---     go [] = zero
---     go xs = foldl (+) (sumsE $ L xs') sums
---       where
---         (xs', sums) =
---           partitionEithers $ map (toSingleProdOrSum . splitExtraSums bases) xs
---         bases = foldMap (foldMap addBase . getProdE) xs []
---     -- add only PowS sums;
---     -- terms are ordered descending,
---     --   by base first, then by power
---     addBase :: (Ord t, Ord v) => PowE t v -> PowsS t v -> PowsS t v
---     addBase (PowU _ _ _) xs              = xs
---     addBase (PowS _ a p) []              = [(a, p)]
---     addBase (PowS _ a p) (x@(b, q) : xs) = case compare a b of
---       GT -> (a, p) : x : xs
---       EQ -> case unconstSumsE (noneSumsE p - noneSumsE q) of
---         (c, s) | isZero s  -> (b, if c < 0 then p else q) : xs
---                | p > q     -> (a, p) : x : xs
---                | otherwise -> x : addBase (powS a p) xs
---       LT -> x : addBase (powS a p) xs
---     subBase
---       :: (Ord t, Ord v)
---       => PowsS t v
---       -> PowE t v
---       -> ([(SumsE Two t v, Natural)], PowE t v)
---     subBase bases (PowS _ a p)
---       | (c, _) : _ <-
---         filter (isZero . snd)
---         . map (\(_, q) -> unconstSumsE (noneSumsE p - noneSumsE q))
---         $ filter ((a ==) . fst) bases
---       , c > 0
---       = let ps' = getSumsE $ noneSumsE p - fromInteger c
---             p'  = case ps' of
---               L [] ->
---                 error "regroupSumsE/subBase panic: expected non-empty SumsE!"
---               L (x : xs) -> sumsE (x :| L xs)
---         in  ([(a, fromInteger c)], powS a p')
---     subBase _ x = ([], x)
+regroupSumsE = (\(SumsE s v) -> SumsE s (sortDesc $ fmap (\(ProdE s' v') -> (ProdE s' (sortDesc v'))) v))
+             . go . toList . getSumsE
+  where
+    go :: (Ord t, Ord v) => [ProdE t v] -> SumsE None t v
+    go [] = zero
+    go xs = foldl (+) (sumsE $ L xs') sums
+      where
+        (xs', sums) =
+          partitionEithers $ map (toSingleProdOrSum . splitExtraSums bases) xs
+        bases = foldMap (foldMap addBase . getProdE) xs []
+    -- add only PowS sums;
+    -- terms are ordered descending,
+    --   by base first, then by power
+    addBase :: (Ord t, Ord v) => PowE t v -> PowsS t v -> PowsS t v
+    addBase (PowU _ _ _) xs              = xs
+    addBase (PowS _ a p) []              = [(a, p)]
+    addBase (PowS _ a p) (x@(b, q) : xs) = case compare a b of
+      GT -> (a, p) : x : xs
+      EQ -> case unconstSumsE (noneSumsE p - noneSumsE q) of
+        (c, s) | isZero s  -> (b, if c < 0 then p else q) : xs
+               | p > q     -> (a, p) : x : xs
+               | otherwise -> x : addBase (powS a p) xs
+      LT -> x : addBase (powS a p) xs
+    subBase
+      :: (Ord t, Ord v)
+      => PowsS t v
+      -> PowE t v
+      -> ([(SumsE Two t v, Natural)], PowE t v)
+    subBase bases (PowS _ a p)
+      | (c, _) : _ <-
+        filter (isZero . snd)
+        . map (\(_, q) -> unconstSumsE (noneSumsE p - noneSumsE q))
+        $ filter ((a ==) . fst) bases
+      , c >= 1
+      , cn <- numerator c `quot` denominator c
+      = let ps' = getSumsE $ noneSumsE p - fromInteger cn
+            p'  = case ps' of
+              L [] ->
+                error "regroupSumsE/subBase panic: expected non-empty SumsE!"
+              L (x : xs) -> sumsE (x :| L xs)
+        in  ([(a, fromInteger cn)], powS a p')
+    subBase _ x = ([], x)
 
---     -- extracts terms like (a + b) ^ Nat from a product expression,
---     -- such that all complex sum expressions inside match the bases list
---     splitExtraSums
---       :: (Ord t, Ord v)
---       => PowsS t v
---       -> ProdE t v
---       -> ([(SumsE Two t v, Natural)], ProdE t v)
---     splitExtraSums bases =
---       fmap prodE . traverse (subBase bases) . getProdE
+    -- extracts terms like (a + b) ^ Nat from a product expression,
+    -- such that all complex sum expressions inside match the bases list
+    splitExtraSums
+      :: (Ord t, Ord v)
+      => PowsS t v
+      -> ProdE t v
+      -> ([(SumsE Two t v, Natural)], ProdE t v)
+    splitExtraSums bases =
+      fmap prodE . traverse (subBase bases) . getProdE
 
---     toSingleProdOrSum
---       :: (Ord t, Ord v)
---       => ([(SumsE Two t v, Natural)], ProdE t v)
---       -> Either (ProdE t v) (SumsE None t v)
---     toSingleProdOrSum ([], p) = Left p
---     toSingleProdOrSum (xs, p) = Right
---       $ foldl (\s (x, n) -> s * noneSumsE x ^ n) (singleProdAsSums p) xs
+    toSingleProdOrSum
+      :: (Ord t, Ord v)
+      => ([(SumsE Two t v, Natural)], ProdE t v)
+      -> Either (ProdE t v) (SumsE None t v)
+    toSingleProdOrSum ([], p) = Left p
+    toSingleProdOrSum (xs, p) = Right
+      $ foldl (\s (x, n) -> s * noneSumsE x ^ n) (singleProdAsSums p) xs
 
 
--- type PowsS t v = [(SumsE Two t v, SumsE One t v)]
+type PowsS t v = [(SumsE Two t v, SumsE One t v)]
 
 
 instance NormalForm NormalE where
@@ -762,11 +763,11 @@ instance Semigroup Validate where
 
 -- take minimum
 instance (Ord t, Ord v) => Semigroup (MinsE t v) where
-  x <> y = mapExpState (\s -> s <> (esMin (expState x) (expState y))) $ minsE (sortDesc $ mergeDesc (getMinsE x) (getMinsE y))
+  x <> y = mapExpState (\s -> s <> esMin (expState x) (expState y)) $ minsE (mergeDesc (getMinsE x) (getMinsE y))
 
 -- take maximum
 instance (Ord t, Ord v) => Semigroup (MaxsE t v) where
-  x <> y = mapExpState (\s -> s <> (esMax (expState x) (expState y))) $ maxsE (sortDesc $ mergeDesc (getMaxsE x) (getMaxsE y))
+  x <> y = mapExpState (\s -> s <> esMax (expState x) (expState y)) $ maxsE (mergeDesc (getMaxsE x) (getMaxsE y))
 
 -- add up
 instance (Ord t, Ord v) => Semigroup (SumsE None t v) where
@@ -830,7 +831,7 @@ instance (Ord t, Ord v) => Monoid (ProdE t v) where
 instance (Ord t, Ord v) => Num (SumsE None t v) where
   (+) = (<>)
   a * b = mapExpState (\s -> s <> (expState a * expState b))
-        $ foldr (\x -> (+) (sumsE (sortDesc $ L $ (x <>) <$> ys))) zero (getSumsE a)
+        $ foldr (\x -> (+) (sumsE (L $ (x <>) <$> ys))) zero (getSumsE a)
     where
       ys = toList $ getSumsE b
   negate = negateSum
@@ -1049,7 +1050,7 @@ powSums a'@(SumsE sa' (L (a1 : a2 : as))) b'@(SumsE sb' (L (b : bs)))
                   L [] -> ac'
                   L (f:fs) -> ac' * powSums a' (singleProdAsSums $ prodE (f :| L fs))
   | otherwise = singlePowAsSums
-  $ powS (SumsE sa' $ sortDesc $ a1 :| a2 :| L as) (SumsE sb' $ sortDesc $ b :| L bs)
+  $ powS (SumsE sa' $ a1 :| a2 :| L as) (SumsE sb' $ b :| L bs)
 -- in this weird case I don't know if the power is zero or not,
 -- I have to use a Mod trick to workaround that
 powSums (SumsE _ (L [])) b = r { getSumsEState = ExpState
@@ -1064,7 +1065,7 @@ powSums (SumsE _ (L [])) b = r { getSumsEState = ExpState
       , _isComplete = isComplete b
       }} -- TODO: proper handling for negative b!
   where
-    r = 1 - unitAsSums (UMod 1 (toNormalE $ MaxsE s $ sortDesc $ 1 + b :| L [1 - b]))
+    r = 1 - unitAsSums (UMod 1 (toNormalE $ MaxsE s $ insertDesc (1 + b) (L [1 - b])))
     s = ExpState
       { _isZero     = False
       , _isNonZero  = True
@@ -1282,7 +1283,7 @@ cap2sums x y = case compare 0 <$> normalSign (regroupSumsE $ x - y) of
   Just GT -> y
   Just EQ -> x
   Just LT -> x
-  Nothing -> sumsE $ L $ go (toList $ getSumsE x) (toList $ getSumsE y)
+  Nothing -> sumsE $ sortDesc $ L $ go (toList $ getSumsE x) (toList $ getSumsE y)
   where
     go :: (Ord t, Ord v) => [ProdE t v] -> [ProdE t v] -> [ProdE t v]
     go [] xs = xs

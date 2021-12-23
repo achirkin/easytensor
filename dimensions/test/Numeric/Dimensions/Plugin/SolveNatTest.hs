@@ -92,80 +92,80 @@ keepSolutions expOrig = ignoreSlow (resOrig `seq` resNorm) $ QC.counterexample
 ks :: TestExp -> Property
 ks = QC.once . keepSolutions
 
-prop_numPlusZero :: TestNE -> Property
-prop_numPlusZero (T x) = ignoreSlow (rx0 `seq` rx1 `seq` r0x `seq` r)
-  $ and [r == rx0, r == rx1, r == r0x]
-  where
-    r   = evalN x
-    rx0 = evalN (x + 0)
-    rx1 = evalN (x - 0)
-    r0x = evalN (0 + x)
+-- prop_numPlusZero :: TestNE -> Property
+-- prop_numPlusZero (T x) = ignoreSlow (rx0 `seq` rx1 `seq` r0x `seq` r)
+--   $ and [r == rx0, r == rx1, r == r0x]
+--   where
+--     r   = evalN x
+--     rx0 = evalN (x + 0)
+--     rx1 = evalN (x - 0)
+--     r0x = evalN (0 + x)
 
-prop_numPlusSym :: TestNE -> TestNE -> Property
-prop_numPlusSym (T x) (T y) = ignoreSlow (xy `seq` yx) $ xy == yx
-  where
-    xy = evalN (x + y)
-    yx = evalN (y + x)
+-- prop_numPlusSym :: TestNE -> TestNE -> Property
+-- prop_numPlusSym (T x) (T y) = ignoreSlow (xy `seq` yx) $ xy == yx
+--   where
+--     xy = evalN (x + y)
+--     yx = evalN (y + x)
 
-prop_numTimesOne :: TestNE -> Property
-prop_numTimesOne (T x) =
-  ignoreSlow (r1x `seq` rx1 `seq` r) $ r == r1x && r == rx1
-  where
-    r   = evalN x
-    r1x = evalN (1 * x)
-    rx1 = evalN (x * 1)
+-- prop_numTimesOne :: TestNE -> Property
+-- prop_numTimesOne (T x) =
+--   ignoreSlow (r1x `seq` rx1 `seq` r) $ r == r1x && r == rx1
+--   where
+--     r   = evalN x
+--     r1x = evalN (1 * x)
+--     rx1 = evalN (x * 1)
 
-prop_numTimesSym :: TestNE -> TestNE -> Property
-prop_numTimesSym (T x) (T y) = ignoreSlow (xy `seq` yx) $ xy == yx
-  where
-    xy = evalN (x * y)
-    yx = evalN (y * x)
+-- prop_numTimesSym :: TestNE -> TestNE -> Property
+-- prop_numTimesSym (T x) (T y) = ignoreSlow (xy `seq` yx) $ xy == yx
+--   where
+--     xy = evalN (x * y)
+--     yx = evalN (y * x)
 
-prop_negateTwice :: TestNE -> Property
-prop_negateTwice (T x) = ignoreSlow (rm `seq` rp) $ rp == rm
-  where
-    rp = evalN x
-    rm = evalN $ negate $ negate x
+-- prop_negateTwice :: TestNE -> Property
+-- prop_negateTwice (T x) = ignoreSlow (rm `seq` rp) $ rp == rm
+--   where
+--     rp = evalN x
+--     rm = evalN $ negate $ negate x
 
-prop_negateOnce :: TestNE -> Property
-prop_negateOnce (T x) = ignoreSlow (rm `seq` rp) (rp == fmap negate rm)
-  where
-    rp = evalN x
-    rm = evalN $ negate x
+-- prop_negateOnce :: TestNE -> Property
+-- prop_negateOnce (T x) = ignoreSlow (rm `seq` rp) (rp == fmap negate rm)
+--   where
+--     rp = evalN x
+--     rm = evalN $ negate x
 
-prop_abs :: TestNE -> Property
-prop_abs (T x) =
-  QC.counterexample (showSDocUnsafe . ppr $ fromNormal x)
-    $ ignoreSlow (a `seq` m `seq` p)
-    $ and [a == p || a == m, a >= m, a >= p, a >= 0]
-  where
-    Right a = evalN $ abs x
-    Right p = evalN x
-    Right m = evalN $ negate x
+-- prop_abs :: TestNE -> Property
+-- prop_abs (T x) =
+--   QC.counterexample (showSDocUnsafe . ppr $ fromNormal x)
+--     $ ignoreSlow (a `seq` m `seq` p)
+--     $ and [a == p || a == m, a >= m, a >= p, a >= 0]
+--   where
+--     Right a = evalN $ abs x
+--     Right p = evalN x
+--     Right m = evalN $ negate x
 
-prop_max :: TestNE -> TestNE -> Property
-prop_max (T x) (T y) = ignoreSlow (rx `seq` ry `seq` rm)
-  $ and [rm >= rx, rm >= ry, rx == rm || ry == rm]
-  where
-    Right rx = evalN x
-    Right ry = evalN y
-    Right rm = evalN $ neMax x y
+-- prop_max :: TestNE -> TestNE -> Property
+-- prop_max (T x) (T y) = ignoreSlow (rx `seq` ry `seq` rm)
+--   $ and [rm >= rx, rm >= ry, rx == rm || ry == rm]
+--   where
+--     Right rx = evalN x
+--     Right ry = evalN y
+--     Right rm = evalN $ neMax x y
 
-prop_min :: TestNE -> TestNE -> Property
-prop_min (T x) (T y) = ignoreSlow (rx `seq` ry `seq` rm)
-  $ and [rm <= rx, rm <= ry, rx == rm || ry == rm]
-  where
-    Right rx = evalN x
-    Right ry = evalN y
-    Right rm = evalN $ neMin x y
+-- prop_min :: TestNE -> TestNE -> Property
+-- prop_min (T x) (T y) = ignoreSlow (rx `seq` ry `seq` rm)
+--   $ and [rm <= rx, rm <= ry, rx == rm || ry == rm]
+--   where
+--     Right rx = evalN x
+--     Right ry = evalN y
+--     Right rm = evalN $ neMin x y
 
-prop_sumPN :: TestNE -> Property
-prop_sumPN (T x) =
-  QC.counterexample (showSDocUnsafe . ppr $ fromNormal x)
-    $ ignoreSlow (rx `seq` ry) (rx QC.=== ry)
-  where
-    rx = evalN x
-    ry = evalN $ neMin x 0 + neMax x 0
+-- prop_sumPN :: TestNE -> Property
+-- prop_sumPN (T x) =
+--   QC.counterexample (showSDocUnsafe . ppr $ fromNormal x)
+--     $ ignoreSlow (rx `seq` ry) (rx QC.=== ry)
+--   where
+--     rx = evalN x
+--     ry = evalN $ neMin x 0 + neMax x 0
 
 prop_keepSolutions :: TestExp -> Property
 prop_keepSolutions = keepSolutions
@@ -282,6 +282,9 @@ prop_keepSolutions_34 = ks $ (Min (V (Var 3) - 3) (-1)) :^ (-2)
 prop_keepSolutions_35 :: Property
 prop_keepSolutions_35 = ks $ (0 :^ (V (Var 1) - 2)) * Log2 (Min 2 (V (Var 1)))
 
+prop_keepSolutions_36 :: Property
+prop_keepSolutions_36 = ks $ (-2) :* V (Var 4) :^ (-1) :* (Min (V (Var 4)) 5)
+
 prop_valid :: TestNE -> Property
 prop_valid (TestNE _ x) = case validate x of
   Ok           -> QC.property True
@@ -343,5 +346,5 @@ return []
 runTests :: IO Bool
 -- runTests = $quickCheckAll
 runTests = $(QC.forAllProperties)
-  $ QC.quickCheckWithResult QC.stdArgs { QC.maxSuccess = 1000 }
+  $ QC.quickCheckWithResult QC.stdArgs { QC.maxSuccess = 100 }
 

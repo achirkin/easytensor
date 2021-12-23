@@ -15,9 +15,12 @@ module Numeric.Dimensions.Plugin.SolveNat.Exp
   , evaluate
   , evaluateR
   , _R
+    -- * Debugging
+  , toOutputable
   )
 where
 
+import           Control.Applicative            (Const(..))
 import           Control.Exception              ( ArithException(..)
                                                 , throw
                                                 )
@@ -25,6 +28,7 @@ import           Control.Monad                  ( (>=>) )
 import           Data.Bifunctor
 import           Data.Bits
 import           Data.Functor.Identity
+import           Data.List                      (sort)
 import           Data.Ratio
 import           Data.Void
 import           Numeric.Natural
@@ -397,3 +401,37 @@ safe (Log2 a)
     | not (safe a)  = False
     | Right ra <- evaluateR a = ra > 0
     | otherwise = False
+
+
+-- Debugging ----------------------------
+
+newtype OVar = OVar Integer
+  deriving (Eq, Ord)
+
+newtype OFun = OFun Integer
+  deriving (Eq, Ord)
+
+instance Show OVar where
+  show (OVar i) = "v" <> show i
+
+instance Show OFun where
+  show (OFun i) = "f" <> show i
+
+instance Outputable OVar where
+  pprPrec _ = text . show
+
+instance Outputable OFun where
+  pprPrec _ = text . show
+
+-- | Replace all occurrences of vars and funs with something outputabble
+toOutputable :: (Ord t, Ord v) => Exp t v -> Exp OFun OVar
+toOutputable e = runIdentity $ substituteFun (pure . F . OFun . get ts) e >>= substituteVar (pure . V . OVar . get vs)
+  where
+    ts = zip [1 :: Integer ..] . sort . getConst $ substituteFun (Const . (:[])) e
+    vs = zip [1 :: Integer ..] . sort . getConst $ substituteVar (Const . (:[])) e
+    get :: Ord a => [(Integer, a)] -> a -> Integer
+    get [] _ = 0
+    get ((i, x):xs) y = case compare x y of
+      LT -> get xs y
+      EQ -> i
+      GT -> 0

@@ -1,6 +1,7 @@
 resolver: ../snapshot-8.6.yaml
 
 packages:
-  - '.'
-  - location: ../dimensions
-    extra-dep: true
+  - .
+
+extra-deps:
+  - ../dimensions
